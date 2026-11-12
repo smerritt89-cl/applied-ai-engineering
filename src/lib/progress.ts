@@ -66,6 +66,12 @@ export interface Settings {
   autoTrackTime: boolean;
 }
 
+/** Your notes for one lesson (typed in the Notes column on lesson pages). */
+export interface LessonNote {
+  text: string;
+  updatedAt: string; // ISO timestamp
+}
+
 export interface ProgressState {
   version: number;
   createdAt: string;
@@ -74,6 +80,8 @@ export interface ProgressState {
   exams: Record<string, Attempt[]>;
   projects: Record<string, ProjectProgress>;
   hours: HoursEntry[];
+  /** Lesson id -> note. Added after launch; normalize() fills it in for old saves. */
+  notes: Record<string, LessonNote>;
   settings: Settings;
 }
 
@@ -86,6 +94,7 @@ export function emptyState(): ProgressState {
     exams: {},
     projects: {},
     hours: [],
+    notes: {},
     settings: { theme: 'system', narrationRate: 1, autoTrackTime: true },
   };
 }
@@ -116,6 +125,7 @@ function normalize(raw: any): ProgressState {
     exams: s.exams ?? {},
     projects: s.projects ?? {},
     hours: Array.isArray(s.hours) ? s.hours : [],
+    notes: s.notes && typeof s.notes === 'object' ? s.notes : {},
   };
 }
 
@@ -258,6 +268,14 @@ export function addHours(entry: Omit<HoursEntry, 'id'>) {
 export function removeHours(id: string) {
   update((s) => {
     s.hours = s.hours.filter((h) => h.id !== id);
+  });
+}
+
+/** Save a lesson's note. Blank text removes it, so the Notes page lists only real notes. */
+export function setNote(lessonId: string, text: string) {
+  update((s) => {
+    if (text.trim()) s.notes[lessonId] = { text, updatedAt: new Date().toISOString() };
+    else delete s.notes[lessonId];
   });
 }
 

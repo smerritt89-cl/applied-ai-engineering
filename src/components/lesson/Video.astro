@@ -27,7 +27,8 @@ interface Props {
 }
 const { id, title, channel, start = 0, end, minutes, source } = Astro.props;
 const watchUrl = `https://www.youtube.com/watch?v=${id}${start ? `&t=${start}s` : ''}`;
-const params = new URLSearchParams({ autoplay: '1', cc_load_policy: '1', rel: '0', modestbranding: '1' });
+// enablejsapi lets the page read the playback time (for timestamps in your notes).
+const params = new URLSearchParams({ autoplay: '1', cc_load_policy: '1', rel: '0', modestbranding: '1', enablejsapi: '1' });
 if (start) params.set('start', String(start));
 if (end) params.set('end', String(end));
 const embed = `https://www.youtube-nocookie.com/embed/${id}?${params}`;
@@ -58,10 +59,17 @@ const hasSlot = Astro.slots.has('default');
 </figure>
 
 <script>
+  import { setActiveMedia } from '../../lib/media';
+
+  /*
+   * Reading the time: with enablejsapi=1 the embed answers a "listening"
+   * message by posting infoDelivery events that include currentTime. This is
+   * the same channel YouTube's own iframe API library uses, without loading it.
+   */
   document.querySelectorAll<HTMLElement>('.video-frame').forEach((frame) => {
     frame.querySelector('.video-load')?.addEventListener('click', () => {
       const iframe = document.createElement('iframe');
-      iframe.src = frame.dataset.embed!;
+      iframe.src = `${frame.dataset.embed!}&origin=${encodeURIComponent(location.origin)}`;
       iframe.title = frame.dataset.title ?? 'Video';
       iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
       iframe.allowFullscreen = true;
@@ -69,6 +77,29 @@ const hasSlot = Astro.slots.has('default');
       iframe.dataset.playing = 'true'; // lets the time tracker count watching as activity
       frame.replaceChildren(iframe);
       iframe.focus();
+
+      let current: number | null = null;
+      let heard = false;
+      const source = { kind: 'video' as const, title: iframe.title, time: () => current };
+      setActiveMedia(source);
+
+      window.addEventListener('message', (e) => {
+        if (e.source !== iframe.contentWindow || typeof e.data !== 'string') return;
+        try {
+          const msg = JSON.parse(e.data);
+          heard = true;
+          const info = msg.info ?? {};
+          if (typeof info.currentTime === 'number') current = info.currentTime;
+          if (info.playerState === 1) setActiveMedia(source); // playing: this is the one you are watching
+        } catch { /* not a player message */ }
+      });
+      const hello = () => iframe.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: frame.dataset.title, channel: 'widget' }), '*');
+      iframe.addEventListener('load', () => {
+        hello();
+        // The player can take a moment to wire up; ask again until it answers.
+        let tries = 0;
+        const t = setInterval(() => (heard || ++tries > 10 ? clearInterval(t) : hello()), 500);
+      });
     });
   });
 </script>

@@ -19,6 +19,9 @@ Openly licensed material whose ideas, structure, or exercises were adapted and r
 - **[AI Agents for Beginners](https://github.com/microsoft/ai-agents-for-beginners)**, Microsoft. License: [MIT](https://github.com/microsoft/ai-agents-for-beginners/blob/main/LICENSE).
   - s4-w1-l1: Workflows versus agents (Lesson 1, Introduction to AI agents (environment, sensors, actuators; when to use agents))
   - s4-w1-l2: Workflow patterns in code (Lesson 7, planning design; lesson 8, multi-agent design patterns)
+  - s4-w2-l6: Agent frameworks and when to use them
+- **[AMI Meeting Corpus](https://groups.inf.ed.ac.uk/ami/corpus/)**, AMI Consortium (University of Edinburgh). License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). 100 hours of meeting recordings with orthographic transcripts; about two thirds are scripted design-team scenarios.
+  - s5-project: Fine-tune a small model for extraction and benchmark it
 - **[Anthropic Courses (API fundamentals, prompt engineering, real-world prompting, evaluations, tool use)](https://github.com/anthropics/courses)**, Anthropic. License: [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). NonCommercial. Adapted structure and exercise ideas; text rewritten.
   - s1-project: Meeting transcript to action items (Tool use and real-world prompting modules (exercise ideas))
   - s3-w1-l1: Why evals: the eval-driven development loop (Prompt evaluations course)
@@ -28,8 +31,20 @@ Openly licensed material whose ideas, structure, or exercises were adapted and r
   - s1-w2-l6: Iterating on prompts like an engineer (real_world_prompting lesson 3, Prompt engineering process)
   - s1-w4-l10: The tool-use loop (Tool use module, lessons 1 (overview), 2 (first simple tool), and 4 (complete workflow))
   - s1-w4-l11: Designing tools and gating side effects (Tool use module, lesson 6 (chatbot with multiple tools))
+- **[Audience (Technical Writing One)](https://developers.google.com/tech-writing/one/audience)**, Google for Developers. License: [CC BY 4.0 (text); Apache 2.0 (code samples)](https://creativecommons.org/licenses/by/4.0/). Define the audience by role and proximity; the curse of knowledge; good docs supply what the reader needs minus what they already know.
+  - capstone-w6-l2: Writing it up and defending it (Role and proximity; the curse of knowledge)
 - **[Claude Cookbooks, agent patterns notebooks (basic workflows, evaluator-optimizer, orchestrator-workers)](https://github.com/anthropics/claude-cookbooks/tree/main/patterns/agents)**, Anthropic. License: [MIT](https://github.com/anthropics/claude-cookbooks/blob/main/LICENSE). Reference implementations that accompany "Building effective agents". Pattern structure adapted; code written fresh.
   - s4-w1-l2: Workflow patterns in code (basic_workflows, orchestrator_workers, evaluator_optimizer notebooks)
+- **[Dataset formats and types (Hugging Face TRL docs)](https://huggingface.co/docs/trl/dataset_formats)**, Hugging Face. License: Apache 2.0. Standard vs conversational formats; SFTTrainer takes language-modeling or prompt-completion datasets.
+  - s5-w2-l5: Building a fine-tuning dataset (Standard and conversational formats; prompt-completion)
+  - s5-w3-l9: Hands-on with PEFT and TRL (Conversational prompt-completion)
+- **[Documents (Technical Writing One)](https://developers.google.com/tech-writing/one/documents)**, Google for Developers. License: [CC BY 4.0 (text); Apache 2.0 (code samples)](https://creativecommons.org/licenses/by/4.0/). State scope and non-scope, state the audience, summarize key points at the start, organize sections around readers' needs.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals (Scope, audience, key points up front)
+  - capstone-w1-l1: Scoping a capstone that proves something (Scope and non-scope)
+  - capstone-w6-l2: Writing it up and defending it (Scope, audience, key points first)
+- **[Framing an ML problem (Introduction to Machine Learning Problem Framing)](https://developers.google.com/machine-learning/problem-framing/ml-framing)**, Google for Developers. License: [CC BY 4.0 (text); Apache 2.0 (code samples)](https://creativecommons.org/licenses/by/4.0/). Ideal outcome stated independently of the model; product success and failure metrics separate from model metrics; check that a better model would actually move the success metric.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals (Success and failure metrics)
+  - capstone-w1-l1: Scoping a capstone that proves something (Ideal outcome; success and failure metrics)
 - **[Generative AI for Beginners](https://github.com/microsoft/generative-ai-for-beginners)**, Microsoft. License: [MIT](https://github.com/microsoft/generative-ai-for-beginners/blob/main/LICENSE).
   - s1-w1-l1: How LLMs work, for people who build with them (Lesson 1, Introduction to Generative AI and LLMs)
   - s1-w2-l4: Prompt fundamentals: write the spec a new colleague would need (Lesson 4, Prompt Engineering Fundamentals (prompt construction, primary content, templates))
@@ -39,61 +54,169 @@ Openly licensed material whose ideas, structure, or exercises were adapted and r
 - **[Hugging Face Agents Course](https://huggingface.co/learn/agents-course)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/agents-course/blob/main/LICENSE).
   - s4-w1-l1: Workflows versus agents (Unit 1, the Thought-Action-Observation cycle)
   - s4-w2-l4: The agent loop and tools for long tasks (Unit 1, the Thought-Action-Observation cycle)
+  - s4-w2-l6: Agent frameworks and when to use them (Unit 2, frameworks (smolagents, LlamaIndex, LangGraph))
 - **[Hugging Face LLM Course](https://huggingface.co/learn/llm-course)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/course/blob/main/LICENSE).
+  - s5-project: Fine-tune a small model for extraction and benchmark it (Fine-tuning chapters)
+  - s5-w1-l1: Open weights, licenses, and the landscape (Chapter 1)
+  - s5-w1-l2: The Hugging Face Hub and transformers (Chapter 1 (pipeline), Chapter 2 (behind the pipeline, tokenizers), Chapter 4 (the Hub, model cards), Chapter 5 (datasets))
+  - s5-w1-l3: Running models locally
+  - s5-w3-l7: How supervised fine-tuning works (Chapter 11, Supervised Fine-Tuning (chat templates and SFT sections))
+  - s5-w3-l8: LoRA and QLoRA (Chapter 11, section 4, LoRA)
+  - s5-w3-l9: Hands-on with PEFT and TRL (Chapter 11, sections 3 and 4 (SFT and LoRA workflow, merging adapters))
+  - s5-w4-l11: Serving open models
+  - s5-w4-l12: Preference tuning and beyond, briefly
+  - s5-w5-l13: Project week: planning the fine-tuning project (Fine-tuning chapters)
   - s1-w1-l1: How LLMs work, for people who build with them (Chapter 1, Transformer models)
+- **[Hugging Face MCP Course](https://huggingface.co/learn/mcp-course)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/mcp-course/blob/main/LICENSE).
+  - s4-w3-l7: Why MCP, and how it works (Unit 1, key concepts)
+  - s4-w3-l8: Building an MCP server
+- **[Illustrating (Technical Writing Two)](https://developers.google.com/tech-writing/two/illustrations)**, Google for Developers. License: [CC BY 4.0 (text); Apache 2.0 (code samples)](https://creativecommons.org/licenses/by/4.0/). Write the caption first, limit the information in one drawing, show an overview before subsystem detail, focus the reader's eye.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals (Caption first, overview before detail)
+  - capstone-w6-l2: Writing it up and defending it (Caption first; limit information per drawing)
 - **[Kubernetes documentation (kubernetes/website)](https://github.com/kubernetes/website)**, The Kubernetes Authors. License: [CC BY 4.0](https://github.com/kubernetes/website/blob/main/LICENSE).
   - s2-project: Q&A over a real document set
 - **[LLM Course (roadmaps and notebooks)](https://github.com/mlabonne/llm-course)**, Maxime Labonne. License: [Apache 2.0](https://github.com/mlabonne/llm-course/blob/main/LICENSE).
-  - Not yet cited by a lesson
+  - s5-w3-l7: How supervised fine-tuning works (The LLM Scientist roadmap, Supervised Fine-Tuning section (training parameters))
+  - s5-w3-l8: LoRA and QLoRA (The LLM Scientist roadmap, Supervised Fine-Tuning (LoRA and QLoRA parameters))
+  - s5-w3-l9: Hands-on with PEFT and TRL (Fine-tuning notebooks (Fine-tune Llama 3.1 with Unsloth; Fine-tune Mistral-7b with QLoRA))
+  - s5-w4-l12: Preference tuning and beyond, briefly (Preference alignment section)
+  - s5-w5-l13: Project week: planning the fine-tuning project
+- **[makemore, character-level language models from bigrams to transformers](https://github.com/karpathy/makemore)**, Andrej Karpathy. License: [MIT](https://github.com/karpathy/makemore/blob/master/LICENSE). Includes names.txt (32,033 names from ssa.gov for 2018, per the README).
+  - e1-w2-l3: makemore, part 1: a bigram language model, counted and learned (names.txt (32,033 names) used for the statistics computed in this lesson)
+- **[MCP for Beginners](https://github.com/microsoft/mcp-for-beginners)**, Microsoft. License: [MIT](https://github.com/microsoft/mcp-for-beginners/blob/main/LICENSE).
+  - s4-w3-l8: Building an MCP server
+- **[micrograd, a tiny scalar-valued autograd engine](https://github.com/karpathy/micrograd)**, Andrej Karpathy. License: [MIT](https://github.com/karpathy/micrograd/blob/master/LICENSE). About 100 lines of engine plus about 50 lines of neural-net library, per its README.
+  - e1-w1-l1: micrograd, part 1: derivatives, the chain rule, and a tiny autograd engine (engine.py design (Value, _backward closures, topological sort))
+  - e1-w1-l2: micrograd, part 2: neurons, a loss, and gradient descent (nn.py (Neuron, Layer, MLP))
+- **[minbpe, minimal byte-level Byte Pair Encoding](https://github.com/karpathy/minbpe)**, Andrej Karpathy. License: [MIT](https://github.com/karpathy/minbpe/blob/master/LICENSE). The README's "aaabdaaabac" example with 3 merges encodes to [258, 100, 258, 97, 99]. exercise.md holds the staged tokenizer exercise.
+  - e1-w4-l8: Let's build the GPT tokenizer: bytes, BPE, and why tokens explain odd behavior (BasicTokenizer design, README example, and exercise.md)
+- **[nanoGPT](https://github.com/karpathy/nanoGPT)**, Andrej Karpathy. License: [MIT](https://github.com/karpathy/nanoGPT/blob/master/LICENSE). README (checked 2026-11-11) marks the repo as old and deprecated as of Nov 2025, pointing to nanochat, but keeps it up. Its shakespeare_char quick start reports best val loss 1.4697 in about 3 minutes on one A100, and a CPU config (4 layers, 4 heads, 128 embd, block 64) reaching about 1.88.
+  - e1-project: Train a tiny GPT on your own corpus (README baselines for calibration)
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model (README quick start and deprecation note)
+- **[nanogpt-lecture, the code built in "Let's build GPT"](https://github.com/karpathy/ng-video-lecture)**, Andrej Karpathy. License: MIT (stated in the README). gpt.py hyperparameters (block_size 256, n_embd 384, 6 heads, 6 layers, dropout 0.2) and a 90/10 train/val split. README notes the video skipped weight initialization; see nanoGPT model.py.
+  - e1-project: Train a tiny GPT on your own corpus
+  - e1-w1-l2: micrograd, part 2: neurons, a loss, and gradient descent (gpt.py uses torch.optim.AdamW)
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model (gpt.py (hyperparameters, Head, Block))
 - **[Neural Networks, Zero to Hero](https://karpathy.ai/zero-to-hero.html)**, Andrej Karpathy. License: [MIT (code); videos are standard YouTube license](https://github.com/karpathy/nn-zero-to-hero/blob/master/LICENSE). Code adapted under MIT; videos embedded only.
-  - Not yet cited by a lesson
+  - e1-project: Train a tiny GPT on your own corpus (Let's build GPT, suggested exercises EX2 and EX3)
+  - e1-w1-l1: micrograd, part 1: derivatives, the chain rule, and a tiny autograd engine (Lecture 1 structure and exercise ideas)
+  - e1-w1-l2: micrograd, part 2: neurons, a loss, and gradient descent (Lecture 1, the MLP, tiny dataset, and training loop)
+  - e1-w2-l3: makemore, part 1: a bigram language model, counted and learned (makemore part 1 (bigrams) and its exercises E01 to E05)
+  - e1-w2-l4: makemore, part 2: embeddings and an MLP language model (makemore part 2 (MLP) and its exercises)
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm (makemore part 3 (activations, gradients, BatchNorm) and its exercises)
+  - e1-w3-l6: makemore, part 4: backpropagation by hand, at the tensor level (makemore part 4 exercises 1 to 4)
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model (Let's build GPT, and its suggested exercises)
+  - e1-w4-l8: Let's build the GPT tokenizer: bytes, BPE, and why tokens explain odd behavior (Let's build the GPT Tokenizer)
+- **[PEP 1: PEP Purpose and Guidelines](https://peps.python.org/pep-0001/)**, Python Software Foundation (Warsaw, Hylton, Goodger, Coghlan). License: [Public domain or CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). A long-lived public design-proposal format. Sections include Abstract, Motivation, Rationale, Security Implications, Rejected Ideas, and Open Issues.
+  - capstone-w6-l2: Writing it up and defending it (Rationale and Rejected Ideas sections)
+- **[Rules of Machine Learning: Best Practices for ML Engineering](https://developers.google.com/machine-learning/guides/rules-of-ml)**, Martin Zinkevich (Google). License: [CC BY 4.0 (text); Apache 2.0 (code samples)](https://creativecommons.org/licenses/by/4.0/). Rule 1, don't be afraid to launch without ML; Rule 2, design and implement metrics first; Rule 13, a simple, observable, attributable first objective.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals (Rules 1, 2, and 13)
+  - capstone-w1-l1: Scoping a capstone that proves something (Rules 1, 2, and 13)
+- **[SFT Trainer (Hugging Face TRL docs)](https://huggingface.co/docs/trl/sft_trainer)**, Hugging Face. License: Apache 2.0. Checked 2026-11-11 (TRL v1.17.1). Conversational datasets get the chat template applied automatically; completion_only_loss defaults to completion-only for prompt-completion data and full sequence for language modeling data; assistant_only_loss defaults to False; max_length defaults to 1024 with keep_start truncation.
+  - s5-w2-l5: Building a fine-tuning dataset (Expected dataset format; completion_only_loss; assistant_only_loss; max_length)
+  - s5-w3-l7: How supervised fine-tuning works (Computing the loss; label shifting and masking; train on completion only; logged metrics; SFTConfig defaults)
+  - s5-w3-l9: Hands-on with PEFT and TRL (Quick start; train on completion only; train adapters with PEFT; SFTConfig and SFTTrainer reference; instruction tuning EOS warning)
 - **[smolagents documentation (index and guided tour)](https://huggingface.co/docs/smolagents/index)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/smolagents/blob/main/LICENSE). CodeAgent versus ToolCallingAgent, model-agnostic via LiteLLM and others, sandboxed executors, max_steps, final_answer_checks. Guided tour at /docs/smolagents/guided_tour.
   - s4-w2-l4: The agent loop and tools for long tasks (Guided tour: termination conditions)
+  - s4-w2-l6: Agent frameworks and when to use them (Index; Guided tour (CodeAgent versus ToolCallingAgent))
+- **[Technical Writing courses (Technical Writing One and Two)](https://developers.google.com/tech-writing)**, Google for Developers. License: [CC BY 4.0 (text); Apache 2.0 (code samples)](https://creativecommons.org/licenses/by/4.0/). Free self-paced courses for engineers. License stated in the page footer, checked 2026-11-11.
+  - capstone-w6-l2: Writing it up and defending it (Technical Writing One and Two)
 - **[The Rust Programming Language (book source)](https://github.com/rust-lang/book)**, The Rust Project contributors. License: [MIT or Apache 2.0](https://github.com/rust-lang/book/blob/main/LICENSE-MIT).
   - s2-project: Q&A over a real document set
 - **[What are agents? (smolagents conceptual guide)](https://huggingface.co/docs/smolagents/conceptual_guides/intro_agents)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/smolagents/blob/main/LICENSE). Read 2026-11-11. The agency-levels table (simple processor, router, tool call, multi-step agent, multi-agent) and when to avoid agents.
   - s4-w1-l1: Workflows versus agents (Agency levels table; When to use agents and when to avoid them)
   - s4-w1-l3: When not to build an agent (When to avoid agents)
+  - s4-w2-l6: Agent frameworks and when to use them (Code agents)
 
 ## Linked and summarized
 
 Copyrighted documentation, books, papers, and articles. Lessons summarize ideas in original words and link to the source; no text is copied beyond brief attributed quotations.
 
 - **[A Careful Examination of Large Language Model Performance on Grade School Arithmetic (Zhang et al., 2024)](https://arxiv.org/abs/2405.00332)**, Zhang et al.. License: arXiv non-exclusive license. GSM1k. Up to 8 percent drops versus GSM8k for some models; frontier models showed minimal overfitting.
+  - s5-w2-l6: Data quality, splits, and contamination
   - s3-w3-l9: Comparing models and providers fairly
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
 - **[A Coefficient of Agreement for Nominal Scales (Cohen, 1960)](https://doi.org/10.1177/001316446002000104)**, Jacob Cohen. License: Copyright SAGE Publications. Educational and Psychological Measurement 20(1), 37 to 46.
   - s3-w2-l6: Calibrating the judge
 - **[A Field Guide to Rapidly Improving AI Products](https://hamel.dev/blog/posts/field-guide/)**, Hamel Husain. License: Copyright Hamel Husain. March 2025. Bottom-up failure taxonomies, custom data viewers, synthetic inputs by feature, scenario, and persona.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
   - s3-project: An eval harness that measurably improves your RAG system
   - s3-w1-l2: Error analysis: look at your data (Error analysis; bottom-up taxonomies; data viewers)
   - s3-w1-l3: Building test sets (Synthetic data by feature, scenario, and persona)
   - s3-w4-l10: Human review and feedback loops (Custom data viewers; domain experts; binary judgments with critiques)
+- **[A Neural Probabilistic Language Model (Bengio et al., 2003)](https://www.jmlr.org/papers/v3/bengio03a.html)**, Yoshua Bengio, Rejean Ducharme, Pascal Vincent, Christian Jauvin. License: JMLR (author copyright, free online).
+  - e1-w2-l4: makemore, part 2: embeddings and an MLP language model
+- **[A Path Towards Autonomous Machine Intelligence (2022)](https://openreview.net/forum?id=BZ5a1r-kVsf)**, Yann LeCun. License: Copyright the author.
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
 - **[A statistical approach to model evaluations](https://www.anthropic.com/research/statistical-approach-to-model-evals)**, Anthropic (Evan Miller). License: Copyright Anthropic. November 2024 companion post to Miller's paper. Five recommendations; clustered SEs on popular evals can be over three times naive SEs.
+  - s5-w4-l10: Benchmarking your model against a frontier model
   - s3-w3-l7: Statistics for comparing models and prompts
+  - capstone-w6-l2: Writing it up and defending it
 - **[A Structured Review of the Validity of BLEU (Reiter, 2018)](https://aclanthology.org/J18-3002/)**, Ehud Reiter. License: Open access, Computational Linguistics (MIT Press); see the article page.
   - s3-w2-l4: Code-based graders
+- **[About code owners (GitHub Docs)](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)**, GitHub. License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+  - e2-w3-l7: Tests as the contract
+- **[About protected branches (GitHub Docs)](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)**, GitHub. License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+  - e2-w3-l7: Tests as the contract
+- **[About secret scanning (GitHub docs)](https://docs.github.com/en/code-security/secret-scanning/introduction/about-secret-scanning)**, GitHub. License: CC BY 4.0 (GitHub docs content).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[About supervised fine-tuning for Gemini models (Google Cloud, Gemini Enterprise Agent Platform docs)](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini-supervised-tuning)**, Google Cloud. License: Copyright Google. Checked 2026-11-11. The page (under the Vertex AI docs path) lists Gemini 3.5 Flash-Lite, 3.5 Flash, 3.1 Flash-Lite, 2.5 Pro, 2.5 Flash-Lite, and 2.5 Flash; describes tuning as adapting behavior with labeled data.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't (Supported models; use cases)
+  - s5-w2-l5: Building a fine-tuning dataset (Dataset limits)
 - **[Accurately Interpreting Clickthrough Data as Implicit Feedback (Joachims et al., SIGIR 2005)](https://www.cs.cornell.edu/people/tj/publications/joachims_etal_05a.pdf)**, Thorsten Joachims, Laura Granka, Bing Pan, Helene Hembrooke, Geri Gay. License: Copyright ACM / the authors. Eye-tracking study; clicks are biased toward higher-ranked results (trust and position bias).
   - s3-w4-l10: Human review and feedback loops
+- **[Adam: A Method for Stochastic Optimization (Kingma and Ba, 2014)](https://arxiv.org/abs/1412.6980)**, Diederik P. Kingma, Jimmy Ba. License: arXiv non-exclusive license.
+  - e1-w1-l2: micrograd, part 2: neurons, a loss, and gradient descent
 - **[Adaptive thinking (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking)**, Anthropic. License: Copyright Anthropic. Source for "thinking tokens are billed as output tokens."
   - s2-w4-l12: Designing the Q&A system (Thinking tokens are billed as output)
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items (Thinking tokens are billed as output)
 - **[Adding Error Bars to Evals: A Statistical Approach to Language Model Evaluations (Miller, 2024)](https://arxiv.org/abs/2411.00640)**, Evan Miller (Anthropic). License: arXiv non-exclusive license.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
   - s3-project: An eval harness that measurably improves your RAG system
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s6-w4-l12: Launch checklist and incident response
+  - s5-w2-l6: Data quality, splits, and contamination
+  - s5-w4-l10: Benchmarking your model against a frontier model (Paired differences and clustered standard errors)
   - s3-w1-l1: Why evals: the eval-driven development loop
   - s3-w1-l3: Building test sets
   - s3-w3-l7: Statistics for comparing models and prompts (Sections 2 to 5: CLT and clustered standard errors, resampling, paired analysis, power analysis)
   - s3-w3-l8: Regression testing and CI gates (Paired analysis)
   - s3-w3-l9: Comparing models and providers fairly (Paired analysis; reporting pairwise statistics)
   - s3-w4-l12: Putting it together: an eval harness for your RAG system
+  - capstone-w6-l2: Writing it up and defending it
+- **[Adding repository custom instructions for GitHub Copilot (GitHub Docs)](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions)**, GitHub. License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). .github/copilot-instructions.md, path-specific .instructions.md files, nearest AGENTS.md, or a root CLAUDE.md or GEMINI.md.
+  - e2-w2-l4: Project memory and instructions
+- **[Agent approvals and security (OpenAI Codex docs)](https://developers.openai.com/codex/agent-approvals-security)**, OpenAI. License: Copyright OpenAI. Sandbox modes read-only, workspace-write, danger-full-access; approval policies; network off by default; cached web search; treat web results as untrusted.
+  - e2-w1-l1: Inside a coding agent (Sandbox modes and approval policies)
+  - e2-w3-l8: Reviewing agent code (Cached web search; treat web results as untrusted)
 - **[Agent SDK overview (Claude Code docs)](https://code.claude.com/docs/en/agent-sdk/overview)**, Anthropic. License: Copyright Anthropic. Compares the Agent SDK, the Claude Code CLI, the Client SDK (with its tool runner), and Managed Agents.
-  - Not yet cited by a lesson
+  - s4-w2-l6: Agent frameworks and when to use them (Compare the Agent SDK to other Claude tools; Capabilities)
 - **[AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents (Debenedetti et al., 2024)](https://arxiv.org/abs/2406.13352)**, Edoardo Debenedetti, Jie Zhang, Mislav Balunović, Luca Beurer-Kellner, Marc Fischer, Florian Tramèr. License: arXiv non-exclusive license. 97 tasks, 629 security test cases; measures utility and security together.
-  - Not yet cited by a lesson
+  - s4-project: An agent that automates a PM workflow
+  - s4-w4-l11: Prompt injection and the lethal trifecta
+  - s4-w4-l12: Evaluating agents
+- **[Agentic Misalignment: How LLMs could be insider threats (June 2025)](https://www.anthropic.com/research/agentic-misalignment)**, Anthropic. License: Copyright Anthropic.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
 - **[Agents](https://huyenchip.com/2025/01/07/agents.html)**, Chip Huyen. License: Copyright Chip Huyen. Published 2025-01-07. Planning versus execution, reflection, tool selection, failure modes (invalid tool, invalid parameters, false completion), efficiency metrics.
   - s4-w2-l4: The agent loop and tools for long tasks (Planning; Agent failure modes and evaluation)
+- **[AGENTS.md](https://agents.md/)**, Agentic AI Foundation (Linux Foundation). License: Copyright LF Projects, LLC. Open format, "a README for agents"; nearest file wins; list of supporting tools.
+  - e2-w2-l4: Project memory and instructions
 - **[AI Agents That Matter (Kapoor et al., 2024)](https://arxiv.org/abs/2407.01502)**, Sayash Kapoor, Benedikt Stroebl, Zachary S. Siegel, Nitya Nadgir, Arvind Narayanan. License: arXiv non-exclusive license. Accuracy-only agent benchmarks reward needless cost and complexity; evaluate cost and accuracy jointly; holdout sets and reproducibility.
+  - s4-project: An agent that automates a PM workflow
   - s4-w1-l3: When not to build an agent
+  - s4-w4-l12: Evaluating agents
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+- **[AI as Normal Technology (Knight First Amendment Institute, April 2025)](https://knightcolumbia.org/content/ai-as-normal-technology)**, Arvind Narayanan and Sayash Kapoor. License: Copyright the authors.
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
 - **[AI Engineering: Building Applications with Foundation Models (O'Reilly, 2025)](https://www.oreilly.com/library/view/ai-engineering/9781098166298/)**, Chip Huyen. License: Copyright O'Reilly Media.
+  - s6-w1-l1: Architectures for LLM services
+  - s6-w2-l4: Cost anatomy and budgets (Chapter 10, AI engineering architecture and user feedback)
+  - s6-w2-l6: Latency engineering (Chapter 9, Inference optimization)
+  - s5-w1-l1: Open weights, licenses, and the landscape (Chapter 4, model build versus buy)
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't (Chapter 7, Finetuning)
+  - s5-w2-l5: Building a fine-tuning dataset (Chapter 8, Dataset Engineering (data curation, synthesis, distillation))
+  - s5-w2-l6: Data quality, splits, and contamination (Chapter 8, Dataset Engineering (deduplication))
+  - s5-w4-l10: Benchmarking your model against a frontier model (Chapter on evaluation methodology)
   - s3-w1-l1: Why evals: the eval-driven development loop (Chapter 3, Evaluation Methodology; Chapter 4, Navigate Public Benchmarks)
   - s3-w1-l3: Building test sets (Chapter 8, Dataset Engineering (data coverage, quantity, synthesis, deduplication))
   - s3-w2-l4: Code-based graders (Chapter 3, Evaluation Methodology)
@@ -107,8 +230,17 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w1-l1: How LLMs work, for people who build with them (Chapter 2, Understanding Foundation Models)
   - s1-w1-l3: Tokens, cost, latency, and choosing a model (Chapter 4, Evaluate AI Systems)
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items (Chapter 4, Evaluate AI Systems (model selection))
+  - e3-w1-l3: Which model for which job, with evidence (Chapter 4, Evaluate AI Systems)
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
+  - capstone-w1-l1: Scoping a capstone that proves something (Chapter 1, planning AI applications)
 - **[AI Evals: Everything You Need to Know (the evals FAQ)](https://hamel.dev/blog/posts/evals-faq/)**, Hamel Husain and Shreya Shankar. License: Copyright Hamel Husain and Shreya Shankar. Checked 2026-11-11 (page dated September 2026). Error analysis (open coding, axial coding, theoretical saturation), the "benevolent dictator" annotator, binary labels, synthetic data with dimensions and tuples, train/dev/test splits.
   - s3-project: An eval harness that measurably improves your RAG system
+  - s6-w3-l7: Tracing LLM applications (Looking at traces)
+  - s6-w3-l9: Dashboards, alerts, and online evaluation (Sampling traces, online evaluation)
+  - s6-w4-l12: Launch checklist and incident response
+  - s5-w2-l5: Building a fine-tuning dataset (Synthetic data generation)
+  - s5-w2-l6: Data quality, splits, and contamination (Train, dev, and test sets; gold dataset staleness)
+  - s4-w4-l12: Evaluating agents (Agent evaluation; transition failure matrix)
   - s3-w1-l1: Why evals: the eval-driven development loop (What are AI evals?; Should I use ready-to-use evaluation metrics?)
   - s3-w1-l2: Error analysis: look at your data (Why is error analysis so important, and how is it performed?; How many people should annotate?; How many examples do I need?; Why binary evaluations?)
   - s3-w1-l3: Building test sets (Synthetic data generation; How many examples do I need?; Gold dataset staleness; Train, dev, and test sets for judges)
@@ -116,52 +248,105 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s3-w4-l10: Human review and feedback loops (Annotation tools, benevolent dictator, sampling traces, saturation, CI datasets)
   - s3-w4-l11: Evaluating RAG and agents (RAG evaluation; agent evaluation and the transition failure matrix)
   - s3-w4-l12: Putting it together: an eval harness for your RAG system (CI datasets, run frequency, judge correction)
+  - capstone-w1-l1: Scoping a capstone that proves something (Dev and test splits; binary labels)
+- **[AI Incident Database](https://incidentdatabase.ai/)**, Responsible AI Collaborative. License: See site terms.
+  - s6-w4-l12: Launch checklist and incident response
+- **[AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework)**, NIST. License: US government work (public domain in the US).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s6-w4-l12: Launch checklist and incident response
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
+  - capstone-w1-l1: Scoping a capstone that proves something
+- **[allenai/Olmo-3.1-32B-Instruct model card](https://huggingface.co/allenai/Olmo-3.1-32B-Instruct)**, Allen Institute for AI (Ai2). License: Apache 2.0.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[America's AI Action Plan (July 2025)](https://www.whitehouse.gov/wp-content/uploads/2025/07/Americas-AI-Action-Plan.pdf)**, The White House. License: US government work (public domain).
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
+- **[An Approach to Technical AGI Safety and Security (Shah et al., Google DeepMind, April 2025)](https://arxiv.org/abs/2504.01849)**, Rohin Shah, Anca Dragan, et al. (Google DeepMind). License: arXiv non-exclusive license.
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+- **[An Empirical Study of Catastrophic Forgetting in Large Language Models During Continual Fine-tuning (Luo et al., 2023)](https://arxiv.org/abs/2308.08747)**, Yun Luo, Zhen Yang, and colleagues. License: arXiv non-exclusive license. 1B to 7B models (BLOOMZ, mT0): forgetting observed across the range during continual instruction tuning, more severe with scale in that range; general instruction tuning beforehand reduced it.
+  - s5-w3-l7: How supervised fine-tuning works
+- **[An empirical study of LLaMA3 quantization: from LLMs to MLLMs (Huang et al., 2024)](https://arxiv.org/abs/2404.14047)**, Huang et al.. License: arXiv non-exclusive license.
+  - s5-w1-l3: Running models locally
 - **[An LLM-as-Judge Won't Save The Product: Fixing Your Process Will](https://eugeneyan.com/writing/eval-process/)**, Eugene Yan. License: Copyright Eugene Yan. April 2025. Evals as a process (scientific method), eval-driven development, keep humans annotating.
   - s3-project: An eval harness that measurably improves your RAG system
   - s3-w4-l10: Human review and feedback loops
   - s3-w4-l12: Putting it together: an eval harness for your RAG system (Eval-driven development)
 - **[An Overview of Cohere's Rerank Model](https://docs.cohere.com/docs/rerank-overview)**, Cohere. License: Copyright Cohere.
   - s2-w3-l9: Reranking and measuring retrieval
+- **[Analyzing coding agent transcripts to upper bound productivity gains from AI agents (17 February 2026)](https://metr.org/notes/2026-02-17-exploratory-transcript-analysis-for-estimating-time-savings-from-coding-agents/)**, METR. License: Copyright METR.
+  - e3-w2-l6: AI and work: what the productivity evidence shows
 - **[ANN-Benchmarks](https://ann-benchmarks.com/)**, Martin Aumüller, Erik Bernhardsson, Alexander Faithfull. License: MIT.
   - s2-w1-l3: Nearest-neighbor search at scale
   - s2-w2-l6: Vector stores in practice
 - **[ANN-Benchmarks: A Benchmarking Tool for Approximate Nearest Neighbor Algorithms (Aumüller et al., 2018)](https://arxiv.org/abs/1807.05614)**, Martin Aumüller, Erik Bernhardsson, Alexander Faithfull. License: arXiv non-exclusive license.
   - s2-w1-l3: Nearest-neighbor search at scale
-- **[Anthropic Python SDK (anthropic-sdk-python)](https://github.com/anthropics/anthropic-sdk-python)**, Anthropic. License: [MIT](https://github.com/anthropics/anthropic-sdk-python/blob/main/LICENSE). Lab code is written fresh against the SDK's documented interface; nothing copied.
+- **[Annotated Model Card (Hugging Face Hub docs)](https://huggingface.co/docs/hub/model-card-annotated)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/hub-docs/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[Anthropic Economic Index report: Cadences (26 June 2026)](https://www.anthropic.com/research/economic-index-june-2026-report)**, Anthropic. License: Copyright Anthropic.
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+- **[Anthropic Economic Index report: Economic primitives (15 January 2026)](https://www.anthropic.com/research/anthropic-economic-index-january-2026-report)**, Anthropic. License: Copyright Anthropic.
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+- **[Anthropic Python SDK (anthropic-sdk-python)](https://github.com/anthropics/anthropic-sdk-python)**, Anthropic. License: [Apache 2.0](https://github.com/anthropics/anthropic-sdk-python/blob/main/LICENSE). Lab code is written fresh against the SDK's documented interface; nothing copied.
+  - s6-w1-l1: Architectures for LLM services (Streaming helpers and batches)
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks (Timeouts and retries)
   - s4-w2-l4: The agent loop and tools for long tasks (Retries)
   - s3-w3-l8: Regression testing and CI gates
   - s1-w1-l2: Your first API calls (Client, streaming helper, retries)
+- **[Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)**, The Apache Software Foundation. License: Apache License text (verbatim copying permitted).
+  - s5-w1-l1: Open weights, licenses, and the landscape (Sections 2 to 4 and 6)
 - **[Apache Lucene BM25Similarity (API documentation)](https://lucene.apache.org/core/9_0_0/core/org/apache/lucene/search/similarities/BM25Similarity.html)**, Apache Software Foundation. License: Apache 2.0. Defaults k1 = 1.2, b = 0.75; idf implemented as log(1 + (N - n + 0.5) / (n + 0.5)).
   - s2-w3-l7: Keyword search and BM25 (Default parameters and idf implementation)
 - **[API and data retention (zero data retention and HIPAA readiness)](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)**, Anthropic. License: Copyright Anthropic. Read 2026-11-11. ZDR by arrangement with sales, per organization; feature eligibility table; retained data never used for training without express permission; flagged content may be kept up to 2 years even under ZDR.
-  - Not yet cited by a lesson
+  - e3-project: Your model selection playbook and a claim brief
+  - s6-w3-l8: Logging, privacy, and retention (ZDR scope, feature eligibility, HIPAA readiness)
+  - e3-w1-l3: Which model for which job, with evidence
 - **[Approximate Statistical Tests for Comparing Supervised Classification Learning Algorithms (Dietterich, 1998)](https://web.engr.oregonstate.edu/~tgd/publications/dietterich-approximate-statistical-tests-nc1998.pdf)**, Thomas G. Dietterich. License: Copyright MIT Press (author's copy). Neural Computation 10(7), 1895 to 1923, DOI 10.1162/089976698300017197. McNemar's test has low Type I error for single-run comparisons.
   - s3-w3-l7: Statistics for comparing models and prompts (McNemar's test and Type I error)
 - **[Arena leaderboard (formerly LMArena / Chatbot Arena)](https://arena.ai/leaderboard)**, Arena Intelligence. License: Copyright Arena Intelligence. Returns 403 to curl; confirmed with a browser-style fetch on 2026-11-11.
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence (Agent leaderboard)
 - **[ARES: An Automated Evaluation Framework for Retrieval-Augmented Generation Systems (Saad-Falcon et al., 2023)](https://arxiv.org/abs/2311.09476)**, Jon Saad-Falcon, Omar Khattab, Christopher Potts, Matei Zaharia. License: arXiv non-exclusive license. Fine-tuned judges plus a few hundred human labels with prediction-powered inference. NAACL 2024.
   - s3-w4-l10: Human review and feedback loops
   - s3-w4-l11: Evaluating RAG and agents
 - **[Arize Phoenix documentation](https://arize.com/docs/phoenix)**, Arize AI. License: Copyright Arize AI. Read 2026-11-11. Open source; built on OpenTelemetry and OpenInference; tracing, evals, datasets, experiments, prompts.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications
 - **[Artificial Analysis methodology](https://artificialanalysis.ai/methodology)**, Artificial Analysis. License: Copyright Artificial Analysis.
+  - s5-w4-l10: Benchmarking your model against a frontier model (Latency and output speed definitions)
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
 - **[Assertions and metrics (Promptfoo docs)](https://www.promptfoo.dev/docs/configuration/expected-outputs/)**, Promptfoo. License: Copyright Promptfoo.
   - s3-w3-l8: Regression testing and CI gates (Assertion types and thresholds)
 - **[Attention Is All You Need (Vaswani et al., 2017)](https://arxiv.org/abs/1706.03762)**, Vaswani et al.. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - e1-project: Train a tiny GPT on your own corpus
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model (Section 3.2.1, scaled dot-product attention, and footnote 4)
+- **[Audit shows that safetensors is safe and ready to become the default](https://huggingface.co/blog/safetensors-security-audit)**, Hugging Face, EleutherAI, Stability AI. License: Copyright Hugging Face.
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[Authentication](https://platform.claude.com/docs/en/manage-claude/authentication)**, Anthropic. License: Copyright Anthropic. Checked 2026-11-11. Key types (personal, service account), expiration, storing keys in a secrets manager, Workload Identity Federation for production workloads, and "Browser-based applications": call the API from your own back end, because anyone can read a key shipped in page code.
+  - s6-w1-l1: Architectures for LLM services (Browser-based applications; API keys)
+  - s6-w1-l3: Deploying an LLM app (Key types; key expiration; Workload Identity Federation)
+- **[Automate actions with hooks (Claude Code docs)](https://code.claude.com/docs/en/hooks-guide)**, Anthropic. License: Copyright Anthropic. Settings format (hooks, event, matcher group, handlers); PostToolUse Edit|Write example; exit code 2; hook locations; Stop hook block cap of eight; stop_hook_active.
+  - e2-project: An agent-ready repository, measured
+  - e2-w2-l5: Extending the agent
+  - e2-w3-l7: Tests as the contract
+- **[Automatic differentiation in machine learning: a survey (Baydin et al., 2018)](https://arxiv.org/abs/1502.05767)**, Atilim Gunes Baydin, Barak A. Pearlmutter, Alexey Andreyevich Radul, Jeffrey Mark Siskind. License: arXiv non-exclusive license. Published in JMLR 2018. Forward versus reverse mode, and why reverse mode suits many-inputs, one-output functions.
+  - e1-w1-l1: micrograd, part 1: derivatives, the chain rule, and a tiny autograd engine (Forward and reverse mode; cost of reverse mode)
+  - e1-w3-l6: makemore, part 4: backpropagation by hand, at the tensor level
 - **[AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration (Lin et al., 2023)](https://arxiv.org/abs/2306.00978)**, Ji Lin et al.. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s5-w4-l11: Serving open models
 - **[BAAI/bge-reranker-v2-m3 model card](https://huggingface.co/BAAI/bge-reranker-v2-m3)**, Beijing Academy of Artificial Intelligence (BAAI). License: Apache 2.0.
   - s2-w3-l9: Reranking and measuring retrieval
 - **[BAAI/bge-small-en-v1.5 (model card)](https://huggingface.co/BAAI/bge-small-en-v1.5)**, Beijing Academy of Artificial Intelligence. License: MIT.
   - s2-w1-l2: Choosing and testing an embedding model (Query instruction)
 - **[Batch API (Gemini API docs)](https://aistudio.google.com/docs/batch-api)**, Google. License: Copyright Google (content CC BY 4.0, code Apache 2.0 unless noted).
-  - Not yet cited by a lesson
+  - s6-w2-l5: Caching, batching, and routing
 - **[Batch API (OpenAI API docs)](https://developers.openai.com/api/docs/guides/batch)**, OpenAI. License: Copyright OpenAI.
-  - Not yet cited by a lesson
+  - s6-w2-l5: Caching, batching, and routing
+- **[Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift (Ioffe and Szegedy, 2015)](https://arxiv.org/abs/1502.03167)**, Sergey Ioffe, Christian Szegedy. License: arXiv non-exclusive license.
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm
+  - e1-w3-l6: makemore, part 4: backpropagation by hand, at the tensor level (Section 3, the backward pass through BN)
 - **[Batch processing (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/batch-processing)**, Anthropic. License: Copyright Anthropic.
+  - s6-w1-l1: Architectures for LLM services
+  - s6-w2-l5: Caching, batching, and routing (Limits, completion times, unsupported options, caching with batches)
   - s3-w2-l5: LLM-as-judge
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items
 - **[BEIR: A Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval Models (Thakur et al., 2021)](https://arxiv.org/abs/2104.08663)**, Thakur, Reimers, Rücklé, Srivastava, Gurevych. License: arXiv non-exclusive license.
@@ -169,63 +354,133 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s2-w1-l2: Choosing and testing an embedding model
   - s2-w3-l7: Keyword search and BM25
   - s2-w3-l9: Reranking and measuring retrieval
+- **[Best practices for Claude Code (Claude Code docs)](https://code.claude.com/docs/en/best-practices)**, Anthropic. License: Copyright Anthropic. Deterministic versus non-deterministic instructions; tell Claude what it can't see; keep CLAUDE.md short; give Claude a check to run; Stop hook example; deny rules; effort guidance; subagent costs; writer and reviewer sessions; worktrees; "what you can stop doing". Checked 2026-11-11.
+  - e2-project: An agent-ready repository, measured
+  - e2-w1-l1: Inside a coding agent (Deterministic and non-deterministic instructions)
+  - e2-w1-l3: Choosing the agent and the model (Change the model and effort; know what subagents cost; keep cost and context down)
+  - e2-w2-l4: Project memory and instructions (Tell Claude what it can't see; keep CLAUDE.md short; what you can stop doing)
+  - e2-w2-l5: Extending the agent (Enforce the rules that can't have exceptions; know what subagents cost)
+  - e2-w2-l6: Planning and decomposition (Brainstorm with Claude first; review against your spec; run sessions in parallel; let Claude run without you)
+  - e2-w3-l7: Tests as the contract (Give Claude a check to run; enforce the check with a Stop hook)
+  - e2-w3-l8: Reviewing agent code (Review against your spec; limit access with permission rules and the sandbox; run sessions in parallel)
+  - e2-w3-l9: When not to delegate, and building judgment (Let Claude run without you; steer the session)
 - **[Beyond permission prompts: making Claude Code more secure and autonomous](https://www.anthropic.com/engineering/claude-code-sandboxing)**, Anthropic Engineering. License: Copyright Anthropic. Published 2025-10-20. Approval fatigue; filesystem plus network isolation; reports 84% fewer prompts internally.
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing
+- **[Bitsandbytes quantization (Hugging Face Transformers docs)](https://huggingface.co/docs/transformers/main/en/quantization/bitsandbytes)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/transformers/blob/main/LICENSE). BitsAndBytesConfig load_in_4bit, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant, bnb_4bit_compute_dtype. Supported on NVIDIA CUDA, Intel XPU and Gaudi, and CPU; Apple Silicon not listed.
+  - s5-w3-l8: LoRA and QLoRA (QLoRA section; hardware compatibility)
+  - s5-w3-l9: Hands-on with PEFT and TRL (BitsAndBytesConfig for NF4)
 - **[BLEU: a Method for Automatic Evaluation of Machine Translation (Papineni et al., 2002)](https://aclanthology.org/P02-1040/)**, Papineni, Roukos, Ward, and Zhu. License: Copyright ACL and the authors (see ACL Anthology terms).
   - s3-w2-l4: Code-based graders
 - **[Bootstrap Methods: Another Look at the Jackknife (Efron, 1979)](https://doi.org/10.1214/aos/1176344552)**, Bradley Efron. License: Copyright Institute of Mathematical Statistics. The Annals of Statistics 7(1). Introduces the bootstrap.
+  - s6-w2-l6: Latency engineering
+  - s5-w4-l10: Benchmarking your model against a frontier model
   - s3-w3-l7: Statistics for comparing models and prompts
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+- **[Branch coverage measurement (coverage.py docs)](https://coverage.readthedocs.io/en/latest/branch.html)**, Ned Batchelder and contributors. License: Apache 2.0.
+  - e2-w3-l7: Tests as the contract
+- **[Brief independent investigation of agents' behavior, reasoning and collaboration in the OpenAI / Hugging Face hacking incident (26 August 2026)](https://metr.org/hugging-face-incident-report-aug-2026.pdf)**, METR (Hjalmar Wijk, Ajeya Cotra) with Ryan Greenblatt (Redwood Research). License: Copyright METR.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program (Limitations of analysis agents)
+- **[Build an MCP server (MCP docs tutorial)](https://modelcontextprotocol.io/docs/develop/build-server)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
+  - s4-w3-l8: Building an MCP server (Python tab: logging in MCP servers; testing with Claude for Desktop)
+- **[Build an MCP server for Claude (Claude.ai documentation, connectors)](https://claude.com/docs/connectors/building)**, Anthropic. License: Copyright Anthropic.
+  - s4-w3-l7: Why MCP, and how it works
+- **[Build with AI in VS Code (VS Code docs)](https://code.visualstudio.com/docs/agents/overview)**, Microsoft. License: Copyright Microsoft.
+  - e2-w1-l1: Inside a coding agent
 - **[Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)**, Thariq Shihipar (Anthropic). License: Copyright Anthropic. Published 2025-09-29. Gather context, take action, verify work, repeat. The Claude Code SDK was renamed the Claude Agent SDK. Old anthropic.com/engineering URL redirects here.
   - s4-w2-l4: The agent loop and tools for long tasks (The agent loop: gather context, take action, verify work)
   - s4-w2-l5: Context engineering: memory, compaction, and subagents (Gather context: agentic search, subagents, compaction)
+  - s4-w2-l6: Agent frameworks and when to use them
 - **[Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)**, Erik Schluntz and Barry Zhang, Anthropic. License: Copyright Anthropic.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals (Workflows versus agents; start simple)
+  - s4-project: An agent that automates a PM workflow
   - s4-w1-l1: Workflows versus agents (What are agents; When (and when not) to use agents; Building blocks, workflows, and agents)
   - s4-w1-l2: Workflow patterns in code (Workflow: prompt chaining, routing, parallelization, orchestrator-workers, evaluator-optimizer)
   - s4-w1-l3: When not to build an agent (When (and when not) to use agents; Agents: compounding errors)
   - s4-w2-l4: The agent loop and tools for long tasks (Agents; stopping conditions and ground truth from the environment)
+  - s4-w2-l6: Agent frameworks and when to use them (When and how to use frameworks)
+  - s4-w5-l13: Project week: designing the PM workflow agent (Workflows versus agents; start simple)
   - s2-w4-l12: Designing the Q&A system (Start with the simplest solution)
   - s1-w2-l5: Examples, reasoning, and chaining (Workflow: prompt chaining)
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items (Workflows versus agents; start with the simplest solution)
+  - capstone-w1-l1: Scoping a capstone that proves something (Start with the simplest solution)
+- **[Building MCP servers for ChatGPT and the API (OpenAI docs)](https://developers.openai.com/api/docs/mcp/)**, OpenAI. License: Copyright OpenAI.
+  - s4-w3-l7: Why MCP, and how it works
+  - s4-w3-l9: Testing and securing MCP servers (Risks and safety)
 - **[C-Pack: Packed Resources For General Chinese Embeddings (BGE; Xiao et al., 2023)](https://arxiv.org/abs/2309.07597)**, Shitao Xiao, Zheng Liu, Peitian Zhang, Niklas Muennighoff, et al.. License: arXiv non-exclusive license.
   - s2-w1-l2: Choosing and testing an embedding model
 - **[Caching (Inspect docs)](https://inspect.aisi.org.uk/caching.html)**, UK AI Security Institute and Meridian Labs. License: MIT (inspect_ai repository); docs copyright the authors.
   - s3-w3-l8: Regression testing and CI gates
 - **[Caching (Promptfoo docs)](https://www.promptfoo.dev/docs/configuration/caching/)**, Promptfoo. License: Copyright Promptfoo.
   - s3-w3-l8: Regression testing and CI gates
+- **[Caching (Transformers docs)](https://huggingface.co/docs/transformers/en/cache_explanation)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/transformers/blob/main/LICENSE).
+  - s5-w1-l3: Running models locally
 - **[Calibrate Before Use: Improving Few-Shot Performance of Language Models (Zhao et al., 2021)](https://arxiv.org/abs/2102.09690)**, Zhao et al.. License: arXiv non-exclusive license.
   - s1-w2-l5: Examples, reasoning, and chaining
 - **[CaMeL offers a promising new direction for mitigating prompt injection attacks (2025)](https://simonwillison.net/2025/Apr/11/camel/)**, Simon Willison. License: Copyright Simon Willison.
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (User fatigue)
+  - s4-w4-l11: Prompt injection and the lethal trifecta
 - **[Can LLMs Express Their Uncertainty? An Empirical Evaluation of Confidence Elicitation in LLMs (Xiong et al., 2023)](https://arxiv.org/abs/2306.13063)**, Xiong et al.. License: arXiv non-exclusive license.
   - s1-w3-l9: When structured output is confidently wrong
+- **[Can LLMs learn from a single example?](https://www.fast.ai/posts/2023-09-04-learning-jumps/)**, Jeremy Howard and Jonathan Whitaker (fast.ai). License: Copyright fast.ai. September 2023. Training loss drops sharply at each epoch boundary when fine-tuning LLMs; validation loss rose from overconfidence while validation accuracy still improved. Framed by the authors as early work.
+  - s5-w3-l7: How supervised fine-tuning works
+- **[Canaries in the Coal Mine? Six Facts about the Recent Employment Effects of Artificial Intelligence (Brynjolfsson, Chandar, and Chen; updated August 2026)](https://digitaleconomy.stanford.edu/news/canariesaug26/)**, Stanford Digital Economy Lab. License: Copyright the authors.
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+- **[Canarying Releases (The Site Reliability Workbook, chapter 16)](https://sre.google/workbook/canarying-releases/)**, Google. License: CC BY-NC-ND 4.0.
+  - s6-project: Take your best project live
+  - s6-w4-l12: Launch checklist and incident response (Population, duration, per-population metrics, pitfalls)
 - **[Chain-of-Thought Prompting Elicits Reasoning in Large Language Models (Wei et al., 2022)](https://arxiv.org/abs/2201.11903)**, Wei et al.. License: arXiv non-exclusive license.
   - s1-w2-l5: Examples, reasoning, and chaining
+- **[Chat basics (Transformers docs)](https://huggingface.co/docs/transformers/main/en/conversations)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/transformers/blob/main/LICENSE). Includes the note that token generation is bound by memory bandwidth.
+  - s5-w1-l2: The Hugging Face Hub and transformers
+  - s5-w1-l3: Running models locally (Performance and memory bandwidth)
 - **[Chat templates (Hugging Face Transformers docs)](https://huggingface.co/docs/transformers/main/en/chat_templating)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/transformers/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers (Using apply_chat_template; add_generation_prompt)
+  - s5-w2-l5: Building a fine-tuning dataset
+  - s5-w3-l7: How supervised fine-tuning works
+  - s5-w3-l9: Hands-on with PEFT and TRL
   - s1-w2-l4: Prompt fundamentals: write the spec a new colleague would need
 - **[Chatbot Arena: An Open Platform for Evaluating LLMs by Human Preference (Chiang et al., 2024)](https://arxiv.org/abs/2403.04132)**, Chiang et al.. License: arXiv non-exclusive license.
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+- **[Checkpointing (Claude Code docs)](https://code.claude.com/docs/en/checkpointing)**, Anthropic. License: Copyright Anthropic. Checkpoints cover edits made with Claude's file tools, not Bash changes or remote systems.
+  - e2-w1-l1: Inside a coding agent
 - **[Choose a permission mode (Claude Code docs)](https://code.claude.com/docs/en/permission-modes)**, Anthropic. License: Copyright Anthropic. default, acceptEdits, plan, auto, dontAsk, bypassPermissions; what the auto-mode classifier blocks by default.
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (Available modes; auto mode; bypassPermissions)
+  - e2-w1-l1: Inside a coding agent
+  - e2-w2-l6: Planning and decomposition (Plan mode)
+  - e2-w3-l8: Reviewing agent code (What the auto mode classifier blocks by default)
 - **[Choosing the right model (Claude docs)](https://platform.claude.com/docs/en/about-claude/models/choosing-a-model)**, Anthropic. License: Copyright Anthropic.
+  - e3-project: Your model selection playbook and a claim brief
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
 - **[Chroma documentation](https://docs.trychroma.com/docs/overview/introduction)**, Chroma. License: Copyright Chroma (library is Apache 2.0).
   - s2-w2-l6: Vector stores in practice
+- **[CircuitBreaker](https://martinfowler.com/bliki/CircuitBreaker.html)**, Martin Fowler. License: Copyright Martin Fowler. March 2014. Closed, open, and half-open states; failure threshold, reset timeout, trial call, and monitoring.
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks
 - **[Citations (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/citations)**, Anthropic. License: Copyright Anthropic.
   - s2-project: Q&A over a real document set
   - s2-w2-l4: Ingestion: getting text out of real documents
   - s2-w4-l10: Generating grounded answers (Document types, chunking, response format, token accounting, structured outputs incompatibility)
   - s2-w4-l12: Designing the Q&A system
 - **[Claude Admin API guide](https://platform.claude.com/docs/en/manage-claude/admin-api)**, Anthropic. License: Copyright Anthropic. Read 2026-11-11. Admin keys use the prefix sk-ant-admin.
-  - Not yet cited by a lesson
+  - s6-w3-l8: Logging, privacy, and retention (Admin key prefix)
 - **[Claude API errors](https://platform.claude.com/docs/en/api/errors)**, Anthropic. License: Copyright Anthropic.
+  - s6-w1-l1: Architectures for LLM services (Long requests)
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks (HTTP errors; long requests; SDK retries)
+  - s6-w1-l3: Deploying an LLM app (Long requests)
+  - s6-w3-l9: Dashboards, alerts, and online evaluation (429 and 529)
   - s1-w1-l2: Your first API calls (HTTP errors, SDK error types, long requests)
 - **[Claude API OpenTelemetry span reference](https://platform.claude.com/docs/en/api/opentelemetry/spans)**, Anthropic. License: Copyright Anthropic. Read 2026-11-11. Span names, parents, token usage attributes.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications
 - **[Claude API pricing (Claude docs)](https://platform.claude.com/docs/en/about-claude/pricing)**, Anthropic. License: Copyright Anthropic. Prices quoted in lesson s1-w4-l12 were read from this page on 2026-11-11.
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items (Model pricing and batch processing discount, read 2026-11-11)
 - **[Claude Developer Platform documentation](https://platform.claude.com/docs)**, Anthropic. License: Copyright Anthropic.
   - s1-project: Meeting transcript to action items (Structured outputs, tool use, errors)
+  - s4-w2-l6: Agent frameworks and when to use them (Programmatic tool calling)
   - s3-w3-l7: Statistics for comparing models and prompts (Sampling parameters on the current API version)
   - s2-w2-l5: Chunking strategies (Prompt caching)
   - s1-w1-l1: How LLMs work, for people who build with them (API versioning and request parameters)
@@ -233,43 +488,111 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w3-l8: Structured outputs with the API (Model-specific tool_choice restrictions)
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items (Structured outputs; response request ids)
 - **[Claude Managed Agents overview (Claude docs)](https://platform.claude.com/docs/en/managed-agents/overview)**, Anthropic. License: Copyright Anthropic. Beta header managed-agents-2026-04-01. Agent, environment, session, events. Not eligible for zero data retention at the time of writing.
-  - Not yet cited by a lesson
-- **[Commercial Terms of Service (Anthropic)](https://www.anthropic.com/legal/commercial-terms)**, Anthropic. License: Copyright Anthropic. Checked 2026-11-11. Section D.4 restricts using the Services to build a competing product, including training competing AI models.
-  - Not yet cited by a lesson
+  - s4-w2-l6: Agent frameworks and when to use them
+- **[Cloud Run, Configure request timeout for services](https://docs.cloud.google.com/run/docs/configuring/request-timeout)**, Google Cloud. License: CC BY 4.0 (Google Cloud docs). Default 300 s, configurable up to 3600 s; a request that exceeds it gets a 504.
+  - s6-w1-l3: Deploying an LLM app
+- **[Cloud Run, Configure secrets for services](https://docs.cloud.google.com/run/docs/configuring/services/secrets)**, Google Cloud. License: CC BY 4.0 (Google Cloud docs). Secret Manager secrets as environment variables (resolved at instance start; pin a version) or mounted volumes (read at access time; work with rotation).
+  - s6-w1-l3: Deploying an LLM app
+- **[Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/)**, Cloudflare. License: CC BY 4.0 (Cloudflare docs). CPU time per HTTP request: 10 ms on Free; 30 s default, up to 5 min, on Paid. No hard wall-clock limit for HTTP-triggered Workers while the client stays connected; waiting on network I/O does not count as CPU time. Work can be canceled when the client disconnects; waitUntil extends up to 30 s.
+  - s6-w1-l3: Deploying an LLM app (CPU time; duration; client disconnects)
+- **[Cloudflare Workers secrets](https://developers.cloudflare.com/workers/configuration/secrets/)**, Cloudflare. License: CC BY 4.0 (Cloudflare docs). wrangler secret put, secrets on the env binding, hidden after creation, .dev.vars for local development.
+  - s6-w1-l3: Deploying an LLM app
+- **[Commercial Terms of Service (Anthropic)](https://www.anthropic.com/legal/commercial-terms)**, Anthropic. License: Copyright Anthropic. Page dated June 17, 2025. Section D.4: no access to build a competing product or service, including to train competing AI models, except as Anthropic approves. Section B: Anthropic may not train on Customer Content.
+  - s5-project: Fine-tune a small model for extraction and benchmark it (Section D.4)
+  - s5-w2-l5: Building a fine-tuning dataset (Sections B and D.4)
+  - s5-w4-l12: Preference tuning and beyond, briefly (Section D.4, use restrictions)
+  - s5-w5-l13: Project week: planning the fine-tuning project (Section D.4)
 - **[Compaction overview (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/compaction)**, Anthropic. License: Copyright Anthropic. Compaction on demand versus compaction at a token threshold versus your own summarizer; each has its own page and beta header.
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
 - **[Configure permissions (Claude Code docs)](https://code.claude.com/docs/en/permissions)**, Anthropic. License: Copyright Anthropic. Tiered permission system, allow/ask/deny rules evaluated deny first, rules enforced by Claude Code rather than the model.
+  - s4-w3-l9: Testing and securing MCP servers
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (Permission system; Manage permissions; rule syntax)
+  - e2-w2-l5: Extending the agent (Read and Edit rules; what runs before you trust a folder)
+  - e2-w3-l7: Tests as the contract (What Read and Edit rules cover)
+  - e2-w3-l8: Reviewing agent code (Read and Edit rules; what runs before you trust a folder)
 - **[Configure the sandboxed Bash tool (Claude Code docs)](https://code.claude.com/docs/en/sandboxing)**, Anthropic. License: Copyright Anthropic. OS-enforced filesystem and network boundary for shell commands; default reads, writes, and network.
+  - s4-w3-l9: Testing and securing MCP servers (What runs outside the sandbox)
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (What the sandbox restricts; what runs outside it)
+  - e2-w3-l7: Tests as the contract
+  - e2-w3-l8: Reviewing agent code
+- **[Connect Claude Code to tools via MCP (Claude Code docs)](https://code.claude.com/docs/en/mcp)**, Anthropic. License: Copyright Anthropic.
+  - s4-w3-l7: Why MCP, and how it works (Adding servers; scopes)
+  - s4-w3-l8: Building an MCP server (Adding servers; scopes; output limits; tool naming)
+  - s4-w3-l9: Testing and securing MCP servers (Scopes; approval of project-scoped servers; security warning)
+  - e2-w2-l5: Extending the agent
 - **[Constitutional AI: Harmlessness from AI Feedback (Bai et al., 2022)](https://arxiv.org/abs/2212.08073)**, Yuntao Bai et al. (Anthropic). License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s5-w4-l12: Preference tuning and beyond, briefly
+- **[Constitutional Classifiers: Defending against universal jailbreaks](https://www.anthropic.com/research/constitutional-classifiers)**, Anthropic. License: Copyright Anthropic.
+  - s6-w4-l10: Guardrails for inputs and outputs
+- **[Constitutional Classifiers: Defending against Universal Jailbreaks across Thousands of Hours of Red Teaming](https://arxiv.org/abs/2501.18837)**, Mrinank Sharma et al. (Anthropic). License: arXiv (author copyright).
+  - s6-w4-l10: Guardrails for inputs and outputs
+- **[Content moderation (Claude use case guide)](https://platform.claude.com/docs/en/about-claude/use-case-guides/content-moderation)**, Anthropic. License: Copyright Anthropic.
+  - s6-w4-l10: Guardrails for inputs and outputs (When to use Claude, categories, risk levels, cost estimate)
 - **[Context caching (Gemini API docs)](https://aistudio.google.com/docs/caching)**, Google. License: Copyright Google (content CC BY 4.0, code Apache 2.0 unless noted). Implicit caching on by default for Gemini 2.5 and newer; explicit caches not supported on Gemini 4. Read 2026-11-11.
-  - Not yet cited by a lesson
+  - s6-w2-l5: Caching, batching, and routing
 - **[Context editing (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/context-editing)**, Anthropic. License: Copyright Anthropic. Beta header context-management-2025-06-27. clear_tool_uses_20250919 (defaults trigger 100,000 input tokens, keep 3 tool uses) and clear_thinking_20251015; applied_edits in the response.
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
+- **[Context length (Ollama docs)](https://docs.ollama.com/context-length)**, Ollama. License: Copyright Ollama. Default context depends on available VRAM; read 2026-11-11.
+  - s5-w1-l3: Running models locally
 - **[Context Rot: How Increasing Input Tokens Impacts LLM Performance](https://www.trychroma.com/research/context-rot)**, Kelly Hong, Anton Troynikov, Jeff Huber (Chroma). License: Copyright Chroma. Published 2025-07-14. 18 models; performance falls with input length even on simple tasks; vendor research, not peer reviewed.
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
 - **[Cost optimization on the Claude API (Claude Cookbook)](https://platform.claude.com/cookbook/cost-optimization-cost-optimization)**, Anthropic. License: Copyright Anthropic.
-  - Not yet cited by a lesson
+  - s6-w2-l4: Cost anatomy and budgets
 - **[Create a Message (Claude API reference)](https://platform.claude.com/docs/en/api/messages/create)**, Anthropic. License: Copyright Anthropic.
   - s1-w1-l2: Your first API calls (Request parameters and response shape)
 - **[Create custom subagents (Claude Code docs)](https://code.claude.com/docs/en/sub-agents)**, Anthropic. License: Copyright Anthropic.
+  - e2-project: An agent-ready repository, measured
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
+  - e2-w2-l5: Extending the agent
+  - e2-w3-l8: Reviewing agent code
+- **[Cross Site Scripting Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html)**, OWASP Cheat Sheet Series. License: CC BY-SA 4.0.
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
 - **[cross-encoder/ms-marco-MiniLM-L6-v2 model card](https://huggingface.co/cross-encoder/ms-marco-MiniLM-L6-v2)**, Sentence Transformers. License: Apache 2.0.
   - s2-w3-l9: Reranking and measuring retrieval
+- **[Cross-validation: evaluating estimator performance (scikit-learn User Guide)](https://scikit-learn.org/stable/modules/cross_validation.html)**, scikit-learn developers. License: BSD-3-Clause. Stratified and group-aware splitting (StratifiedKFold, GroupKFold, StratifiedGroupKFold).
+  - s5-w2-l6: Data quality, splits, and contamination (Stratified, group, and time-series splitters)
 - **[Cumulated gain-based evaluation of IR techniques (ACM Transactions on Information Systems, 2002)](https://doi.org/10.1145/582415.582418)**, Kalervo Järvelin and Jaana Kekäläinen. License: Copyright ACM. The paper that introduced (n)DCG. Metadata confirmed via Crossref; the ACM page returns 403 to scripts.
   - s2-w3-l9: Reranking and measuring retrieval
+- **[Cursor Agent (Cursor docs)](https://cursor.com/docs/agent/overview)**, Anysphere. License: Copyright Anysphere. Search, edit, and terminal tools; checkpoints separate from git; per-task model choice.
+  - e2-w1-l1: Inside a coding agent
+- **[Custom instructions with AGENTS.md (OpenAI Codex docs)](https://developers.openai.com/codex/guides/agents-md)**, OpenAI. License: Copyright OpenAI. Redirects to learn.chatgpt.com. Global and per-directory discovery, AGENTS.override.md, project_doc_max_bytes default 32 KiB.
+  - e2-w1-l1: Inside a coding agent
+  - e2-w2-l4: Project memory and instructions
+- **[Customize a model with fine-tuning in Amazon Bedrock (supported models and Regions)](https://docs.aws.amazon.com/bedrock/latest/userguide/custom-model-supported.html)**, Amazon Web Services. License: Copyright Amazon Web Services. Checked 2026-11-11. Lists Amazon Nova, Titan, Meta Llama 3.x, and Claude 3 Haiku (us-west-2). The Claude row predates the model's end of life; see bedrock-model-lifecycle-legacy.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
 - **[Data Distribution Shifts and Monitoring](https://huyenchip.com/2022/02/07/data-distribution-shifts-and-monitoring.html)**, Chip Huyen. License: Copyright Chip Huyen. 2022. Covariate, label, and concept shift; monitoring inputs and outputs when labels arrive late.
-  - Not yet cited by a lesson
+  - s6-w3-l9: Dashboards, alerts, and online evaluation
+- **[Dataset cards (Hugging Face Hub docs)](https://huggingface.co/docs/hub/datasets-cards)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/hub-docs/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[Datasets library documentation](https://huggingface.co/docs/datasets/index)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/datasets/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[Datasheets for Datasets (Gebru et al., 2018)](https://arxiv.org/abs/1803.09010)**, Gebru et al.. License: arXiv non-exclusive license.
+  - s5-w1-l2: The Hugging Face Hub and transformers
 - **[Deduplicating Training Data Makes Language Models Better](https://arxiv.org/abs/2107.06499)**, Katherine Lee, Daphne Ippolito, Andrew Nystrom, Chiyuan Zhang, Douglas Eck, Chris Callison-Burch, Nicholas Carlini. License: arXiv preprint.
+  - s5-w2-l6: Data quality, splits, and contamination
   - s2-w2-l4: Ingestion: getting text out of real documents (Abstract)
+- **[Deep Learning (Goodfellow, Bengio, and Courville, 2016)](https://www.deeplearningbook.org/)**, Ian Goodfellow, Yoshua Bengio, Aaron Courville. License: Copyright MIT Press (free to read online). Chapter 6.5 (back-propagation and other differentiation algorithms) and chapter 8 (optimization).
+  - e1-w1-l1: micrograd, part 1: derivatives, the chain rule, and a tiny autograd engine (Chapter 6.5, back-propagation)
+  - e1-w1-l2: micrograd, part 2: neurons, a loss, and gradient descent (Chapter 4.3 (gradient-based optimization) and chapter 8)
+  - e1-w2-l3: makemore, part 1: a bigram language model, counted and learned (Chapter 5.5, maximum likelihood estimation)
+  - e1-w2-l4: makemore, part 2: embeddings and an MLP language model (Chapter 5.3 (hyperparameters and validation sets) and 8.1.3 (minibatch algorithms))
+- **[Deep Learning Is Hitting a Wall (Nautilus, March 2022)](https://nautil.us/deep-learning-is-hitting-a-wall-238440/)**, Gary Marcus. License: Copyright Nautilus.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
 - **[Deep Reinforcement Learning from Human Preferences (Christiano et al., 2017)](https://arxiv.org/abs/1706.03741)**, Paul Christiano, Jan Leike, Tom Brown, Miljan Martic, Shane Legg, Dario Amodei. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s5-w4-l12: Preference tuning and beyond, briefly
+- **[Deep Residual Learning for Image Recognition (He et al., 2015)](https://arxiv.org/abs/1512.03385)**, Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun. License: arXiv non-exclusive license.
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model
 - **[DeepSeek API docs](https://api-docs.deepseek.com/)**, DeepSeek. License: Copyright DeepSeek.
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
+- **[deepseek-ai/DeepSeek-V4.1-Flash-1017 model card](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017)**, DeepSeek. License: MIT.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning (DeepSeek-AI, 2025)](https://arxiv.org/abs/2501.12948)**, DeepSeek-AI. License: arXiv non-exclusive license.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
 - **[Defeating Prompt Injections by Design (Debenedetti et al., 2025)](https://arxiv.org/abs/2503.18813)**, Edoardo Debenedetti, Ilia Shumailov, Tianqi Fan, Jamie Hayes, Nicholas Carlini, Daniel Fabian, Christoph Kern, Chongyang Shi, Andreas Terzis, Florian Tramèr. License: arXiv non-exclusive license. CaMeL. Control and data flow from the trusted query; capabilities on values; 77% of AgentDojo tasks with provable security vs 84% undefended.
-  - Not yet cited by a lesson
+  - s4-w4-l11: Prompt injection and the lethal trifecta (Abstract; design overview; limitations)
 - **[Define success criteria and build evaluations (Claude docs)](https://platform.claude.com/docs/en/test-and-evaluate/develop-tests)**, Anthropic. License: Copyright Anthropic.
   - s3-w1-l1: Why evals: the eval-driven development loop (Success criteria; eval design principles; grading methods)
   - s3-w1-l3: Building test sets (Eval design principles; edge cases; generating test cases)
@@ -284,9 +607,17 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s2-w2-l6: Vector stores in practice
 - **[Delimiters won't save you from prompt injection](https://simonwillison.net/2023/May/11/delimiters-wont-save-you/)**, Simon Willison. License: Copyright Simon Willison.
   - s1-w2-l6: Iterating on prompts like an engineer
+- **[Delving Deep into Rectifiers: Surpassing Human-Level Performance on ImageNet Classification (He et al., 2015)](https://arxiv.org/abs/1502.01852)**, Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun. License: arXiv non-exclusive license. The "Kaiming init" paper linked from the makemore Part 3 description.
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm (Section 2.2, initialization of filter weights for rectifiers)
 - **[Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)**, Anthropic Engineering. License: Copyright Anthropic. Published 2026-01-09. Grader types (code, model, human), their trade-offs, and calibrating model graders.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
   - s3-project: An eval harness that measurably improves your RAG system
+  - s4-project: An agent that automates a PM workflow
+  - s5-w2-l6: Data quality, splits, and contamination
+  - s5-w4-l10: Benchmarking your model against a frontier model
   - s4-w1-l3: When not to build an agent (pass@k versus pass^k)
+  - s4-w4-l12: Evaluating agents (Definitions; isolated trials; capability vs regression evals; pass^k; starting with 20 to 50 tasks)
+  - s4-w5-l13: Project week: designing the PM workflow agent
   - s3-w1-l1: Why evals: the eval-driven development loop (Key terms; capability vs regression evals; getting started; benchmark grading bugs)
   - s3-w1-l2: Error analysis: look at your data (Read transcripts)
   - s3-w1-l3: Building test sets (Getting started; balanced problem sets; capability vs regression; maintaining suites)
@@ -299,23 +630,38 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s3-w4-l10: Human review and feedback loops (Layers of evaluation; user feedback is sparse and skewed)
   - s3-w4-l11: Evaluating RAG and agents (Outcomes vs transcripts, pass@k vs pass^k, grading bugs)
   - s3-w4-l12: Putting it together: an eval harness for your RAG system (Starting with 20 to 50 tasks; capability vs regression evals; eval-driven development)
+  - capstone-w1-l1: Scoping a capstone that proves something (Start early with 20 to 50 tasks from real failures)
 - **[Dense Passage Retrieval for Open-Domain Question Answering (Karpukhin et al., 2020)](https://arxiv.org/abs/2004.04906)**, Karpukhin et al.. License: arXiv non-exclusive license.
   - s2-w1-l1: Embeddings: meaning as vectors (Training with in-batch negatives)
   - s2-w3-l7: Keyword search and BM25
 - **[Dense X Retrieval: What Retrieval Granularity Should We Use?](https://arxiv.org/abs/2312.06648)**, Tong Chen, Hongwei Wang, Sihao Chen, Wenhao Yu, Kaixin Ma, Xinran Zhao, Hongming Zhang, Dong Yu. License: arXiv preprint.
   - s2-w2-l5: Chunking strategies
+- **[Deprecations (OpenAI API docs)](https://developers.openai.com/api/docs/deprecations)**, OpenAI. License: Copyright OpenAI. Checked 2026-11-11. "Update to OpenAI's self-serve fine-tuning" (announced May 7, 2026): no new fine-tuning customers; existing active customers can create jobs until January 6, 2027; inference on fine-tuned models continues until the base model is deprecated.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't (Update to OpenAI's self-serve fine-tuning)
+- **[Design Docs at Google](https://www.industrialempathy.com/posts/design-docs-at-google/)**, Malte Ubl. License: Copyright Malte Ubl. July 2020. Sections: context and scope, goals and non-goals, the design, alternatives considered, cross-cutting concerns (security, privacy, observability). Trade-offs are the point; review catches issues while change is cheap.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
+  - capstone-w1-l1: Scoping a capstone that proves something (Goals and non-goals)
+  - capstone-w6-l2: Writing it up and defending it (Alternatives considered; review)
 - **[Design Patterns for Securing LLM Agents against Prompt Injections (Beurer-Kellner et al., 2025)](https://arxiv.org/abs/2506.08837)**, Luca Beurer-Kellner, Beat Buesser, Ana-Maria Creţu, Edoardo Debenedetti, and others. License: arXiv non-exclusive license. Action-selector, plan-then-execute, LLM map-reduce, dual LLM, code-then-execute, context minimization.
-  - Not yet cited by a lesson
+  - s4-w4-l11: Prompt injection and the lethal trifecta
 - **[Design Patterns for Securing LLM Agents against Prompt Injections (commentary, 2025)](https://simonwillison.net/2025/Jun/13/prompt-injection-design-patterns/)**, Simon Willison. License: Copyright Simon Willison.
-  - Not yet cited by a lesson
+  - s4-w4-l11: Prompt injection and the lethal trifecta
+- **[Designing agentic loops (2025)](https://simonwillison.net/2025/Sep/30/designing-agentic-loops/)**, Simon Willison. License: Copyright Simon Willison. YOLO-mode risks, sandboxes, scoped credentials, problems with clear success criteria.
+  - e2-w1-l3: Choosing the agent and the model
+  - e2-w2-l4: Project memory and instructions (Documenting tools in AGENTS.md)
+  - e2-w3-l8: Reviewing agent code (YOLO mode risks and scoped credentials)
+  - e2-w3-l9: When not to delegate, and building judgment
 - **[difflib, helpers for computing deltas (Python documentation)](https://docs.python.org/3/library/difflib.html)**, Python Software Foundation. License: PSF Documentation License.
   - s3-w2-l4: Code-based graders (SequenceMatcher.ratio)
+- **[Digital Omnibus on AI, article-by-article explorer](https://artificialintelligenceact.eu/ai-act-explorer/digital-omnibus/)**, Future of Life Institute (artificialintelligenceact.eu). License: Copyright the publisher.
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
 - **[Direct Preference Optimization: Your Language Model is Secretly a Reward Model (Rafailov et al., 2023)](https://arxiv.org/abs/2305.18290)**, Rafael Rafailov, Archit Sharma, Eric Mitchell, Stefano Ermon, Christopher D. Manning, Chelsea Finn. License: arXiv non-exclusive license. May 2023 (NeurIPS 2023). Closed-form optimal policy turns the RLHF objective into a classification loss on preference pairs.
-  - Not yet cited by a lesson
+  - s5-w4-l12: Preference tuning and beyond, briefly (Abstract; derivation of the DPO objective)
 - **[Distilling Step-by-Step! Outperforming Larger Language Models with Less Training Data and Smaller Model Sizes (Hsieh et al., 2023)](https://arxiv.org/abs/2305.02301)**, Cheng-Yu Hsieh et al.. License: arXiv non-exclusive license. Findings of ACL 2023. A 770M T5 trained on rationales beat few-shot 540B PaLM on one benchmark with 80% of the data.
-  - Not yet cited by a lesson
+  - s5-w4-l10: Benchmarking your model against a frontier model
+  - s5-w4-l12: Preference tuning and beyond, briefly
 - **[Distilling the Knowledge in a Neural Network (Hinton, Vinyals, and Dean, 2015)](https://arxiv.org/abs/1503.02531)**, Geoffrey Hinton, Oriol Vinyals, Jeff Dean. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s5-w4-l12: Preference tuning and beyond, briefly
 - **[Docling documentation](https://docling-project.github.io/docling/)**, Docling project (LF AI & Data; started at IBM Research Zurich). License: MIT.
   - s2-w2-l4: Ingestion: getting text out of real documents
   - s2-w2-l5: Chunking strategies (Chunking concepts and examples)
@@ -323,31 +669,49 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s2-w2-l4: Ingestion: getting text out of real documents
 - **[Document understanding (Gemini API docs)](https://aistudio.google.com/docs/document-processing)**, Google. License: [CC BY 4.0 (text); Apache 2.0 (code samples)](https://developers.google.com/terms/site-policies).
   - s2-w2-l4: Ingestion: getting text out of real documents (Technical details)
+- **[Does Fine-Tuning LLMs on New Knowledge Encourage Hallucinations? (Gekhman et al., EMNLP 2024)](https://arxiv.org/abs/2405.05904)**, Zorik Gekhman, Gal Yona, Roee Aharoni, Matan Eyal, Amir Feder, Roi Reichart, Jonathan Herzig. License: arXiv non-exclusive license. Checked 2026-11-11. PaLM 2-S, closed-book QA on EntityQuestions. Unknown examples are fitted slower and, once fitted, increase hallucination roughly linearly; early stopping and filtering Unknown examples reduce the harm; MaybeKnown examples were most useful. Single model and task, as the authors note.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
+  - s5-w2-l6: Data quality, splits, and contamination (Early stopping on a development set)
 - **[Does style matter? Disentangling style and substance in Chatbot Arena](https://arena.ai/blog/style-control/)**, Tianle Li, Anastasios Angelopoulos, Wei-Lin Chiang. License: Copyright Arena Intelligence.
   - s3-w3-l9: Comparing models and providers fairly
   - s3-w4-l10: Human review and feedback loops
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e3-w1-l3: Which model for which job, with evidence
+- **[Dolma 3 pretraining mix (dataset card)](https://huggingface.co/datasets/allenai/dolma3_mix-6T)**, Allen Institute for AI (Ai2). License: Per dataset card.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Download files from the Hub (huggingface_hub docs)](https://huggingface.co/docs/huggingface_hub/guides/download)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/huggingface_hub/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
 - **[DPO Trainer (Hugging Face TRL docs)](https://huggingface.co/docs/trl/dpo_trainer)**, Hugging Face. License: Apache 2.0 (code); docs copyright Hugging Face. Checked 2026-11-11. Preference format (prompt, chosen, rejected); beta defaults to 0.1; reference model defaults to the initial policy; PEFT adapters supported.
-  - Not yet cited by a lesson
+  - s5-w4-l12: Preference tuning and beyond, briefly (Dataset format, loss, beta, reference model, PEFT)
+- **[Dropout: A Simple Way to Prevent Neural Networks from Overfitting (Srivastava et al., 2014)](https://jmlr.org/papers/v15/srivastava14a.html)**, Nitish Srivastava, Geoffrey Hinton, Alex Krizhevsky, Ilya Sutskever, Ruslan Salakhutdinov. License: JMLR (author copyright, free online).
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model
 - **[Effective context engineering for AI agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)**, Prithvi Rajasekaran, Ethan Dixon, Carly Ryan, Jeremy Hadfield (Anthropic). License: Copyright Anthropic. Published 2025-09-29. Context rot and the attention budget, right-altitude system prompts, just-in-time retrieval, compaction, structured note-taking, subagents returning condensed summaries.
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
+  - e2-w1-l1: Inside a coding agent (Compaction and context rot)
 - **[Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)**, Justin Young (Anthropic). License: Copyright Anthropic. Published 2025-11-26. Initializer plus coding agent; feature list in JSON, progress file, git; failure modes (one-shotting, declaring victory early).
   - s4-w2-l4: The agent loop and tools for long tasks (Failure modes and solutions)
   - s4-w2-l5: Context engineering: memory, compaction, and subagents (Artifacts: feature list, progress file, git)
+  - e2-w2-l6: Planning and decomposition
 - **[Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs](https://arxiv.org/abs/1603.09320)**, Yu. A. Malkov and D. A. Yashunin. License: arXiv preprint.
   - s2-w1-l3: Nearest-neighbor search at scale
   - s2-w2-l6: Vector stores in practice
 - **[Efficient Estimation of Word Representations in Vector Space (Mikolov et al., 2013)](https://arxiv.org/abs/1301.3781)**, Tomas Mikolov, Kai Chen, Greg Corrado, Jeffrey Dean. License: arXiv non-exclusive license.
   - s2-w1-l1: Embeddings: meaning as vectors
 - **[Efficient Guided Generation for Large Language Models (Willard and Louf, 2023)](https://arxiv.org/abs/2307.09702)**, Willard and Louf. License: arXiv non-exclusive license.
+  - s5-w4-l11: Serving open models
   - s1-w3-l8: Structured outputs with the API
 - **[Efficient Memory Management for Large Language Model Serving with PagedAttention (Kwon et al., 2023)](https://arxiv.org/abs/2309.06180)**, Woosuk Kwon et al.. License: arXiv non-exclusive license. SOSP 2023. The vLLM paper; reports 2 to 4 times the throughput of FasterTransformer and Orca at similar latency.
-  - Not yet cited by a lesson
+  - s5-w1-l3: Running models locally (Section 3, KV cache size example)
+  - s5-w4-l11: Serving open models (Abstract and introduction)
 - **[Effort (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/effort)**, Anthropic. License: Copyright Anthropic.
+  - s6-w2-l5: Caching, batching, and routing
   - s4-w1-l2: Workflow patterns in code
   - s4-w2-l4: The agent loop and tools for long tasks
+  - s4-w4-l12: Evaluating agents
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w2-l5: Examples, reasoning, and chaining (How effort works; Effort levels; Best practices)
+  - e2-w1-l3: Choosing the agent and the model
 - **[Elasticsearch reciprocal rank fusion](https://www.elastic.co/docs/reference/elasticsearch/rest-apis/reciprocal-rank-fusion)**, Elastic. License: Copyright Elastic. rank_constant defaults to 60; rank_window_size controls the per-retriever candidate count.
   - s2-w3-l8: Hybrid search and rank fusion (rank_constant and rank_window_size)
 - **[Elasticsearch similarity module (index settings)](https://www.elastic.co/docs/reference/elasticsearch/index-settings/similarity)**, Elastic. License: Copyright Elastic.
@@ -363,9 +727,13 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
 - **[Enabling Large Language Models to Generate Text with Citations (EMNLP 2023)](https://arxiv.org/abs/2305.14627)**, Tianyu Gao, Howard Yen, Jiatong Yu, Danqi Chen. License: arXiv non-exclusive license.
   - s2-w4-l10: Generating grounded answers
 - **[Establishing Best Practices for Building Rigorous Agentic Benchmarks (Zhu et al., 2025)](https://arxiv.org/abs/2507.02825)**, Yuxuan Zhu, Tengjun Jin, Yada Pruksachatkun, Andy Zhang, Shu Liu, Sasha Cui, Sayash Kapoor, and others. License: arXiv non-exclusive license. The Agentic Benchmark Checklist (ABC); task-setup and reward-design flaws can misestimate performance by up to 100% in relative terms.
-  - Not yet cited by a lesson
+  - s4-w4-l12: Evaluating agents
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e2-w1-l2: Measuring coding agents
 - **[Estimating prevalence from the results of a screening test (Rogan and Gladen, 1978)](https://doi.org/10.1093/oxfordjournals.aje.a112510)**, Walter J. Rogan and Beth Gladen. License: Copyright Oxford University Press. American Journal of Epidemiology 107(1), 71 to 76. The source of the corrected-prevalence estimator used in lesson 6.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
   - s3-project: An eval harness that measurably improves your RAG system
+  - s6-w3-l9: Dashboards, alerts, and online evaluation
   - s3-w2-l6: Calibrating the judge
   - s3-w4-l10: Human review and feedback loops
   - s3-w4-l12: Putting it together: an eval harness for your RAG system
@@ -381,12 +749,25 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
 - **[Events that trigger workflows (GitHub Actions docs)](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)**, GitHub. License: CC BY 4.0.
   - s3-w3-l8: Regression testing and CI gates (schedule, workflow_dispatch, pull_request paths)
 - **[Executable Code Actions Elicit Better LLM Agents (Wang et al., 2024)](https://arxiv.org/abs/2402.01030)**, Xingyao Wang and colleagues. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s4-w2-l6: Agent frameworks and when to use them
+- **[Executive Order 14365: Ensuring a National Policy Framework for Artificial Intelligence (11 December 2025)](https://www.whitehouse.gov/wp-content/uploads/2025/12/eo-14365.pdf)**, The White House. License: US government work (public domain).
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
+- **[Expanding on what we missed with sycophancy (May 2025)](https://openai.com/index/expanding-on-sycophancy/)**, OpenAI. License: Copyright OpenAI. openai.com returns 403 to automated clients; existence confirmed by search on 2026-11-11.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
 - **[Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)**, Marc Brooker, AWS Architecture Blog. License: Copyright Amazon Web Services.
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks
   - s4-w2-l4: The agent loop and tools for long tasks
   - s1-w1-l2: Your first API calls
+- **[Extend Claude Code (Claude Code docs)](https://code.claude.com/docs/en/features-overview)**, Anthropic. License: Copyright Anthropic. When to use CLAUDE.md, rules, skills, subagents, hooks, MCP, and plugins; context cost by feature; the "build your setup over time" trigger table.
+  - e2-w2-l4: Project memory and instructions (Build your setup over time)
+  - e2-w2-l5: Extending the agent (Match features to your goal; context cost by feature; compare similar features)
+- **[Extend Claude with skills (Claude Code docs)](https://code.claude.com/docs/en/skills)**, Anthropic. License: Copyright Anthropic. SKILL.md frontmatter (description, disable-model-invocation, allowed-tools, context fork); custom commands merged into skills; bundled skills.
+  - e2-project: An agent-ready repository, measured
+  - e2-w2-l5: Extending the agent
 - **[Extract text from a PDF (pypdf documentation)](https://pypdf.readthedocs.io/en/stable/user/extract-text.html)**, pypdf contributors. License: BSD-3-Clause.
   - s2-w2-l4: Ingestion: getting text out of real documents (Limitations; why text extraction is hard)
+- **[Extracting Training Data from Large Language Models (Carlini et al., 2021)](https://arxiv.org/abs/2012.07805)**, Nicholas Carlini, Florian Tramer, Eric Wallace, and colleagues. License: arXiv non-exclusive license. Extracted verbatim training sequences, including PII, from GPT-2; some appeared in only one training document.
+  - s5-w2-l5: Building a fine-tuning dataset
 - **[Faiss (similarity search library) documentation](https://faiss.ai/)**, Meta AI Research. License: MIT.
   - s2-w1-l3: Nearest-neighbor search at scale
   - s2-w2-l6: Vector stores in practice
@@ -396,7 +777,10 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w2-l5: Examples, reasoning, and chaining
   - s1-w2-l6: Iterating on prompts like an engineer
 - **[Fast mode (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/fast-mode)**, Anthropic. License: Copyright Anthropic. Supported models, pricing, separate rate limit, no cache sharing across speeds. Read 2026-11-11.
-  - Not yet cited by a lesson
+  - s6-w2-l5: Caching, batching, and routing (Different speeds do not share cached prefixes)
+  - s6-w2-l6: Latency engineering
+- **[FastAPI documentation, Custom Response (StreamingResponse)](https://fastapi.tiangolo.com/advanced/custom-response/)**, Sebastián Ramírez and FastAPI contributors. License: MIT. StreamingResponse takes a sync or async generator; cancellation happens at await points.
+  - s6-w1-l1: Architectures for LLM services (StreamingResponse)
 - **[File inputs (OpenAI API docs)](https://developers.openai.com/api/docs/guides/file-inputs)**, OpenAI. License: Copyright OpenAI.
   - s2-w2-l4: Ingestion: getting text out of real documents
 - **[File Search (Gemini API docs)](https://aistudio.google.com/docs/file-search)**, Google. License: Copyright Google.
@@ -409,36 +793,107 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s2-w2-l6: Vector stores in practice
   - s2-w3-l8: Hybrid search and rank fusion
 - **[Fine-Tuned 'Small' LLMs (Still) Significantly Outperform Zero-Shot Generative AI Models in Text Classification (Bucher and Martini, 2024)](https://arxiv.org/abs/2406.08660)**, Martin Juan Jose Bucher and Marco Martini. License: arXiv non-exclusive license. Fine-tuned BERT-style models beat zero-shot GPT-3.5, GPT-4, and Claude Opus on several classification tasks.
-  - Not yet cited by a lesson
+  - s5-w4-l10: Benchmarking your model against a frontier model
+- **[Fine-tuning (Mistral AI docs)](https://docs.mistral.ai/capabilities/finetuning/)**, Mistral AI. License: Copyright Mistral AI. Checked 2026-11-11. The page marks the feature as deprecated and no longer actively supported.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
+- **[Fine-Tuning or Retrieval? Comparing Knowledge Injection in LLMs (Ovadia et al., 2023)](https://arxiv.org/abs/2312.05934)**, Oded Ovadia, Menachem Brief, Moshik Mishaeli, Oren Elisha. License: arXiv non-exclusive license. Checked 2026-11-11 (v3, January 2024). Unsupervised fine-tuning on raw text vs RAG for Llama2-7B, Mistral-7B, Orca2-7B on MMLU subsets and a current-events set; RAG consistently better; paraphrase augmentation helps fine-tuning; RAG plus fine-tuning did not beat RAG alone in their setup.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't (Sections 4 to 6, current-events results and paraphrase augmentation)
+- **[Fine-tuning with LoRA or QLoRA (mlx-lm LORA.md)](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/LORA.md)**, Apple machine learning research (ml-explore). License: [MIT](https://github.com/ml-explore/mlx-lm/blob/main/LICENSE). Checked 2026-11-11 (mlx-lm 0.32.2). mlx_lm.lora --train --data; QLoRA automatic for a quantized model; chat, tools, completions, and text formats; --mask-prompt; train/valid/test.jsonl; mlx_lm.fuse. Defaults read from source: rank 8, scale 20.0, last 16 layers, learning rate 1e-5.
+  - s5-w3-l9: Hands-on with PEFT and TRL
+- **[Fine-tuning with the Gemini API (Google AI Studio docs)](https://aistudio.google.com/docs/model-tuning)**, Google. License: Copyright Google. Checked 2026-11-11. No model in the Gemini API or AI Studio currently supports fine-tuning; points to Google Cloud.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
 - **[Flaky tests (pytest docs)](https://docs.pytest.org/en/stable/explanation/flaky.html)**, pytest-dev. License: MIT.
   - s3-w3-l8: Regression testing and CI gates
 - **[Flex processing (OpenAI API docs)](https://developers.openai.com/api/docs/guides/flex-processing)**, OpenAI. License: Copyright OpenAI.
-  - Not yet cited by a lesson
+  - s6-w2-l5: Caching, batching, and routing
+- **[Frontier AI Safety Policies (index of company frameworks and versions)](https://metr.org/fsp)**, METR. License: Copyright METR.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+- **[Frontier Governance Framework (May 2026)](https://cdn.openai.com/pdf/e37d949b-8c9f-4d76-b99e-4272f4631a7e/openai-frontier-governance-framework.pdf)**, OpenAI. License: Copyright OpenAI.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
+- **[Frontier Risk Report (February to March 2026), published 19 May 2026](https://metr.org/blog/2026-05-19-frontier-risk-report/)**, METR. License: Copyright METR.
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss (Capabilities; reward hacking)
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures (Misalignment incidents; monitoring)
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
+- **[Frontier Safety Framework (version 3.1, 17 April 2026)](https://deepmind.google/frontier-safety/)**, Google DeepMind. License: Copyright Google.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
 - **[FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance](https://arxiv.org/abs/2305.05176)**, Lingjiao Chen, Matei Zaharia, James Zou. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s6-w2-l5: Caching, batching, and routing
 - **[Function calling (OpenAI API docs)](https://platform.openai.com/docs/guides/function-calling)**, OpenAI. License: Copyright OpenAI.
   - s1-w4-l10: The tool-use loop (The tool calling flow)
 - **[Function calling (xAI docs)](https://docs.x.ai/developers/tools/function-calling)**, xAI. License: Copyright xAI.
   - s1-w4-l10: The tool-use loop
 - **[Function calling with the Gemini API](https://ai.google.dev/gemini-api/docs/function-calling)**, Google. License: Copyright Google (content CC BY 4.0, code Apache 2.0 unless noted).
   - s1-w4-l10: The tool-use loop (Function calling modes; parallel and compositional calling)
+- **[garak, the LLM vulnerability scanner](https://github.com/NVIDIA/garak)**, NVIDIA. License: Apache 2.0.
+  - s6-project: Take your best project live
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[Gated models (Hugging Face Hub docs)](https://huggingface.co/docs/hub/models-gated)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/hub-docs/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
 - **[Gemini API Additional Terms of Service](https://aistudio.google.com/docs/terms)**, Google. License: Copyright Google. Effective 2026-03-23, read 2026-11-11. Unpaid Services may use content to improve products, with human review; Paid Services do not, but log prompts for a limited period for abuse detection; EEA, Switzerland, UK rule.
-  - Not yet cited by a lesson
+  - e3-project: Your model selection playbook and a claim brief
+  - s6-w3-l8: Logging, privacy, and retention (Unpaid and Paid Services data use)
+  - s5-w2-l5: Building a fine-tuning dataset (Use restrictions)
+  - e3-w1-l3: Which model for which job, with evidence (Unpaid versus paid services)
 - **[Gemini API documentation](https://ai.google.dev/gemini-api/docs)**, Google. License: Copyright Google (content CC BY 4.0, code Apache 2.0 unless noted).
   - Not yet cited by a lesson
 - **[Gemini API pricing](https://aistudio.google.com/docs/pricing)**, Google. License: Copyright Google (content CC BY 4.0, code Apache 2.0 unless noted). Snapshot read 2026-11-11; the page announced Gemini 4 price changes effective 2026-12-01.
+  - s6-w2-l5: Caching, batching, and routing
   - s1-w1-l3: Tokens, cost, latency, and choosing a model (Standard vs batch, free tier data use, announced price change)
 - **[Gemini models](https://aistudio.google.com/docs/models)**, Google. License: Copyright Google (content CC BY 4.0, code Apache 2.0 unless noted).
+  - e3-project: Your model selection playbook and a claim brief
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
+- **[Gemma 4 license (Apache 2.0)](https://ai.google.dev/gemma/docs/gemma_4_license)**, Google. License: Apache 2.0.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Gemma 4: expanding the Gemmaverse with Apache 2.0](https://opensource.googleblog.com/2026/03/gemma-4-expanding-the-gemmaverse-with-apache-20.html)**, Google Open Source Blog. License: Copyright Google.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy)**, Google. License: Copyright Google.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Gemma Terms of Use](https://ai.google.dev/gemma/terms)**, Google. License: Copyright Google. Last modified 2026-04-01; covers Gemma releases before Gemma 4.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Generative AI at Work (Brynjolfsson, Li, and Raymond; NBER w31161, published in the Quarterly Journal of Economics, 2025)](https://www.nber.org/papers/w31161)**, Erik Brynjolfsson, Danielle Li, Lindsey Raymond. License: Copyright the authors.
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+- **[GGUF (Hugging Face Hub docs)](https://huggingface.co/docs/hub/gguf)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/hub-docs/blob/main/LICENSE).
+  - s5-w1-l3: Running models locally (Quantization types)
+- **[GGUF file format specification](https://github.com/ggml-org/ggml/blob/master/docs/gguf.md)**, ggml-org. License: [MIT](https://github.com/ggml-org/ggml/blob/master/LICENSE).
+  - s5-w1-l3: Running models locally
+- **[git-worktree documentation](https://git-scm.com/docs/git-worktree)**, Git project. License: GPL-2.0 (documentation).
+  - e2-w2-l6: Planning and decomposition
 - **[GitHub Actions documentation](https://docs.github.com/en/actions)**, GitHub. License: CC BY 4.0 (GitHub docs content).
   - s3-project: An eval harness that measurably improves your RAG system
   - s3-w4-l12: Putting it together: an eval harness for your RAG system (Workflows, secrets, artifacts)
+- **[GitHub Copilot on GitHub.com and GitHub Mobile (GitHub Docs)](https://docs.github.com/en/copilot/concepts/copilot-surfaces/copilot-on-github)**, GitHub. License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Cloud agent in a GitHub Actions environment or cloud sandbox, one branch and one pull request per task, 59-minute limit for Actions sessions.
+  - e2-w1-l1: Inside a coding agent
+- **[GitHub MCP exploited, accessing private repositories via MCP (Invariant Labs, May 2025)](https://invariantlabs.ai/blog/mcp-github-vulnerability)**, Invariant Labs. License: Copyright Invariant Labs.
+  - s4-w3-l9: Testing and securing MCP servers
+  - e2-w3-l8: Reviewing agent code
+- **[Google Colab FAQ](https://research.google.com/colaboratory/faq.html)**, Google. License: Copyright Google. GPU types vary over time; free-tier GPU access is restricted; resources are not guaranteed.
+  - s5-w3-l9: Hands-on with PEFT and TRL (GPU availability)
+- **[google/gemma-4-31B-it model card](https://huggingface.co/google/gemma-4-31B-it)**, Google. License: Apache 2.0.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Governor Hochul signs the RAISE Act (19 December 2025)](https://www.governor.ny.gov/news/governor-hochul-signs-nation-leading-legislation-require-ai-frameworks-ai-frontier-models)**, Office of the Governor of New York. License: Copyright State of New York.
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
+- **[Governor Newsom signs SB 53, the Transparency in Frontier Artificial Intelligence Act (29 September 2025)](https://www.gov.ca.gov/2025/09/29/governor-newsom-signs-sb-53-advancing-californias-world-leading-artificial-intelligence-industry/)**, Office of the Governor of California. License: Copyright State of California.
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
 - **[gpt-oss (open-weight models)](https://github.com/openai/gpt-oss)**, OpenAI. License: [Apache 2.0](https://github.com/openai/gpt-oss/blob/main/LICENSE).
+  - s5-w1-l1: Open weights, licenses, and the landscape
+  - s5-w2-l5: Building a fine-tuning dataset
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
 - **[GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers (Frantar et al., 2022)](https://arxiv.org/abs/2210.17323)**, Elias Frantar, Saleh Ashkboos, Torsten Hoefler, Dan Alistarh. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s5-w1-l3: Running models locally
+  - s5-w4-l11: Serving open models
+- **[GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints (Ainslie et al., 2023)](https://arxiv.org/abs/2305.13245)**, Ainslie et al.. License: arXiv non-exclusive license.
+  - s5-w1-l3: Running models locally
+- **[Guardrails (guardrails-ai on GitHub)](https://github.com/guardrails-ai/guardrails)**, Guardrails AI. License: Apache 2.0.
+  - s6-w4-l10: Guardrails for inputs and outputs
+- **[Guidelines for providers of general-purpose AI models (European Commission)](https://digital-strategy.ec.europa.eu/en/policies/guidelines-gpai-providers)**, European Commission, AI Office. License: Commission reuse policy (CC BY 4.0 unless stated).
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do (Timeline; modifications)
 - **[Guidelines to choose an index (Faiss wiki)](https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index)**, Meta AI Research. License: MIT.
   - s2-w1-l3: Nearest-neighbor search at scale
 - **[Handle tool calls (Claude docs)](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls)**, Anthropic. License: Copyright Anthropic.
@@ -446,18 +901,32 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w4-l10: The tool-use loop (Handling results from client tools; Handling errors with is_error)
   - s1-w4-l11: Designing tools and gating side effects (Handling errors with is_error; untrusted content warning)
 - **[Handling stop reasons (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons)**, Anthropic. License: Copyright Anthropic.
+  - s6-w3-l9: Dashboards, alerts, and online evaluation (refusal and max_tokens)
   - s1-w1-l2: Your first API calls
 - **[Handling stop reasons (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons)**, Anthropic. License: Copyright Anthropic.
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks
   - s1-w4-l10: The tool-use loop (pause_turn)
+- **[Hassabis, Amodei, and LeCun on AGI timelines at Davos (Fortune, 23 January 2026)](https://fortune.com/2026/01/23/deepmind-demis-hassabis-anthropic-dario-amodei-yann-lecun-ai-davos/)**, Fortune. License: Copyright Fortune Media. Journalistic report of on-stage remarks; used for what each speaker said, not as evidence for the claims.
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
 - **[Hooks reference (Claude Code docs)](https://code.claude.com/docs/en/hooks)**, Anthropic. License: Copyright Anthropic.
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing
+  - e2-w2-l5: Extending the agent (Exit code 2 behavior per event; handler fields)
+- **[How AI assistance impacts the formation of coding skills (Anthropic research, 2026)](https://www.anthropic.com/research/AI-assistance-coding-skills)**, Judy Hanwen Shen, Alex Tamkin (Anthropic). License: Copyright Anthropic. Published 2026-01-29, paper arXiv 2601.20245. RCT with 52 mostly junior engineers learning the Trio library; AI group averaged 50% on a concept quiz versus 67% (d = 0.738, p = 0.01); time difference not significant; conceptual inquiry and generation-then-comprehension patterns scored highest.
+  - e2-w3-l9: When not to delegate, and building judgment
+- **[How Claude Code works (Claude Code docs)](https://code.claude.com/docs/en/how-claude-code-works)**, Anthropic. License: Copyright Anthropic. Gather context, take action, verify results; five tool categories; the harness; sessions, compaction, checkpoints, permission modes.
+  - e2-w1-l1: Inside a coding agent (The agentic loop, tools, sessions, context window, checkpoints and permissions)
 - **[How Claude remembers your project (Claude Code docs)](https://code.claude.com/docs/en/memory)**, Anthropic. License: Copyright Anthropic. CLAUDE.md scopes and imports, target under 200 lines per file, auto memory (MEMORY.md first 200 lines or 25KB loaded per session).
+  - e2-project: An agent-ready repository, measured
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
+  - e2-w2-l4: Project memory and instructions (CLAUDE.md files, AGENTS.md, write effective instructions, troubleshooting)
 - **[How long do you store my organization's data? (Anthropic Privacy Center)](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data)**, Anthropic. License: Copyright Anthropic. Updated 2026-07-01, read 2026-11-11. API inputs and outputs deleted within 30 days by default, with listed exceptions.
-  - Not yet cited by a lesson
+  - s6-w3-l8: Logging, privacy, and retention
 - **[How the agent loop works (Agent SDK docs)](https://code.claude.com/docs/en/agent-sdk/agent-loop)**, Anthropic. License: Copyright Anthropic. Turns, max_turns and max_budget_usd with error_max_turns / error_max_budget_usd results, parallel read-only tools, automatic compaction, what consumes context.
   - s4-w2-l4: The agent loop and tools for long tasks (Turns and budget; Parallel tool execution; Handle the result)
   - s4-w2-l5: Context engineering: memory, compaction, and subagents (The context window; Automatic compaction; Keep context efficient)
+  - s4-w2-l6: Agent frameworks and when to use them (Turns and budget; Permission mode; Handle the result)
+  - e2-w1-l1: Inside a coding agent
 - **[How to parametrize fixtures and test functions (pytest docs)](https://docs.pytest.org/en/stable/how-to/parametrize.html)**, pytest-dev. License: MIT.
   - s3-w3-l8: Regression testing and CI gates
 - **[How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system)**, Jeremy Hadfield, Barry Zhang, and colleagues, Anthropic. License: Copyright Anthropic. Published 2025-06-13. Orchestrator-workers in production; token use (agents about 4x chat, multi-agent about 15x); when multi-agent is a poor fit; debugging and compounding errors.
@@ -467,31 +936,71 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s4-w2-l5: Context engineering: memory, compaction, and subagents (Token usage; when multi-agent is a poor fit; subagent outputs to a filesystem)
 - **[How we contain Claude across products](https://www.anthropic.com/engineering/how-we-contain-claude)**, Anthropic Engineering. License: Copyright Anthropic. Published 2026-05-25. Users approved roughly 93% of prompts; three risk types; environment, model, and external-content layers.
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (Three types of risk; human-in-the-loop telemetry; environment, model, and content layers)
+  - s4-w4-l11: Prompt injection and the lethal trifecta (The model the agent consults; trusting what the agent reads)
+- **[How Well Does RL Scale? (October 2025)](https://www.tobyord.com/writing/how-well-does-rl-scale)**, Toby Ord. License: Copyright the author.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
+- **[html (Python standard library docs)](https://docs.python.org/3/library/html.html)**, Python Software Foundation. License: PSF documentation license.
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[HTML Living Standard, Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html)**, WHATWG. License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The normative EventSource specification, including the Last-Event-ID reconnection header.
+  - s6-w1-l1: Architectures for LLM services
+- **[HTTPX documentation, Timeouts](https://www.python-httpx.org/advanced/timeouts/)**, Encode. License: BSD-3-Clause (docs in the HTTPX repository). The four timeout types (connect, read, write, pool); a single float sets all four; the read timeout bounds the wait for each chunk, not the whole response. The anthropic 1.x Python SDK uses the httpx2 fork with the same model.
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks
 - **[Humanity's Last Exam (Phan et al., 2025)](https://arxiv.org/abs/2501.14249)**, Phan et al.. License: arXiv non-exclusive license. Motivated by saturation; the abstract notes over 90 percent accuracy on MMLU.
   - s3-w3-l9: Comparing models and providers fairly (Abstract)
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
 - **[Hybrid and multi-stage queries (Qdrant documentation)](https://qdrant.tech/documentation/search/hybrid-queries/)**, Qdrant. License: Copyright Qdrant (engine is Apache 2.0).
   - s2-w2-l6: Vector stores in practice
 - **[Hybrid search (LanceDB docs)](https://docs.lancedb.com/search/hybrid-search)**, LanceDB. License: Copyright LanceDB (library is Apache 2.0).
   - s2-w2-l6: Vector stores in practice
+- **[Hypothesis documentation](https://hypothesis.readthedocs.io/en/latest/)**, Hypothesis developers. License: MPL 2.0.
+  - e2-w3-l7: Tests as the contract
 - **[Idempotent requests (Stripe API reference)](https://docs.stripe.com/api/idempotent_requests)**, Stripe. License: Copyright Stripe. Used as a well-documented industry example of idempotency keys.
+  - s6-w1-l1: Architectures for LLM services
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing
   - s1-w4-l11: Designing tools and gating side effects
 - **[Implement multitenancy (Pinecone docs)](https://docs.pinecone.io/guides/index-data/implement-multitenancy)**, Pinecone. License: Copyright Pinecone.
   - s2-w2-l6: Vector stores in practice
+- **[ImpossibleBench: Measuring LLMs' Propensity of Exploiting Test Cases (Zhong, Raghunathan, Carlini, 2025)](https://arxiv.org/abs/2510.20270)**, Ziqian Zhong, Aditi Raghunathan, Nicholas Carlini. License: arXiv non-exclusive license. Tasks whose tests contradict the spec; frontier models frequently cheat, stronger models more; hiding tests cut cheating to near zero.
+  - e2-project: An agent-ready repository, measured
+  - e2-w3-l7: Tests as the contract
+- **[In lecture at Brown, Yann LeCun discusses a new approach to AI (1 April 2026)](https://www.brown.edu/news/2026-04-01/yann-lecun-artificial-intelligence-pioneer)**, Brown University. License: Copyright Brown University.
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
+- **[Incident Response (The Site Reliability Workbook, chapter 9)](https://sre.google/workbook/incident-response/)**, Google. License: CC BY-NC-ND 4.0.
+  - s6-project: Take your best project live
+  - s6-w4-l12: Launch checklist and incident response (Incident command roles, declare early, mitigate first)
+- **[Incident Response Guide (PagerDuty docs)](https://docs.pagerduty.com/ops-guides/incident-response-guide)**, PagerDuty. License: Copyright PagerDuty (see site).
+  - s6-w4-l12: Launch checklist and incident response
 - **[Inference Endpoints (Hugging Face docs)](https://huggingface.co/docs/inference-endpoints/index)**, Hugging Face. License: Copyright Hugging Face.
-  - Not yet cited by a lesson
+  - s5-w4-l11: Serving open models
 - **[Inference Endpoints pricing (Hugging Face docs)](https://huggingface.co/docs/inference-endpoints/pricing)**, Hugging Face. License: Copyright Hugging Face. Snapshot 2026-11-11, for example 1x NVIDIA L4 on AWS at $0.80/hour, 1x A100 80GB on AWS at $2.50/hour; billed per minute.
-  - Not yet cited by a lesson
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w4-l10: Benchmarking your model against a frontier model (GPU instance prices; per-minute billing)
+  - s5-w4-l11: Serving open models (Instance prices; per-minute billing)
+  - s5-w5-l13: Project week: planning the fine-tuning project
 - **[Inside the LLM Call: GenAI Observability with OpenTelemetry](https://opentelemetry.io/blog/2026/genai-observability/)**, OpenTelemetry blog. License: CC BY 4.0. 2026. invoke_agent, chat, and execute_tool spans; content not captured by default.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications
 - **[Inspect (open-source framework for LLM evaluations)](https://inspect.aisi.org.uk/)**, UK AI Security Institute and Meridian Labs. License: [MIT (inspect_ai repository); docs copyright the authors](https://github.com/UKGovernmentBEIS/inspect_ai/blob/main/LICENSE).
   - s3-w3-l8: Regression testing and CI gates
+- **[Instruction Tuning With Loss Over Instructions (Shi et al., 2024)](https://arxiv.org/abs/2405.14394)**, Zhengyan Shi, Adam X. Yang, Bin Wu, Laurence Aitchison, Emine Yilmaz, Aldo Lipani. License: arXiv non-exclusive license. NeurIPS 2024. Computing loss on instructions as well as outputs often helped, most when instructions are long relative to outputs and when training data is small; attributed to less overfitting.
+  - s5-w3-l7: How supervised fine-tuning works
+- **[International AI Safety Report 2026](https://arxiv.org/abs/2602.21012)**, Yoshua Bengio et al. (over 100 contributing experts). License: arXiv non-exclusive license.
+  - e3-project: Your model selection playbook and a claim brief
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing (Capabilities chapter)
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss (Jagged capabilities)
+  - e3-w2-l4: Timelines and transformative AI, from the people building it (The evidence dilemma; capabilities)
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them (Jagged capabilities)
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program (Evidence dilemma)
 - **[Interrupts (LangGraph docs)](https://docs.langchain.com/oss/python/langgraph/interrupts)**, LangChain. License: Copyright LangChain. interrupt() pauses and persists state; resume with Command(resume=...); the node re-runs from its start on resume.
-  - Not yet cited by a lesson
+  - s4-w2-l6: Agent frameworks and when to use them
 - **[Interval Estimation for a Binomial Proportion (Brown, Cai, and DasGupta, 2001)](https://doi.org/10.1214/ss/1009213286)**, Lawrence D. Brown, T. Tony Cai, Anirban DasGupta. License: Copyright Institute of Mathematical Statistics. Statistical Science 16(2), 101 to 133. Wald interval coverage is erratic; recommends Wilson or Jeffreys for small n.
   - s3-w3-l7: Statistics for comparing models and prompts (Abstract and recommendations)
+  - capstone-w6-l2: Writing it up and defending it
 - **[intfloat/e5-base-v2 (model card)](https://huggingface.co/intfloat/e5-base-v2)**, Liang Wang et al. (Microsoft). License: MIT.
   - s2-w1-l2: Choosing and testing an embedding model (Usage: query and passage prefixes)
+- **[Intrinsic Dimensionality Explains the Effectiveness of Language Model Fine-Tuning (Aghajanyan et al., 2020)](https://arxiv.org/abs/2012.13255)**, Armen Aghajanyan, Luke Zettlemoyer, Sonal Gupta. License: arXiv non-exclusive license. 200 trainable parameters randomly projected into the full space reach 90 percent of full fine-tuning performance for RoBERTa on MRPC; pretraining lowers intrinsic dimension; larger models tend to have lower intrinsic dimension.
+  - s5-w3-l8: LoRA and QLoRA
 - **[Introducing Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval)**, Anthropic. License: Copyright Anthropic. Published September 19, 2024. Results are Anthropic's own measurements (1 minus recall@20) on their datasets.
   - s2-project: Q&A over a real document set
   - s2-w2-l4: Ingestion: getting text out of real documents (A note on simply using a longer prompt)
@@ -501,16 +1010,25 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s2-w3-l9: Reranking and measuring retrieval (Reranking results and cost and latency considerations)
   - s2-w4-l11: When RAG fails (A note on simply using a longer prompt; top-20 chunks)
   - s2-w4-l12: Designing the Q&A system (Hybrid search plus reranking; top-20 chunks)
+- **[Introducing the Model Context Protocol (Anthropic, November 2024)](https://www.anthropic.com/news/model-context-protocol)**, Anthropic. License: Copyright Anthropic.
+  - s4-w3-l7: Why MCP, and how it works
 - **[Introduction to Embeddings at Cohere](https://docs.cohere.com/docs/embeddings)**, Cohere. License: Copyright Cohere.
   - s2-w1-l2: Choosing and testing an embedding model
 - **[Investigating Data Contamination in Modern Benchmarks for Large Language Models (Deng et al., 2023)](https://arxiv.org/abs/2311.09783)**, Deng et al.. License: arXiv non-exclusive license.
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w2-l6: Data quality, splits, and contamination
+  - s5-w4-l10: Benchmarking your model against a frontier model
+  - s5-w5-l13: Project week: planning the fine-tuning project
   - s3-w1-l1: Why evals: the eval-driven development loop
   - s3-w1-l3: Building test sets
   - s3-w3-l9: Comparing models and providers fairly
   - s3-w4-l11: Evaluating RAG and agents
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
 - **[Is ChatGPT Good at Search? Investigating Large Language Models as Re-Ranking Agents (Sun et al., 2023)](https://arxiv.org/abs/2304.09542)**, Sun et al.. License: arXiv non-exclusive license.
   - s2-w3-l9: Reranking and measuring retrieval
+- **[Is Fine-Tuning Still Valuable?](https://hamel.dev/blog/posts/fine_tuning_valuable.html)**, Hamel Husain. License: Copyright Hamel Husain. March 27, 2024. Fine-tuning for syntax, style, and rules; RAG for facts; evals are a prerequisite.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
 - **[Is Semantic Chunking Worth the Computational Cost?](https://arxiv.org/abs/2410.13070)**, Renyi Qu, Ruixuan Tu, Forrest Bao. License: arXiv preprint.
   - s2-w2-l5: Chunking strategies (Abstract and conclusions)
 - **[Is there a Half-Life for the Success Rates of AI Agents?](https://www.tobyord.com/writing/half-life)**, Toby Ord. License: Copyright Toby Ord. Published 2025-05-07, with a 2026-02-04 update noting later evidence that hazard rates decline over a task. Constant-hazard model of METR's results.
@@ -518,22 +1036,29 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
 - **[JSON Schema Validation: A Vocabulary for Structural Validation of JSON (Draft 2020-12)](https://json-schema.org/draft/2020-12/json-schema-validation)**, JSON Schema (Wright, Andrews, Hutton, Dennis). License: IETF Internet-Draft (Trust Legal Provisions).
   - s1-w3-l7: Why structure: schemas and validation (Validation keywords: type, enum, required, properties, additionalProperties)
 - **[Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena (Zheng et al., 2023)](https://arxiv.org/abs/2306.05685)**, Zheng et al.. License: arXiv non-exclusive license.
+  - s5-w3-l8: LoRA and QLoRA (Judge biases)
   - s3-w2-l5: LLM-as-judge (Agreement with humans (Table 5), position, verbosity, and self-enhancement bias, mitigations)
   - s3-w2-l6: Calibrating the judge
   - s3-w4-l10: Human review and feedback loops
   - s2-w3-l9: Reranking and measuring retrieval (Position bias)
   - s1-w3-l9: When structured output is confidently wrong
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
 - **[Judging the Judges: Evaluating Alignment and Vulnerabilities in LLMs-as-Judges (Thakur et al., 2024)](https://arxiv.org/abs/2406.12624)**, Thakur et al.. License: arXiv non-exclusive license.
   - s3-w2-l5: LLM-as-judge
   - s3-w2-l6: Calibrating the judge (Percent agreement versus alignment metrics)
 - **[Langfuse documentation, Observability overview](https://langfuse.com/docs/observability/overview)**, Langfuse. License: Copyright Langfuse. Read 2026-11-11. Open source, self-hostable; traces, observations, scores; LLM-as-judge on production traces.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications
+  - s6-w3-l9: Dashboards, alerts, and online evaluation (Evaluations on production traces)
 - **[LangGraph overview](https://docs.langchain.com/oss/python/langgraph/overview)**, LangChain. License: Copyright LangChain. Low-level orchestration runtime; durable execution, human-in-the-loop, memory; does not require LangChain.
-  - Not yet cited by a lesson
+  - s4-w2-l6: Agent frameworks and when to use them
 - **[LangSmith Observability documentation](https://docs.langchain.com/langsmith/observability)**, LangChain. License: Copyright LangChain. Read 2026-11-11. Tracing across frameworks, dashboards and alerts, online evaluations, annotation queues; cloud, hybrid, self-hosted.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications
+  - s6-w3-l9: Dashboards, alerts, and online evaluation (Online evaluations, dashboards and alerts)
 - **[Language Models (Mostly) Know What They Know (Kadavath et al., 2022)](https://arxiv.org/abs/2207.05221)**, Kadavath et al., Anthropic. License: arXiv non-exclusive license.
   - s1-w3-l9: When structured output is confidently wrong
+- **[Language Models are Unsupervised Multitask Learners (Radford et al., 2019)](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)**, Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever (OpenAI). License: Copyright OpenAI. The GPT-2 paper. Section 2.2 describes byte-level BPE; section 2.3 gives the 50,257-token vocabulary, 1024-token context, and layer norm moved to the input of each sub-block.
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model (Section 2.3, pre-norm placement and residual scaling)
+  - e1-w4-l8: Let's build the GPT tokenizer: bytes, BPE, and why tokens explain odd behavior (Section 2.2, input representation; section 2.3, vocabulary size)
 - **[Language Models Don't Always Say What They Think: Unfaithful Explanations in Chain-of-Thought Prompting (Turpin et al., 2023)](https://arxiv.org/abs/2305.04388)**, Turpin et al.. License: arXiv non-exclusive license.
   - s1-w2-l5: Examples, reasoning, and chaining
 - **[Large Language Models are not Fair Evaluators (Wang et al., 2023)](https://arxiv.org/abs/2305.17926)**, Wang et al.. License: arXiv non-exclusive license.
@@ -543,32 +1068,126 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
 - **[Late Chunking: Contextual Chunk Embeddings Using Long-Context Embedding Models](https://arxiv.org/abs/2409.04701)**, Michael Günther, Isabelle Mohr, Daniel James Williams, Bo Wang, Han Xiao. License: arXiv preprint.
   - s2-w2-l5: Chunking strategies
 - **[Latency optimization (OpenAI API docs)](https://developers.openai.com/api/docs/guides/latency-optimization)**, OpenAI. License: Copyright OpenAI. Seven principles, including that output generation is usually the largest latency cost.
-  - Not yet cited by a lesson
+  - s6-w2-l6: Latency engineering
 - **[Latency optimization on the Claude API (Claude Cookbook)](https://platform.claude.com/cookbook/latency-optimization-latency-optimization)**, Anthropic. License: Copyright Anthropic. Task-time decomposition (calls times TTFT plus output tokens over output speed plus other waits) and measured effects of caching, prefetch, shorter answers, effort, model choice, and fast mode on a 154-task eval. Read 2026-11-11.
-  - Not yet cited by a lesson
+  - s6-w2-l6: Latency engineering (Task-time decomposition and measured lever effects)
+- **[Launch Coordination Checklist (Site Reliability Engineering, appendix E)](https://sre.google/sre-book/launch-checklist/)**, Google. License: CC BY-NC-ND 4.0.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
+  - s6-project: Take your best project live
+  - s6-w4-l12: Launch checklist and incident response
+- **[Layer Normalization (Ba, Kiros, and Hinton, 2016)](https://arxiv.org/abs/1607.06450)**, Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton. License: arXiv non-exclusive license.
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model
+- **[Leakage and the Reproducibility Crisis in ML-based Science (Kapoor and Narayanan, 2022)](https://arxiv.org/abs/2207.07048)**, Sayash Kapoor and Arvind Narayanan. License: arXiv non-exclusive license. Survey finding leakage errors affecting 329 papers across 17 fields; a taxonomy of 8 leakage types.
+  - s5-w2-l6: Data quality, splits, and contamination
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
+- **[Learning representations by back-propagating errors (Rumelhart, Hinton, and Williams, 1986)](https://www.nature.com/articles/323533a0)**, David E. Rumelhart, Geoffrey E. Hinton, Ronald J. Williams. License: Copyright Nature Publishing Group.
+  - e1-w1-l1: micrograd, part 1: derivatives, the chain rule, and a tiny autograd engine
+- **[Learning to reason with LLMs (OpenAI o1 announcement, 12 September 2024)](https://openai.com/index/learning-to-reason-with-llms/)**, OpenAI. License: Copyright OpenAI. openai.com returns 403 to automated clients; existence and date confirmed by search on 2026-11-11.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
 - **[Let Me Speak Freely? A Study on the Impact of Format Restrictions on Performance of Large Language Models (Tam et al., 2024)](https://arxiv.org/abs/2408.02442)**, Tam et al.. License: arXiv non-exclusive license.
   - s1-w3-l8: Structured outputs with the API
+- **[Licenses (Hugging Face Hub docs)](https://huggingface.co/docs/hub/repositories-licenses)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/hub-docs/blob/main/LICENSE).
+  - s5-w1-l1: Open weights, licenses, and the landscape
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[LIMA: Less Is More for Alignment (Zhou et al., 2023)](https://arxiv.org/abs/2305.11206)**, Chunting Zhou, Pengfei Liu, Puxin Xu, Srini Iyer, and colleagues (Meta AI and others). License: arXiv non-exclusive license. 65B LLaMa fine-tuned on 1,000 curated examples; argues most knowledge is learned in pretraining.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
+  - s5-w2-l5: Building a fine-tuning dataset
+- **[Llama 3.1: 405B, 70B and 8B with multilinguality and long context](https://huggingface.co/blog/llama31)**, Hugging Face. License: Copyright Hugging Face. Source of the FP16 KV cache sizes per context length.
+  - s5-w1-l3: Running models locally (Inference memory requirements)
+- **[Llama 3.3 Community License Agreement](https://github.com/meta-llama/llama-models/blob/main/models/llama3_3/LICENSE)**, Meta. License: Llama 3.3 Community License. Section 1.b.i: a model created, trained, or fine-tuned with Llama Materials or their outputs and then distributed must include "Llama" at the start of its name; "Built with Llama" attribution; 700 million MAU clause.
+  - s5-w2-l5: Building a fine-tuning dataset (Section 1.b.i)
+- **[Llama 4 Acceptable Use Policy](https://www.llama.com/llama4/use-policy/)**, Meta. License: Copyright Meta.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Llama 4 Community License Agreement](https://www.llama.com/llama4/license/)**, Meta. License: Copyright Meta. Effective 2025-04-05. Read 2026-11-11.
+  - s5-w1-l1: Open weights, licenses, and the landscape (Sections 1.b and 2)
+- **[Llama Guard 4 12B model card](https://huggingface.co/meta-llama/Llama-Guard-4-12B)**, Meta. License: Llama 4 Community License (model); card copyright Meta.
+  - s6-w4-l10: Guardrails for inputs and outputs (Taxonomy, inputs, reported recall and false positive rate, limitations)
+- **[Llama Guard: LLM-based Input-Output Safeguard for Human-AI Conversations](https://arxiv.org/abs/2312.06674)**, Hakan Inan et al. (Meta). License: arXiv (author copyright).
+  - s6-w4-l10: Guardrails for inputs and outputs
+- **[Llama Prompt Guard 2 86M model card](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M)**, Meta. License: Llama 4 Community License (model); card copyright Meta.
+  - s6-w4-l10: Guardrails for inputs and outputs (Labels, context length, latency, limitations)
+- **[llama-quantize README (bits per weight table)](https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md)**, ggml-org. License: [MIT](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE). Bits per weight measured on Llama 3.1 8B; read 2026-11-11.
+  - s5-w1-l3: Running models locally (Bits per weight table for Llama 3.1 8B; perplexity and KLD note)
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)**, ggml-org. License: [MIT](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE).
+  - s5-w1-l3: Running models locally
 - **[llama.cpp HTTP server (llama-server README)](https://github.com/ggml-org/llama.cpp/tree/master/tools/server)**, ggml-org. License: MIT. OpenAI-compatible routes, continuous batching with parallel slots, GGUF quantized models, grammar and JSON-schema constrained output.
-  - Not yet cited by a lesson
+  - s5-w1-l3: Running models locally (Default host and port; OpenAI-compatible endpoints)
+  - s5-w4-l11: Serving open models (Features; grammar and JSON schema options)
+- **[llama3.2 (Ollama model library)](https://ollama.com/library/llama3.2)**, Ollama. License: Model license per model (Llama 3.2 Community License). Returns 405 to HEAD requests and 200 to GET.
+  - s5-w1-l3: Running models locally
 - **[LLM Evaluators Recognize and Favor Their Own Generations (Panickssery, Bowman, and Feng, 2024)](https://arxiv.org/abs/2404.13076)**, Panickssery, Bowman, and Feng. License: arXiv non-exclusive license.
+  - e3-project: Your model selection playbook and a claim brief
   - s3-w2-l5: LLM-as-judge
+  - e3-w1-l3: Which model for which job, with evidence
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
+- **[LLM Prompt Injection Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html)**, OWASP Cheat Sheet Series. License: CC BY-SA 4.0.
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[LLM red teaming (promptfoo docs)](https://www.promptfoo.dev/docs/red-team/)**, promptfoo. License: MIT (project); docs copyright promptfoo.
+  - s6-project: Take your best project live
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale (Dettmers et al., 2022)](https://arxiv.org/abs/2208.07339)**, Dettmers et al.. License: arXiv non-exclusive license.
+  - s5-w1-l3: Running models locally
 - **[LLM01: Prompt Injection (OWASP Top 10 for LLM Applications)](https://genai.owasp.org/llmrisk/llm01-prompt-injection/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s4-w3-l9: Testing and securing MCP servers
+  - s4-w4-l11: Prompt injection and the lethal trifecta
   - s1-w2-l6: Iterating on prompts like an engineer (Prevention and mitigation strategies)
+- **[LLM02:2025 Sensitive Information Disclosure](https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted (ShareAlike).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s6-w4-l12: Launch checklist and incident response
+- **[LLM03:2025 Supply Chain](https://genai.owasp.org/llmrisk/llm032025-supply-chain/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted (ShareAlike).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[LLM04:2025 Data and Model Poisoning](https://genai.owasp.org/llmrisk/llm042025-data-and-model-poisoning/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted (ShareAlike).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[LLM05:2025 Improper Output Handling](https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted (ShareAlike).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
 - **[LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0.
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s4-w3-l9: Testing and securing MCP servers
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing
   - s1-w4-l11: Designing tools and gating side effects
+- **[LLM07:2025 System Prompt Leakage](https://genai.owasp.org/llmrisk/llm072025-system-prompt-leakage/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted (ShareAlike).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
 - **[LLM08:2025 Vector and Embedding Weaknesses](https://genai.owasp.org/llmrisk/llm082025-vector-and-embedding-weaknesses/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted (ShareAlike).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
   - s2-w2-l4: Ingestion: getting text out of real documents (Data validation)
   - s2-w2-l6: Vector stores in practice
+- **[LLM09:2025 Misinformation](https://genai.owasp.org/llmrisk/llm092025-misinformation/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted (ShareAlike).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[LLM10:2025 Unbounded Consumption](https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted (ShareAlike).
+  - s6-w4-l10: Guardrails for inputs and outputs (Input limits, rate limits, timeouts)
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s6-w4-l12: Launch checklist and incident response
 - **[LLMs instead of Human Judges? A Large Scale Empirical Study across 20 NLP Evaluation Tasks (Bavaresco et al., 2024)](https://arxiv.org/abs/2406.18403)**, Bavaresco et al.. License: arXiv non-exclusive license. Accepted to ACL 2025.
   - s3-w2-l5: LLM-as-judge
   - s3-w2-l6: Calibrating the judge
-- **[Logging Cheat Sheet (OWASP Cheat Sheet Series)](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)**, OWASP. License: CC BY-SA 4.0.
-  - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (Which events to log; data to exclude)
+- **[LM Studio documentation](https://lmstudio.ai/docs/app)**, LM Studio. License: Copyright Element Labs.
+  - s5-w1-l3: Running models locally
+- **[Loading models (Transformers docs)](https://huggingface.co/docs/transformers/main/en/models)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/transformers/blob/main/LICENSE). Custom models, trust_remote_code, and pinning a revision.
+  - s5-w1-l2: The Hugging Face Hub and transformers (Custom models)
+- **[Local server security (MCP docs)](https://modelcontextprotocol.io/docs/tutorials/security/local-server-security)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l9: Testing and securing MCP servers (Provenance; tool definitions as untrusted input; isolation; credentials; filesystem; egress; checklist)
 - **[LoRA adapters (vLLM docs)](https://docs.vllm.ai/en/latest/features/lora.html)**, vLLM project. License: Apache 2.0 (code); docs copyright the vLLM project.
-  - Not yet cited by a lesson
-- **[LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report (Zhao et al., 2024)](https://arxiv.org/abs/2405.00732)**, Justin Zhao et al. (Predibase). License: arXiv non-exclusive license. April 2024. 10 base models x 31 tasks, 4-bit LoRA. Fine-tuned models beat base by 34 points and GPT-4 (gpt-4-0613, simple zero- or single-shot prompts) by 10 points on average; GPT-4 still won 6 tasks, including Python coding and MMLU.
-  - Not yet cited by a lesson
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w4-l11: Serving open models (Serving LoRA adapters)
+- **[LoRA developer guide (Hugging Face PEFT docs)](https://huggingface.co/docs/peft/main/en/developer_guides/lora)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/peft/blob/main/LICENSE). Checked 2026-11-11 (PEFT 0.21.2 on PyPI). LoraConfig r, lora_alpha (scale alpha/r), lora_dropout, target_modules including "all-linear", use_rslora (alpha/sqrt(r)), use_dora, init_lora_weights options; merge_and_unload.
+  - s5-w3-l8: LoRA and QLoRA (LoraConfig, use_rslora, targeting modules, merging)
+  - s5-w3-l9: Hands-on with PEFT and TRL (LoraConfig; merge_and_unload; initialization options)
+- **[LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report (Zhao et al., 2024)](https://arxiv.org/abs/2405.00732)**, Justin Zhao, Timothy Wang, Wael Abid, and colleagues (Predibase). License: arXiv non-exclusive license. 10 base models x 31 tasks; 4-bit LoRA models beat their base by 34 points and GPT-4 by 10 points on average on those narrow tasks. A vendor technical report, so treat as evidence for narrow tasks, not a general ranking.
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
+  - s5-w4-l10: Benchmarking your model against a frontier model (Abstract; results table; GPT-4 evaluation setup)
+  - s5-w5-l13: Project week: planning the fine-tuning project
+- **[LoRA Learns Less and Forgets Less (Biderman et al., 2024)](https://arxiv.org/abs/2405.09673)**, Dan Biderman, Jacob Portes, Jose Javier Gonzalez Ortiz, and colleagues (Columbia, Databricks Mosaic AI). License: arXiv non-exclusive license. TMLR 2024. Code and math, instruction finetuning (about 100K pairs) and continued pretraining (20B tokens): LoRA substantially underperforms full finetuning but better preserves out-of-domain abilities; full finetuning learns perturbations of rank 10 to 100 times typical LoRA ranks.
+  - s5-w3-l7: How supervised fine-tuning works (Forgetting results)
+  - s5-w3-l8: LoRA and QLoRA
+- **[LoRA Without Regret](https://thinkingmachines.ai/blog/lora/)**, John Schulman and colleagues (Thinking Machines Lab). License: Copyright Thinking Machines Lab. September 29, 2025. LoRA matched full fine-tuning on small-to-medium SFT datasets and in RL; underperformed when the dataset exceeded adapter capacity; all layers (especially MLP) beat attention-only; optimal LoRA learning rate about 10x full fine-tuning; less tolerant of large batches.
+  - s5-w3-l7: How supervised fine-tuning works (Learning rate ratio between LoRA and full fine-tuning)
+  - s5-w3-l8: LoRA and QLoRA
+- **[LoRA: Low-Rank Adaptation of Large Language Models (Hu et al., 2021)](https://arxiv.org/abs/2106.09685)**, Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen. License: arXiv non-exclusive license. h = W0 x + BAx, A Gaussian and B zero at init, update scaled by alpha/r (alpha set to the first r tried, not tuned). Adapted only attention weights; GPT-3 175B checkpoint 350GB to 35MB with r=4 on Wq and Wv; training VRAM 1.2TB to 350GB; r=1 sufficed for Wq and Wv on their datasets; Delta W amplifies directions not emphasized in W (factor about 21.5 at r=4); merge W0 + BA for no inference latency.
+  - s5-w3-l8: LoRA and QLoRA (Sections 4 (method), 4.2 (practical benefits), 7 (understanding the low-rank updates))
 - **[Lost in the Middle: How Language Models Use Long Contexts (Liu et al., 2023)](https://arxiv.org/abs/2307.03172)**, Liu et al.. License: arXiv non-exclusive license.
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
   - s2-w2-l5: Chunking strategies
@@ -577,109 +1196,307 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w1-l1: How LLMs work, for people who build with them
   - s1-w2-l4: Prompt fundamentals: write the spec a new colleague would need
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items
+- **[MacBook Pro technical specifications](https://www.apple.com/macbook-pro/specs/)**, Apple. License: Copyright Apple. Read 2026-11-11 for M5 Max unified memory sizes and memory bandwidth.
+  - s5-w1-l3: Running models locally
+- **[Machines of Loving Grace: How AI Could Transform the World for the Better (October 2024)](https://www.darioamodei.com/essay/machines-of-loving-grace)**, Dario Amodei. License: Copyright the author.
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
 - **[Maintaining MTEB: Towards Long Term Usability and Reproducibility of Embedding Benchmarks (Chung et al., 2025)](https://arxiv.org/abs/2506.21182)**, Isaac Chung, Imene Kerboua, Marton Kardos, Roman Solomatin, Kenneth Enevoldsen. License: CC BY 4.0. Section 5.1 defines the zero-shot score and notes top legacy-MTEB models trained on benchmark tasks.
   - s2-w1-l2: Choosing and testing an embedding model (Section 5.1, assessing zero-shot levels)
+- **[Manage costs effectively (Claude Code docs)](https://code.claude.com/docs/en/costs)**, Anthropic. License: Copyright Anthropic.
+  - e2-w1-l3: Choosing the agent and the model
 - **[Managing your personal access tokens (GitHub Docs)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)**, GitHub. License: CC BY 4.0.
-  - Not yet cited by a lesson
+  - s4-project: An agent that automates a PM workflow
+  - s4-w5-l13: Project week: designing the PM workflow agent
 - **[Matryoshka Representation Learning (Kusupati et al., 2022)](https://arxiv.org/abs/2205.13147)**, Aditya Kusupati, Gantavya Bhatt, Aniket Rege, et al.. License: arXiv non-exclusive license.
   - s2-w1-l2: Choosing and testing an embedding model
+- **[MCP Inspector (MCP docs)](https://modelcontextprotocol.io/docs/tools/inspector)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l8: Building an MCP server (Quickstart; web, CLI, and TUI clients; secret storage warning)
+- **[MCP Python SDK (official repository)](https://github.com/modelcontextprotocol/python-sdk)**, Model Context Protocol. License: [MIT](https://github.com/modelcontextprotocol/python-sdk/blob/main/LICENSE). Lab and lesson code is written fresh against the documented MCPServer API, not copied.
+  - s4-w3-l8: Building an MCP server (README: installation, a server in 15 lines)
+- **[MCP Python SDK documentation (get started, testing, connect to a real host, handling errors)](https://py.sdk.modelcontextprotocol.io/)**, Model Context Protocol. License: [MIT](https://github.com/modelcontextprotocol/python-sdk/blob/main/LICENSE).
+  - s4-w3-l8: Building an MCP server (Get started (testing, connect to a real host); Servers (tools, resources, prompts, handling errors))
+- **[MCP Python SDK v2.0.0 release notes (July 2026)](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.0.0)**, Model Context Protocol. License: [MIT](https://github.com/modelcontextprotocol/python-sdk/blob/main/LICENSE).
+  - s4-w3-l7: Why MCP, and how it works
+  - s4-w3-l8: Building an MCP server (FastMCP is now MCPServer; hardened stdio)
+- **[MCP Safety Audit: LLMs with the Model Context Protocol Allow Major Security Exploits (Radosevich and Halloran, 2025)](https://arxiv.org/abs/2504.03767)**, Brandon Radosevich, John Halloran. License: arXiv non-exclusive license.
+  - s4-w3-l9: Testing and securing MCP servers (Abstract)
+- **[MCP Security Notification: Tool Poisoning Attacks (Invariant Labs, April 2025)](https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks)**, Luca Beurer-Kellner and Marc Fischer, Invariant Labs. License: Copyright Invariant Labs.
+  - s4-w3-l9: Testing and securing MCP servers
+- **[MCP servers with the Gemini CLI (Gemini CLI docs)](https://geminicli.com/docs/tools/mcp-server/)**, Google. License: Copyright Google.
+  - s4-w3-l7: Why MCP, and how it works
+  - s4-w3-l9: Testing and securing MCP servers (trust setting; includeTools and excludeTools)
+- **[MCP specification 2026-07-28, Architecture (hosts, clients, servers, design principles)](https://modelcontextprotocol.io/specification/2026-07-28/architecture)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works (Core components; Design principles; Capability negotiation)
+- **[MCP specification 2026-07-28, Authorization (OAuth 2.1 for HTTP transports)](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l9: Testing and securing MCP servers (Protocol requirements; roles; access token usage; token handling)
+- **[MCP specification 2026-07-28, Client features, Elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works (Form mode and URL mode)
+  - s4-w3-l9: Testing and securing MCP servers (Security warnings for form and URL mode)
+- **[MCP specification 2026-07-28, Client features, Roots (deprecated in this revision)](https://modelcontextprotocol.io/specification/2026-07-28/client/roots)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works
+- **[MCP specification 2026-07-28, Client features, Sampling (deprecated in this revision)](https://modelcontextprotocol.io/specification/2026-07-28/client/sampling)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works
+- **[MCP specification 2026-07-28, Server features, Prompts](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works (User interaction model)
+  - s4-w3-l8: Building an MCP server
+- **[MCP specification 2026-07-28, Server features, Resources](https://modelcontextprotocol.io/specification/2026-07-28/server/resources)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works (User interaction model)
+  - s4-w3-l8: Building an MCP server
+- **[MCP specification 2026-07-28, Server features, Tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works (Error handling)
+  - s4-w3-l8: Building an MCP server (Tool definition; annotations; error handling)
+  - s4-w3-l9: Testing and securing MCP servers (Security considerations; annotations warning)
+- **[MCP specification 2026-07-28, Transports (stdio and Streamable HTTP)](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works
+  - s4-w3-l9: Testing and securing MCP servers (Streamable HTTP security warning (Origin validation, localhost binding))
+- **[MCP specification 2026-07-28: Key changes (stateless requests, server/discover, deprecations)](https://modelcontextprotocol.io/specification/2026-07-28/changelog)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works (Major changes; Deprecated)
+  - s4-w3-l9: Testing and securing MCP servers (Deprecated: dynamic client registration)
 - **[Measuring AI Ability to Complete Long Software Tasks (Kwa et al., 2025)](https://arxiv.org/abs/2503.14499)**, Thomas Kwa, Ben West, and colleagues (METR). License: arXiv non-exclusive license. The 50% task-completion time horizon; doubling roughly every seven months since 2019 on their task suite.
   - s4-w1-l3: When not to build an agent
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
+  - e2-w1-l2: Measuring coding agents
+  - e2-w1-l3: Choosing the agent and the model
+  - e2-w3-l9: When not to delegate, and building judgment
 - **[Measuring AI Ability to Complete Long Tasks (METR blog post)](https://metr.org/blog/2025-03-19-measuring-ai-ability-to-complete-long-tasks/)**, METR. License: Copyright METR. Published 2025-03-19. Near-100% success under about 4 minutes, under 10% over about 4 hours, for models at the time; caveats on messiness and external validity.
   - s4-w1-l3: When not to build an agent
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e2-w3-l9: When not to delegate, and building judgment
+- **[Measuring Massive Multitask Language Understanding (Hendrycks et al., 2020)](https://arxiv.org/abs/2009.03300)**, Dan Hendrycks, Collin Burns, Steven Basart, et al.. License: arXiv non-exclusive license.
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
 - **[Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity (Becker et al., 2025)](https://arxiv.org/abs/2507.09089)**, Joel Becker, Nate Rush, and colleagues (METR). License: arXiv non-exclusive license. RCT, 16 developers, 246 tasks; AI allowed increased completion time by 19% while developers believed it saved 20%. METR has since published an update on later tools.
   - s4-w1-l3: When not to build an agent
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+  - e2-w1-l2: Measuring coding agents
+  - e2-w3-l9: When not to delegate, and building judgment
+- **[Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity (METR blog)](https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/)**, METR. License: Copyright METR.
+  - e2-w1-l2: Measuring coding agents
+- **[Measuring the Intrinsic Dimension of Objective Landscapes (Li et al., 2018)](https://arxiv.org/abs/1804.08838)**, Chunyuan Li, Heerad Farkhoor, Rosanne Liu, Jason Yosinski. License: arXiv non-exclusive license. Defines intrinsic dimension by training in a random low-dimensional subspace; the method Aghajanyan et al. build on.
+  - s5-w3-l8: LoRA and QLoRA
 - **[Memory tool (Claude docs)](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool)**, Anthropic. License: Copyright Anthropic. memory_20250818, client-side, /memories directory, path traversal protection, multisession pattern.
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
 - **[Meta Llama models on Hugging Face](https://huggingface.co/meta-llama)**, Meta. License: Llama community licenses (per model).
+  - s5-w1-l1: Open weights, licenses, and the landscape
+  - s5-w5-l13: Project week: planning the fine-tuning project
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
+- **[Meta models on Hugging Face (Muse Spark Open, Muse Glimmer)](https://huggingface.co/meta-models)**, Meta. License: Per model.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Meta's LLaMa license is still not Open Source](https://opensource.org/blog/metas-llama-license-is-still-not-open-source)**, Jordan Maris, Open Source Initiative. License: CC BY 4.0. Published 2025-02-18.
+  - s5-w1-l1: Open weights, licenses, and the landscape
 - **[Metadata filtering (Chroma docs)](https://docs.trychroma.com/docs/querying-collections/metadata-filtering)**, Chroma. License: Copyright Chroma (library is Apache 2.0).
   - s2-w2-l6: Vector stores in practice
+- **[microsoft/Phi-4-reasoning-vision-15B model card](https://huggingface.co/microsoft/Phi-4-reasoning-vision-15B)**, Microsoft. License: MIT.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Migrating from Gemini CLI (Antigravity CLI docs)](https://antigravity.google/docs/cli/gcli-migration)**, Google. License: Copyright Google. Antigravity CLI (agy) keeps Gemini CLI constructs; reads GEMINI.md and AGENTS.md; skills, MCP config, plugin import.
+  - e2-w1-l1: Inside a coding agent
+  - e2-w2-l4: Project memory and instructions
+  - e2-w2-l5: Extending the agent
 - **[MinHash LSH (datasketch documentation)](https://ekzhu.com/datasketch/lsh.html)**, Eric Zhu. License: MIT.
+  - s5-w2-l6: Data quality, splits, and contamination
   - s2-w2-l4: Ingestion: getting text out of real documents
+- **[MiniMax-M3 model card and MiniMax Community License](https://huggingface.co/MiniMaxAI/MiniMax-M3)**, MiniMax. License: Copyright MiniMax.
+  - s5-w1-l1: Open weights, licenses, and the landscape (License section)
 - **[Mistral AI documentation](https://docs.mistral.ai/)**, Mistral AI. License: Copyright Mistral AI.
+  - s5-w1-l1: Open weights, licenses, and the landscape
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+- **[Mistral Ecosystem Open-Weight License (LICENSE file, Mistral Large 4)](https://huggingface.co/mistralai/Mistral-Large-4-1T-A52B/blob/main/LICENSE)**, Mistral AI. License: Copyright Mistral AI.
+  - s5-w1-l1: Open weights, licenses, and the landscape
 - **[Mitigate jailbreaks and prompt injections (Claude docs)](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/mitigate-jailbreaks)**, Anthropic. License: Copyright Anthropic.
   - s1-w2-l6: Iterating on prompts like an engineer (Indirect prompt injection)
 - **[Mitigate jailbreaks and prompt injections (Claude docs)](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/mitigate-jailbreaks)**, Anthropic. License: Copyright Anthropic.
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s4-w4-l11: Prompt injection and the lethal trifecta
   - s2-w4-l10: Generating grounded answers
   - s1-w4-l11: Designing tools and gating side effects (Indirect prompt injection)
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items
 - **[Mitigating prompt injection attacks with a layered defense strategy](https://security.googleblog.com/2025/06/mitigating-prompt-injection-attacks.html)**, Google GenAI Security Team. License: Copyright Google. Published 2025-06-13. Classifiers, security thought reinforcement, markdown sanitization and URL redaction, user confirmation.
-  - Not yet cited by a lesson
+  - s4-w4-l11: Prompt injection and the lethal trifecta
 - **[Mitigating the risk of prompt injections in browser use](https://www.anthropic.com/research/prompt-injection-defenses)**, Anthropic. License: Copyright Anthropic. Published 2025-11-24. Training, classifiers, and red teaming; a 1% attack success rate still represents meaningful risk.
-  - Not yet cited by a lesson
+  - s4-w4-l11: Prompt injection and the lethal trifecta
+- **[MITRE ATLAS (Adversarial Threat Landscape for AI Systems)](https://atlas.mitre.org/)**, MITRE. License: Copyright MITRE (see site terms).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[mlx-community (Hugging Face organization)](https://huggingface.co/mlx-community)**, MLX community. License: Per model.
+  - s5-w1-l3: Running models locally
+- **[mlx-lm (LLM inference and fine-tuning with MLX)](https://github.com/ml-explore/mlx-lm)**, Apple machine learning research (ml-explore). License: [MIT](https://github.com/ml-explore/mlx-lm/blob/main/LICENSE).
+  - s5-w1-l3: Running models locally (README; generate.py GenerationResponse)
+  - s5-w3-l9: Hands-on with PEFT and TRL
+- **[mlx-lm HTTP server (SERVER.md)](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/SERVER.md)**, Apple machine learning research (ml-explore). License: [MIT](https://github.com/ml-explore/mlx-lm/blob/main/LICENSE).
+  - s5-w1-l3: Running models locally
+- **[MLX: an array framework for Apple silicon](https://github.com/ml-explore/mlx)**, Apple machine learning research (ml-explore). License: [MIT](https://github.com/ml-explore/mlx/blob/main/LICENSE).
+  - s5-w1-l3: Running models locally
+- **[mlx.core.quantize (MLX docs)](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.quantize.html)**, Apple machine learning research (ml-explore). License: [MIT](https://github.com/ml-explore/mlx/blob/main/LICENSE). Modes affine (default; group size 64, 4 bits, per-group scale and bias), mxfp4, mxfp8, nvfp4. NF4 is not one of them.
+  - s5-w3-l8: LoRA and QLoRA
 - **[MMTEB: Massive Multilingual Text Embedding Benchmark (Enevoldsen et al., 2025)](https://arxiv.org/abs/2502.13595)**, Kenneth Enevoldsen, Isaac Chung, Imene Kerboua, Márton Kardos, et al.. License: arXiv non-exclusive license.
   - s2-w1-l2: Choosing and testing an embedding model
 - **[Model Cards (Hugging Face Hub docs)](https://huggingface.co/docs/hub/model-cards)**, Hugging Face. License: Copyright Hugging Face. Card contents, license and base_model metadata (adapters, fine-tunes, quantized versions), eval results.
-  - Not yet cited by a lesson
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w1-l2: The Hugging Face Hub and transformers (What are model cards; model card metadata)
+  - s5-w5-l13: Project week: planning the fine-tuning project (Card contents; license and base_model metadata)
 - **[Model Cards for Model Reporting (Mitchell et al., 2019)](https://arxiv.org/abs/1810.03993)**, Margaret Mitchell et al.. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals (Intended use, out-of-scope uses, caveats)
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w1-l2: The Hugging Face Hub and transformers
+  - s5-w5-l13: Project week: planning the fine-tuning project
+  - capstone-w6-l2: Writing it up and defending it (Intended use, out-of-scope uses, caveats)
+- **[Model configuration (Claude Code docs)](https://code.claude.com/docs/en/model-config)**, Anthropic. License: Copyright Anthropic. Aliases (opus, sonnet, haiku, fable, opusplan), default model per plan, effort levels low to max, ultrathink. Fast-moving; checked 2026-11-11.
+  - e2-w1-l3: Choosing the agent and the model (Model aliases, defaults, effort levels)
+  - e2-w2-l6: Planning and decomposition (opusplan)
+- **[Model Context Protocol (MCP): Landscape, Security Threats, and Future Research Directions (Hou et al., 2025)](https://arxiv.org/abs/2503.23278)**, Xinyi Hou, Yanjie Zhao, Shenao Wang, Haoyu Wang. License: arXiv non-exclusive license.
+  - s4-w3-l9: Testing and securing MCP servers
+- **[Model Context Protocol has prompt injection security problems (April 2025)](https://simonwillison.net/2025/Apr/9/mcp-prompt-injection/)**, Simon Willison. License: Copyright Simon Willison.
+  - s4-w3-l9: Testing and securing MCP servers
 - **[Model Context Protocol specification (2025-06-18), Security best practices](https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
-  - Not yet cited by a lesson
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied (Local server compromise, token passthrough, scope minimization)
+  - s4-w3-l9: Testing and securing MCP servers (Same page at its 2025-06-18 location)
+  - s4-w4-l11: Prompt injection and the lethal trifecta
 - **[Model Context Protocol specification (2025-06-18), Server features, Tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-project: An agent that automates a PM workflow
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (User interaction model)
+  - s4-w5-l13: Project week: designing the PM workflow agent
   - s1-w4-l11: Designing tools and gating side effects (User interaction model; Security considerations)
+- **[Model Context Protocol specification, revision 2026-07-28 (overview, security and trust principles)](https://modelcontextprotocol.io/specification/2026-07-28)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works (Overview; Key details; Security and trust and safety)
+  - s4-w3-l9: Testing and securing MCP servers (Security and trust and safety: key principles)
+- **[Model deprecations (Claude API docs)](https://platform.claude.com/docs/en/about-claude/model-deprecations)**, Anthropic. License: Copyright Anthropic. Checked 2026-11-11. claude-3-haiku-20240307 retired on the Claude API on April 20, 2026.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
+- **[Model lifecycle (Legacy), Amazon Bedrock User Guide](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html)**, Amazon Web Services. License: Copyright Amazon Web Services. Checked 2026-11-11. Claude 3 Haiku entered Legacy on March 10, 2026 and reached EOL on September 10, 2026 in us-west-2 and other Regions. Legacy models accept no new fine-tuning jobs.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't (Claude 3 Haiku; customized models and lifecycle behavior)
+- **[Model optimization (OpenAI API docs)](https://developers.openai.com/api/docs/guides/model-optimization)**, OpenAI. License: Copyright OpenAI. Prompting first; SFT, DPO, and vision fine-tuning; shorter prompts and smaller models as cost and latency motives.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
 - **[Models (OpenAI API docs)](https://developers.openai.com/api/docs/models)**, OpenAI. License: Copyright OpenAI.
+  - e3-project: Your model selection playbook and a claim brief
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
+- **[Models (OpenAI Codex docs)](https://developers.openai.com/codex/models)**, OpenAI. License: Copyright OpenAI. Fast-moving. Checked 2026-11-11; lists a most-capable model, a lower-cost near peer, and efficient models, plus reasoning effort levels.
+  - e2-w1-l3: Choosing the agent and the model
+- **[Models and pricing (xAI docs)](https://docs.x.ai/docs/models)**, xAI. License: Copyright xAI. Fast-moving. Checked 2026-11-11; the page recommends its flagship Grok model for code.
+  - e2-w1-l3: Choosing the agent and the model
 - **[Models and pricing (xAI docs)](https://docs.x.ai/docs/models)**, xAI. License: Copyright xAI.
+  - e3-project: Your model selection playbook and a claim brief
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
 - **[Models overview and pricing (Claude docs)](https://platform.claude.com/docs/en/about-claude/models/overview)**, Anthropic. License: Copyright Anthropic.
   - s3-w3-l8: Regression testing and CI gates (Model ids and aliases)
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
+- **[Moderation (OpenAI API docs)](https://developers.openai.com/api/docs/guides/moderation)**, OpenAI. License: Copyright OpenAI.
+  - s6-w4-l10: Guardrails for inputs and outputs (Models, categories, scores as signals, streaming)
+- **[Monitoring Reasoning Models for Misbehavior and the Risks of Promoting Obfuscation (Baker et al., OpenAI, 2025)](https://arxiv.org/abs/2503.11926)**, Bowen Baker, Joost Huizinga, Leo Gao, et al. (OpenAI). License: arXiv non-exclusive license.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+- **[moonshotai/Kimi-K3.1-Pro model card](https://huggingface.co/moonshotai/Kimi-K3.1-Pro)**, Moonshot AI. License: Kimi K3.1-Pro License (custom).
+  - s5-w1-l1: Open weights, licenses, and the landscape
 - **[MTEB Leaderboard (Hugging Face Space)](https://huggingface.co/spaces/mteb/leaderboard)**, MTEB maintainers. License: Apache 2.0 (code); results contributed by model authors.
   - s2-w1-l2: Choosing and testing an embedding model
 - **[MTEB: Massive Text Embedding Benchmark (Muennighoff et al., 2022)](https://arxiv.org/abs/2210.07316)**, Niklas Muennighoff, Nouamane Tazi, Loïc Magne, Nils Reimers. License: arXiv non-exclusive license.
   - s2-w1-l2: Choosing and testing an embedding model
 - **[Multitenancy (Qdrant documentation)](https://qdrant.tech/documentation/guides/multiple-partitions/)**, Qdrant. License: Copyright Qdrant (engine is Apache 2.0).
   - s2-w2-l6: Vector stores in practice
+- **[Muse Spark Open](https://research.meta.ai/blog/muse-spark-open)**, Meta. License: Copyright Meta.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Natural Emergent Misalignment from Reward Hacking in Production RL (MacDiarmid et al., Anthropic, November 2025)](https://www.anthropic.com/research/emergent-misalignment-reward-hacking)**, Monte MacDiarmid, Evan Hubinger, et al. (Anthropic). License: Copyright Anthropic.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+- **[NeMo Guardrails documentation](https://docs.nvidia.com/nemo/guardrails/latest/index.html)**, NVIDIA. License: Apache 2.0 (library); docs copyright NVIDIA.
+  - s6-w4-l10: Guardrails for inputs and outputs
+- **[NeMo Guardrails: A Toolkit for Controllable and Safe LLM Applications with Programmable Rails](https://arxiv.org/abs/2310.10501)**, Traian Rebedea et al. (NVIDIA). License: arXiv (author copyright).
+  - s6-w4-l10: Guardrails for inputs and outputs
+- **[Neural Machine Translation of Rare Words with Subword Units (Sennrich, Haddow, and Birch, 2016)](https://arxiv.org/abs/1508.07909)**, Rico Sennrich, Barry Haddow, Alexandra Birch. License: arXiv non-exclusive license.
+  - e1-w4-l8: Let's build the GPT tokenizer: bytes, BPE, and why tokens explain odd behavior
+- **[New York's Frontier AI Law Gets a California Makeover, With Some Key Differences (31 March 2026)](https://www.cooley.com/news/insight/2026/2026-03-31-new-yorks-frontier-ai-law-gets-a-california-makeover-with-some-key-differences)**, Cooley LLP. License: Copyright Cooley LLP. Law-firm analysis used for the amended RAISE Act's thresholds and dates; not legal advice.
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
 - **[Nomic Embed: Training a Reproducible Long Context Text Embedder (Nussbaum et al., 2024)](https://arxiv.org/abs/2402.01613)**, Zach Nussbaum, John X. Morris, Brandon Duderstadt, Andriy Mulyar. License: arXiv non-exclusive license.
   - s2-w1-l2: Choosing and testing an embedding model
 - **[nomic-ai/nomic-embed-text-v1.5 (model card)](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5)**, Nomic AI. License: Apache 2.0.
   - s2-w1-l2: Choosing and testing an embedding model (Task prefixes; Matryoshka dimensions)
 - **[Not what you've signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection (Greshake et al., 2023)](https://arxiv.org/abs/2302.12173)**, Kai Greshake, Sahar Abdelnabi, Shailesh Mishra, Christoph Endres, Thorsten Holz, Mario Fritz. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s4-w4-l11: Prompt injection and the lethal trifecta
+  - e2-w3-l8: Reviewing agent code
 - **[Note on the Sampling Error of the Difference Between Correlated Proportions or Percentages (McNemar, 1947)](https://doi.org/10.1007/BF02295996)**, Quinn McNemar. License: Copyright The Psychometric Society. Psychometrika 12(2), 153 to 157. The origin of McNemar's test.
   - s3-w3-l7: Statistics for comparing models and prompts
+- **[NVIDIA Nemotron 3.5 Super VL 120B-A12B model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16)**, NVIDIA. License: OpenMDW-1.1.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Ollama API documentation](https://docs.ollama.com/api)**, Ollama. License: Copyright Ollama.
+  - s5-w1-l3: Running models locally
+- **[Ollama API reference (docs/api.md)](https://github.com/ollama/ollama/blob/main/docs/api.md)**, Ollama. License: [MIT](https://github.com/ollama/ollama/blob/main/LICENSE). Gives the tokens-per-second formula from eval_count and eval_duration (nanoseconds).
+  - s5-w1-l3: Running models locally (Generate a completion; response fields and tokens per second)
+- **[Ollama FAQ](https://docs.ollama.com/faq)**, Ollama. License: Copyright Ollama.
+  - s5-w1-l3: Running models locally (KV cache type; parallel requests)
+- **[On the Biology of a Large Language Model (Lindsey et al., 2025)](https://transformer-circuits.pub/2025/attribution-graphs/biology.html)**, Jack Lindsey, Wes Gurnee, Emmanuel Ameisen, et al. (Anthropic). License: Copyright Anthropic.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+- **[Open weights models leaderboard (Artificial Analysis)](https://artificialanalysis.ai/models/open-source)**, Artificial Analysis. License: Copyright Artificial Analysis.
+  - e3-w1-l3: Which model for which job, with evidence
 - **[OpenAI Agents SDK (Python) documentation](https://openai.github.io/openai-agents-python/)**, OpenAI. License: Copyright OpenAI. Agents, handoffs and agents-as-tools, guardrails, sessions, tracing. Package openai-agents.
-  - Not yet cited by a lesson
+  - s4-w2-l6: Agent frameworks and when to use them
 - **[OpenAI API documentation](https://platform.openai.com/docs)**, OpenAI. License: Copyright OpenAI.
   - Not yet cited by a lesson
 - **[OpenAI API, Data controls in the OpenAI platform](https://developers.openai.com/api/docs/guides/your-data)**, OpenAI. License: Copyright OpenAI. Read 2026-11-11. No training on API data by default; abuse monitoring logs up to 30 days; ZDR and Modified Abuse Monitoring need approval; Responses store data at least 30 days by default; some endpoints not ZDR-eligible.
-  - Not yet cited by a lesson
+  - e3-project: Your model selection playbook and a claim brief
+  - s6-w3-l8: Logging, privacy, and retention
+  - e3-w1-l3: Which model for which job, with evidence
 - **[OpenAI compatibility (Gemini API)](https://aistudio.google.com/docs/openai)**, Google. License: Copyright Google (content CC BY 4.0, code Apache 2.0 unless noted).
   - s1-w1-l3: Tokens, cost, latency, and choosing a model (Search grounding note)
 - **[OpenAI compatibility (Ollama docs)](https://docs.ollama.com/api/openai-compatibility)**, Ollama. License: Copyright Ollama.
-  - Not yet cited by a lesson
+  - s5-w1-l3: Running models locally
+  - s5-w4-l11: Serving open models
+- **[OpenAI compatibility endpoints (LM Studio docs)](https://lmstudio.ai/docs/developer/openai-compat)**, LM Studio. License: Copyright Element Labs.
+  - s5-w1-l3: Running models locally
 - **[OpenAI Evals (framework and registry)](https://github.com/openai/evals)**, OpenAI. License: MIT (per the repository README).
   - s3-w3-l8: Regression testing and CI gates
+- **[OpenAI Services Agreement (online version v.010126)](https://cdn.openai.com/osa/openai-services-agreement.pdf)**, OpenAI. License: Copyright OpenAI. Section 3.3(e): no using Output to develop AI models that compete with OpenAI, except a Permitted Exception (internal classifiers and embeddings not distributed to third parties, and fine-tuning on OpenAI's own services).
+  - s5-w2-l5: Building a fine-tuning dataset (Section 3.3(e) and the Permitted Exception definition)
 - **[OpenAI-compatible server (vLLM docs)](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html)**, vLLM project. License: Apache 2.0 (code); docs copyright the vLLM project.
-  - Not yet cited by a lesson
+  - s5-w4-l11: Serving open models
+- **[openai/gpt-oss-120b model card](https://huggingface.co/openai/gpt-oss-120b)**, OpenAI. License: Apache 2.0.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[OpenMDW License 1.1](https://openmdw.ai/license/1-1/)**, OpenMDW. License: License text (public). Used by NVIDIA Nemotron 3.5 models.
+  - s5-w1-l1: Open weights, licenses, and the landscape
 - **[OpenTelemetry documentation, Python instrumentation](https://opentelemetry.io/docs/languages/python/instrumentation/)**, OpenTelemetry Authors. License: CC BY 4.0. Read 2026-11-11. TracerProvider, span processors, ConsoleSpanExporter, attributes, events, status.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications (Manual instrumentation)
 - **[OpenTelemetry documentation, Sampling (concepts)](https://opentelemetry.io/docs/concepts/sampling/)**, OpenTelemetry Authors. License: CC BY 4.0. Read 2026-11-11. Head versus tail sampling; head sampling cannot guarantee keeping every error trace.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications (Head and tail sampling)
 - **[OpenTelemetry documentation, Traces (concepts)](https://opentelemetry.io/docs/concepts/signals/traces/)**, OpenTelemetry Authors. License: [CC BY 4.0](https://github.com/open-telemetry/opentelemetry.io/blob/main/LICENSE). Read 2026-11-11. Trace, span, span context, attributes, events, links, status, kind.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications
 - **[OpenTelemetry semantic conventions for generative AI (semantic-conventions-genai repository)](https://github.com/open-telemetry/semantic-conventions-genai)**, OpenTelemetry Authors. License: Apache 2.0. Read 2026-11-11. Status Development. Inference span name "{gen_ai.operation.name} {gen_ai.request.model}", tool span "execute_tool {gen_ai.tool.name}", content attributes are opt-in and off by default, three content capture patterns (none, on attributes, external storage with references).
-  - Not yet cited by a lesson
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
+  - s6-w3-l7: Tracing LLM applications (Client inference spans, execute tool spans, capturing content)
+  - s6-w3-l8: Logging, privacy, and retention (Capturing instructions, inputs, and outputs)
 - **[OpenTelemetry semantic conventions v1.42.0 release notes](https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.42.0)**, OpenTelemetry Authors. License: Apache 2.0. June 2026. gen_ai.* conventions deprecated in the core repository and moved to semantic-conventions-genai.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications
 - **[OpenTelemetry tracing for the Claude API](https://platform.claude.com/docs/en/manage-claude/opentelemetry)**, Anthropic. License: Copyright Anthropic. Read 2026-11-11. Beta. SDK tracing versus API tracing, content modes (metadata only by default), content limits, counting tokens once (CLIENT versus SERVER spans), GenAI semantic convention attributes.
-  - Not yet cited by a lesson
+  - s6-w3-l7: Tracing LLM applications (SDK versus API tracing, content modes, counting tokens)
+  - s6-w3-l8: Logging, privacy, and retention (Content modes)
+  - s6-w3-l9: Dashboards, alerts, and online evaluation (Exported spans are best effort)
 - **[Optimizing for cost and intelligence (Claude docs)](https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence)**, Anthropic. License: Copyright Anthropic. Free wins versus tradeoffs, cost per completed task, measured caching, batch, effort, and model results, and the advice to tune one model before adding a second. Figures are Anthropic's internal runs; read 2026-11-11.
-  - Not yet cited by a lesson
+  - s6-w2-l4: Cost anatomy and budgets (Cost per completed task, pricing the tail, max_tokens as a backstop, budgets and spend limits)
+  - s6-w2-l5: Caching, batching, and routing (Measured caching and effort results, re-running failures, multimodel strategies)
+- **[Output styles (Claude Code docs)](https://code.claude.com/docs/en/output-styles)**, Anthropic. License: Copyright Anthropic. Built-in Proactive, Concise, Explanatory, and Learning styles; Learning leaves TODO(human) pieces for you to write.
+  - e2-w3-l9: When not to delegate, and building judgment
+- **[Overcoming catastrophic forgetting in neural networks (Kirkpatrick et al., 2017)](https://arxiv.org/abs/1612.00796)**, James Kirkpatrick, Razvan Pascanu, and colleagues (DeepMind). License: arXiv non-exclusive license. Published in PNAS 2017. Elastic weight consolidation; a standard reference for catastrophic forgetting.
+  - s5-w3-l7: How supervised fine-tuning works
 - **[OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)**, OWASP Cheat Sheet Series. License: CC BY-SA 4.0. Read 2026-11-11. Data to exclude from logs; masking, hashing, pseudonymization; access control and retention of logs.
+  - s6-w3-l8: Logging, privacy, and retention (Data to exclude; protection and retention of logs)
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (Which events to log; data to exclude)
+- **[OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)**, OWASP Foundation. License: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Centralize, rotate, least privilege, keep secrets out of code, images, and CI logs, scan for leaks, and caution about environment variables being visible to processes and dumps.
+  - s6-w1-l3: Deploying an LLM app
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s6-w4-l12: Launch checklist and incident response
+  - e2-w3-l8: Reviewing agent code
 - **[OWASP Top 10 for LLM Applications](https://genai.owasp.org/llm-top-10/)**, OWASP GenAI Security Project. License: CC BY-SA 4.0. Summarized rather than adapted, because ShareAlike (without NC) is not compatible with this site's NC-SA license for derivatives.
+  - s6-project: Take your best project live
+  - s6-w1-l3: Deploying an LLM app
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied (2025 list)
   - s2-w3-l8: Hybrid search and rank fusion
   - s1-w2-l6: Iterating on prompts like an engineer
   - s1-w4-l11: Designing tools and gating side effects
 - **[Parallel tool use (Claude docs)](https://platform.claude.com/docs/en/agents-and-tools/tool-use/parallel-tool-use)**, Anthropic. License: Copyright Anthropic.
+  - s6-w2-l6: Latency engineering
   - s4-w2-l4: The agent loop and tools for long tasks
   - s1-w4-l10: The tool-use loop (Execution semantics; Troubleshooting)
   - s1-w4-l11: Designing tools and gating side effects (Execution semantics)
@@ -689,38 +1506,76 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items
 - **[PDF support (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/pdf-support)**, Anthropic. License: Copyright Anthropic.
   - s2-w2-l4: Ingestion: getting text out of real documents (PDF requirements, how PDF support works, cost estimation, best practices)
+- **[Performing a Project Premortem (Harvard Business Review, September 2007)](https://hbr.org/2007/09/performing-a-project-premortem)**, Gary Klein. License: Copyright Harvard Business Publishing. Assume the project has already failed and have each team member write down plausible reasons why, before the work starts.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
+  - capstone-w1-l1: Scoping a capstone that proves something
+  - capstone-w6-l2: Writing it up and defending it
 - **[Permission policies (Claude Managed Agents docs)](https://platform.claude.com/docs/en/managed-agents/permission-policies)**, Anthropic. License: Copyright Anthropic. always_allow, always_ask, auto; tool confirmation events; auto can run, deny, or pause a call.
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing
 - **[Persistence (LangGraph docs)](https://docs.langchain.com/oss/python/langgraph/persistence)**, LangChain. License: Copyright LangChain.
-  - Not yet cited by a lesson
+  - s4-w2-l6: Agent frameworks and when to use them
+- **[Pervasive Label Errors in Test Sets Destabilize Machine Learning Benchmarks (Northcutt et al., NeurIPS 2021)](https://arxiv.org/abs/2103.14749)**, Curtis G. Northcutt, Anish Athalye, Jonas Mueller. License: arXiv non-exclusive license. At least 3.3 percent label errors on average across 10 test sets; corrected labels can flip model rankings.
+  - s5-w2-l6: Data quality, splits, and contamination
 - **[pgvector README (open-source vector similarity search for Postgres)](https://github.com/pgvector/pgvector)**, Andrew Kane and pgvector contributors. License: PostgreSQL License.
   - s2-w1-l3: Nearest-neighbor search at scale (Exact search by default; HNSW and IVFFlat index options)
   - s2-w2-l6: Vector stores in practice (Querying, indexing (HNSW and IVFFlat), filtering, iterative index scans, hybrid search)
+- **[Pickle scanning (Hugging Face Hub docs)](https://huggingface.co/docs/hub/security-pickle)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/hub-docs/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[Pickle scanning (Hugging Face Hub docs)](https://huggingface.co/docs/hub/security-pickle)**, Hugging Face. License: Apache 2.0 (docs repository).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[Pipeline (Transformers docs)](https://huggingface.co/docs/transformers/main/en/pipeline_tutorial)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/transformers/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[Postmortem Culture: Learning from Failure (Site Reliability Engineering, chapter 15)](https://sre.google/sre-book/postmortem-culture/)**, Google. License: CC BY-NC-ND 4.0.
+  - s6-project: Take your best project live
+  - s6-w4-l12: Launch checklist and incident response (Blameless postmortems, triggers, review)
 - **[Precise Zero-Shot Dense Retrieval without Relevance Labels (HyDE; Gao, Ma, Lin, Callan, 2022)](https://arxiv.org/abs/2212.10496)**, Luyu Gao, Xueguang Ma, Jimmy Lin, Jamie Callan. License: arXiv non-exclusive license.
   - s2-w3-l8: Hybrid search and rank fusion
+- **[Preparedness Framework, Version 2 (15 April 2025)](https://cdn.openai.com/pdf/18a02b5d-6b67-4cec-ab64-68cdfbddebcd/preparedness-framework-v2.pdf)**, OpenAI. License: Copyright OpenAI.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
 - **[Preserved thinking (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/preserved-thinking)**, Anthropic. License: Copyright Anthropic. The prefix check. Clearing or shortening an earlier tool_result on the client invalidates later thinking blocks; server-side context editing and compaction do not.
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
+- **[Presidio (open-source PII detection and anonymization)](https://github.com/data-privacy-stack/presidio)**, Presidio maintainers. License: MIT.
+  - s5-w2-l5: Building a fine-tuning dataset
 - **[Presidio documentation (PII identification and anonymization)](https://presidio.dataprivacystack.org/)**, Data Privacy Stack (originally Microsoft). License: MIT. Read 2026-11-11. NER plus regex, rules, checksums, and context; warns there is no guarantee it finds all sensitive information.
-  - Not yet cited by a lesson
+  - s6-w3-l8: Logging, privacy, and retention
+  - s6-w4-l10: Guardrails for inputs and outputs
 - **[Pricing (Claude docs)](https://platform.claude.com/docs/en/about-claude/pricing)**, Anthropic. License: Copyright Anthropic. Prices quoted in lessons are a snapshot from 2026-11-11.
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s6-w2-l4: Cost anatomy and budgets (Model pricing, cache multipliers, tool use system prompt tokens)
+  - s6-w2-l5: Caching, batching, and routing (Cache write and read multipliers, batch pricing)
+  - s6-w3-l9: Dashboards, alerts, and online evaluation
+  - s5-w1-l1: Open weights, licenses, and the landscape (Model pricing table, read 2026-11-11)
+  - s5-w4-l10: Benchmarking your model against a frontier model (Model pricing and batch discount)
+  - s5-w4-l11: Serving open models (Model pricing)
   - s4-w1-l2: Workflow patterns in code (Model pricing table, checked 2026-11-11)
   - s4-w1-l3: When not to build an agent (Model pricing table, checked 2026-11-11)
+  - s4-w4-l12: Evaluating agents
   - s3-w2-l5: LLM-as-judge (Model pricing and batch discount, read 2026-11-11)
   - s2-w4-l11: When RAG fails (Claude Opus 5.5 and Haiku 5.5 prices, read 2026-11-11)
   - s2-w4-l12: Designing the Q&A system (Model prices, read 2026-11-11)
   - s1-w1-l3: Tokens, cost, latency, and choosing a model (Model pricing, caching multipliers, batch, long context, data residency)
 - **[Pricing (OpenAI API docs)](https://developers.openai.com/api/docs/pricing)**, OpenAI. License: Copyright OpenAI. Snapshot read 2026-11-11.
+  - s6-w2-l5: Caching, batching, and routing
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
 - **[Pricing (Voyage AI docs)](https://docs.voyageai.com/docs/pricing)**, Voyage AI. License: Copyright Voyage AI. Embedding and reranker prices quoted in lesson 12 are a snapshot from 2026-11-11.
   - s2-w4-l12: Designing the Q&A system (Embedding and reranker prices, read 2026-11-11)
 - **[Product Quantization for Nearest Neighbor Search (Jégou, Douze, Schmid, IEEE TPAMI 2011)](https://inria.hal.science/inria-00514462)**, Hervé Jégou, Matthijs Douze, Cordelia Schmid. License: Copyright IEEE (author version on HAL).
   - s2-w1-l3: Nearest-neighbor search at scale
+- **[Project Gutenberg: Information About Robot Access to our Pages](https://www.gutenberg.org/policy/robot_access.html)**, Project Gutenberg. License: Project Gutenberg site terms. The website is for human users; automated access can get an IP blocked; use the mirroring options instead.
+  - e1-project: Train a tiny GPT on your own corpus
+- **[Project Gutenberg: Permission: How to Use Project Gutenberg eBooks](https://www.gutenberg.org/policy/permission.html)**, Project Gutenberg. License: Project Gutenberg site terms. Most eBooks are public domain in the US; PG follows US law and status can differ in other countries.
+  - e1-project: Train a tiny GPT on your own corpus
 - **[Prompt caching (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)**, Anthropic. License: Copyright Anthropic. Cache write and read multipliers, TTLs, minimum cacheable length. Read 2026-11-11.
   - s2-project: Q&A over a real document set
+  - s6-w2-l4: Cost anatomy and budgets (Usage fields; total input is the sum of the three input meters)
+  - s6-w2-l5: Caching, batching, and routing (Prefix order, breakpoints, minimum length, lifetimes, invalidation table, concurrency, isolation)
+  - s6-w2-l6: Latency engineering (Pre-warming; entries readable once the first response starts)
+  - s6-w3-l7: Tracing LLM applications (Usage fields)
   - s4-w2-l5: Context engineering: memory, compaction, and subagents
   - s2-w4-l11: When RAG fails (Cache write and read pricing multipliers, TTL, minimum length)
 - **[Prompt caching (OpenAI API docs)](https://developers.openai.com/api/docs/guides/prompt-caching)**, OpenAI. License: Copyright OpenAI. Read 2026-11-11.
-  - Not yet cited by a lesson
+  - s6-w2-l4: Cost anatomy and budgets (cached_tokens usage field)
+  - s6-w2-l5: Caching, batching, and routing
 - **[Prompt design strategies (Gemini API docs)](https://ai.google.dev/gemini-api/docs/prompting-strategies)**, Google. License: [Content CC BY 4.0, code Apache 2.0 (Google Developers site policies)](https://developers.google.com/terms/site-policies).
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w2-l4: Prompt fundamentals: write the spec a new colleague would need (Core prompting principles)
@@ -736,8 +1591,11 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w2-l5: Examples, reasoning, and chaining (When to prompt engineer)
   - s1-w2-l6: Iterating on prompts like an engineer (Before prompt engineering)
 - **[Prompt injection (series)](https://simonwillison.net/series/prompt-injection/)**, Simon Willison. License: Copyright Simon Willison.
+  - s4-w4-l11: Prompt injection and the lethal trifecta
   - s1-w2-l6: Iterating on prompts like an engineer
   - s1-w4-l11: Designing tools and gating side effects
+- **[Prompt Shields in Azure AI Content Safety](https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/jailbreak-detection)**, Microsoft. License: Copyright Microsoft (docs CC BY 4.0 where noted).
+  - s6-w4-l10: Guardrails for inputs and outputs (User prompt attacks and document attacks)
 - **[Promptfoo documentation (intro)](https://www.promptfoo.dev/docs/intro/)**, Promptfoo. License: [MIT (promptfoo repository); docs copyright Promptfoo](https://github.com/promptfoo/promptfoo/blob/main/LICENSE).
   - s3-w3-l8: Regression testing and CI gates
 - **[Prompting best practices (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)**, Anthropic. License: Copyright Anthropic. The living reference that the older per-technique pages (be clear and direct, multishot, chain of thought, chain prompts) now redirect to.
@@ -746,6 +1604,9 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w2-l4: Prompt fundamentals: write the spec a new colleague would need (General principles; Long context prompting; Control the format of responses; Migrating away from prefilled responses)
   - s1-w2-l5: Examples, reasoning, and chaining (Use examples effectively; Leverage thinking; Chain complex prompts)
   - s1-w2-l6: Iterating on prompts like an engineer (General principles (re-check techniques on your own evals))
+- **[Provide context with GEMINI.md files (Gemini CLI docs)](https://geminicli.com/docs/cli/gemini-md/)**, Google. License: Copyright Google. Global, workspace, and just-in-time subdirectory context files; context.fileName can include AGENTS.md. Banner (2026-11-11) says Gemini CLI was replaced by Antigravity CLI for unpaid and Google One users on 2026-06-18.
+  - e2-w1-l1: Inside a coding agent
+  - e2-w2-l4: Project memory and instructions
 - **[Pydantic documentation (Models, Fields, Validators)](https://pydantic.dev/docs/validation/latest/concepts/models/)**, Pydantic. License: MIT (code); documentation copyright Pydantic.
   - s3-w2-l4: Code-based graders (Models and validation)
   - s1-w3-l7: Why structure: schemas and validation (Models, Fields, strict and lax mode, validators)
@@ -755,15 +1616,35 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w3-l8: Structured outputs with the API
 - **[Pydantic documentation, Validation Errors](https://pydantic.dev/docs/validation/latest/errors/validation_errors/)**, Pydantic. License: MIT (code); documentation copyright Pydantic.
   - s1-w3-l7: Why structure: schemas and validation (ValidationError.errors(): type, loc, msg)
+- **[PyRIT (Python Risk Identification Tool for generative AI)](https://github.com/microsoft/PyRIT)**, Microsoft. License: MIT.
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
 - **[Python documentation, hmac](https://docs.python.org/3/library/hmac.html)**, Python Software Foundation. License: PSF License.
-  - Not yet cited by a lesson
+  - s6-w3-l8: Logging, privacy, and retention
 - **[Python Enhancement Proposals (PEPs) source repository](https://github.com/python/peps)**, Python Software Foundation and PEP authors. License: Each PEP states its own terms; most are public domain or CC0-1.0-Universal. Check the Copyright section at the bottom of each PEP you ingest.
   - s2-project: Q&A over a real document set
+- **[QLoRA: Efficient Finetuning of Quantized LLMs (Dettmers et al., 2023)](https://arxiv.org/abs/2305.14314)**, Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, Luke Zettlemoyer. License: arXiv non-exclusive license. 4-bit NormalFloat (quantile quantization of N(0,1), blocksize 64), double quantization (0.5 to 0.127 bits per parameter for constants, about 3 GB on a 65B model), paged optimizers via NVIDIA unified memory, BF16 compute. 65B finetuning from more than 780GB to under 48GB. LoRA on all linear layers needed to match 16-bit full finetuning. Guanaco 99.3 percent of ChatGPT on the Vicuna benchmark as judged by GPT-4.
+  - s5-w3-l8: LoRA and QLoRA (Sections 3 (NF4, double quantization, paged optimizers) and 4 (all-linear adapters))
 - **[Quantifying Variance in Evaluation Benchmarks (Madaan et al., 2024)](https://arxiv.org/abs/2406.10229)**, Madaan et al.. License: arXiv non-exclusive license.
   - s3-w3-l7: Statistics for comparing models and prompts
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
 - **[Qwen (QwenLM on GitHub)](https://github.com/QwenLM)**, Qwen team, Alibaba Cloud. License: Per repository.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+  - s5-w2-l5: Building a fine-tuning dataset
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
+- **[Qwen/Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B)**, Qwen team, Alibaba Cloud. License: Apache 2.0.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[Qwen2.5-0.5B-Instruct model card](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct)**, Qwen team, Alibaba Cloud. License: Apache 2.0. Checked 2026-11-11: apache-2.0, not gated; 494,032,768 parameters; hidden 896, 24 layers, 14 query heads, 2 KV heads, intermediate 4864, tied embeddings; ChatML-style chat template.
+  - s5-w3-l8: LoRA and QLoRA (config.json and parameter count)
+  - s5-w3-l9: Hands-on with PEFT and TRL (License, size, chat template)
+- **[Qwen2.5-3B-Instruct model card (Hugging Face)](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct)**, Qwen team (Alibaba). License: Qwen Research License (model); card copyright the Qwen team. License field checked 2026-11-11 (other, qwen-research), unlike the Apache 2.0 Qwen2.5-1.5B-Instruct.
+  - s5-w5-l13: Project week: planning the fine-tuning project (License field)
+- **[Qwen3-4B-Instruct-2507 model card (Hugging Face)](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)**, Qwen team (Alibaba). License: Apache 2.0 (model); card copyright the Qwen team. License field checked 2026-11-11 (apache-2.0). By contrast, Qwen2.5-3B-Instruct carries the qwen-research license.
+  - s5-w4-l11: Serving open models
+  - s5-w5-l13: Project week: planning the fine-tuning project (License field)
+- **[Qwen3.8-Max License (LICENSE file, Qwen3.8-2.4T-A95B)](https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B/blob/main/LICENSE)**, Qwen team, Alibaba Cloud. License: Copyright Alibaba Cloud.
+  - s5-w1-l1: Open weights, licenses, and the landscape
 - **[Ragas documentation, available metrics (faithfulness, response relevancy, context precision and recall)](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/)**, Ragas. License: Copyright Ragas authors. Read 2026-11-11. Metric definitions and which variants need a reference.
   - s3-w4-l11: Evaluating RAG and agents (Faithfulness, response relevancy, context precision, context recall)
 - **[Ragas: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217)**, Shahul Es, Jithin James, Luis Espinosa-Anke, Steven Schockaert. License: arXiv non-exclusive license.
@@ -772,11 +1653,15 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s3-w4-l12: Putting it together: an eval harness for your RAG system
   - s2-w4-l10: Generating grounded answers
 - **[Rate limits (Claude docs)](https://platform.claude.com/docs/en/api/rate-limits)**, Anthropic. License: Copyright Anthropic.
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks (Token bucket; cache-aware ITPM; spend caps; response headers)
+  - s6-w1-l3: Deploying an LLM app (Setting lower limits for workspaces)
   - s1-w1-l2: Your first API calls (Token bucket, retry-after, spend caps, cache-aware ITPM)
   - s1-w1-l3: Tokens, cost, latency, and choosing a model (Cache-aware ITPM)
 - **[Rate limits for the REST API (GitHub Docs)](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)**, GitHub. License: CC BY 4.0.
-  - Not yet cited by a lesson
+  - s4-project: An agent that automates a PM workflow
+  - s4-w5-l13: Project week: designing the PM workflow agent
 - **[re, regular expression operations (Python documentation)](https://docs.python.org/3/library/re.html)**, Python Software Foundation. License: PSF Documentation License.
+  - s6-w3-l8: Logging, privacy, and retention
   - s3-w2-l4: Code-based graders (search() vs. match() vs. fullmatch())
 - **[ReAct: Synergizing Reasoning and Acting in Language Models (Yao et al., 2022)](https://arxiv.org/abs/2210.03629)**, Shunyu Yao and colleagues. License: arXiv non-exclusive license.
   - s4-w1-l1: Workflows versus agents
@@ -789,56 +1674,117 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w2-l5: Examples, reasoning, and chaining
 - **[Reasoning models don't always say what they think](https://www.anthropic.com/research/reasoning-models-dont-say-think)**, Anthropic Alignment Science. License: Copyright Anthropic.
   - s1-w2-l5: Examples, reasoning, and chaining
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+- **[Recent Frontier Models Are Reward Hacking (June 2025)](https://metr.org/blog/2025-06-05-recent-reward-hacking/)**, METR. License: Copyright METR.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+- **[Recent Frontier Models Are Reward Hacking (METR, 2025)](https://metr.org/blog/2025-06-05-recent-reward-hacking/)**, METR. License: Copyright METR. Published 2025-06-05. Overwriting timers, stubbing evaluators, editing tests; telling the model not to cheat had a nearly negligible effect on one task.
+  - e2-w1-l2: Measuring coding agents
+  - e2-w3-l7: Tests as the contract
 - **[Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods (SIGIR 2009)](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf)**, Gordon V. Cormack, Charles L. A. Clarke, Stefan Büttcher. License: Copyright ACM (author copy). DOI 10.1145/1571941.1572114. k = 60 fixed in a pilot; "near-optimal, but the choice was not critical".
   - s2-w3-l8: Hybrid search and rank fusion
 - **[Recursive Retriever and Node References (LlamaIndex docs)](https://developers.llamaindex.ai/python/framework/integrations/retrievers/recursive_retriever_nodes/)**, LlamaIndex. License: MIT (library); docs copyright LlamaIndex.
   - s2-w2-l5: Chunking strategies (Chunk references and metadata references)
+- **[Red Teaming Language Models to Reduce Harms: Methods, Scaling Behaviors, and Lessons Learned](https://arxiv.org/abs/2209.07858)**, Deep Ganguli et al. (Anthropic). License: arXiv (author copyright).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
 - **[Reduce hallucinations (Claude docs)](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-hallucinations)**, Anthropic. License: Copyright Anthropic.
   - s2-w4-l10: Generating grounded answers (Allow uncertainty; restrict to provided documents; verify with citations)
   - s2-w4-l11: When RAG fails (Allow Claude to say I don't know)
   - s1-w3-l9: When structured output is confidently wrong (Allow uncertainty, direct quotes, verify with citations, best-of-N)
+- **[Reduce prompt leak (Claude docs)](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-prompt-leak)**, Anthropic. License: Copyright Anthropic.
+  - s6-w4-l10: Guardrails for inputs and outputs (Post-processing; keep proprietary details out)
 - **[Reducing latency (Claude docs)](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-latency)**, Anthropic. License: Copyright Anthropic.
-  - Not yet cited by a lesson
+  - s6-w2-l6: Latency engineering
 - **[Reflections](https://blog.samaltman.com/reflections)**, Sam Altman. License: Copyright Sam Altman. Written in early January 2025 (the post has no visible date stamp). Predicts the first AI agents may "join the workforce" in 2025.
   - s4-w1-l3: When not to build an agent
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+- **[Refusals and fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback)**, Anthropic. License: Copyright Anthropic. Checked 2026-11-11. Refusals arrive as normal responses with stop_reason "refusal" and a stop_details category; server-side fallbacks ("default" or an explicit list) under the server-side-fallback-2026-07-01 beta; not on the Batches API; no server-side fallback for Claude Haiku 5.5; retrying a refused request on the same model usually earns another refusal; refusals count against rate limits.
+  - s6-project: Take your best project live
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks
+  - s6-w4-l10: Guardrails for inputs and outputs (Refusal response, partial output, server-side fallback)
 - **[Regulation (EU) 2016/679 (General Data Protection Regulation)](https://eur-lex.europa.eu/eli/reg/2016/679/oj)**, European Parliament and Council of the European Union. License: EU legal text (reuse permitted with acknowledgement). Article 4(5) pseudonymisation, Article 5(1) purpose limitation, data minimisation, storage limitation; recital 26.
-  - Not yet cited by a lesson
+  - s6-w3-l8: Logging, privacy, and retention (Articles 4(5), 5(1), 17; recital 26)
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
+- **[Regulation (EU) 2024/1689 (the AI Act), Official Journal text](https://eur-lex.europa.eu/eli/reg/2024/1689/oj)**, European Parliament and Council of the European Union. License: EU legal text, reuse permitted (Commission Decision 2011/833/EU).
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do (Articles 4, 5, 50, 51 to 55, 113)
+- **[Regulation (EU) 2026/1744 (Digital Omnibus on AI), Official Journal text](https://eur-lex.europa.eu/eli/reg/2026/1744/oj)**, European Parliament and Council of the European Union. License: EU legal text, reuse permitted (Commission Decision 2011/833/EU).
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
 - **[Replacing Judges with Juries: Evaluating LLM Generations with a Panel of Diverse Models (Verga et al., 2024)](https://arxiv.org/abs/2404.18796)**, Verga et al.. License: arXiv non-exclusive license.
   - s3-w2-l5: LLM-as-judge
 - **[Representation Learning with Contrastive Predictive Coding (van den Oord et al., 2018)](https://arxiv.org/abs/1807.03748)**, Aaron van den Oord, Yazhe Li, Oriol Vinyals. License: arXiv non-exclusive license. Introduces the InfoNCE contrastive loss.
   - s2-w1-l1: Embeddings: meaning as vectors
+- **[Responsible Scaling Policy (version 3.4, effective 8 July 2026)](https://www.anthropic.com/responsible-scaling-policy)**, Anthropic. License: Copyright Anthropic.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
 - **[REST API endpoints for issue comments (GitHub Docs)](https://docs.github.com/en/rest/issues/comments)**, GitHub. License: CC BY 4.0.
-  - Not yet cited by a lesson
+  - s4-w5-l13: Project week: designing the PM workflow agent
 - **[REST API endpoints for issues (GitHub Docs)](https://docs.github.com/en/rest/issues/issues)**, GitHub. License: CC BY 4.0.
-  - Not yet cited by a lesson
+  - s4-project: An agent that automates a PM workflow
+  - s4-w5-l13: Project week: designing the PM workflow agent (List repository issues; pull requests in issue endpoints)
+- **[Rethinking "Batch" in BatchNorm (Wu and Johnson, 2021)](https://arxiv.org/abs/2105.07576)**, Yuxin Wu, Justin Johnson (Facebook AI Research). License: arXiv non-exclusive license. Linked from the makemore Part 3 description as a paper illustrating practical problems with BatchNorm.
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm
 - **[Rethinking the Role of Demonstrations: What Makes In-Context Learning Work? (Min et al., 2022)](https://arxiv.org/abs/2202.12837)**, Min et al.. License: arXiv non-exclusive license.
   - s1-w2-l5: Examples, reasoning, and chaining
 - **[Retrieval Augmented Generation or Long-Context LLMs? A Comprehensive Study and Hybrid Approach (EMNLP 2024 industry track)](https://arxiv.org/abs/2407.16833)**, Zhuowan Li, Cheng Li, Mingyang Zhang, Qiaozhu Mei, Michael Bendersky. License: arXiv non-exclusive license.
   - s2-w4-l11: When RAG fails (Long context versus RAG; Self-Route)
 - **[Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks (NeurIPS 2020)](https://arxiv.org/abs/2005.11401)**, Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, et al.. License: arXiv non-exclusive license.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
   - s2-w4-l11: When RAG fails
+- **[Review code locally with /code-review (Claude Code docs)](https://code.claude.com/docs/en/code-review-local)**, Anthropic. License: Copyright Anthropic.
+  - e2-w3-l8: Reviewing agent code
 - **[ROUGE: A Package for Automatic Evaluation of Summaries (Lin, 2004)](https://aclanthology.org/W04-1013/)**, Chin-Yew Lin. License: Copyright ACL and the author (see ACL Anthology terms).
   - s3-w2-l4: Code-based graders
 - **[RouteLLM: Learning to Route LLMs with Preference Data](https://arxiv.org/abs/2406.18665)**, Isaac Ong, Amjad Almahairi, Vincent Wu, Wei-Lin Chiang, Tianhao Wu, Joseph E. Gonzalez, M Waleed Kadous, Ion Stoica. License: arXiv non-exclusive license.
-  - Not yet cited by a lesson
+  - s6-w2-l5: Caching, batching, and routing
 - **[Row Security Policies (PostgreSQL documentation)](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)**, PostgreSQL Global Development Group. License: PostgreSQL License.
   - s2-w2-l6: Vector stores in practice
+- **[Run Claude Code programmatically (Claude Code docs)](https://code.claude.com/docs/en/headless)**, Anthropic. License: Copyright Anthropic. claude -p, --bare, --allowedTools, --permission-mode, --output-format json with total_cost_usd; -p runs project hooks without a trust dialog.
+  - e2-project: An agent-ready repository, measured (--output-format json and total_cost_usd)
+  - e2-w1-l3: Choosing the agent and the model (--output-format json, total_cost_usd)
+- **[Run parallel sessions with git worktrees (Claude Code docs)](https://code.claude.com/docs/en/worktrees)**, Anthropic. License: Copyright Anthropic.
+  - e2-w2-l6: Planning and decomposition
 - **[Running agents (OpenAI Agents SDK docs)](https://openai.github.io/openai-agents-python/running_agents/)**, OpenAI. License: Copyright OpenAI. The Runner loop; max_turns and MaxTurnsExceeded.
   - s4-w2-l4: The agent loop and tools for long tasks (The agent loop; max_turns)
+  - s4-w2-l6: Agent frameworks and when to use them
+- **[safetensors (repository README, file format section)](https://github.com/huggingface/safetensors)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/safetensors/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers (Format)
+- **[Safetensors documentation](https://huggingface.co/docs/safetensors/index)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/safetensors/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[Safetensors documentation](https://huggingface.co/docs/safetensors/index)**, Hugging Face. License: Apache 2.0.
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[Safety best practices (OpenAI API docs)](https://developers.openai.com/api/docs/guides/safety-best-practices)**, OpenAI. License: Copyright OpenAI.
+  - s6-w4-l10: Guardrails for inputs and outputs
 - **[Safety in building agents (OpenAI API docs)](https://developers.openai.com/api/docs/guides/agent-builder-safety)**, OpenAI. License: Copyright OpenAI. Untrusted input outside developer messages, structured outputs between nodes, tool approvals on.
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (Keep tool approvals on)
+  - s4-w4-l11: Prompt injection and the lethal trifecta (Prompt injections; structured outputs between nodes)
+- **[Safety settings (Gemini API docs)](https://aistudio.google.com/docs/safety-settings)**, Google. License: Docs CC BY 4.0 (Google Developers site policy).
+  - s6-w4-l10: Guardrails for inputs and outputs
 - **[Say What You Mean: A Response to 'Let Me Speak Freely'](https://blog.dottxt.ai/say-what-you-mean.html)**, Will Kurt, .txt (makers of Outlines). License: Copyright .txt. Vendor of a structured-generation library; treat as an interested party's rebuttal.
   - s1-w3-l8: Structured outputs with the API
+- **[Scaling Laws for Neural Language Models (Kaplan et al., 2020)](https://arxiv.org/abs/2001.08361)**, Jared Kaplan, Sam McCandlish, Tom Henighan, et al. (OpenAI). License: arXiv non-exclusive license.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
+- **[Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters (Snell et al., 2024)](https://arxiv.org/abs/2408.03314)**, Charlie Snell, Jaehoon Lee, Kelvin Xu, Aviral Kumar. License: arXiv non-exclusive license.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
 - **[scikit-learn sklearn.metrics.ndcg_score](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.ndcg_score.html)**, scikit-learn developers. License: BSD 3-Clause.
   - s2-w3-l9: Reranking and measuring retrieval
 - **[Search results (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/search-results)**, Anthropic. License: Copyright Anthropic. search_result content blocks for RAG; search_result_location citations. Read 2026-11-11.
   - s2-project: Q&A over a real document set
   - s2-w4-l10: Generating grounded answers (search_result blocks and search_result_location citations)
 - **[Secure your Managed Agents deployment (Claude docs)](https://platform.claude.com/docs/en/managed-agents/secure-deployment)**, Anthropic. License: Copyright Anthropic. Settings most important first; limited networking, vault credentials, smallest tool set, budgets, transcript review.
+  - s4-project: An agent that automates a PM workflow
   - s4-w4-l10: Permissions, human-in-the-loop, and sandboxing (Settings table, most important first)
+  - s4-w4-l12: Evaluating agents (Session budgets)
+  - s4-w5-l13: Project week: designing the PM workflow agent
+- **[Security (Claude Code docs)](https://code.claude.com/docs/en/security)**, Anthropic. License: Copyright Anthropic. Prompt-injection safeguards, network command approval, workspace trust, MCP security, best practices for untrusted content.
+  - e2-w3-l8: Reviewing agent code
+- **[Security and data retention FAQ (xAI API docs)](https://docs.x.ai/docs/faq/security)**, xAI. License: Copyright xAI.
+  - e3-project: Your model selection playbook and a claim brief
+  - e3-w1-l3: Which model for which job, with evidence (Retention and zero data retention)
+- **[Security best practices (MCP docs, 2026-07-28 revision)](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices)**, Model Context Protocol. License: Copyright Model Context Protocol contributors. Current version of the page that mcp-security-best-practices cites at its 2025-06-18 location.
+  - s4-w3-l9: Testing and securing MCP servers (Token passthrough; confused deputy; local MCP server compromise; scope minimization; SSRF)
 - **[Self-Consistency Improves Chain of Thought Reasoning in Language Models (Wang et al., 2022)](https://arxiv.org/abs/2203.11171)**, Wang et al.. License: arXiv non-exclusive license.
   - s4-w1-l2: Workflow patterns in code
   - s1-w3-l9: When structured output is confidently wrong
+- **[Self-Instruct: Aligning Language Models with Self-Generated Instructions (Wang et al., 2022)](https://arxiv.org/abs/2212.10560)**, Yizhong Wang, Yeganeh Kordi, Swaroop Mishra, and colleagues. License: arXiv non-exclusive license.
+  - s5-w2-l5: Building a fine-tuning dataset
 - **[Self-Refine: Iterative Refinement with Self-Feedback (Madaan et al., 2023)](https://arxiv.org/abs/2303.17651)**, Aman Madaan and colleagues. License: arXiv non-exclusive license.
   - s4-w1-l2: Workflow patterns in code
 - **[Semantic Textual Similarity (Sentence Transformers documentation)](https://sbert.net/docs/sentence_transformer/usage/semantic_textual_similarity.html)**, UKP Lab / Hugging Face. License: Apache 2.0 (library); documentation copyright the authors.
@@ -862,21 +1808,38 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s2-w4-l11: When RAG fails (Failure points FP1 to FP7; lessons learned)
   - s2-w4-l12: Designing the Q&A system (Validation during operation; metadata in chunks)
 - **[SGLang (GitHub)](https://github.com/sgl-project/sglang)**, SGLang project. License: Apache 2.0.
-  - Not yet cited by a lesson
+  - s5-w4-l11: Serving open models
+- **[ShieldGemma model card](https://ai.google.dev/gemma/docs/shieldgemma/model_card)**, Google. License: Docs CC BY 4.0; model under Gemma terms.
+  - s6-w4-l10: Guardrails for inputs and outputs
 - **[SimCSE: Simple Contrastive Learning of Sentence Embeddings (Gao et al., 2021)](https://arxiv.org/abs/2104.08821)**, Tianyu Gao, Xingcheng Yao, Danqi Chen. License: arXiv non-exclusive license.
   - s2-w1-l1: Embeddings: meaning as vectors
+- **[Site Reliability Engineering, Chapter 22: Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)**, Mike Ulrich (Google), in Beyer, Jones, Petoff and Murphy (eds.). License: Copyright Google (free to read online). Retry budgets, retrying at one layer, randomized exponential backoff, deadlines and deadline propagation, load shedding, and graceful degradation (including testing the degraded path).
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks
+  - s6-w1-l3: Deploying an LLM app
 - **[Site Reliability Engineering, chapter 4: Service Level Objectives](https://sre.google/sre-book/service-level-objectives/)**, Chris Jones, John Wilkes, Niall Murphy, Cody Smith (ed. Betsy Beyer), Google. License: [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/). No-derivatives license, so summarized and linked only.
-  - Not yet cited by a lesson
+  - s6-w2-l6: Latency engineering
 - **[Site Reliability Engineering, chapter 6: Monitoring Distributed Systems](https://sre.google/sre-book/monitoring-distributed-systems/)**, Rob Ewaschuk (ed. Betsy Beyer), Google. License: CC BY-NC-ND 4.0. Four golden signals, tail latency and histograms, pages should be urgent, actionable, and about symptoms.
-  - Not yet cited by a lesson
+  - s6-w3-l9: Dashboards, alerts, and online evaluation (Four golden signals, tail latency, what should page)
+- **[Small CLs (Google Engineering Practices)](https://google.github.io/eng-practices/review/developer/small-cls.html)**, Google. License: [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+  - e2-w2-l6: Planning and decomposition
 - **[Split Markdown by headers (LangChain text splitter guide)](https://docs.langchain.com/oss/python/integrations/splitters/markdown_header_metadata_splitter)**, LangChain. License: MIT (library); docs copyright LangChain.
   - s2-w2-l5: Chunking strategies
 - **[Splitting recursively (LangChain text splitter guide)](https://docs.langchain.com/oss/python/integrations/splitters/recursive_text_splitter)**, LangChain. License: MIT (library); docs copyright LangChain.
   - s2-w2-l5: Chunking strategies
 - **[sqlite-vec README](https://github.com/asg017/sqlite-vec)**, Alex Garcia. License: MIT or Apache 2.0.
   - s2-w2-l6: Vector stores in practice
+- **[State of AI-assisted Software Development 2025 (DORA)](https://dora.dev/research/2025/dora-report/)**, DORA (Google Cloud). License: Copyright Google. Central finding that AI acts as an amplifier of an organization's existing strengths and weaknesses.
+  - e2-w1-l2: Measuring coding agents
+  - e2-w3-l8: Reviewing agent code
+  - e2-w3-l9: When not to delegate, and building judgment
 - **[Streaming messages (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/streaming)**, Anthropic. License: Copyright Anthropic.
+  - s6-w1-l1: Architectures for LLM services (Event types; error events; error recovery)
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks (Error events)
+  - s6-w2-l6: Latency engineering
   - s1-w1-l2: Your first API calls (Event types, error events, final message helper)
+- **[Streaming refusals (Claude docs)](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/handle-streaming-refusals)**, Anthropic. License: Copyright Anthropic.
+  - s6-w4-l10: Guardrails for inputs and outputs (Reset context after refusal; refusals are responses, not errors)
+  - s6-w4-l12: Launch checklist and incident response (Refusals are responses, not errors)
 - **[Strict tool use (Claude docs)](https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use)**, Anthropic. License: Copyright Anthropic.
   - s1-w4-l10: The tool-use loop
   - s1-w4-l11: Designing tools and gating side effects
@@ -886,35 +1849,68 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w3-l8: Structured outputs with the API
   - s1-w3-l9: When structured output is confidently wrong (Schema-compliant but semantically incorrect outputs)
 - **[Structured outputs (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)**, Anthropic. License: Copyright Anthropic.
+  - s6-w4-l10: Guardrails for inputs and outputs
   - s4-w1-l2: Workflow patterns in code (JSON outputs with output_config.format)
   - s3-w2-l5: LLM-as-judge (Pydantic with messages.parse; property ordering)
   - s1-w3-l7: Why structure: schemas and validation (Why structured outputs (the failure list))
   - s1-w3-l8: Structured outputs with the API (JSON outputs, strict tool use, SDK helpers, schema limitations, caching, refusals)
   - s1-w3-l9: When structured output is confidently wrong (Guarantee scope)
 - **[Structured outputs (Ollama docs)](https://docs.ollama.com/capabilities/structured-outputs)**, Ollama. License: Copyright Ollama.
-  - Not yet cited by a lesson
+  - s5-w1-l3: Running models locally
+  - s5-w4-l11: Serving open models
 - **[Structured Outputs (OpenAI API docs)](https://developers.openai.com/api/docs/guides/structured-outputs)**, OpenAI. License: Copyright OpenAI.
   - s3-w2-l5: LLM-as-judge
   - s1-w3-l8: Structured outputs with the API
 - **[Structured outputs (vLLM docs)](https://docs.vllm.ai/en/latest/features/structured_outputs.html)**, vLLM project. License: Apache 2.0.
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w4-l11: Serving open models (structured_outputs parameters; migration from guided_* fields)
   - s1-w3-l8: Structured outputs with the API
 - **[Structured outputs (xAI docs)](https://docs.x.ai/docs/guides/structured-outputs)**, xAI. License: Copyright xAI.
   - s1-w3-l8: Structured outputs with the API
+- **[Supervised fine-tuning (OpenAI API docs)](https://developers.openai.com/api/docs/guides/supervised-fine-tuning)**, OpenAI. License: Copyright OpenAI. Checked 2026-11-11. Chat-format JSONL; at least 10 examples, start with about 50 well-crafted demonstrations; evals first; distillation from a larger to a smaller model. Carries the platform wind-down notice.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't (When to fine-tune; distillation)
+  - s5-w2-l5: Building a fine-tuning dataset (Data format; how many examples; distillation)
+- **[SWE-Bench Pro: Can AI Agents Solve Long-Horizon Software Engineering Tasks? (Deng et al., 2025)](https://arxiv.org/abs/2509.16941)**, Xiang Deng and colleagues (Scale AI). License: arXiv non-exclusive license. 1,865 problems from 41 actively maintained repositories, split into public, held-out, and commercial sets.
+  - e2-w1-l2: Measuring coding agents
+  - e2-w1-l3: Choosing the agent and the model
+- **[SWE-Bench Pro: Can AI Agents Solve Long-Horizon Software Engineering Tasks? (Deng et al., 2025)](https://arxiv.org/abs/2509.16941)**, Xiang Deng, Jeff Da, et al. (Scale AI). License: arXiv non-exclusive license.
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e3-w1-l3: Which model for which job, with evidence
 - **[SWE-bench Verified](https://www.swebench.com/verified)**, SWE-bench team, with OpenAI. License: Copyright SWE-bench authors.
   - s3-w3-l9: Comparing models and providers fairly (What the Verified subset is)
   - s3-w4-l11: Evaluating RAG and agents
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e2-w1-l2: Measuring coding agents
+- **[SWE-bench Verified, benchmark review (Epoch AI)](https://epoch.ai/benchmarks/swe-bench-verified/review)**, Epoch AI. License: Copyright Epoch AI. Review published 2026-09-03. Reports OpenAI's 2026-02-23 audit (27.6% of tasks audited, 59.4% of those with flawed tests, a floor of 16.4% of all tasks) and contamination finding; Epoch rates the benchmark Flawed.
+  - e2-w1-l2: Measuring coding agents
 - **[SWE-bench: Can Language Models Resolve Real-World GitHub Issues? (Jimenez et al., 2023)](https://arxiv.org/abs/2310.06770)**, Jimenez et al.. License: arXiv non-exclusive license.
   - s3-w3-l9: Comparing models and providers fairly
   - s3-w4-l11: Evaluating RAG and agents
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e2-w1-l2: Measuring coding agents
 - **[Task budgets (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/task-budgets)**, Anthropic. License: Copyright Anthropic. Beta header task-budgets-2026-03-13. Advisory token budget for one agentic turn; minimum total 20,000; counts what Claude sees, not resent history; max_tokens stays the hard cap.
+  - s6-w2-l4: Cost anatomy and budgets
   - s4-w2-l4: The agent loop and tools for long tasks
+- **[Task-Completion Time Horizons of Frontier AI Models (no longer updated as of 8 September 2026)](https://metr.org/time-horizons/)**, METR. License: Copyright METR.
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss (Methodology, caveats, update log)
+  - e3-w1-l3: Which model for which job, with evidence
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them (Messier tasks)
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
 - **[tau-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains (Yao et al., 2024)](https://arxiv.org/abs/2406.12045)**, Shunyu Yao, Noah Shinn, Pedram Razavi, Karthik Narasimhan. License: arXiv non-exclusive license. Simulated users, database end-state grading, the pass^k reliability metric.
+  - s4-project: An agent that automates a PM workflow
   - s4-w1-l3: When not to build an agent (pass^k results at publication)
+  - s4-w4-l12: Evaluating agents
   - s3-w4-l11: Evaluating RAG and agents
 - **[tau2-Bench: Evaluating Conversational Agents in a Dual-Control Environment (Barres et al., 2025)](https://arxiv.org/abs/2506.07982)**, Victor Barres, Honghua Dong, Soham Ray, Xujie Si, Karthik Narasimhan. License: arXiv non-exclusive license.
   - s3-w4-l11: Evaluating RAG and agents
+- **[Terminal-Bench](https://www.tbench.ai/)**, Terminal-Bench team. License: Copyright Terminal-Bench authors.
+  - e2-w1-l2: Measuring coding agents
+- **[Terminal-Bench: Benchmarking Agents on Hard, Realistic Tasks in Command Line Interfaces (Merrill et al., 2026)](https://arxiv.org/abs/2601.11868)**, Mike A. Merrill, Alexander G. Shaw, Nicholas Carlini, and colleagues. License: arXiv non-exclusive license. Terminal-Bench 2.0, 89 tasks, each with its own environment, a human-written reference solution, and tests; frontier agents under 65% at publication. ICLR 2026.
+  - e2-w1-l2: Measuring coding agents
+  - e2-w1-l3: Choosing the agent and the model
 - **[Tesseract OCR documentation](https://tesseract-ocr.github.io/tessdoc/)**, Tesseract OCR project. License: Apache 2.0.
   - s2-w2-l4: Ingestion: getting text out of real documents
 - **[Testing prompts with GitHub Actions (Promptfoo docs)](https://www.promptfoo.dev/docs/integrations/github-action/)**, Promptfoo. License: Copyright Promptfoo.
@@ -926,97 +1922,240 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
 - **[Text Embeddings by Weakly-Supervised Contrastive Pre-training (E5; Wang et al., 2022)](https://arxiv.org/abs/2212.03533)**, Liang Wang, Nan Yang, Xiaolong Huang, et al.. License: arXiv non-exclusive license.
   - s2-w1-l1: Embeddings: meaning as vectors
 - **[Text Generation Inference (Hugging Face docs)](https://huggingface.co/docs/text-generation-inference/index)**, Hugging Face. License: Apache 2.0 (code); docs copyright Hugging Face. Checked 2026-11-11. TGI is in maintenance mode; Hugging Face recommends vLLM, SGLang, llama.cpp, or MLX going forward.
-  - Not yet cited by a lesson
+  - s5-w4-l11: Serving open models (Maintenance-mode notice)
+- **[The Adolescence of Technology (January 2026)](https://www.darioamodei.com/essay/the-adolescence-of-technology)**, Dario Amodei. License: Copyright the author.
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
+- **[The AI-as-Normal-Technology view of loss-of-control incidents (14 September 2026)](https://www.normaltech.ai/p/the-ai-as-normal-technology-view)**, Sayash Kapoor and Arvind Narayanan. License: Copyright the authors.
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+- **[The case for 4-bit precision: k-bit Inference Scaling Laws (Dettmers and Zettlemoyer, 2022)](https://arxiv.org/abs/2212.09720)**, Tim Dettmers and Luke Zettlemoyer. License: arXiv non-exclusive license.
+  - s5-w1-l3: Running models locally
 - **[The Curious Case of Neural Text Degeneration (Holtzman et al., 2019)](https://arxiv.org/abs/1904.09751)**, Holtzman et al.. License: arXiv non-exclusive license.
   - s1-w1-l1: How LLMs work, for people who build with them
 - **[The Dual LLM pattern for building AI assistants that can resist prompt injection (2023)](https://simonwillison.net/2023/Apr/25/dual-llm-pattern/)**, Simon Willison. License: Copyright Simon Willison.
-  - Not yet cited by a lesson
+  - s4-w4-l11: Prompt injection and the lethal trifecta
+- **[The Effects of Generative AI on High-Skilled Work: Evidence from Three Field Experiments with Software Developers (Cui et al.)](https://economics.mit.edu/sites/default/files/inline-files/draft_copilot_experiments.pdf)**, Kevin Zheyuan Cui, Mert Demirer, Sonia Jaffe, Leon Musolff, Sida Peng, Tobias Salz. License: Copyright the authors. Randomized trials at Microsoft, Accenture, and a Fortune 100 company, 4,867 developers; about 26% more completed tasks among adopters; larger gains for less experienced developers. Published in Management Science (doi 10.1287/mnsc.2025.00535).
+  - e2-w1-l2: Measuring coding agents
+  - e2-w3-l9: When not to delegate, and building judgment
 - **[The Faiss library (Douze et al., 2024)](https://arxiv.org/abs/2401.08281)**, Matthijs Douze, Alexandr Guzhva, Chengqi Deng, Jeff Johnson, et al.. License: arXiv non-exclusive license.
   - s2-w1-l3: Nearest-neighbor search at scale
-- **[The False Promise of Imitating Proprietary LLMs (Gudibande et al., 2023)](https://arxiv.org/abs/2305.15717)**, Arnav Gudibande, Eric Wallace, Charlie Snell, et al.. License: arXiv non-exclusive license. Imitation models fooled crowd raters on style but closed little of the gap on targeted evaluations.
-  - Not yet cited by a lesson
+- **[The False Promise of Imitating Proprietary LLMs (Gudibande et al., 2023)](https://arxiv.org/abs/2305.15717)**, Arnav Gudibande, Eric Wallace, Charlie Snell, Xinyang Geng, Hao Liu, Pieter Abbeel, Sergey Levine, Dawn Song. License: arXiv non-exclusive license. Imitation models copied ChatGPT's style but not its factuality; crowd raters were fooled, targeted evals were not.
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w2-l5: Building a fine-tuning dataset
+  - s5-w4-l10: Benchmarking your model against a frontier model
+  - s5-w4-l12: Preference tuning and beyond, briefly
+- **[The General-Purpose AI Code of Practice (European Commission)](https://digital-strategy.ec.europa.eu/en/policies/contents-code-gpai)**, European Commission, AI Office. License: Commission reuse policy (CC BY 4.0 unless stated).
+  - e3-w3-l8: Regulation and governance: the EU AI Act, US policy, and what an engineer must do
+- **[The Gentle Singularity (10 June 2025)](https://blog.samaltman.com/the-gentle-singularity)**, Sam Altman. License: Copyright the author.
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+- **[The Impact of AI on Developer Productivity: Evidence from GitHub Copilot (Peng et al., 2023)](https://arxiv.org/abs/2302.06590)**, Sida Peng, Eirini Kalliamvakou, Peter Cihon, Mert Demirer. License: arXiv non-exclusive license. Controlled experiment, one task (an HTTP server in JavaScript); treatment group 55.8% faster.
+  - e2-w1-l2: Measuring coding agents
+- **[The Impact of AI on Developer Productivity: Evidence from GitHub Copilot (Peng et al., 2023)](https://arxiv.org/abs/2302.06590)**, Sida Peng, Eirini Kalliamvakou, Peter Cihon, Mert Demirer. License: arXiv non-exclusive license.
+  - e3-w2-l6: AI and work: what the productivity evidence shows
 - **[The Leaderboard Illusion (Singh et al., 2025)](https://arxiv.org/abs/2504.20879)**, Singh et al.. License: arXiv non-exclusive license.
   - s3-w1-l1: Why evals: the eval-driven development loop
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
 - **[The lethal trifecta for AI agents (2025)](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/)**, Simon Willison. License: Copyright Simon Willison.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals
+  - s4-project: An agent that automates a PM workflow
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+  - s4-w3-l9: Testing and securing MCP servers
+  - s4-w4-l11: Prompt injection and the lethal trifecta
+  - s4-w5-l13: Project week: designing the PM workflow agent
   - s1-w2-l6: Iterating on prompts like an engineer
   - s1-w4-l11: Designing tools and gating side effects
+  - e2-w3-l8: Reviewing agent code
+- **[The MIT License](https://opensource.org/license/mit)**, Open Source Initiative. License: License text (public).
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[The Open Source AI Definition 1.0](https://opensource.org/ai/open-source-ai-definition)**, Open Source Initiative. License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Version 1.0, announced 2024-10-28.
+  - s5-w1-l1: Open weights, licenses, and the landscape
+- **[The Open Source Initiative announces the release of the industry's first Open Source AI Definition](https://opensource.org/blog/the-open-source-initiative-announces-the-release-of-the-industrys-first-open-source-ai-definition)**, Open Source Initiative. License: CC BY 4.0.
+  - s5-w1-l1: Open weights, licenses, and the landscape
 - **[The Probabilistic Relevance Framework: BM25 and Beyond (Foundations and Trends in Information Retrieval, 2009)](https://www.staff.city.ac.uk/~sbrp622/papers/foundations_bm25_review.pdf)**, Stephen Robertson and Hugo Zaragoza. License: Copyright the authors and NOW Publishers (author copy). DOI 10.1561/1500000019. Section 3.4 to 3.5 for the BM25 formula, saturation, length normalization, and parameter ranges.
   - s2-w3-l7: Keyword search and BM25 (Sections 3.4 and 3.5: saturation, document length, BM25, uses of BM25)
 - **[The Site Reliability Workbook, chapter 5: Alerting on SLOs](https://sre.google/workbook/alerting-on-slos/)**, Steven Thurgood (ed.), Google. License: CC BY-NC-ND 4.0. Alert precision, recall, detection time, reset time; burn rate; multiwindow multi-burn-rate alerts; low-traffic services.
-  - Not yet cited by a lesson
+  - s6-w3-l9: Dashboards, alerts, and online evaluation (Alert attributes, burn rate, multiwindow multi-burn-rate alerts, low-traffic services)
 - **[The Tail at Scale (Communications of the ACM, 2013)](https://research.google/pubs/the-tail-at-scale/)**, Jeffrey Dean, Luiz Andre Barroso. License: Copyright ACM.
-  - Not yet cited by a lesson
+  - s6-w2-l6: Latency engineering
+- **[The Twelve-Factor App: III. Config](https://12factor.net/config)**, Adam Wiggins. License: Copyright Adam Wiggins. Config is what varies between deploys; store it in the environment; the open-source-at-any-moment test.
+  - s6-w1-l3: Deploying an LLM app
+- **[The Urgency of Interpretability (April 2025)](https://www.darioamodei.com/post/the-urgency-of-interpretability)**, Dario Amodei. License: Copyright the author.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
 - **[The Voyage 4 model family (Voyage AI blog, 2026-01-15)](https://blog.voyageai.com/2026/01/15/voyage-4/)**, Voyage AI (MongoDB). License: Copyright MongoDB, Inc.. Vendor post. Claims the voyage-4 models produce compatible embeddings; treat as a vendor claim.
   - s2-w1-l2: Choosing and testing an embedding model (Compatible embeddings across the voyage-4 family)
 - **[Thinking (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/thinking)**, Anthropic. License: Copyright Anthropic.
+  - s6-w2-l4: Cost anatomy and budgets (Thinking billed as output tokens even when not displayed)
+  - s6-w2-l6: Latency engineering (Thinking display settings)
   - s1-w1-l2: Your first API calls (Thinking billed as output tokens)
   - s1-w1-l3: Tokens, cost, latency, and choosing a model (Thinking billed as output tokens)
   - s1-w2-l5: Examples, reasoning, and chaining (How thinking works; Thinking and effort)
 - **[Thinking (Gemini API docs)](https://ai.google.dev/gemini-api/docs/thinking)**, Google. License: [Content CC BY 4.0, code Apache 2.0 (Google Developers site policies)](https://developers.google.com/terms/site-policies).
   - s3-w3-l9: Comparing models and providers fairly
   - s1-w2-l5: Examples, reasoning, and chaining
+- **[Threat Modeling Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html)**, OWASP Cheat Sheet Series. License: CC BY-SA 4.0.
+  - s6-project: Take your best project live
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied (Four questions, DFDs, STRIDE, responses)
+- **[tiktoken, a fast BPE tokenizer for OpenAI models](https://github.com/openai/tiktoken)**, OpenAI. License: MIT.
+  - e1-w4-l8: Let's build the GPT tokenizer: bytes, BPE, and why tokens explain odd behavior
+- **[Time Horizon 1.1 (29 January 2026)](https://metr.org/blog/2026-01-29-time-horizon-1-1/)**, METR. License: Copyright METR.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing (Doubling times)
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
+- **[Timeouts, retries, and backoff with jitter (Amazon Builders' Library)](https://builder.aws.com/content/3EumjoZascWd1oZiEgL8ORlv3qE/timeouts-retries-and-backoff-with-jitter)**, Marc Brooker (Amazon). License: Copyright Amazon.com, Inc.. Published 2019-12-05; moved from aws.amazon.com/builders-library to builder.aws.com (checked 2026-11-11). Timeouts from latency percentiles, retry amplification across layers, local retry token buckets, jitter, idempotency before retrying side effects, and a caution that circuit breakers add hard-to-test modal behavior.
+  - s6-w1-l2: Resilience: timeouts, retries, fallbacks
 - **[Token counting (Claude docs)](https://platform.claude.com/docs/en/build-with-claude/token-counting)**, Anthropic. License: Copyright Anthropic.
-  - Not yet cited by a lesson
+  - s6-w2-l4: Cost anatomy and budgets
+- **[Tokenizers (Transformers docs)](https://huggingface.co/docs/transformers/main/en/fast_tokenizers)**, Hugging Face. License: [Apache 2.0](https://github.com/huggingface/transformers/blob/main/LICENSE).
+  - s5-w1-l2: The Hugging Face Hub and transformers
 - **[Tool runner (SDK) (Claude docs)](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-runner)**, Anthropic. License: Copyright Anthropic.
   - s4-w1-l1: Workflows versus agents
   - s4-w2-l4: The agent loop and tools for long tasks (max_iterations; error handling)
+  - s4-w2-l6: Agent frameworks and when to use them
   - s1-w4-l10: The tool-use loop
   - s1-w4-l11: Designing tools and gating side effects
 - **[Tool use with Claude (overview)](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview)**, Anthropic. License: Copyright Anthropic.
   - s1-w3-l8: Structured outputs with the API (Tool choice and strict tool use)
   - s1-w4-l10: The tool-use loop (How tool use works; When Claude uses tools; Pricing)
+- **[Tools reference (Gemini CLI docs)](https://geminicli.com/docs/reference/tools/)**, Google. License: Copyright Google. run_shell_command, read_file, write_file, replace, glob, grep_search, web_fetch, plan mode tools; shell and write tools require confirmation.
+  - e2-w1-l1: Inside a coding agent
+- **[torch.nn.BatchNorm1d](https://docs.pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html)**, PyTorch. License: BSD-style (PyTorch docs). Default momentum 0.1; biased variance in the training forward pass, unbiased variance for the running estimate.
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm (momentum, biased and unbiased variance)
+  - e1-w3-l6: makemore, part 4: backpropagation by hand, at the tensor level (biased versus unbiased variance)
+- **[torch.nn.CrossEntropyLoss (PyTorch docs)](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html)**, PyTorch. License: BSD-style (PyTorch). ignore_index defaults to -100; ignored targets are excluded from the mean's denominator.
+  - s5-w3-l7: How supervised fine-tuning works (ignore_index and the mean reduction)
+  - e1-w2-l4: makemore, part 2: embeddings and an MLP language model
+- **[torch.nn.init (including calculate_gain)](https://docs.pytorch.org/docs/stable/nn.init.html)**, PyTorch. License: BSD-style (PyTorch docs). calculate_gain returns 5/3 for tanh and sqrt(2) for ReLU (checked in torch/nn/init.py on 2026-11-11).
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm (calculate_gain)
+- **[Towards Understanding Sycophancy in Language Models (Sharma et al., 2023)](https://arxiv.org/abs/2310.13548)**, Mrinank Sharma, Meg Tong, Tomasz Korbak, et al. (Anthropic). License: arXiv non-exclusive license.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
 - **[Tracing (OpenAI Agents SDK docs)](https://openai.github.io/openai-agents-python/tracing/)**, OpenAI. License: Copyright OpenAI. Tracing on by default, exported to the OpenAI backend; OPENAI_AGENTS_DISABLE_TRACING=1; unavailable under ZDR.
-  - Not yet cited by a lesson
+  - s4-w2-l6: Agent frameworks and when to use them
+- **[Tracing the thoughts of a large language model (March 2025)](https://www.anthropic.com/research/tracing-thoughts-language-model)**, Anthropic. License: Copyright Anthropic.
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
 - **[Trafilatura documentation (web text extraction)](https://trafilatura.readthedocs.io/en/latest/)**, Adrien Barbaresi. License: Apache 2.0.
   - s2-w2-l4: Ingestion: getting text out of real documents
+- **[Training Compute-Optimal Large Language Models (Hoffmann et al., 2022, "Chinchilla")](https://arxiv.org/abs/2203.15556)**, Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, et al. (DeepMind). License: arXiv non-exclusive license.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
 - **[Training language models to follow instructions with human feedback (Ouyang et al., 2022)](https://arxiv.org/abs/2203.02155)**, Ouyang et al.. License: arXiv non-exclusive license.
+  - s5-w3-l7: How supervised fine-tuning works (Supervised fine-tuning as the first stage of InstructGPT)
+  - s5-w4-l12: Preference tuning and beyond, briefly (Method overview; human evaluation results)
   - s1-w1-l1: How LLMs work, for people who build with them
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
+- **[Trends in AI (training compute, hardware, data)](https://epoch.ai/trends)**, Epoch AI. License: CC BY 4.0 (data); check page.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing (Training compute trend)
+- **[Understanding authorization in MCP (MCP docs tutorial)](https://modelcontextprotocol.io/docs/tutorials/security/authorization)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l9: Testing and securing MCP servers (When should you use authorization; choosing an authorization server; common pitfalls)
 - **[Understanding JSON Schema](https://json-schema.org/understanding-json-schema/about)**, JSON Schema. License: Copyright JSON Schema.
   - s1-w3-l7: Why structure: schemas and validation (Object and enum reference pages)
 - **[Understanding JSON Schema](https://json-schema.org/understanding-json-schema)**, JSON Schema. License: Copyright JSON Schema contributors.
   - s1-w4-l10: The tool-use loop
+- **[Understanding MCP servers (MCP docs)](https://modelcontextprotocol.io/docs/learn/server-concepts)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works (Core server features table; user interaction models)
+- **[Understanding the difficulty of training deep feedforward neural networks (Glorot and Bengio, 2010)](https://proceedings.mlr.press/v9/glorot10a.html)**, Xavier Glorot, Yoshua Bengio. License: PMLR (author copyright, free online).
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm
+- **[Universal and Transferable Adversarial Attacks on Aligned Language Models](https://arxiv.org/abs/2307.15043)**, Andy Zou, Zifan Wang, J. Zico Kolter, Matt Fredrikson. License: arXiv (author copyright).
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
+- **[Unsloth documentation (fine-tuning guide)](https://unsloth.ai/docs/get-started/fine-tuning-llms-guide)**, Unsloth AI. License: Copyright Unsloth AI (library is open source). Vendor docs. Claims 2x faster training with 70 percent less VRAM; local install requires Windows or Linux; suggests 1 to 3 epochs and learning rate 2e-4 as defaults.
+  - s5-w3-l7: How supervised fine-tuning works (Epoch and learning-rate defaults; reading training loss)
+  - s5-w3-l9: Hands-on with PEFT and TRL (Claims, platform requirements, default hyperparameters)
 - **[Unstructured open source library overview](https://docs.unstructured.io/open-source/introduction/overview)**, Unstructured. License: Copyright Unstructured (library is Apache 2.0).
   - s2-w2-l4: Ingestion: getting text out of real documents
 - **[Usage and Cost API (Claude docs)](https://platform.claude.com/docs/en/manage-claude/usage-cost-api)**, Anthropic. License: Copyright Anthropic. The page marks these endpoints as legacy but supported, and points new integrations to the Usage and Cost Analytics API.
-  - Not yet cited by a lesson
+  - s6-w2-l4: Cost anatomy and budgets (Usage and cost report endpoints, grouping, data freshness)
+- **[Use MCP servers in VS Code (VS Code docs)](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)**, Microsoft. License: Copyright Microsoft.
+  - s4-w3-l7: Why MCP, and how it works
 - **[Using LLM-as-a-Judge For Evaluation: A Complete Guide](https://hamel.dev/blog/posts/llm-judge/)**, Hamel Husain. License: Copyright Hamel Husain.
+  - capstone-project: Capstone: a production AI system with retrieval, agents, and evals (TPR and TNR against human labels)
+  - e3-project: Your model selection playbook and a claim brief
+  - s6-w3-l9: Dashboards, alerts, and online evaluation
+  - s6-w4-l10: Guardrails for inputs and outputs
   - s3-w1-l2: Error analysis: look at your data (Forward pointer to week 2)
   - s3-w2-l5: LLM-as-judge (Binary judgments with critiques; the domain expert)
   - s3-w2-l6: Calibrating the judge (Domain expert labels; TPR and TNR; train, dev, and test splits; sample sizes)
   - s1-w3-l9: When structured output is confidently wrong (Treat human labels as ground truth; report TPR and TNR)
+  - e2-w3-l8: Reviewing agent code
+  - capstone-w6-l2: Writing it up and defending it
+- **[Using server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)**, MDN Web Docs (Mozilla and contributors). License: [CC BY-SA 2.5](https://developer.mozilla.org/en-US/docs/MDN/Writing_guidelines/Attrib_copyright_license). text/event-stream format (event, data, id, retry), comment lines as keep-alives, automatic reconnection, and the per-domain connection limit over HTTP/1.1.
+  - s6-w1-l1: Architectures for LLM services
 - **[Vector embeddings (OpenAI API guide)](https://developers.openai.com/api/docs/guides/embeddings)**, OpenAI. License: Copyright OpenAI.
   - s2-w1-l1: Embeddings: meaning as vectors (Embedding models; FAQ on normalization and distance functions)
   - s2-w1-l2: Choosing and testing an embedding model (Embedding models; Reducing embedding dimensions)
+- **[Vercel environment variables](https://vercel.com/docs/environment-variables)**, Vercel. License: Copyright Vercel. Production, Preview, Development, and custom environments; Config versus write-only Secret values; changes apply only to new deployments; 64 KB total per deployment.
+  - s6-w1-l1: Architectures for LLM services (Troubleshooting: NEXT_PUBLIC_ variables)
+  - s6-w1-l3: Deploying an LLM app
+- **[Vercel Functions limits](https://vercel.com/docs/functions/limitations)**, Vercel. License: Copyright Vercel. Page updated 2026-08-24. With Fluid compute: 300 s default and maximum on Hobby; 300 s default and 800 s maximum on Pro and Enterprise (1800 s extended maximum in beta). Max duration includes time spent streaming the response. Edge runtime must start responding within 25 s and can stream for up to 300 s. 4.5 MB body limit, not applied to streamed responses.
+  - s6-w1-l3: Deploying an LLM app (Max duration; Edge runtime; request body size; cost and usage)
 - **[Vertex AI and zero data retention](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/vertex-ai-zero-data-retention)**, Google Cloud. License: CC BY 4.0. Read 2026-11-11. No training without permission; in-memory caching up to 24 hours by default and how to disable; grounding logs kept up to three days; steps required for zero data retention.
-  - Not yet cited by a lesson
+  - s6-w3-l8: Logging, privacy, and retention
+- **[Vibe engineering (2025)](https://simonwillison.net/2025/Oct/7/vibe-engineering/)**, Simon Willison. License: Copyright Simon Willison. Practices that make coding agents more effective, from automated tests and planning to knowing what to outsource.
+  - e2-w2-l6: Planning and decomposition
+  - e2-w3-l7: Tests as the contract
+  - e2-w3-l9: When not to delegate, and building judgment (Knowing what to outsource)
 - **[vLLM documentation](https://docs.vllm.ai/en/latest/)**, vLLM project. License: Apache 2.0 (code); docs copyright the vLLM project. Features list checked 2026-11-11 (continuous batching, PagedAttention, quantization formats, multi-LoRA, OpenAI-compatible server).
-  - Not yet cited by a lesson
+  - s5-project: Fine-tune a small model for extraction and benchmark it
+  - s5-w4-l11: Serving open models (Feature list)
 - **[Voyage AI Rerankers](https://docs.voyageai.com/docs/reranker)**, Voyage AI. License: Copyright Voyage AI.
   - s2-w3-l9: Reranking and measuring retrieval
+- **[WaveNet: A Generative Model for Raw Audio (van den Oord et al., 2016)](https://arxiv.org/abs/1609.03499)**, Aaron van den Oord et al. (DeepMind). License: arXiv non-exclusive license.
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm
+- **[We are Changing our Developer Productivity Experiment Design (24 February 2026)](https://metr.org/blog/2026-02-24-uplift-update/)**, METR. License: Copyright METR.
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+- **[We are Changing our Developer Productivity Experiment Design (METR, 2026)](https://metr.org/blog/2026-02-24-uplift-update/)**, Joel Becker, Nate Rush, Tom Cunningham, David Rein, Khalid Mahamud (METR). License: Copyright METR. Published 2026-02-24. 57 developers, 143 repositories, 800+ tasks from August 2025; estimates of -18% (CI -38% to +9%) for returning developers and -4% (CI -15% to +9%) for new ones, which METR calls an unreliable, likely lower-bound signal because of developer and task selection.
+  - e2-project: An agent-ready repository, measured (Selection effects in productivity studies)
+  - e2-w1-l2: Measuring coding agents
+- **[We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code Generating LLMs (Spracklen et al., 2024)](https://arxiv.org/abs/2406.10279)**, Joseph Spracklen, Raveen Wijewickrama, A H M Nazmus Sakib, Anindya Maiti, Bimal Viswanath, Murtuza Jadliwala. License: arXiv non-exclusive license. 16 models, 576,000 samples; hallucinated packages at least 5.2% on average for commercial models and 21.7% for open-source models. USENIX Security 2025.
+  - e2-w3-l8: Reviewing agent code
+- **[We Must Pace the Frontier (12 September 2026)](https://darioamodei.com/post/we-must-pace-the-frontier)**, Dario Amodei. License: Copyright the author.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w3-l7: Safety and alignment in practice: frameworks, interpretability, and documented failures
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
 - **[Weaviate hybrid search concepts (fusion strategies)](https://docs.weaviate.io/weaviate/concepts/search/hybrid-search)**, Weaviate. License: Copyright Weaviate. relativeScoreFusion (min-max normalized scores, default from v1.24) versus rankedFusion (rank based).
   - s2-w3-l8: Hybrid search and rank fusion (Fusion strategies)
 - **[What are tokens and how to count them?](https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them)**, OpenAI Help Center. License: Copyright OpenAI.
   - s1-w1-l1: How LLMs work, for people who build with them
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items
+- **[What is the Model Context Protocol (MCP)? (MCP docs)](https://modelcontextprotocol.io/docs/getting-started/intro)**, Model Context Protocol. License: Copyright Model Context Protocol contributors.
+  - s4-w3-l7: Why MCP, and how it works
+- **[What to look for in a code review (Google Engineering Practices)](https://google.github.io/eng-practices/review/reviewer/looking-for.html)**, Google. License: [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+  - e2-w3-l8: Reviewing agent code
 - **[What's going on with the Open LLM Leaderboard?](https://huggingface.co/blog/open-llm-leaderboard-mmlu)**, Clementine Fourrier, Nathan Habib, Julien Launay, Thomas Wolf (Hugging Face). License: Copyright Hugging Face. June 2023. Three MMLU implementations gave different scores and different rankings for the same models.
   - s3-w3-l9: Comparing models and providers fairly
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
 - **[Who Validates the Validators? Aligning LLM-Assisted Evaluation of LLM Outputs with Human Preferences (Shankar et al., 2024)](https://arxiv.org/abs/2404.12272)**, Shankar, Zamfirescu-Pereira, Hartmann, Parameswaran, and Arawjo. License: arXiv non-exclusive license.
   - s3-w1-l2: Error analysis: look at your data
   - s3-w1-l3: Building test sets
   - s3-w2-l5: LLM-as-judge (Criteria drift)
   - s3-w2-l6: Calibrating the judge (Criteria drift; aligning evaluators with human grades)
   - s3-w4-l10: Human review and feedback loops (Criteria drift)
+- **[Why AI hasn't replaced software engineers, and won't (June 2026)](https://www.normaltech.ai/p/why-ai-hasnt-replaced-software-engineers)**, Arvind Narayanan and Sayash Kapoor. License: Copyright the authors.
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
+  - e3-w2-l6: AI and work: what the productivity evidence shows
+- **[Why Most Published Research Findings Are False (Ioannidis, PLoS Medicine, 2005)](https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.0020124)**, John P. A. Ioannidis. License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+  - e3-project: Your model selection playbook and a claim brief
+  - e3-w3-l9: How to evaluate any AI claim, and the checks and balances of the whole program
+- **[Why we no longer evaluate SWE-bench Verified (23 February 2026)](https://openai.com/index/why-we-no-longer-evaluate-swe-bench-verified/)**, OpenAI. License: Copyright OpenAI. openai.com returns 403 to automated clients; existence, date, and key figures confirmed by search on 2026-11-11.
+  - e3-w1-l2: Measuring progress: time horizons, benchmarks, and what they miss
+- **[Will we run out of data? Limits of LLM scaling based on human-generated data (Villalobos et al., 2022, revised 2024)](https://arxiv.org/abs/2211.04325)**, Pablo Villalobos, Anson Ho, Jaime Sevilla, et al. (Epoch AI). License: arXiv non-exclusive license.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
 - **[Workflow syntax for GitHub Actions (GitHub docs)](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)**, GitHub. License: CC BY 4.0.
   - Not yet cited by a lesson
 - **[Working with evals (OpenAI API docs)](https://developers.openai.com/api/docs/guides/evals)**, OpenAI. License: Copyright OpenAI. Checked 2026-11-11. States the hosted Evals platform became read-only on 2026-10-31 and is scheduled to shut down on 2026-11-30.
   - s3-w3-l8: Regression testing and CI gates (Deprecation notice)
 - **[Writing effective tools for AI agents, using AI agents (2025)](https://www.anthropic.com/research/writing-tools-for-agents)**, Ken Aizawa and colleagues, Anthropic. License: Copyright Anthropic. Published 2025-09-11. Also reachable at anthropic.com/engineering/writing-tools-for-agents, which redirects here.
   - s4-w2-l4: The agent loop and tools for long tasks (Optimizing tool responses for token efficiency)
+  - s4-w3-l8: Building an MCP server
   - s1-w4-l11: Designing tools and gating side effects (Principles for writing effective tools)
 - **[X Search tool (xAI docs)](https://docs.x.ai/docs/tools/x-search)**, xAI. License: Copyright xAI.
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
+  - e3-w1-l3: Which model for which job, with evidence
 - **[xAI API documentation (Grok)](https://docs.x.ai)**, xAI. License: Copyright xAI.
   - Not yet cited by a lesson
 - **[Your AI Product Needs Evals](https://hamel.dev/blog/posts/evals/)**, Hamel Husain. License: Copyright Hamel Husain.
@@ -1032,6 +2171,8 @@ Copyrighted documentation, books, papers, and articles. Lessons summarize ideas 
   - s1-w1-l3: Tokens, cost, latency, and choosing a model
   - s1-w2-l6: Iterating on prompts like an engineer (Level 1: Unit tests; Looking at your traces)
   - s1-w4-l12: Assembling an LLM feature: from transcript to action items
+- **[zai-org/GLM-5.3 model card](https://huggingface.co/zai-org/GLM-5.3)**, Z.ai (Zhipu). License: GLM-5.3 License (custom).
+  - s5-w1-l1: Open weights, licenses, and the landscape
 
 ## Embedded videos
 
@@ -1039,40 +2180,84 @@ Embedded with the official YouTube player (privacy-enhanced mode), with a link t
 
 - **[[1hr Talk] Intro to Large Language Models](https://www.youtube.com/watch?v=zjkBMFhNj_g)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
   - s1-w1-l1: How LLMs work, for people who build with them (Part 1, LLMs)
+- **[A Survey of Techniques for Maximizing LLM Performance](https://www.youtube.com/watch?v=ahnGLM-RC1Y)**, OpenAI. License: Standard YouTube license. Official OpenAI channel, DevDay talk from November 2023. Product details are dated; the framework is not.
+  - s5-w2-l4: What fine-tuning changes, and what it doesn't
 - **[AI prompt engineering: A deep dive](https://www.youtube.com/watch?v=T9aRN5JkmL8)**, Anthropic (YouTube). License: Standard YouTube license.
   - s1-w2-l5: Examples, reasoning, and chaining
+- **[Andrej Karpathy: We're summoning ghosts, not building animals](https://www.youtube.com/watch?v=lXUZvyajciY)**, Dwarkesh Patel (Dwarkesh Podcast). License: Standard YouTube license. October 2025 interview (episode page title "AGI is still a decade away").
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
 - **[Attention in transformers, step-by-step (Deep Learning, Chapter 6)](https://www.youtube.com/watch?v=eMlx5fFNoYc)**, 3Blue1Brown (YouTube). License: Standard YouTube license.
-  - Not yet cited by a lesson
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model
+- **[Building Agents with Model Context Protocol, full workshop with Mahesh Murag of Anthropic](https://www.youtube.com/watch?v=kQmXtrmQ5Zg)**, AI Engineer. License: YouTube standard license. Recorded early 2025; protocol details have changed since.
+  - s4-w3-l7: Why MCP, and how it works
+- **[Building makemore Part 2: MLP](https://www.youtube.com/watch?v=TCH_1BHY58I)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
+  - e1-w2-l4: makemore, part 2: embeddings and an MLP language model
+- **[Building makemore Part 3: Activations & Gradients, BatchNorm](https://www.youtube.com/watch?v=P6sfmUTpUmc)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm
+- **[Building makemore Part 4: Becoming a Backprop Ninja](https://www.youtube.com/watch?v=q8SA3rM6ckI)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
+  - e1-w3-l6: makemore, part 4: backpropagation by hand, at the tensor level
+- **[Building makemore Part 5: Building a WaveNet](https://www.youtube.com/watch?v=t3YJ5hKiMQ0)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
+  - e1-w3-l5: makemore, part 3: activations, gradients, initialization, and BatchNorm (GoDeeper (optional))
 - **[Building the future of agents with Claude](https://www.youtube.com/watch?v=XuvKFsktX0Q)**, Anthropic (Alex Albert, Brad Abrams, Katelyn Lesse). License: Standard YouTube license. Official Anthropic channel, about 22 minutes. Chapters on agentic frameworks (5:05), the Agent SDK (8:35), and context and memory (14:35).
   - s4-w2-l5: Context engineering: memory, compaction, and subagents (14:35, managing context and memory)
+  - s4-w2-l6: Agent frameworks and when to use them (5:05 to 14:35, agentic frameworks and the Agent SDK)
 - **[Carrying Out Error Analysis (C3W2L01)](https://www.youtube.com/watch?v=JoAxZsdw_3w)**, DeepLearningAI (Andrew Ng). License: Standard YouTube license.
   - s3-w1-l2: Error analysis: look at your data
+- **[Claude Code best practices | Code w/ Claude](https://www.youtube.com/watch?v=gv0WHhKelSE)**, Anthropic (Cal Rueb). License: Standard YouTube license. Official Anthropic channel, 2025, about 26 minutes. Some features have changed since; the docs are current.
+  - e2-w1-l1: Inside a coding agent
+- **[Dario Amodei: We are near the end of the exponential](https://www.youtube.com/watch?v=n1E9IZfvGMA)**, Dwarkesh Patel (Dwarkesh Podcast). License: Standard YouTube license. Released 13 February 2026.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
+  - e3-w2-l4: Timelines and transformative AI, from the people building it
 - **[Deep Dive into LLMs like ChatGPT](https://www.youtube.com/watch?v=7xTGNNLPyMI)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
-  - Not yet cited by a lesson
+  - s5-w3-l7: How supervised fine-tuning works (Pretraining to post-training; post-training data (conversations))
+  - s5-w4-l12: Preference tuning and beyond, briefly (Chapter on reinforcement learning from human feedback (RLHF))
+- **[Defending against AI jailbreaks](https://www.youtube.com/watch?v=BaNXYqcfDyo)**, Anthropic. License: Standard YouTube license. Official Anthropic channel, about 74 minutes. Verified with oEmbed on 2026-11-11.
+  - s6-w4-l10: Guardrails for inputs and outputs
 - **[Fast LLM Serving with vLLM and PagedAttention (Ray Summit 2023)](https://www.youtube.com/watch?v=5ZlavKF_98U)**, Woosuk Kwon and Zhuohan Li (Anyscale YouTube channel). License: Standard YouTube license.
-  - Not yet cited by a lesson
+  - s5-w4-l11: Serving open models
 - **[Getting more out of the Claude Platform (Code w/ Claude 2026)](https://www.youtube.com/watch?v=QIriO1-vHYw)**, Anthropic (Brad Abrams). License: Standard YouTube license. Official Claude channel (@claude), about 28 minutes. Covers prompt caching, tool search, programmatic tool calling, compaction, and the advisor strategy.
-  - Not yet cited by a lesson
+  - s6-w2-l5: Caching, batching, and routing
 - **[How I use LLMs](https://www.youtube.com/watch?v=EWvNQjAaOHw)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
   - s1-w1-l3: Tokens, cost, latency, and choosing a model (Opening section on the LLM ecosystem and model tiers)
 - **[How We Build Effective Agents: Barry Zhang, Anthropic](https://www.youtube.com/watch?v=D7_ipDqhtwk)**, Barry Zhang, AI Engineer (YouTube). License: Standard YouTube license. AI Engineer Summit 2025, about 15 minutes. When to build an agent (complexity, value, de-risking, cost of error); coding as the example.
   - s4-w1-l1: Workflows versus agents
   - s4-w1-l3: When not to build an agent
+- **[Ilya Sutskever: We're moving from the age of scaling to the age of research](https://www.youtube.com/watch?v=aR20FWCCjAs)**, Dwarkesh Patel (Dwarkesh Podcast). License: Standard YouTube license. November 2025 interview.
+  - e3-w1-l1: Scaling: what the laws say, what changed, and whether it is slowing
+  - e3-w2-l5: The skeptics and critics, and what the evidence says about them
 - **[Let's build GPT: from scratch, in code, spelled out.](https://www.youtube.com/watch?v=kCc8FmEb1nY)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
-  - Not yet cited by a lesson
+  - e1-w4-l7: Let's build GPT: self-attention, the transformer block, and a Shakespeare model
 - **[Let's build the GPT Tokenizer](https://www.youtube.com/watch?v=zduSFxRajkE)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
-  - Not yet cited by a lesson
+  - e1-w4-l8: Let's build the GPT tokenizer: bytes, BPE, and why tokens explain odd behavior
+- **[Mastering Claude Code in 30 minutes](https://www.youtube.com/watch?v=6eBSHbLKuN0)**, Anthropic (Boris Cherny). License: Standard YouTube license. Official Anthropic channel, 2025, about 28 minutes.
+  - e2-w2-l4: Project memory and instructions
+- **[Navigating the Model Hub](https://www.youtube.com/watch?v=XvSGPZFEjDY)**, Hugging Face (YouTube). License: Standard YouTube license.
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[OWASP's Top 10 Ways to Attack LLMs: AI Vulnerabilities Exposed](https://www.youtube.com/watch?v=gUNXZMcd2jU)**, IBM Technology. License: Standard YouTube license. Official IBM Technology channel, published 2026-03-07, about 25 minutes. Verified with oEmbed on 2026-11-11.
+  - s6-w4-l11: Security: the OWASP LLM Top 10 applied
 - **[Prompting 101 (Code w/ Claude)](https://www.youtube.com/watch?v=ysPbXH0LpIE)**, Anthropic (YouTube). License: Standard YouTube license.
   - s1-w2-l4: Prompt fundamentals: write the spec a new colleague would need
 - **[Pydantic is all you need: Jason Liu](https://www.youtube.com/watch?v=yj-wSRJwrrc)**, Jason Liu, AI Engineer (YouTube). License: Standard YouTube license.
   - s1-w3-l7: Why structure: schemas and validation
 - **[Software Is Changing (Again)](https://www.youtube.com/watch?v=LCEmiRjPEtQ)**, Andrej Karpathy, Y Combinator (YouTube). License: Standard YouTube license.
   - Not yet cited by a lesson
+- **[The Model Context Protocol (MCP)](https://www.youtube.com/watch?v=CQywdSdi5iA)**, Anthropic (Theo Chu, David Soria Parra, Alex Albert). License: YouTube standard license. Published June 2025, before the 2026-07-28 revision.
+  - s4-w3-l7: Why MCP, and how it works
+- **[The pipeline function](https://www.youtube.com/watch?v=tiZFewofSLM)**, Hugging Face (YouTube). License: Standard YouTube license.
+  - s5-w1-l2: The Hugging Face Hub and transformers
+- **[The spelled-out intro to language modeling: building makemore](https://www.youtube.com/watch?v=PaCmpygFfXo)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
+  - e1-w2-l3: makemore, part 1: a bigram language model, counted and learned
+- **[The spelled-out intro to neural networks and backpropagation: building micrograd](https://www.youtube.com/watch?v=VMj-3S1tku0)**, Andrej Karpathy (YouTube). License: Standard YouTube license.
+  - e1-w1-l1: micrograd, part 1: derivatives, the chain rule, and a tiny autograd engine (00:00:00 to 01:27:05 (through 'fixing a backprop bug when one node is used multiple times'))
+  - e1-w1-l2: micrograd, part 2: neurons, a loss, and gradient descent (01:27:05 to the end)
 - **[Tips for building AI agents](https://www.youtube.com/watch?v=LP5OCa20Zpg)**, Anthropic (Barry Zhang, Erik Schluntz, Alex Albert). License: Standard YouTube license. Official Anthropic channel, about 18 minutes.
   - s4-w2-l4: The agent loop and tools for long tasks
 - **[Transformers, the tech behind LLMs (Deep Learning, Chapter 5)](https://www.youtube.com/watch?v=wjZofJX0v4M)**, 3Blue1Brown (YouTube). License: Standard YouTube license.
   - s2-w1-l1: Embeddings: meaning as vectors (Word embeddings and Embeddings beyond words, 12:27 to 20:22)
   - s1-w1-l1: How LLMs work, for people who build with them
+- **[What is Low-Rank Adaptation (LoRA) | explained by the inventor](https://www.youtube.com/watch?v=DhRoTONcyZE)**, Edward Hu (YouTube). License: Standard YouTube license. The LoRA paper's first author on his own channel. About 7.5 minutes.
+  - s5-w3-l8: LoRA and QLoRA
 - **[What is Retrieval-Augmented Generation (RAG)?](https://www.youtube.com/watch?v=T-D1OfcDW1M)**, IBM Technology. License: Standard YouTube License.
   - s2-w4-l10: Generating grounded answers
 - **[What's next for AI agentic workflows](https://www.youtube.com/watch?v=sal78ACtGTc)**, Andrew Ng, Sequoia Capital (YouTube). License: Standard YouTube license.
@@ -1083,6 +2268,9 @@ Embedded with the official YouTube player (privacy-enhanced mode), with a link t
   - s3-w1-l2: Error analysis: look at your data (Chapters from the trace demo (about 09:56) through axial coding (about 44:39))
   - s3-w4-l10: Human review and feedback loops (23:54 to 31:39)
   - s3-w4-l12: Putting it together: an eval harness for your RAG system (1:00:51 to 1:07:41)
+- **[WWDC25: Explore large language models on Apple silicon with MLX](https://www.youtube.com/watch?v=tn2Hvw7eCsw)**, Apple Developer (YouTube). License: Standard YouTube license. Also at https://developer.apple.com/videos/play/wwdc2025/298/
+  - s5-w1-l3: Running models locally
+  - s5-w3-l9: Hands-on with PEFT and TRL (Fine-tuning chapter)
 
 ## Tools
 

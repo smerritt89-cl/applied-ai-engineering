@@ -57,6 +57,7 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).p
 
 <script>
   import { load, update } from '../../lib/progress';
+  import { setActiveMedia } from '../../lib/media';
 
   interface Cue { start: number; end: number; text: string }
 
@@ -146,7 +147,10 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).p
         });
         audio.addEventListener('ended', () => setPlaying(false));
         audio.addEventListener('pause', () => setPlaying(false));
-        audio.addEventListener('play', () => setPlaying(true));
+        audio.addEventListener('play', () => {
+          setPlaying(true);
+          setActiveMedia({ kind: 'audio', title: 'Narration', time: () => audio?.currentTime ?? null });
+        });
         return audio;
       };
       // Click the progress bar to seek.

@@ -9,13 +9,16 @@ import { url } from '../lib/paths';
 interface Props {
   title: string;
   description?: string;
+  /** Wider content area (lesson pages, which have a notes column). */
+  wide?: boolean;
 }
-const { title, description = 'A self-paced, project-driven program in applied AI engineering.' } = Astro.props;
+const { title, description = 'A self-paced, project-driven program in applied AI engineering.', wide = false } = Astro.props;
 
 const nav = [
   { href: '/', label: 'Dashboard' },
   { href: '/studios/', label: 'Studios' },
   { href: '/transcript/', label: 'Transcript' },
+  { href: '/notes/', label: 'Notes' },
   { href: '/hours/', label: 'Hours' },
   { href: '/syllabus/', label: 'Syllabus' },
   { href: '/settings/', label: 'Settings' },
@@ -61,7 +64,7 @@ const isCurrent = (href: string) => {
     </header>
 
     <main id="main" tabindex="-1">
-      <div class="wrap">
+      <div class:list={['wrap', { 'wrap-wide': wide }]}>
         <slot />
       </div>
     </main>

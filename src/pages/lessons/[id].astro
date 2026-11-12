@@ -14,6 +14,7 @@ import GoDeeper from '../../components/lesson/GoDeeper.astro';
 import Mermaid from '../../components/lesson/Mermaid.astro';
 import Predict from '../../components/lesson/Predict.astro';
 import LabLink from '../../components/lesson/LabLink.astro';
+import NotesPanel from '../../components/lesson/NotesPanel.astro';
 import KnowledgeCheck from '../../components/assess/KnowledgeCheck';
 import { getProgram, studioLabel } from '../../lib/program';
 import { prepareQuestions } from '../../lib/questions';
@@ -45,7 +46,7 @@ const checks = await prepareQuestions(lesson.data.knowledgeCheck);
 const useLabel = { adapted: 'Adapted from', summarized: 'Summarized from', linked: 'Further reading', embedded: 'Embedded video' };
 ---
 
-<Base title={lesson.data.title} description={lesson.data.summary}>
+<Base title={lesson.data.title} description={lesson.data.summary} wide>
   <div class="lesson-layout">
     <nav class="lesson-nav" aria-label={`${studioLabel(bundle.studio.data)} lessons`}>
       <div class="lesson-nav-inner">
@@ -126,6 +127,8 @@ const useLabel = { adapted: 'Adapted from', summarized: 'Summarized from', linke
         </nav>
       </div>
     </article>
+
+    <NotesPanel lessonId={lesson.data.id} lessonTitle={lesson.data.title} />
   </div>
 </Base>
 

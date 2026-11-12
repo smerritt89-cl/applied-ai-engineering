@@ -1,0 +1,132 @@
+---
+/**
+ * Notes page: every lesson note you have written, in course order, with
+ * search, copy, and a Markdown download. Notes are typed in the Notes column
+ * on lesson pages and live in the progress store (so Export includes them).
+ */
+import Base from '../layouts/Base.astro';
+import { getProgram, studioLabel } from '../lib/program';
+import { url } from '../lib/paths';
+
+const program = await getProgram();
+const index = program.flatMap((b) =>
+  b.lessons.map((l) => ({
+    id: l.data.id,
+    title: l.data.title,
+    week: l.data.week,
+    studio: `${studioLabel(b.studio.data)}: ${b.studio.data.title}`,
+    href: url(`/lessons/${l.data.id}/`),
+  })),
+);
+---
+
+<Base title="Notes">
+  <h1>Notes</h1>
+  <p class="muted prose">Everything you have typed in the Notes column, in course order. Notes are saved in this browser; download them or back up from <a href={url('/settings/')}>Settings</a>.</p>
+
+  <div class="row notes-actions no-print" style="margin:16px 0">
+    <input type="search" id="notes-search" placeholder="Search notes" aria-label="Search notes" style="flex:1;min-width:200px" />
+    <button type="button" class="btn" id="notes-copy">Copy all</button>
+    <button type="button" class="btn btn-primary" id="notes-download">Download Markdown</button>
+  </div>
+  <p class="small muted" id="notes-msg" aria-live="polite"></p>
+  <div id="notes-list"></div>
+
+  <script is:inline type="application/json" id="notes-index" set:html={JSON.stringify(index)}></script>
+</Base>
+
+<script>
+  import { load, subscribe } from '../lib/progress';
+
+  type Entry = { id: string; title: string; week: number; studio: string; href: string };
+  const index: Entry[] = JSON.parse(document.getElementById('notes-index')!.textContent!);
+  const list = document.getElementById('notes-list')!;
+  const search = document.getElementById('notes-search') as HTMLInputElement;
+  const msg = document.getElementById('notes-msg')!;
+
+  const withNotes = () => {
+    const notes = load().notes;
+    const known = new Set(index.map((e) => e.id));
+    const rows = index.filter((e) => notes[e.id]).map((e) => ({ ...e, note: notes[e.id] }));
+    // Notes for lessons that no longer exist are kept, listed last.
+    for (const [id, note] of Object.entries(notes)) {
+      if (!known.has(id)) rows.push({ id, title: id, week: 0, studio: 'Other', href: '', note });
+    }
+    return rows;
+  };
+
+  const date = (iso: string) => new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+
+  const render = () => {
+    const q = search.value.trim().toLowerCase();
+    const rows = withNotes().filter((r) => !q || `${r.title} ${r.note.text}`.toLowerCase().includes(q));
+    list.replaceChildren();
+    if (!rows.length) {
+      const p = document.createElement('p');
+      p.className = 'card muted';
+      p.textContent = q ? 'No notes match that search.' : 'No notes yet. Open any lesson and type in the Notes column on the right (or the ✎ Notes button on smaller screens).';
+      list.append(p);
+      return;
+    }
+    let studio = '';
+    for (const r of rows) {
+      if (r.studio !== studio) {
+        studio = r.studio;
+        const h = document.createElement('h2');
+        h.textContent = studio;
+        h.style.marginTop = '28px';
+        list.append(h);
+      }
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.style.marginBottom = '12px';
+      const head = document.createElement('div');
+      head.className = 'row';
+      head.style.justifyContent = 'space-between';
+      const title = document.createElement(r.href ? 'a' : 'strong');
+      title.textContent = r.week ? `Week ${r.week} · ${r.title}` : r.title;
+      if (r.href) (title as HTMLAnchorElement).href = r.href;
+      title.style.fontWeight = '600';
+      const when = document.createElement('span');
+      when.className = 'small muted';
+      when.textContent = `Updated ${date(r.note.updatedAt)}`;
+      head.append(title, when);
+      const body = document.createElement('div');
+      body.style.whiteSpace = 'pre-wrap';
+      body.style.marginTop = '8px';
+      body.textContent = r.note.text;
+      card.append(head, body);
+      list.append(card);
+    }
+  };
+
+  const markdown = () => {
+    let out = `# Applied AI Engineering notes\n\nExported ${new Date().toLocaleDateString()}\n`;
+    let studio = '';
+    for (const r of withNotes()) {
+      if (r.studio !== studio) { studio = r.studio; out += `\n## ${studio}\n`; }
+      out += `\n### ${r.week ? `Week ${r.week} · ` : ''}${r.title}\n\n${r.note.text.trim()}\n`;
+    }
+    return out;
+  };
+
+  document.getElementById('notes-download')!.addEventListener('click', () => {
+    const blob = new Blob([markdown()], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `aae-notes-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  document.getElementById('notes-copy')!.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(markdown());
+      msg.textContent = 'Copied as Markdown.';
+    } catch {
+      msg.textContent = 'Could not copy; use Download instead.';
+    }
+  });
+  search.addEventListener('input', render);
+  subscribe(render);
+  render();
+</script>

@@ -21,6 +21,17 @@ describe('progress store', () => {
     (globalThis as any).localStorage.clear();
   });
 
+  it('saves lesson notes, removes blank ones, and fills notes in for old saves', () => {
+    progress.setNote('s1-w1-l1', 'tokens are not words');
+    expect(progress.load().notes['s1-w1-l1'].text).toBe('tokens are not words');
+    expect(JSON.parse(progress.exportJson()).notes['s1-w1-l1']).toBeTruthy();
+    progress.setNote('s1-w1-l1', '   ');
+    expect(progress.load().notes['s1-w1-l1']).toBeUndefined();
+    // A save from before notes existed has no `notes` field.
+    progress.importJson(JSON.stringify({ version: 1, lessons: {}, settings: {} }));
+    expect(progress.load().notes).toEqual({});
+  });
+
   it('starts empty and persists updates', () => {
     expect(progress.load().lessons).toEqual({});
     progress.setLessonComplete('s1-w1-l1', true);

@@ -81,10 +81,18 @@ public/project-data/     Sample data for studio projects
 
 All progress is one JSON document in localStorage under `aae:v1` (`src/lib/progress.ts`). It records completed lessons, active
 time per lesson, knowledge-check first tries, exercise passes, every quiz and exam attempt, project checklists, rubric scores and
-links, manual hours, and settings. Settings has **Export** and **Import** buttons: back up now and then, because browsers can clear storage.
+links, manual hours, lesson notes, and settings. Settings has **Export** and **Import** buttons: back up now and then, because browsers can clear storage.
 
 Grading lives in `src/lib/grading.ts` and is documented on the Syllabus page: quizzes 30%, exam 30% (80% to pass), project rubric
 40%. Grades are provisional until a studio is complete. Answers ship with the page (it's a static site), so quizzes run on the honor system.
+
+### Notes
+
+Every lesson page has a **My notes** column on the right (a ✎ Notes button on narrower screens) that stays in view as you scroll.
+Notes save as you type. **⏱ Insert time** stamps the position of the video or narration you are playing, for example
+`[video 3:09]`, by reading the YouTube embed's time through its postMessage channel (`enablejsapi=1`). The **Notes** page
+collects every note in course order, with search, copy, and a Markdown download (`src/components/lesson/NotesPanel.astro`,
+`src/pages/notes.astro`).
 
 ### Narration (Listen buttons)
 

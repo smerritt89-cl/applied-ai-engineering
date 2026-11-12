@@ -1,0 +1,123 @@
+---
+/**
+ * <NotesPanel> is the Notes column on lesson pages.
+ *
+ * - Wide screens: a third column that stays in view as you scroll (sticky).
+ * - Narrower screens: a "Notes" button opens it as a panel from the right.
+ * - Saves to the progress store as you type (debounced) and when you leave
+ *   the page, so notes are included in Settings > Export.
+ * - "Insert time" stamps the position of the video or narration you played
+ *   most recently, for example "[video 3:09] ".
+ * - All notes are collected on the Notes page (/notes/).
+ */
+import { url } from '../../lib/paths';
+
+interface Props {
+  lessonId: string;
+  lessonTitle: string;
+}
+const { lessonId, lessonTitle } = Astro.props;
+---
+
+<aside class="notes-panel no-print" id="notes-panel" aria-labelledby="notes-h" data-notes-for={lessonId}>
+  <div class="notes-inner">
+    <div class="notes-head">
+      <h2 id="notes-h">My notes</h2>
+      <span class="notes-status small muted" aria-live="polite"></span>
+      <button type="button" class="btn btn-small btn-ghost notes-close" aria-label="Close notes">✕</button>
+    </div>
+    <div class="notes-tools">
+      <button type="button" class="btn btn-small notes-stamp" title="Insert the time of the video or narration you are playing">⏱ Insert time</button>
+      <a class="small" href={url('/notes/')}>All notes →</a>
+    </div>
+    <label class="visually-hidden" for="notes-text">Notes for {lessonTitle}</label>
+    <textarea id="notes-text" class="notes-text" spellcheck="true"
+      placeholder="Type while you read, listen, or watch. Notes save automatically in this browser.
+
+Tip: press ⏱ Insert time while a video or narration plays to stamp where you are."></textarea>
+    <p class="notes-foot small muted">Saved in this browser only. Back up from <a href={url('/settings/')}>Settings</a>.</p>
+  </div>
+</aside>
+<button type="button" class="btn notes-fab no-print" aria-controls="notes-panel" aria-expanded="false">✎ Notes</button>
+
+<script>
+  import { load, setNote, subscribe } from '../../lib/progress';
+  import { activeMedia, formatTime } from '../../lib/media';
+
+  const panel = document.getElementById('notes-panel')!;
+  const id = panel.dataset.notesFor!;
+  const area = panel.querySelector<HTMLTextAreaElement>('.notes-text')!;
+  const status = panel.querySelector<HTMLElement>('.notes-status')!;
+  const stamp = panel.querySelector<HTMLButtonElement>('.notes-stamp')!;
+  const fab = document.querySelector<HTMLButtonElement>('.notes-fab')!;
+  const close = panel.querySelector<HTMLButtonElement>('.notes-close')!;
+
+  const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const showSaved = () => {
+    const n = load().notes[id];
+    status.textContent = n ? `Saved ${clock(n.updatedAt)}` : '';
+  };
+
+  area.value = load().notes[id]?.text ?? '';
+  showSaved();
+
+  // Save shortly after you stop typing, and immediately on blur or leaving.
+  let timer: number | undefined;
+  let dirty = false;
+  const flush = () => {
+    if (!dirty) return;
+    dirty = false;
+    clearTimeout(timer);
+    setNote(id, area.value);
+    showSaved();
+  };
+  area.addEventListener('input', () => {
+    dirty = true;
+    status.textContent = 'Saving…';
+    clearTimeout(timer);
+    timer = window.setTimeout(flush, 600);
+  });
+  area.addEventListener('blur', flush);
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flush());
+
+  // Edited in another tab: pick it up, unless you are typing here.
+  subscribe((s) => {
+    if (document.activeElement === area || dirty) return;
+    const text = s.notes[id]?.text ?? '';
+    if (text !== area.value) area.value = text;
+    showSaved();
+  });
+
+  stamp.addEventListener('click', () => {
+    const m = activeMedia();
+    const t = m?.time();
+    let tag: string;
+    if (m && t != null) tag = `[${m.kind} ${formatTime(t)}] `;
+    else {
+      status.textContent = 'Play a video or narration first';
+      area.focus();
+      return;
+    }
+    // Start the stamp on its own line unless the cursor already is at one.
+    const { selectionStart: a, selectionEnd: b, value } = area;
+    const before = value.slice(0, a);
+    const prefix = before && !before.endsWith('\n') ? '\n' : '';
+    area.setRangeText(prefix + tag, a, b, 'end');
+    area.focus();
+    area.dispatchEvent(new Event('input'));
+  });
+
+  // Narrow screens: the floating button opens the panel as a drawer.
+  const setOpen = (open: boolean) => {
+    panel.classList.toggle('open', open);
+    fab.setAttribute('aria-expanded', String(open));
+    if (open) area.focus();
+    else fab.focus();
+  };
+  fab.addEventListener('click', () => setOpen(!panel.classList.contains('open')));
+  close.addEventListener('click', () => setOpen(false));
+  panel.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && panel.classList.contains('open')) setOpen(false);
+  });
+</script>
