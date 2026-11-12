@@ -24,6 +24,12 @@ const index = program.flatMap((b) =>
   <h1>Notes</h1>
   <p class="muted prose">Everything you have typed in the Notes column, in course order. Notes are saved in this browser; download them or back up from <a href={url('/settings/')}>Settings</a>.</p>
 
+  <section class="card no-print" style="margin:16px 0" aria-labelledby="sync-h">
+    <h2 id="sync-h" style="font-size:1.05rem;margin:0 0 6px">Folder sync</h2>
+    <p class="small" style="margin:0" data-sync-status></p>
+    <p class="small muted" style="margin:8px 0 0">Pick a folder such as <code>~/Documents/AAE Notes</code>. To work with your notes in a Claude session, point it at that folder's <code>applied-ai-engineering-notes.md</code>.</p>
+  </section>
+
   <div class="row notes-actions no-print" style="margin:16px 0">
     <input type="search" id="notes-search" placeholder="Search notes" aria-label="Search notes" style="flex:1;min-width:200px" />
     <button type="button" class="btn" id="notes-copy">Copy all</button>
@@ -37,23 +43,16 @@ const index = program.flatMap((b) =>
 
 <script>
   import { load, subscribe } from '../lib/progress';
+  import { notesMarkdown, orderedNotes, type LessonInfo } from '../lib/notes-markdown';
+  import { mountSyncStatus } from '../lib/notes-sync';
 
-  type Entry = { id: string; title: string; week: number; studio: string; href: string };
-  const index: Entry[] = JSON.parse(document.getElementById('notes-index')!.textContent!);
+  const index: LessonInfo[] = JSON.parse(document.getElementById('notes-index')!.textContent!);
+  mountSyncStatus(document.querySelector<HTMLElement>('[data-sync-status]')!, false);
   const list = document.getElementById('notes-list')!;
   const search = document.getElementById('notes-search') as HTMLInputElement;
   const msg = document.getElementById('notes-msg')!;
 
-  const withNotes = () => {
-    const notes = load().notes;
-    const known = new Set(index.map((e) => e.id));
-    const rows = index.filter((e) => notes[e.id]).map((e) => ({ ...e, note: notes[e.id] }));
-    // Notes for lessons that no longer exist are kept, listed last.
-    for (const [id, note] of Object.entries(notes)) {
-      if (!known.has(id)) rows.push({ id, title: id, week: 0, studio: 'Other', href: '', note });
-    }
-    return rows;
-  };
+  const withNotes = () => orderedNotes(load().notes, index);
 
   const date = (iso: string) => new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -100,15 +99,7 @@ const index = program.flatMap((b) =>
     }
   };
 
-  const markdown = () => {
-    let out = `# Applied AI Engineering notes\n\nExported ${new Date().toLocaleDateString()}\n`;
-    let studio = '';
-    for (const r of withNotes()) {
-      if (r.studio !== studio) { studio = r.studio; out += `\n## ${studio}\n`; }
-      out += `\n### ${r.week ? `Week ${r.week} · ` : ''}${r.title}\n\n${r.note.text.trim()}\n`;
-    }
-    return out;
-  };
+  const markdown = () => notesMarkdown(load().notes, index, location.origin);
 
   document.getElementById('notes-download')!.addEventListener('click', () => {
     const blob = new Blob([markdown()], { type: 'text/markdown' });

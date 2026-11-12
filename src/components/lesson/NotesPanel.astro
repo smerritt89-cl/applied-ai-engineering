@@ -8,7 +8,8 @@
  *   the page, so notes are included in Settings > Export.
  * - "Insert time" stamps the position of the video or narration you played
  *   most recently, for example "[video 3:09] ".
- * - All notes are collected on the Notes page (/notes/).
+ * - All notes are collected on the Notes page (/notes/), and folder sync
+ *   (src/lib/notes-sync.ts) can mirror them to a Markdown file on disk.
  */
 import { url } from '../../lib/paths';
 
@@ -35,7 +36,7 @@ const { lessonId, lessonTitle } = Astro.props;
       placeholder="Type while you read, listen, or watch. Notes save automatically in this browser.
 
 Tip: press ⏱ Insert time while a video or narration plays to stamp where you are."></textarea>
-    <p class="notes-foot small muted">Saved in this browser only. Back up from <a href={url('/settings/')}>Settings</a>.</p>
+    <p class="notes-foot small muted" data-sync-status></p>
   </div>
 </aside>
 <button type="button" class="btn notes-fab no-print" aria-controls="notes-panel" aria-expanded="false">✎ Notes</button>
@@ -43,6 +44,7 @@ Tip: press ⏱ Insert time while a video or narration plays to stamp where you a
 <script>
   import { load, setNote, subscribe } from '../../lib/progress';
   import { activeMedia, formatTime } from '../../lib/media';
+  import { mountSyncStatus } from '../../lib/notes-sync';
 
   const panel = document.getElementById('notes-panel')!;
   const id = panel.dataset.notesFor!;
@@ -57,6 +59,8 @@ Tip: press ⏱ Insert time while a video or narration plays to stamp where you a
     const n = load().notes[id];
     status.textContent = n ? `Saved ${clock(n.updatedAt)}` : '';
   };
+
+  mountSyncStatus(panel.querySelector<HTMLElement>('[data-sync-status]')!, true);
 
   area.value = load().notes[id]?.text ?? '';
   showSaved();

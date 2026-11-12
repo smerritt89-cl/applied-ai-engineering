@@ -94,6 +94,11 @@ Notes save as you type. **⏱ Insert time** stamps the position of the video or 
 collects every note in course order, with search, copy, and a Markdown download (`src/components/lesson/NotesPanel.astro`,
 `src/pages/notes.astro`).
 
+**Folder sync** (Chrome or Edge on a computer): on the Notes page, **Save to a folder…** writes
+`applied-ai-engineering-notes.md` and `applied-ai-engineering-backup.json` (same as Export) to a folder you choose, a moment
+after every change. The browser remembers the folder; after a restart it may ask you to click **Resume** (choose "Allow on every
+visit" to skip that). Point a Claude session at the `.md` file to work with your notes. Code: `src/lib/notes-sync.ts`.
+
 ### Narration (Listen buttons)
 
 Each `<Listen>` section in a lesson gets a player. If generated audio exists for that exact text, it plays an MP3 with synchronized
