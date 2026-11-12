@@ -1,0 +1,163 @@
+---
+id: e2-project
+studio: e2
+title: "An agent-ready repository, measured"
+summary: >-
+  Take one of your own repositories (or the lab's sample repo), give it project memory, hooks, a custom subagent or
+  skill, and CI, then run the same five tasks with and without that setup and report success, rework, time, and cost
+  with honest uncertainty.
+estHours: 10
+repoName: agent-ready-repo
+requirements:
+  - { id: r1, text: "Choose a repository you work in (or a fork of an open-source one) with a test command that runs offline; describe it and why you chose it in the write-up. The lab's sample repo is acceptable only if you extend it with at least five new tasks of your own." }
+  - { id: r2, text: "Add a project instruction file (CLAUDE.md, or AGENTS.md imported from CLAUDE.md) under 200 lines that passes your lesson e2-w2-l4 linter: exact commands to check work, misleading spots, decisions not in the code, and boundaries" }
+  - { id: r3, text: "Add a hooks configuration in .claude/settings.json (or your agent's documented equivalent) with at least a post-edit check (lint, typecheck, or fast tests) and a stop-time gate that runs the test suite; include an offline test that validates the config's shape" }
+  - { id: r4, text: "Protect at least one path that must not change without a person (tests, migrations, generated code, secrets) with both a deny rule and a PreToolUse hook, and document the gaps neither covers" }
+  - { id: r5, text: "Add one custom subagent (for example a read-only reviewer with an enforced tool allowlist) or one skill (for example your bug-fix procedure), and show it being used in at least two runs" }
+  - { id: r6, text: "Add CI (GitHub Actions or similar) that runs the test suite on every pull request and fails if existing test files are modified without an explicit label or approval" }
+  - { id: r7, text: "Write five tasks before running anything: real, recent work with a known good outcome, at least three different task types (for example a bug fix, a small feature, a refactor, a test-coverage task, a dependency upgrade), each with written acceptance criteria" }
+  - { id: r8, text: "Run each task at least twice without the setup (bare repo, fresh session) and twice with it, holding the model, effort, prompt text, and permission mode fixed, each run in a fresh worktree or clone" }
+  - { id: r9, text: "For every run, record success by your acceptance criteria and your review, rework minutes, wall time, cost (total_cost_usd from --output-format json, or /usage), whether tests were edited, and any safeguard removed; keep the raw data in a CSV in the repo" }
+  - { id: r10, text: "Write up the results using the template on this page, including cost per successful task, a paired comparison on the tasks, and what you would change in the setup" }
+  - { id: s1, text: "Repeat the with-setup runs with a second agent (Codex, Copilot, Cursor, Gemini or Antigravity CLI) or a second model, translating the setup to its documented mechanisms, and report what didn't port", required: false }
+  - { id: s2, text: "Add holdout tests the agent never sees for at least three tasks, and report how often a run passed the visible tests but failed the holdout", required: false }
+rubric:
+  - id: setup
+    criterion: Agent setup quality
+    levels:
+      1: "An instruction file and little else, or a long generated file kept as-is."
+      2: "Instruction file and hooks exist, but contain content the agent could read from the repo, or hooks that are slow, loop, or don't match the documented shape."
+      3: "Short, specific instruction file; documented-shape hooks with a post-edit check and a stop-time gate; one protected path with deny rule and hook; a working subagent or skill."
+      4: "Level 3, plus offline tests for the hook logic and config, documented coverage gaps (for example Bash and scripts), and evidence that each piece changed behavior in at least one run."
+  - id: verification
+    criterion: Checks and balances
+    levels:
+      1: "Success is judged from the agent's summary."
+      2: "Tests are run, but test edits, removed safeguards, and scope creep aren't checked."
+      3: "Every run is checked against acceptance criteria and reviewed with the lesson e2-w3-l8 checklist; test changes and safeguards are tracked; CI enforces the suite."
+      4: "Level 3, plus holdout tests or a tamper and risky-diff scan in CI, and a clear account of what the checks still can't catch."
+  - id: experiment
+    criterion: Experimental design
+    levels:
+      1: "Tasks chosen after the fact, one run each, several variables changed at once."
+      2: "Tasks fixed in advance, but runs share sessions or setups differ in more than one way."
+      3: "Tasks and prompts fixed in advance, one variable changed, fresh isolated runs, at least two runs per task per condition."
+      4: "Level 3, plus at least three task types, a paired analysis on the tasks, and threats to validity discussed (task selection, learning effects, variance)."
+  - id: analysis
+    criterion: Measurement and analysis
+    levels:
+      1: "No numbers, or only how it felt."
+      2: "Success rates reported, but no cost, rework, or uncertainty."
+      3: "Success rate, rework, time, and cost per successful task for each condition, with raw data included."
+      4: "Level 3, plus intervals or a paired test, an honest statement of what the sample can and can't show, and a recommendation that follows from the data."
+  - id: communication
+    criterion: Write-up and recommendation
+    levels:
+      1: "Missing or a list of steps taken."
+      2: "Describes the setup, but not what was learned."
+      3: "Explains the setup, results, and what you'd change, clearly enough for a teammate to adopt it."
+      4: "Level 3, and your team lead could decide in five minutes whether to adopt the setup, knowing its cost, its benefit, and its limits."
+milestones:
+  - { id: m1, title: "Repository and tasks", week: 1, deliverables: ["Chosen repo with an offline test command", "Five tasks with acceptance criteria, written before any runs", "Baseline: two bare runs of one task, with the CSV columns working"] }
+  - { id: m2, title: "The setup", week: 2, deliverables: ["Instruction file passing your linter", "Hooks config with shape test", "Protected path with deny rule and hook", "Subagent or skill", "CI running tests and the test-change check"] }
+  - { id: m3, title: "Runs and write-up", week: 3, deliverables: ["All runs recorded in the CSV", "Analysis with cost per success and a paired comparison", "WRITEUP.md from the template"] }
+sources:
+  - { id: e2-cc-best-practices, use: summarized }
+  - { id: claude-code-memory-docs, use: summarized }
+  - { id: e2-cc-hooks-guide, use: summarized }
+  - { id: claude-code-subagents-docs, use: summarized }
+  - { id: e2-cc-skills, use: summarized }
+  - { id: e2-cc-headless, use: summarized, where: "--output-format json and total_cost_usd" }
+  - { id: e2-metr-2026-uplift-update, use: linked, where: "Selection effects in productivity studies" }
+  - { id: e2-zhong-2025-impossiblebench, use: linked }
+---
+
+## The brief
+
+You've used a coding agent for a long time. This project asks a question most teams never answer with data: **does the setup work you'd do for an agent actually pay off on your code?** You'll make a repository agent-ready, using what the elective taught (short project memory, hooks that enforce checks, a protected path, a subagent or skill, and CI), and then measure it like an experiment. Same tasks, same prompts, same model, with and without the setup.
+
+The deliverable isn't a configured repo. It's a credible answer, with numbers and honest uncertainty, that you could take to a team lead: here's what the setup costs to build and run, here's what it changed (success, rework, time, cost, safety), and here's what I'd recommend.
+
+## What you get
+
+- The lab at `labs/electives/e2-agent-ready-repo/`: a worked example of every piece (CLAUDE.md, hooks and their offline tests, a reviewer subagent, a workspace builder that hides answers, holdout tests, and a scoring script). Copy patterns from it freely.
+- `templates/CLAUDE.md.template` in the lab, for requirement r2.
+- Your lesson exercises: the CLAUDE.md linter (lesson 4), the PreToolUse guard (lesson 5), the test-tamper scan (lesson 7), the risky-diff scan (lesson 8), and the comparison summarizer (lesson 3). Several can become CI steps.
+
+## Suggested design
+
+<Mermaid
+  alt="Experiment design: five tasks written in advance feed two conditions, bare and with the setup. Each condition runs every task at least twice, each run in a fresh worktree with the same model, effort, and prompt. Every run is scored by acceptance criteria and review, and recorded in a CSV with success, rework, time, cost, tests edited, and safeguards removed. The CSV feeds an analysis of success rate, cost per success, and a paired comparison, which feeds the write-up and recommendation."
+  caption="Fix the tasks first, change one thing, isolate and repeat each run, and record outcomes rather than impressions."
+  chart={`flowchart TD
+  T["5 tasks + acceptance criteria (written first)"] --> B["Bare repo"]
+  T --> S["Repo with setup"]
+  B --> R1["2+ runs per task, fresh worktree each"]
+  S --> R2["2+ runs per task, fresh worktree each"]
+  R1 --> C[("runs.csv")]
+  R2 --> C
+  C --> A["Success rate, cost per success, rework, paired comparison"]
+  A --> W["WRITEUP.md + recommendation"]`}
+/>
+
+A practical way to run the bare condition is a branch or worktree with the setup files removed (`CLAUDE.md`, `.claude/`), started with the same model and effort. Don't use `--bare` for the setup condition: it skips CLAUDE.md and hooks. Do watch for **learning effects**: if you fix a task by hand between runs, or the setup condition always runs second, your later runs benefit from what you learned. Alternate the order of conditions across tasks.
+
+<Callout type="tip" title="Budget before you start">
+Ten tasks-by-condition runs times two repeats is twenty runs, more with the stretch goals. Cap each scripted run with `--max-turns` and `--max-budget-usd`, check `/usage` after the first few, and pick tasks that take an agent minutes, not hours. Small tasks give you more runs, and more runs give you a more honest answer.
+</Callout>
+
+<Callout type="pitfall" title="Grading the runs by the agent's summary">
+"All tests pass" from the agent is a claim, not a result. Score each run yourself: run the acceptance checks, read the diff with the review checklist, and record whether tests were edited or safeguards removed. A setup that produces more "done" summaries but more quietly edited tests is worse, and only your scoring will show it.
+</Callout>
+
+## Constraints
+
+- Keep keys and secrets out of the repository and out of agent-readable paths; deny reads of `.env` and similar files.
+- Run unattended (`claude -p`) sessions only in repositories whose `.claude/` and `.mcp.json` you've read.
+- Don't push agent changes to a shared main branch during the experiment; branch protection should require your review.
+
+## Write-up template
+
+Put this in `WRITEUP.md` and fill it in. Aim for two pages.
+
+```markdown
+# An agent-ready repository, measured
+
+## The repository and the question
+What the repo is, how its tests run, and the question you're answering (2 to 3 sentences).
+
+## The setup
+- Instruction file: what's in it and what you deliberately left out (line count)
+- Hooks: events, matchers, what each runs, how long each takes
+- Protected path(s): deny rule + hook, and the gaps neither covers
+- Subagent or skill: what it does, and where you saw it change a run
+- CI: what it enforces
+
+## The tasks
+| # | Task | Type | Acceptance criteria (short) |
+|---|---|---|---|
+
+## Method
+Model and effort, permission mode, prompt text, how runs were isolated, run order, number of runs.
+
+## Results
+| Condition | Runs | Success rate | Cost / success | Mean rework (min) | Mean wall time (min) | Runs with test edits | Runs with removed safeguards |
+|---|---|---|---|---|---|---|---|
+| Bare | | | | | | | |
+| With setup | | | | | | | |
+
+Paired view: for each task, successes out of runs in each condition, and the tasks where the conditions disagreed.
+Uncertainty: what this sample size can and can't distinguish.
+
+## What changed, and why
+Two or three runs where the setup clearly helped or hurt, with the evidence (a hook firing, a blocked edit, the reviewer's finding).
+
+## Recommendation
+Would you adopt this setup for your team? What would you keep, cut, or add, and what would you measure next?
+
+## Limits and threats to validity
+Task selection, learning effects, variance, the one repo, the one model.
+
+## How I used AI assistants in this project
+Which parts you delegated, which you did yourself, and how you checked the delegated parts.
+```

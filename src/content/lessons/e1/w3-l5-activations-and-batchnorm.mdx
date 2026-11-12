@@ -1,0 +1,294 @@
+---
+id: e1-w3-l5
+studio: e1
+week: 3
+order: 5
+title: "makemore, part 3: activations, gradients, initialization, and BatchNorm"
+summary: Why deep networks are fragile, in variances. The loss you should see at step zero, saturated tanh units and vanishing gradients, the variance calculation behind Kaiming initialization and its gains, Batch Normalization with its running statistics and its costs, and the diagnostic plots that tell you whether a network is healthy.
+estMinutes: 150
+reviewed: 2026-11-11
+objectives:
+  - Predict the loss a well-initialized classifier should have at step zero, and fix an initialization that misses it
+  - Explain how a saturated tanh blocks gradient flow, using its derivative
+  - Derive the variance of a linear layer's output and use it to justify Kaiming initialization and the tanh and ReLU gains
+  - Implement the BatchNorm training forward pass and its running statistics, and explain why its bias makes the previous layer's bias redundant
+  - Read activation, gradient, and update-to-data diagnostics to judge a network's health
+sources:
+  - { id: yt-karpathy-makemore-batchnorm, use: embedded }
+  - { id: karpathy-zero-to-hero, use: adapted, where: "makemore part 3 (activations, gradients, BatchNorm) and its exercises" }
+  - { id: he-2015-delving, use: summarized, where: "Section 2.2, initialization of filter weights for rectifiers" }
+  - { id: glorot-2010, use: summarized }
+  - { id: ioffe-2015-batchnorm, use: summarized }
+  - { id: wu-2021-rethinking-batch, use: linked }
+  - { id: pytorch-nn-init, use: summarized, where: "calculate_gain" }
+  - { id: pytorch-batchnorm1d, use: summarized, where: "momentum, biased and unbiased variance" }
+  - { id: he-2015-resnet, use: linked }
+  - { id: yt-karpathy-wavenet, use: embedded, where: "GoDeeper (optional)" }
+  - { id: oord-2016-wavenet, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: "A tanh unit's output is 0.99 for every example in a batch. By what factor does tanh scale the gradient flowing back through it?"
+    code: |
+      t = 0.99
+      print(round(1 - t * t, 4))
+    options:
+      - id: a
+        text: "`0.99`"
+        rationale: That's the output, not the derivative.
+      - id: b
+        text: "`0.0199`"
+        correct: true
+        rationale: "The local derivative of tanh is 1 - t squared, here 1 - 0.9801."
+      - id: c
+        text: "`1.0`"
+        rationale: tanh passes gradient unchanged only near t = 0.
+    explanation: >-
+      A saturated unit passes back about 2 percent of its gradient, so the weights feeding it barely learn. If a unit
+      is saturated for every example, it is effectively dead. That is why the lecture plots which units are
+      close to plus or minus 1 for each example, and why initialization scale matters.
+  - id: kc2
+    type: mcq
+    prompt: "A linear layer has fan_in = 400 and inputs with unit variance. Weights are drawn from a normal distribution with standard deviation 1. Roughly what is the standard deviation of its outputs?"
+    options:
+      - id: a
+        text: "1"
+        rationale: That needs weight standard deviation 1/sqrt(400) = 0.05.
+      - id: b
+        text: "400"
+        rationale: That's the variance, not the standard deviation.
+      - id: c
+        text: "20"
+        correct: true
+        rationale: "Var(y) = fan_in x Var(w) x Var(x) = 400, so the standard deviation is sqrt(400) = 20."
+    explanation: >-
+      Each output sums 400 independent zero-mean products, so variances add. To keep activations at unit scale, use
+      weight standard deviation gain / sqrt(fan_in): this is Kaiming (He) initialization, with a gain of sqrt(2) for
+      ReLU and 5/3 for tanh in PyTorch's calculate_gain.
+  - id: kc3
+    type: multi
+    prompt: Which statements about BatchNorm are true? Select all that apply.
+    options:
+      - id: a
+        text: A bias in the linear layer just before BatchNorm is redundant, because BatchNorm subtracts the batch mean.
+        correct: true
+        rationale: Any constant added before normalization is removed by the mean subtraction; BatchNorm's own beta supplies the shift.
+      - id: b
+        text: At inference, BatchNorm normalizes with running estimates of the mean and variance instead of batch statistics.
+        correct: true
+        rationale: Yes, so one example's output doesn't depend on which other examples share its batch.
+      - id: c
+        text: Each example's output during training is independent of the other examples in its batch.
+        rationale: No. The batch mean and variance couple the examples, which acts as a regularizer and is also a common source of bugs.
+      - id: d
+        text: After training, BatchNorm's scale and shift can be folded into the preceding linear layer.
+        correct: true
+        rationale: At inference it's an affine map per feature, so it composes with the linear layer. This is exercise E02 in the video description.
+    explanation: >-
+      BatchNorm is a training-time stabilizer with an inference-time affine map. Its batch coupling is the price, and it
+      is one reason transformers use LayerNorm, which normalizes each example on its own (lesson 7).
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Where this lesson sits
+
+Week 3 covers two of the three remaining makemore lectures: this one on activations, gradients, and BatchNorm, and next lesson's "Backprop Ninja." Part 5 (WaveNet) is optional and appears in the GoDeeper at the end. These two were chosen because they explain the things you'll see in every transformer: why layers are initialized the way they are, why there's a normalization layer in every block, and how gradients actually flow through tensor operations.
+
+The lecture's theme is that a deep network is a long product of operations, and products are fragile. If each layer slightly grows the scale of its activations, the growth compounds; if each slightly shrinks the gradient, the gradient vanishes by the time it reaches the first layer. The fixes, careful initialization and normalization layers, are best understood as controlling variances, which is calculation you can do on paper.
+</Listen>
+
+<Video id="P6sfmUTpUmc" title="Building makemore Part 3: Activations & Gradients, BatchNorm" channel="Andrej Karpathy" minutes={116} source="https://karpathy.ai/zero-to-hero.html">
+The whole video. Things to watch for:
+
+- **04:19:** the initial loss is far above log 27. Predict the fix before he applies it.
+- **12:59:** histograms of tanh outputs piled up at plus and minus 1, and the white-pixel plot of saturated units.
+- **27:53:** the init scale, "Kaiming init," derived from how standard deviations propagate.
+- **40:40 to 01:03:07:** BatchNorm: the batch statistics, gamma and beta, running estimates, and why the preceding bias is useless.
+- **01:26:51 to 01:46:04:** the four diagnostic plots (forward activations, backward gradients, parameter gradients, update-to-data ratio). These are the most reusable minutes in the series.
+</Video>
+
+<Listen>
+## The loss you should see at step zero
+
+Before any training, a classifier knows nothing, so it should spread probability roughly evenly. For 27 characters, that means an initial loss near log 27, about 3.30. The lecture's network starts far above that, because its output layer produces large logits at random: the softmax is confidently wrong, and the loss pays for confidence it hasn't earned. The first many training steps are then spent just shrinking the logits, the "hockey stick" at the start of the loss curve.
+
+The fix at 04:19 is to initialize the output layer's weights small and its bias at zero, so the initial logits are near 0 and the softmax is near uniform. The general rule is worth memorizing as a check: **compute the loss you expect at initialization and assert you see it.** For a C-way classifier that is log C. For a model whose initial loss is far above that baseline, something is scaled wrong, and the first part of training will be wasted undoing it.
+
+This check transfers beyond toy models. When you fine-tune, the initial loss on your data tells you whether the data and the model agree before you've changed anything. A suspicious starting value is often a tokenization or formatting bug, not a modeling problem.
+</Listen>
+
+<Listen>
+## Saturated tanh, and gradients that vanish
+
+The hidden layer is tanh of a pre-activation. If the pre-activations are large, most tanh outputs sit at plus or minus 1. The derivative of tanh is 1 minus t squared, so at t = 0.99 the unit passes back only about 2 percent of the gradient it receives. A unit that is saturated for every example in the batch passes back essentially nothing: its incoming weights stop learning. The lecture's white-pixel plot (12:59) shows units against examples, white wherever the output is very close to plus or minus 1, and a column of all white is a dead neuron.
+
+Other nonlinearities fail differently. ReLU has derivative exactly 0 for negative inputs, so a ReLU unit whose pre-activation is negative for all inputs is permanently dead (a large learning rate can knock units into that state). Sigmoid saturates at both ends like tanh. Every squashing nonlinearity has a flat region, and the question is how much of the data lands there.
+
+The fix is again a matter of scale: initialize the first layer so pre-activations have a standard deviation around 1, not 10. Which raises the question: what scale is right, in general?
+</Listen>
+
+```text
+y = sum_{i=1..n} w_i x_i          w_i, x_i independent, zero mean
+
+Var(y) = sum_i Var(w_i x_i) = n Var(w) Var(x)
+
+keep Var(y) = Var(x)   =>   Var(w) = 1 / n   =>   std(w) = gain / sqrt(fan_in)
+
+gain: 1 for linear, sqrt(2) for ReLU (He et al. 2015), 5/3 for tanh (PyTorch calculate_gain)
+```
+
+<Listen>
+## Kaiming initialization, derived
+
+Take one output of a linear layer: y is the sum over n inputs of w_i times x_i, with weights and inputs independent and zero-mean. Variances of independent terms add, and the variance of a product of independent zero-mean variables is the product of variances. So Var(y) = n Var(w) Var(x). To keep the scale constant from layer to layer, set Var(w) = 1/n, a weight standard deviation of 1 over the square root of fan_in.
+
+Nonlinearities change the picture by a constant factor. ReLU zeroes half of a symmetric input, halving the second moment, so He and colleagues (2015) derived a correction: weight variance 2/n, a gain of sqrt(2). tanh is contractive (its slope is at most 1), so it shrinks the variance a little, and PyTorch's `calculate_gain` uses 5/3 to compensate. Glorot and Bengio (2010) earlier made the same argument for the backward pass and proposed averaging fan_in and fan_out so both directions are roughly preserved.
+
+The lecture's point at 27:53 is that you can see this empirically: draw a batch, push it through a layer with different weight scales, and look at the standard deviation coming out. The exercise below does exactly that. It also notes the limits. These derivations assume independence and specific distributions, and they become less critical once normalization layers and better optimizers are in place, which is part of why modern networks train at all at depth.
+</Listen>
+
+<Predict
+  title="Variances add"
+  code={`import math
+fan_in = 100
+w_std = 1.0          # weights ~ N(0, 1)
+x_std = 1.0          # inputs  ~ N(0, 1)
+y_var = fan_in * w_std**2 * x_std**2
+print(math.sqrt(y_var), 1 / math.sqrt(fan_in))`}
+  options={["10.0 0.1", "100.0 0.01", "1.0 1.0", "10.0 0.01"]}
+  answer={0}
+>
+The output standard deviation is sqrt(100) = 10, ten times too big, so a tanh on top would saturate almost everywhere. The second number is the weight standard deviation that fixes it, 1 over sqrt(fan_in) = 0.1 (times the nonlinearity's gain).
+</Predict>
+
+<Listen>
+## Batch Normalization
+
+Ioffe and Szegedy (2015) proposed a blunter instrument: if you want pre-activations to be roughly standard normal, standardize them. For each feature, compute the mean and variance over the current minibatch, subtract and divide, and then apply a learned scale gamma and shift beta, so the network can undo the normalization wherever that helps. The layer sits between a linear layer and its nonlinearity.
+
+Several consequences follow, and the lecture covers each:
+
+- **Redundant bias.** Mean subtraction removes any constant the previous layer added, so its bias does nothing and is usually disabled. Beta takes over the job. You'll see this as `bias=False` before BatchNorm in the ResNet code the lecture reads at 01:04:50.
+- **Two modes.** At inference there may be one example, so batch statistics don't exist. BatchNorm keeps running averages of the mean and variance during training (PyTorch's default momentum is 0.1) and uses them at inference. Forgetting to switch modes is a classic bug.
+- **Batch coupling.** During training each example's output depends on the others in its batch. That jitter acts as a regularizer, but it also makes behavior depend on batch size and composition. The lecture's description links Wu and Johnson's "Rethinking Batch in BatchNorm" (2021) for the practical problems this causes.
+
+A detail you'll meet next lesson: PyTorch's `BatchNorm1d` uses the biased variance (divide by n) to normalize during training, but the unbiased estimate (divide by n minus 1) for the running variance. The Backprop Ninja lecture digresses on exactly this mismatch.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e1-w3-init-and-batchnorm"
+  title="Kaiming scale and a BatchNorm forward pass"
+  starter={`import math
+import random
+
+def kaiming_std(fan_in, gain=1.0):
+    """TODO: the weight standard deviation that keeps activations at unit scale."""
+    pass
+
+def batchnorm_train(batch, gamma, beta, eps=1e-5):
+    """Training-mode BatchNorm over a batch of feature vectors (a list of n lists of length d).
+    TODO: per feature j, compute the batch mean and the BIASED variance (divide by n),
+    normalize, then scale by gamma[j] and shift by beta[j].
+    Return (out, mean, var)."""
+    pass
+
+def update_running(running, stat, momentum=0.1):
+    """TODO: exponential moving average, per feature: (1 - momentum) * running + momentum * stat."""
+    pass
+
+# Explore: how does the weight scale change the spread of pre-activations?
+rng = random.Random(0)
+fan_in, n = 100, 200
+x = [[rng.gauss(0, 1) for _ in range(fan_in)] for _ in range(n)]
+for w_std in (1.0, 0.1, kaiming_std(fan_in) or 0.0):
+    w = [rng.gauss(0, w_std) for _ in range(fan_in)]
+    h = [sum(a * b for a, b in zip(row, w)) for row in x]
+    sat = sum(1 for v in h if abs(math.tanh(v)) > 0.97) / n
+    print(f"w_std={w_std:.3f}  preact std={math.sqrt(sum(v * v for v in h) / n):.2f}  saturated={sat:.0%}")
+`}
+  tests={`assert kaiming_std(100) is not None and abs(kaiming_std(100) - 0.1) < 1e-12, "std = gain / sqrt(fan_in)"
+assert abs(kaiming_std(30, gain=5/3) - (5/3) / math.sqrt(30)) < 1e-12, "the tanh gain is 5/3"
+rng = random.Random(0)
+fan_in, fan_out, n = 100, 20, 200
+x = [[rng.gauss(0, 1) for _ in range(fan_in)] for _ in range(n)]
+def preact_std(w_std):
+    W = [[rng.gauss(0, w_std) for _ in range(fan_out)] for _ in range(fan_in)]
+    h = [sum(xi * W[i][j] for i, xi in enumerate(row)) for row in x for j in range(fan_out)]
+    mu = sum(h) / len(h)
+    return math.sqrt(sum((v - mu) ** 2 for v in h) / len(h))
+s = preact_std(kaiming_std(fan_in))
+assert 0.9 < s < 1.1, f"with std 1/sqrt(fan_in), pre-activations should have std near 1, got {s:.3f}"
+assert preact_std(1.0) > 8, "with std 1 the pre-activations blow up to about sqrt(fan_in) = 10"
+batch = [[1.0, 10.0], [2.0, 20.0], [3.0, 30.0], [6.0, 60.0]]
+res = batchnorm_train(batch, gamma=[1.0, 1.0], beta=[0.0, 0.0])
+assert res is not None, "batchnorm_train returned None"
+out, mean, var = res
+assert [round(m, 6) for m in mean] == [3.0, 30.0], "the mean is taken over the batch, per feature"
+assert abs(var[0] - 3.5) < 1e-9, "use the biased variance (divide by n) in the training forward pass, as BatchNorm1d does"
+for j in range(2):
+    col = [row[j] for row in out]
+    assert abs(sum(col) / 4) < 1e-9, "each normalized feature has mean 0 over the batch"
+    assert abs(sum(c * c for c in col) / 4 - 1) < 1e-4, "each normalized feature has variance about 1 over the batch"
+out2, _, _ = batchnorm_train(batch, gamma=[2.0, 1.0], beta=[5.0, 0.0])
+assert abs(sum(r[0] for r in out2) / 4 - 5.0) < 1e-9, "beta sets the output mean"
+assert abs(out2[0][0] - (2 * out[0][0] + 5)) < 1e-9, "gamma scales, beta shifts"
+shifted = [[v + 100.0 for v in row] for row in batch]
+out3, _, _ = batchnorm_train(shifted, gamma=[1.0, 1.0], beta=[0.0, 0.0])
+assert all(abs(a - b) < 1e-9 for r1, r2 in zip(out, out3) for a, b in zip(r1, r2)), "adding a constant before BatchNorm changes nothing (the redundant bias)"
+ru = update_running([0.0, 1.0], [10.0, 3.0], momentum=0.1)
+assert ru is not None and [round(v, 6) for v in ru] == [1.0, 1.2], "running = (1 - m) * running + m * batch_stat"`}
+  solution={`def kaiming_std(fan_in, gain=1.0):
+    return gain / math.sqrt(fan_in)
+
+def batchnorm_train(batch, gamma, beta, eps=1e-5):
+    n, d = len(batch), len(batch[0])
+    mean = [sum(row[j] for row in batch) / n for j in range(d)]
+    var = [sum((row[j] - mean[j]) ** 2 for row in batch) / n for j in range(d)]
+    out = [[gamma[j] * (row[j] - mean[j]) / math.sqrt(var[j] + eps) + beta[j] for j in range(d)]
+           for row in batch]
+    return out, mean, var
+
+def update_running(running, stat, momentum=0.1):
+    return [(1 - momentum) * r + momentum * s for r, s in zip(running, stat)]`}
+>
+Implement the three functions and **Check my answer**. Run it first to see the exploration printout: with weight standard deviation 1 most tanh units saturate, and with the Kaiming scale few do. One test checks the redundant-bias property directly, by shifting every input by 100 and confirming the output doesn't move.
+</PyRunner>
+
+<Callout type="pitfall" title="Train mode, eval mode, and batch size one">
+The BatchNorm bugs that cost real teams days all come from its two modes. Evaluating in training mode makes predictions depend on what else is in the batch, so a model looks fine in batched evaluation and behaves differently when served one request at a time. Training with very small batches makes the batch statistics noisy. And forgetting to calibrate the running statistics (for example, after changing data) leaves inference normalizing with stale numbers. When a model's offline metrics and its served behavior disagree, normalization modes are one of the first things to check.
+</Callout>
+
+<Listen>
+## Diagnostics: is the network healthy?
+
+The second half of the lecture builds the habit of looking inside. Four plots, recomputed as training runs:
+
+1. **Forward activations** per layer: their distribution and the fraction near saturation. Healthy layers have similar spreads; a layer piled up at the extremes is saturating.
+2. **Backward gradients** per layer: their distribution should be similar across layers. Shrinking toward the input means vanishing gradients; growing means exploding.
+3. **Parameter gradients**, especially the ratio of gradient spread to parameter spread for each weight matrix. One layer with a wildly different ratio (the lecture finds one) will train at a different speed from the rest.
+4. **Update-to-data ratio** over time: for each parameter tensor, the standard deviation of the update (learning rate times gradient) divided by the standard deviation of the parameter, on a log scale. It says how fast each tensor is actually changing. Watch the lecture's discussion at 01:39:55 for the rough target he uses and what it means when a layer sits far above or below it.
+
+The fully linear experiment at 01:32:07 is a nice piece of math made visible: without nonlinearities the whole network collapses to one linear map, yet the training dynamics still depend on initialization scale, because the gradients do.
+</Listen>
+
+<Listen>
+## What a working engineer takes from this
+
+You'll rarely hand-tune initializations in applied work; frameworks and pretrained checkpoints handle it. What transfers is the diagnostic stance. When a fine-tuning run diverges, plateaus, or produces NaNs, the questions from this lecture are the ones to ask, in order. Was the initial loss what you'd expect? Are any layers saturated or dead? Are gradients vanishing or exploding (gradient-norm logging catches this)? Is the update size reasonable relative to the weights, or is the learning rate wrong for this model?
+
+That last question connects to model selection, too. Learning rates and schedules that work for one model size don't transfer automatically to another, so when you compare two fine-tuned models, make sure each had a fair hyperparameter search. Otherwise you're comparing tuning effort, not models, which is the same fairness rule Studio 3 applied to comparing prompts.
+</Listen>
+
+<GoDeeper title="Residual connections, LayerNorm, and the WaveNet lecture">
+The lecture description lists residual connections and Adam as "notable todos for later video," and both arrive in "Let's build GPT." Residual connections (He et al., 2015, the ResNet paper) add each block's input to its output, so the backward pass has an identity path along which gradients flow undiminished, which attacks the vanishing-gradient problem at the architectural level. LayerNorm, which GPT uses, normalizes across the features of each example rather than across the batch, removing the batch coupling entirely. If you want one more makemore lecture before GPT, Part 5 builds a deeper, tree-structured model in the spirit of DeepMind's WaveNet (van den Oord et al., 2016) and is a good exercise in tracking tensor shapes through `torch.nn`-style modules:
+
+<Video id="t3YJ5hKiMQ0" title="Building makemore Part 5: Building a WaveNet" channel="Andrej Karpathy" minutes={56} source="https://karpathy.ai/zero-to-hero.html" />
+</GoDeeper>
+
+<Listen>
+## Review sheet
+
+Expect an initial loss near log C; if it's much higher, the output layer is too confident. Saturated tanh passes back 1 minus t squared of the gradient, nearly nothing near plus or minus 1. Var(y) = fan_in Var(w) Var(x), so use weight standard deviation gain over sqrt(fan_in): gain sqrt(2) for ReLU, 5/3 for tanh. BatchNorm standardizes per feature over the batch, then scales and shifts; it makes the previous bias redundant, keeps running statistics for inference, and couples examples in a batch. Watch four diagnostics: activations, gradients, gradient-to-parameter ratios, and update-to-data ratios. Next lesson: compute every gradient in this network by hand.
+</Listen>

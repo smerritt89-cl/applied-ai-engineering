@@ -1,0 +1,163 @@
+---
+id: e1-project
+studio: e1
+title: "Train a tiny GPT on your own corpus"
+summary: >-
+  Build a small character-level GPT from scratch in your own code, following the Zero to Hero series, train it on a
+  public-domain or self-owned text, and report loss curves, samples, and controlled experiments on context length,
+  embedding size, and depth, with attention explained in your own words and a diagram.
+estHours: 12
+repoName: tiny-gpt
+requirements:
+  - { id: r1, text: "Uses a corpus you have the right to use (public domain in your jurisdiction, or your own writing), with its source, license or public-domain basis, cleaning steps, and size in characters documented in the README" }
+  - { id: r2, text: "Implements the model yourself in PyTorch: token and position embeddings, causal multi-head self-attention, feed-forward layers, residual connections, LayerNorm, and a final linear layer to the vocabulary. Libraries may provide nn.Linear, nn.Embedding, nn.LayerNorm, and the optimizer, but not a ready-made transformer or attention module" }
+  - { id: r3, text: "Includes offline tests for the pure-Python pieces (tokenizer round trip, train/val split, batching, stable softmax), passing without a GPU" }
+  - { id: r4, text: "Includes a test that the attention is causal: changing tokens after position t leaves the model's outputs at positions up to t unchanged" }
+  - { id: r5, text: "Uses a fixed, contiguous train/validation split and reports validation loss averaged over many batches, never a single batch" }
+  - { id: r6, text: "Reports the step-0 loss next to the uniform baseline log V, and explains any large difference" }
+  - { id: r7, text: "Plots train and validation loss curves for every run, with configuration, parameter count, wall-clock time, and hardware recorded per run" }
+  - { id: r8, text: "Runs controlled experiments varying one factor at a time from a baseline: context length (block_size), embedding size (n_embd), and number of layers (n_layer), at least two values each besides the baseline, and summarizes the results in a table" }
+  - { id: r9, text: "Shows generated samples from the baseline and from at least two other configurations, with the sampling temperature and seed stated" }
+  - { id: r10, text: "Write-up completed with the template on this page, including attention explained in your own words with a diagram, and how you used AI assistants" }
+  - { id: s1, text: "Replace the character tokenizer with a byte-level BPE tokenizer you trained (lesson 8), and compare validation loss per character, not per token, against the character model", required: false }
+  - { id: s2, text: "Pretrain on a larger public-domain corpus, then fine-tune on your target text with fewer steps and a lower learning rate, and measure whether pretraining lowers the final validation loss (the lecture's suggested exercise EX3)", required: false }
+rubric:
+  - id: correctness
+    criterion: Model correctness and verification
+    levels:
+      1: "Model doesn't train, or attention isn't causal; no tests."
+      2: "Model trains, but the causal property and the helpers are untested, or the step-0 loss is unexplained."
+      3: "Helper tests and a causal-mask test pass; step-0 loss matches log V or the difference is explained."
+      4: "Level 3, plus a further independent check, such as comparing your attention with a straightforward loop implementation on a tiny input, or a gradient check of a custom piece."
+  - id: experiments
+    criterion: Experimental design
+    levels:
+      1: "One run, or several runs that change many things at once."
+      2: "Some variation of the three factors, but without a clear baseline or equal training budgets."
+      3: "One-factor-at-a-time experiments from a documented baseline for context length, embedding size, and depth, at a stated, comparable budget (steps or wall-clock), summarized in a table."
+      4: "Level 3, plus a check of run-to-run noise (for example the baseline repeated with two or three seeds) so differences can be judged against it."
+  - id: analysis
+    criterion: Analysis of results
+    levels:
+      1: "Reports numbers without interpretation."
+      2: "Describes which configuration did best, without reasons."
+      3: "Explains each trend using the gap between train and validation loss (underfitting versus overfitting), parameter count, and compute, and compares with a published baseline where relevant."
+      4: "Level 3, and identifies at least one result that contradicted the author's expectation, with a tested explanation."
+  - id: understanding
+    criterion: Explanation of attention
+    levels:
+      1: "Missing, or copied from a source."
+      2: "Describes attention informally, with errors or without the causal mask."
+      3: "Correct explanation in the author's own words: queries, keys, values, the scaled softmax as a weighted average, the causal mask, and why positions are embedded, with a clear diagram."
+      4: "Level 3, plus a worked numerical example on a tiny sequence, or a visualization of learned attention weights with a careful, non-overclaiming interpretation."
+  - id: communication
+    criterion: Engineering and write-up
+    levels:
+      1: "Code and write-up are hard to follow; results can't be reproduced."
+      2: "Reproducible with effort; the write-up describes what was done but not why."
+      3: "README with setup, one command per experiment, seeds, and corpus provenance; write-up follows the template and is clear to a technical reader."
+      4: "Level 3, and a reader new to the project could rerun the baseline and understand the key findings in ten minutes."
+sources:
+  - { id: karpathy-zero-to-hero, use: adapted, where: "Let's build GPT, suggested exercises EX2 and EX3" }
+  - { id: karpathy-ng-video-lecture, use: linked }
+  - { id: karpathy-nanogpt-repo, use: summarized, where: "README baselines for calibration" }
+  - { id: gutenberg-permissions, use: summarized }
+  - { id: gutenberg-robot-access, use: summarized }
+  - { id: vaswani-2017, use: linked }
+---
+
+## The brief
+
+Build a GPT yourself, train it on a text you chose, and find out by experiment what its size and context length actually buy you. This is the lecture's suggested exercise EX2 ("train the GPT on your own dataset of choice"), turned into a small research project with the checks a working engineer would expect.
+
+The goal is understanding, not a good model. A character-level GPT trained for minutes on one book will produce text with the shape of its source and very little sense. What you can produce is a careful, reproducible account of how loss responds to context length, width, and depth on your data, and a clear explanation of the mechanism at the center of every modern language model, in your own words.
+
+## What you get
+
+- **Lab e1** (`labs/electives/e1-tiny-gpt/`): tested helpers for corpus cleaning, tokenization, splitting, batching, and softmax, plus `train_outline.py`, a training script with evaluation, CSV logging, and sampling already written, and the model left for you.
+- **Lessons e1-w4-l7 and e1-w4-l8**: the model, piece by piece, and the tokenizer for the stretch goal.
+- **Reference code to compare against after you write your own**: Karpathy's `ng-video-lecture` and `nanoGPT` (both MIT). nanoGPT's README reports a best validation loss of 1.4697 on tiny Shakespeare for a 6-layer, 6-head, 384-dimension, context-256 model (about 3 minutes on one A100), and about 1.88 for a 4-layer, 4-head, 128-dimension, context-64 CPU run. Different corpora have different achievable losses, so these are sanity anchors, not targets.
+
+## Choosing your corpus
+
+Pick something you have the right to use: a public-domain book (Project Gutenberg's permissions page notes that most of its books are public domain in the US and that status can differ elsewhere), a collection of several books by one author, or your own writing. Download Gutenberg texts by hand, since the site is intended for human users and may block automated access. One to a few megabytes is a good size for laptop training. Record where the text came from, why you may use it, and how you cleaned it.
+
+## Suggested plan
+
+<Mermaid
+  alt="Project plan as a flowchart: choose and clean a corpus; pass the lab's helper tests; write the model and a causal-mask test; train a baseline and check the step-0 loss against log V; run one-factor experiments on context length, embedding size, and number of layers; analyze curves and samples; write the explanation of attention with a diagram; finish the write-up."
+  caption="Get the pipeline and the checks right before you scale anything."
+  chart={`flowchart TD
+  C["Choose and clean a corpus"] --> T["Pass the lab helper tests"]
+  T --> M["Write the model + causal-mask test"]
+  M --> B["Baseline run: check step-0 loss vs log V"]
+  B --> E["One-factor experiments: block_size, n_embd, n_layer"]
+  E --> A["Analyze curves, gaps, samples"]
+  A --> X["Explain attention, with a diagram"]
+  X --> W["Write-up"]`}
+/>
+
+<Callout type="tip" title="Fix the budget before you compare">
+A bigger model trained for the same number of steps does more compute per step, and a longer context sees more characters per step. Decide up front what "fair" means for your comparisons (same steps, same wall-clock time, or same number of training characters seen) and state it in the write-up. Without a stated budget, "bigger was better" can't be interpreted.
+</Callout>
+
+<Callout type="pitfall" title="Too good to be true is usually a leak">
+If validation loss falls far below the published baselines for a similar configuration, or far below the training loss, suspect your causal mask or your split before you suspect a breakthrough. The causal-mask test (requirement r4) and a contiguous split exist precisely to rule these out.
+</Callout>
+
+## Constraints
+
+- Your own model code. Read the reference implementations only after yours works, and note in the write-up anything you changed after reading them.
+- Everything must run on a laptop CPU at the baseline settings in under about 15 minutes per run; a GPU or Apple Silicon is optional.
+- No copyrighted corpus in a public repository. If your text can't be shared, publish a script that downloads or rebuilds it, or describe how to obtain it.
+
+## Write-up template
+
+Put this in `WRITEUP.md` in your project repo and fill it in. Aim for two to three pages including figures.
+
+```markdown
+# Tiny GPT on <your corpus>: write-up
+
+## Corpus
+Source, why you may use it, cleaning steps, size in characters, vocabulary size, split.
+
+## Model
+Architecture (layers, heads, embedding size, context length, dropout), parameter count,
+optimizer and learning rate. What you wrote yourself; what you compared against afterwards.
+
+## Checks
+- Step-0 loss vs uniform baseline log V: <numbers>, and the explanation of any gap
+- Causal-mask test and helper tests: what each verifies
+- Any further check (loop-based attention comparison, gradient check)
+
+## Experiments
+Budget used for fair comparison (steps, wall-clock, or characters seen): ...
+
+| Run | block_size | n_embd | n_layer | Params | Train loss | Val loss | Time | Hardware |
+|---|---|---|---|---|---|---|---|---|
+| baseline | | | | | | | | |
+| ... | | | | | | | | |
+
+Loss-curve figure(s). Run-to-run noise (if measured).
+
+## Results and analysis
+For each factor: what changed, why (underfitting vs overfitting, capacity, compute),
+and one result that surprised you.
+
+## Samples
+Two or three short samples per configuration, with temperature and seed.
+What differs qualitatively, and what the samples can't tell you.
+
+## Attention, in my own words
+Your explanation and a diagram (hand-drawn photo, Mermaid, or any tool).
+Cover queries, keys, values, the scaled softmax as a weighted average,
+the causal mask, and why positions must be embedded.
+
+## Limitations and next steps
+What this model can't do, and what you'd try next (BPE tokens, more data, pretraining then fine-tuning).
+
+## How I used AI assistants
+Which tools, for what, and what you had to correct.
+```
+
+When you finish, score yourself with the rubric below (ideally a day later), paste your repo link, and mark the project submitted.

@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+Two retrievers, two lists, one answer.
+
+2
+00:00:02.456 --> 00:00:11.373
+Last lesson ended with a finding that keeps recurring in the literature and in practice: keyword search and embedding search fail on different queries.
+
+3
+00:00:11.653 --> 00:00:18.267
+BM25 nails “error TS-999” and misses “how do I get my money back”.
+
+4
+00:00:18.547 --> 00:00:20.061
+Embeddings do the reverse.
+
+5
+00:00:20.341 --> 00:00:23.520
+Hybrid search runs both and combines the results.
+
+6
+00:00:23.800 --> 00:00:25.357
+The architecture is simple.
+
+7
+00:00:25.637 --> 00:00:31.504
+Each retriever returns its own top N candidates for the query, typically a few dozen to a hundred.
+
+8
+00:00:31.784 --> 00:00:34.771
+A fusion step merges the lists into one ranking.
+
+9
+00:00:35.051 --> 00:00:40.448
+The top k of that ranking goes on to a reranker (lesson 9) or straight into the prompt.
+
+10
+00:00:40.728 --> 00:00:52.589
+Anthropic’s contextual retrieval post describes exactly this pipeline: retrieve by embeddings, retrieve by BM25, then combine and deduplicate using rank fusion.
+
+11
+00:00:52.869 --> 00:01:00.272
+In their tests across several knowledge domains, embeddings plus BM25 retrieved better than embeddings alone.
+
+12
+00:01:00.552 --> 00:01:03.005
+The interesting question is the fusion step.
+
+13
+00:01:03.285 --> 00:01:04.608
+There are two families.
+
+14
+00:01:04.888 --> 00:01:08.963
+Score fusion combines the retrievers’ scores, usually a weighted sum.
+
+15
+00:01:09.243 --> 00:01:12.443
+Rank fusion ignores scores and combines positions.
+
+16
+00:01:12.723 --> 00:01:17.117
+Each has a real argument behind it, and the choice matters more than it looks.

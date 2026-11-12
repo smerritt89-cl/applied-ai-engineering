@@ -1,0 +1,298 @@
+{
+  "id": "e1-w1",
+  "studio": "e1",
+  "week": 1,
+  "title": "Week 1 quiz: micrograd, backpropagation, and training",
+  "questions": [
+    {
+      "id": "e1w1-q1",
+      "type": "predict-output",
+      "prompt": "Using the lesson 1 `Value` class (with `+=` accumulation and a topological backward pass), what does this print?",
+      "code": "a = Value(2.0)\nb = Value(-3.0)\nd = a * b + a\nd.backward()\nprint(a.grad, b.grad)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`-3.0 2.0`",
+          "rationale": "That's db/da for d = a * b alone. The `+ a` adds another path from a."
+        },
+        {
+          "id": "b",
+          "text": "`1.0 2.0`",
+          "rationale": "That counts only the addition path for a, as an overwriting engine might."
+        },
+        {
+          "id": "c",
+          "text": "`-2.0 -3.0`",
+          "rationale": "dd/db is a, not b."
+        },
+        {
+          "id": "d",
+          "text": "`-2.0 2.0`",
+          "correct": true,
+          "rationale": "d = ab + a, so dd/da = b + 1 = -2 and dd/db = a = 2."
+        }
+      ],
+      "explanation": "The variable a reaches d along two paths: through the product (local derivative b) and directly through the sum (local derivative 1). The chain rule adds the paths: b + 1 = -2. For b there is one path, with local derivative a = 2.",
+      "week": 1,
+      "tags": [
+        "autograd",
+        "chain-rule"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w1-q2",
+      "type": "code-reading",
+      "prompt": "This multiplication node has a bug in its backward pass. When does it still give correct gradients?",
+      "code": "def __mul__(self, other):\n    out = Value(self.data * other.data, (self, other))\n    def _backward():\n        self.grad += self.data * out.grad    # <- check this line\n        other.grad += self.data * out.grad\n    out._backward = _backward\n    return out",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "Never; the gradient for `self` is always wrong.",
+          "rationale": "It's wrong in general, but there is a special case where the two expressions coincide."
+        },
+        {
+          "id": "b",
+          "text": "Only when `self.data == other.data`, because it uses `self.data` where `other.data` belongs.",
+          "correct": true,
+          "rationale": "d(a*b)/da = b. Using a instead is right only when a equals b, for example in `x * x`."
+        },
+        {
+          "id": "c",
+          "text": "Always; multiplication is commutative, so the order doesn't matter.",
+          "rationale": "The forward value is symmetric, but each input's local derivative is the other input."
+        },
+        {
+          "id": "d",
+          "text": "Only when `out.grad` is 1.",
+          "rationale": "The upstream gradient scales both terms; it doesn't fix the swapped factor."
+        }
+      ],
+      "explanation": "Multiplication's local derivatives swap: the gradient flowing to a is b times the upstream gradient, and vice versa. A test using `x * x` would miss this bug, because both factors are equal. Gradient checks on random, non-symmetric inputs catch it.",
+      "week": 1,
+      "tags": [
+        "autograd",
+        "debugging"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w1-q3",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "def f(x):\n    return x ** 2\n\nx, h = 3.0, 0.1\none_sided = (f(x + h) - f(x)) / h\ncentral = (f(x + h) - f(x - h)) / (2 * h)\nprint(round(one_sided, 4), round(central, 4))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`6.1 6.0`",
+          "correct": true,
+          "rationale": "The one-sided estimate is off by h times f''(x)/2 = 0.1; the central estimate is exact for a quadratic."
+        },
+        {
+          "id": "b",
+          "text": "`6.0 6.0`",
+          "rationale": "The one-sided difference has an error of order h, here 0.1."
+        },
+        {
+          "id": "c",
+          "text": "`6.1 6.1`",
+          "rationale": "The central difference cancels the second-order term."
+        },
+        {
+          "id": "d",
+          "text": "`6.01 6.0`",
+          "rationale": "The one-sided error is h/2 times f'' = 0.05 times 2 = 0.1, not 0.01."
+        }
+      ],
+      "explanation": "For f(x) = x squared, the one-sided quotient is 2x + h = 6.1 and the central quotient is exactly 2x = 6. In general the central difference has error of order h squared, which is why gradient checks use it.",
+      "week": 1,
+      "tags": [
+        "numerical-derivative",
+        "gradient-check"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w1-q4",
+      "type": "mcq",
+      "prompt": "Why does micrograd's `tanh` node save its output `t` for the backward pass?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Because reverse mode needs every node's output to compute the loss.",
+          "rationale": "The loss is already computed by the forward pass; the stored value is for the derivative."
+        },
+        {
+          "id": "b",
+          "text": "So the node can be reused in a later forward pass.",
+          "rationale": "Each forward pass builds a new graph."
+        },
+        {
+          "id": "c",
+          "text": "Because the local derivative of tanh is 1 - t squared, which is cheapest to compute from the output.",
+          "correct": true,
+          "rationale": "Yes. Reusing the forward result avoids recomputing tanh and is exactly what frameworks do."
+        },
+        {
+          "id": "d",
+          "text": "Because tanh has no derivative at 0.",
+          "rationale": "tanh is smooth everywhere; its derivative at 0 is 1."
+        }
+      ],
+      "explanation": "Each operation stores whatever its backward pass needs: tanh keeps its output, multiplication keeps both inputs. Those stored values are the memory cost of reverse mode, which is why training uses much more memory than inference.",
+      "week": 1,
+      "tags": [
+        "autograd",
+        "memory"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w1-q5",
+      "type": "multi",
+      "prompt": "Which statements about reverse-mode automatic differentiation (backpropagation) are true? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "One backward pass gives the derivative of a scalar output with respect to every input.",
+          "correct": true,
+          "rationale": "That's its defining advantage for training, where there is one loss and many parameters."
+        },
+        {
+          "id": "b",
+          "text": "It needs the intermediate values computed in the forward pass.",
+          "correct": true,
+          "rationale": "Local derivatives such as b in d(ab)/da use forward values, so they must be stored."
+        },
+        {
+          "id": "c",
+          "text": "It approximates derivatives by nudging each input.",
+          "rationale": "That's numerical differentiation, which is used to check autodiff, not to implement it."
+        },
+        {
+          "id": "d",
+          "text": "Its cost is a small constant multiple of the forward pass, independent of the number of inputs.",
+          "correct": true,
+          "rationale": "Baydin et al.'s survey gives this as the key property of reverse mode for functions from many inputs to one output."
+        }
+      ],
+      "explanation": "Reverse mode is exact (up to floating point), costs about as much as a few forward passes, and trades memory for that speed. Forward mode is the better choice only when there are few inputs and many outputs.",
+      "week": 1,
+      "tags": [
+        "autodiff"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w1-q6",
+      "type": "code-reading",
+      "prompt": "What happens when this training loop runs?",
+      "code": "for step in range(100):\n    loss = mse_loss(model, xs, ys)\n    loss.backward()\n    for p in model.parameters():\n        p.grad = 0.0\n    for p in model.parameters():\n        p.data -= 0.05 * p.grad",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "It trains normally.",
+          "rationale": "The update uses gradients that were just set to zero."
+        },
+        {
+          "id": "b",
+          "text": "Gradients accumulate across steps and the loss diverges.",
+          "rationale": "They are reset every step, just at the wrong moment."
+        },
+        {
+          "id": "c",
+          "text": "It raises an error because grad is zero.",
+          "rationale": "Subtracting zero is legal; it just does nothing."
+        },
+        {
+          "id": "d",
+          "text": "The parameters never change, because gradients are zeroed after backward and before the update.",
+          "correct": true,
+          "rationale": "Each update subtracts lr times 0. The loss stays flat."
+        }
+      ],
+      "explanation": "The order is forward, zero, backward, update. Zeroing between backward and update discards the gradient you just computed. A flat loss curve from step 0 is the symptom, which is why logging the loss at every step during the first runs is worth it.",
+      "week": 1,
+      "tags": [
+        "training-loop",
+        "debugging"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w1-q7",
+      "type": "scenario",
+      "prompt": "You're adding a custom operation to a training codebase, with a hand-written backward pass for speed. Training \"works\" on a toy problem. Before merging, what is the most valuable test to add?",
+      "options": [
+        {
+          "id": "a",
+          "text": "A gradient check: on small random inputs in double precision, compare the backward pass with central differences using a relative error.",
+          "correct": true,
+          "rationale": "It tests the math directly and fails loudly on swapped factors, missing terms, or wrong shapes."
+        },
+        {
+          "id": "b",
+          "text": "A test that training loss decreases on the toy problem.",
+          "rationale": "A roughly right gradient also decreases the loss; this test can't distinguish correct from nearly correct."
+        },
+        {
+          "id": "c",
+          "text": "A test that the backward pass runs without exceptions.",
+          "rationale": "Wrong gradients rarely raise exceptions."
+        },
+        {
+          "id": "d",
+          "text": "A benchmark showing the custom op is faster.",
+          "rationale": "Speed matters, but only after correctness."
+        }
+      ],
+      "explanation": "Gradient checks are the unit test for calculus. Use random, non-symmetric inputs so swapped indices can't hide, double precision so the finite difference is accurate, and relative error because gradients vary in scale.",
+      "week": 1,
+      "tags": [
+        "gradient-check",
+        "engineering"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w1-q8",
+      "type": "predict-output",
+      "prompt": "Each neuron has one weight per input plus a bias. How many parameters does `MLP(2, [3, 1])` have?",
+      "code": "model = MLP(2, [3, 1])\nprint(len(model.parameters()))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`9`",
+          "rationale": "That counts only the weights: 2 x 3 + 3 x 1."
+        },
+        {
+          "id": "b",
+          "text": "`12`",
+          "rationale": "That misses the output neuron's bias."
+        },
+        {
+          "id": "c",
+          "text": "`13`",
+          "correct": true,
+          "rationale": "3 x (2 + 1) + 1 x (3 + 1) = 9 + 4 = 13."
+        },
+        {
+          "id": "d",
+          "text": "`10`",
+          "rationale": "Each of the 4 neurons has a bias, not one bias per layer."
+        }
+      ],
+      "explanation": "A layer with n inputs and m neurons has m(n + 1) parameters. The same count applies to every linear layer you'll meet, up to the transformer's projections.",
+      "week": 1,
+      "tags": [
+        "mlp"
+      ],
+      "difficulty": 1
+    }
+  ]
+}

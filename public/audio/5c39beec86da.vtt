@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.837
+Three ways to compare vectors, and when they agree.
+
+2
+00:00:03.117 --> 00:00:07.811
+You will meet three similarity measures in provider docs and vector databases.
+
+3
+00:00:08.091 --> 00:00:11.824
+Dot product: the sum of the elementwise products of a and b.
+
+4
+00:00:12.104 --> 00:00:14.301
+It grows with both alignment and length.
+
+5
+00:00:14.581 --> 00:00:19.339
+Cosine similarity: the dot product divided by the product of the two norms.
+
+6
+00:00:19.619 --> 00:00:26.296
+It is the cosine of the angle between the vectors, between -1 and 1, and it ignores length entirely.
+
+7
+00:00:26.576 --> 00:00:29.456
+Euclidean distance: the norm of a minus b.
+
+8
+00:00:29.736 --> 00:00:32.253
+Smaller means closer, so you rank ascending.
+
+9
+00:00:32.533 --> 00:00:35.029
+The relationship is one line of algebra.
+
+10
+00:00:35.309 --> 00:00:43.459
+The squared norm of a minus b equals the squared norm of a plus the squared norm of b minus twice the dot product of a and b.
+
+11
+00:00:43.739 --> 00:00:50.373
+If every vector has norm 1, that’s 2 minus 2 cos(a, b), and the dot product equals the cosine.
+
+12
+00:00:50.653 --> 00:00:54.088
+So on unit vectors, all three give identical rankings.
+
+13
+00:00:54.368 --> 00:01:03.819
+Off the unit sphere they can disagree: the dot product favors long vectors, and Euclidean distance penalizes vectors whose length differs from the query’s.
+
+14
+00:01:04.099 --> 00:01:06.616
+This is why provider docs say what they say.
+
+15
+00:01:06.896 --> 00:01:24.389
+OpenAI’s embeddings guide and the Voyage AI section of Anthropic’s embeddings guide both state that their embeddings are normalized to length 1, so dot product and cosine are the same and Euclidean distance yields the same ranking; the dot product is simply faster.
+
+16
+00:01:24.669 --> 00:01:39.987
+Google’s Gemini docs say that gemini-embedding-001 vectors truncated below the full 3,072 dimensions must be renormalized by you, while the newer gemini-embedding-2 normalizes truncated outputs itself.
+
+17
+00:01:40.267 --> 00:01:49.973
+Sentence Transformers uses cosine as its default similarity, and its docs recommend the dot product when the model already ends in a normalization layer.
+
+18
+00:01:50.253 --> 00:02:00.451
+The working rule: use the metric the model was trained and documented for, and if you aren’t sure, normalize vectors once at write time and use the dot product everywhere.
+
+19
+00:02:00.731 --> 00:02:05.275
+Then your vector store, your offline evals, and your production code all agree.

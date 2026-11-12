@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.923
+When code can’t decide, and a person can’t scale.
+
+2
+00:00:03.203 --> 00:00:08.451
+Last lesson pushed every criterion as far toward deterministic code as it would go.
+
+3
+00:00:08.731 --> 00:00:10.736
+Some criteria don’t go far.
+
+4
+00:00:11.016 --> 00:00:14.259
+Does this reply actually answer the customer’s question?
+
+5
+00:00:14.539 --> 00:00:16.907
+Is this summary faithful to the transcript?
+
+6
+00:00:17.187 --> 00:00:20.109
+Does this quote show the named person committing to the task?
+
+7
+00:00:20.389 --> 00:00:26.469
+These need judgment, and a person reviewing thousands of outputs per release is slow and expensive.
+
+8
+00:00:26.749 --> 00:00:36.733
+An LLM judge (or LLM-as-judge) is a model call that reads an output, plus whatever context the criterion needs, and returns a verdict.
+
+9
+00:00:37.013 --> 00:00:47.680
+Anthropic’s eval guidance describes it as fast, flexible, scalable, and suitable for complex judgment, with one condition: test that it’s reliable first, then scale.
+
+10
+00:00:47.960 --> 00:01:00.077
+Anthropic’s engineering write-up on agent evals lists the weaknesses on the same page: judges are non-deterministic, cost more than code, and need calibration against human graders.
+
+11
+00:01:00.357 --> 00:01:04.667
+So a judge is a component you build and measure, not an oracle you consult.
+
+12
+00:01:04.947 --> 00:01:20.797
+Use one when three things are true: the criterion matters enough to track; no code check (or decomposition into code checks) captures it; and you can get a person who knows the domain to label examples, so you can find out whether the judge agrees with them.
+
+13
+00:01:21.077 --> 00:01:22.805
+That last step is lesson 6.
+
+14
+00:01:23.085 --> 00:01:26.264
+This lesson is about building a judge worth calibrating.
+
+15
+00:01:26.544 --> 00:01:33.925
+A good default from Studio 1 carries over: ask a narrow question about one criterion, for one output at a time.
+
+16
+00:01:34.205 --> 00:01:37.704
+“Review this conversation” invites a vague, lenient answer.
+
+17
+00:01:37.984 --> 00:01:42.080
+“Does the reply make any policy claim the policy excerpt doesn’t support?
+
+18
+00:01:42.360 --> 00:01:47.736
+Pass or fail, with the reason” is something a model, and a person, can answer consistently.

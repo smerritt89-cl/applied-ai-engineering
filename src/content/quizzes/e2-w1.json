@@ -1,0 +1,374 @@
+{
+  "id": "e2-w1",
+  "studio": "e2",
+  "week": 1,
+  "title": "Week 1 quiz: How coding agents work",
+  "questions": [
+    {
+      "id": "e2w1-q1",
+      "type": "mcq",
+      "prompt": "In Anthropic's description of Claude Code, what is the **harness**?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The Claude model weights that run locally",
+          "rationale": "Claude Code calls models; the harness is the layer around them."
+        },
+        {
+          "id": "b",
+          "text": "The layer around the model that provides tools, runs permission checks, and manages the context the model sees",
+          "correct": true,
+          "rationale": "That's the docs' definition, and it's why the same model can behave differently in different tools."
+        },
+        {
+          "id": "c",
+          "text": "The test suite the agent runs to verify its work",
+          "rationale": "Tests are a check the agent uses, not the harness."
+        },
+        {
+          "id": "d",
+          "text": "The CLAUDE.md file",
+          "rationale": "CLAUDE.md is context the harness loads."
+        }
+      ],
+      "explanation": "Model plus harness: the model reasons and proposes tool calls; the harness supplies tools, enforces rules, and manages context. Much of what distinguishes coding agents is harness design.",
+      "week": 1,
+      "tags": [
+        "agent-loop"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e2w1-q2",
+      "type": "scenario",
+      "prompt": "A teammate says: \"I told Claude at the start of the session not to touch the `v1/` API, and three hours later it edited `v1/routes.py`. The model is broken.\" What's the most likely explanation and fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The model is ignoring instructions on purpose; switch vendors.",
+          "rationale": "There's a more mundane, documented explanation."
+        },
+        {
+          "id": "b",
+          "text": "The instruction lived only in conversation and was likely lost or diluted when the long session was compacted; put it in CLAUDE.md, and if it's a zero-exception rule, enforce it with a deny rule or PreToolUse hook.",
+          "correct": true,
+          "rationale": "The docs warn early conversation instructions can be lost to compaction, while project CLAUDE.md is re-read; enforcement is the harness's job."
+        },
+        {
+          "id": "c",
+          "text": "The context window was too small; buy a larger one.",
+          "rationale": "Windows are large on current models; the issue is where the rule lived and that it wasn't enforced."
+        },
+        {
+          "id": "d",
+          "text": "Use `/clear` more often so the instruction stays at the top.",
+          "rationale": "/clear erases the conversation, including that instruction."
+        }
+      ],
+      "explanation": "Locate the failure: conversation-only instructions are fragile; files the harness reloads are durable; must-never rules belong in deterministic controls.",
+      "week": 1,
+      "tags": [
+        "context",
+        "compaction",
+        "enforcement"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w1-q3",
+      "type": "multi",
+      "prompt": "Which controls in Claude Code are **enforced by the harness** regardless of what the model decides? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "A `deny` rule in `.claude/settings.json`",
+          "correct": true,
+          "rationale": "Deny rules apply in every permission mode."
+        },
+        {
+          "id": "b",
+          "text": "A PreToolUse command hook that exits 2",
+          "correct": true,
+          "rationale": "The harness runs it and blocks the call."
+        },
+        {
+          "id": "c",
+          "text": "A line in CLAUDE.md saying \"never run migrations\"",
+          "rationale": "CLAUDE.md is context the model reads, not configuration."
+        },
+        {
+          "id": "d",
+          "text": "The auto mode classifier",
+          "rationale": "It's a separate model making a judgment; the docs say it can be wrong, so never-rules belong in deny rules or hooks."
+        },
+        {
+          "id": "e",
+          "text": "The sandbox's filesystem and network limits",
+          "correct": true,
+          "rationale": "OS-level enforcement for the commands it wraps."
+        }
+      ],
+      "explanation": "The best-practices page sorts instructions into non-deterministic (prompts, CLAUDE.md, skills, the classifier's judgment) and deterministic (hooks, deny rules, sandbox, managed settings). Use the second kind for anything that must always or never happen.",
+      "week": 1,
+      "tags": [
+        "permissions",
+        "hooks"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w1-q4",
+      "type": "code-reading",
+      "prompt": "This is a toy agent loop. Which line makes it an *agent* rather than a single model call?",
+      "code": "def run(task, tools, call_model, max_turns=20):\n    messages = [{\"role\": \"user\", \"content\": task}]\n    for _ in range(max_turns):\n        reply = call_model(messages, tools)\n        if reply.tool_call:\n            messages.append(tools.execute(reply.tool_call))  # line 5\n            continue\n        return reply.text  # line 7\n",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "Line 2, sending the messages and tool definitions",
+          "rationale": "A single call sends those too."
+        },
+        {
+          "id": "b",
+          "text": "Line 5, appending each tool result to `messages` before calling the model again",
+          "correct": true,
+          "rationale": "Feeding results back and looping lets the model decide its next step from new evidence."
+        },
+        {
+          "id": "c",
+          "text": "Line 7, returning the final text",
+          "rationale": "Every chat completion returns text."
+        },
+        {
+          "id": "d",
+          "text": "Line 1, the function signature",
+          "rationale": "Nothing agentic about a signature."
+        }
+      ],
+      "explanation": "An agent is a loop: model proposes a tool call, the harness runs it, the result goes back into context, repeat until done. The intelligence is in the model; reliability comes from the tools, the checks, and how context is managed.",
+      "week": 1,
+      "tags": [
+        "agent-loop"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e2w1-q5",
+      "type": "mcq",
+      "prompt": "According to Epoch AI's review of OpenAI's February 2026 audit, why did OpenAI stop evaluating on SWE-bench Verified?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The tasks were too easy for current models, but otherwise sound.",
+          "rationale": "Saturation was part of the picture, but the audit's findings were about flawed tests and contamination."
+        },
+        {
+          "id": "b",
+          "text": "Many audited tasks had tests that rejected correct fixes, and frontier models had seen some problems and solutions during training.",
+          "correct": true,
+          "rationale": "59.4% of the audited 27.6% had flawed tests, and contamination meant gains reflected training exposure."
+        },
+        {
+          "id": "c",
+          "text": "The benchmark was moved behind a paywall.",
+          "rationale": "No; it's public, which is part of the contamination problem."
+        },
+        {
+          "id": "d",
+          "text": "It only tested JavaScript.",
+          "rationale": "SWE-bench is built from Python repositories."
+        }
+      ],
+      "explanation": "Benchmarks have a shelf life. Prefer newer, contamination-resistant ones (SWE-bench Pro's held-out and commercial sets, Terminal-Bench 2.0), read the harness used, and treat any score as a reason to include a model in your own comparison.",
+      "week": 1,
+      "tags": [
+        "benchmarks"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w1-q6",
+      "type": "predict-output",
+      "prompt": "Two agents ran the same 10 tasks. What does this print?",
+      "code": "A = [True, True, False, True, False, True, True, False, False, True]\nB = [True, False, False, True, True, True, True, False, True, True]\na_only = sum(1 for x, y in zip(A, B) if x and not y)\nb_only = sum(1 for x, y in zip(A, B) if y and not x)\nprint((a_only, b_only))\n",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`(1, 2)`",
+          "correct": true,
+          "rationale": "The second task is solved only by A; the fifth and ninth only by B."
+        },
+        {
+          "id": "b",
+          "text": "`(6, 7)`",
+          "rationale": "Those are the totals; only disagreements count."
+        },
+        {
+          "id": "c",
+          "text": "`(2, 2)`",
+          "rationale": "Count the positions where exactly one is True."
+        },
+        {
+          "id": "d",
+          "text": "`(5, 5)`",
+          "rationale": "Agreement positions carry no information about which is better."
+        }
+      ],
+      "explanation": "Only discordant tasks inform a paired comparison. With 1 versus 2, the edge is far from convincing; on small samples, look at disagreements and intervals before declaring a winner.",
+      "week": 1,
+      "tags": [
+        "benchmarks",
+        "statistics"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w1-q7",
+      "type": "scenario",
+      "prompt": "A vendor case study says engineers \"felt 40% more productive\" with their agent. Your VP wants to buy it for the whole org. What's the best response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Buy it; 40% is large and came from real engineers.",
+          "rationale": "Self-reported speed is the weakest evidence; METR's 2025 trial found developers believed they were faster while measured time went up."
+        },
+        {
+          "id": "b",
+          "text": "Refuse; METR proved AI slows experienced developers down.",
+          "rationale": "METR's 2025 result is now labeled historical, and its 2026 follow-up couldn't measure the current effect reliably. Neither study settles your team's case."
+        },
+        {
+          "id": "c",
+          "text": "Propose a short pilot that measures outcomes (time to merged change, rework, defects found in review, cost) on tasks chosen in advance, with comparison work done without the tool or with the current tool.",
+          "correct": true,
+          "rationale": "Turns a claim into a measurement on your own work, and avoids the selection effects that undermined METR's 2026 study."
+        },
+        {
+          "id": "d",
+          "text": "Ask the vendor for a SWE-bench Verified score.",
+          "rationale": "That benchmark is flawed and contaminated, and it doesn't measure your team's work anyway."
+        }
+      ],
+      "explanation": "Treat productivity claims from vendors and skeptics alike as hypotheses about your team. Measure outcomes, not feelings, and pick tasks before you run anything.",
+      "week": 1,
+      "tags": [
+        "productivity",
+        "evidence"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w1-q8",
+      "type": "mcq",
+      "prompt": "What did METR conclude about the estimates from its 2025-2026 follow-up study of developer productivity?",
+      "options": [
+        {
+          "id": "a",
+          "text": "They showed a reliable 18% speedup.",
+          "rationale": "METR explicitly declined to treat the number as a measurement."
+        },
+        {
+          "id": "b",
+          "text": "They were an unreliable signal, likely a lower bound, because developers who didn't want to work without AI declined to participate or withheld tasks.",
+          "correct": true,
+          "rationale": "Developer and task selection effects biased the sample toward low-uplift work."
+        },
+        {
+          "id": "c",
+          "text": "They confirmed the 2025 slowdown exactly.",
+          "rationale": "Both point estimates moved toward speedups, with intervals that include slowdowns."
+        },
+        {
+          "id": "d",
+          "text": "They showed AI has no effect on productivity.",
+          "rationale": "METR said developers were likely more sped up in early 2026 than 2025, while calling the data very weak evidence of the size."
+        }
+      ],
+      "explanation": "A well-designed trial can still be undermined by who chooses to participate and which tasks they submit. When you run your own pilot, fix the task list in advance.",
+      "week": 1,
+      "tags": [
+        "productivity",
+        "evidence"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w1-q9",
+      "type": "multi",
+      "prompt": "You're comparing two setups on your repo. Which choices make the comparison fairer? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Choose the tasks and write the prompts before running either setup",
+          "correct": true,
+          "rationale": "Prevents selecting tasks that favor one setup."
+        },
+        {
+          "id": "b",
+          "text": "Run each task several times per setup in fresh sessions",
+          "correct": true,
+          "rationale": "Agent runs vary; one run is an anecdote."
+        },
+        {
+          "id": "c",
+          "text": "Report cost per successful task, plus your rework time",
+          "correct": true,
+          "rationale": "Failed runs cost money and attention."
+        },
+        {
+          "id": "d",
+          "text": "Let each setup continue the previous run's session to save time",
+          "rationale": "Shared context contaminates later runs."
+        },
+        {
+          "id": "e",
+          "text": "Change the model and the CLAUDE.md at the same time",
+          "rationale": "Change one variable at a time, or you can't attribute the difference."
+        }
+      ],
+      "explanation": "Fixed tasks and prompts, one variable at a time, isolated and repeated runs, and outcome metrics (success, rework, time, cost).",
+      "week": 1,
+      "tags": [
+        "model-selection",
+        "measurement"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w1-q10",
+      "type": "scenario",
+      "prompt": "You're about to have Claude Code chase an intermittent test failure in a concurrency module nobody on the team wrote. Which setup is best supported by the Claude Code docs?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Default effort, plus \"think step by step and be thorough\" in the prompt",
+          "rationale": "The docs say those phrases are ordinary text that nudge within the effort level, not switches."
+        },
+        {
+          "id": "b",
+          "text": "Raise effort to high or xhigh for this task and give it a check, such as a script that runs the test 50 times and reports the failure count",
+          "correct": true,
+          "rationale": "The docs name bugs in unfamiliar code and flaky tests as reasons to raise effort; a repeatable check lets the loop close."
+        },
+        {
+          "id": "c",
+          "text": "Set effort to max globally from now on",
+          "rationale": "The docs warn max tends to overthink ordinary tasks; raise effort per task."
+        },
+        {
+          "id": "d",
+          "text": "Switch to the smallest model so it iterates faster",
+          "rationale": "Small models suit simple subagent jobs, not subtle debugging."
+        }
+      ],
+      "explanation": "Raise effort when correctness hinges on easily overlooked cases, and always pair it with a check the agent can run. For a flaky test, the check is repetition.",
+      "week": 1,
+      "tags": [
+        "model-selection",
+        "effort"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

@@ -1,0 +1,274 @@
+---
+id: e3-w1-l3
+studio: e3
+week: 1
+order: 3
+title: Which model for which job, with evidence
+summary: What Anthropic, OpenAI, Google, xAI, and the leading open-weight publishers each document as their models' strengths, what independent evidence shows and its caveats, a model selection playbook by task type, and how to confirm a choice with a small eval.
+estMinutes: 70
+reviewed: 2026-11-11
+objectives:
+  - Summarize what each major provider documents about its current models (context, modalities, tools, pricing tiers, data terms), labeled as vendor claims
+  - Use arena rankings, Artificial Analysis, SWE-bench Pro, and METR results as a shortlist, naming each one's main caveat
+  - Map common task types to candidate models and say what would change the choice
+  - Design a small eval that compares at least three models on one task type, with a quality bar, cost, and an interval
+  - Pick the cheapest model that clears a quality bar, using a lower confidence bound rather than a point estimate
+sources:
+  - { id: claude-models-docs, use: summarized }
+  - { id: claude-choosing-model-docs, use: summarized }
+  - { id: openai-models-docs, use: summarized }
+  - { id: gemini-models-docs, use: summarized }
+  - { id: xai-models-docs, use: summarized }
+  - { id: xai-x-search-docs, use: summarized }
+  - { id: xai-security-faq, use: summarized, where: "Retention and zero data retention" }
+  - { id: openai-your-data, use: summarized }
+  - { id: claude-data-retention-docs, use: linked }
+  - { id: gemini-api-terms, use: summarized, where: "Unpaid versus paid services" }
+  - { id: openai-gpt-oss, use: summarized }
+  - { id: qwen-github, use: linked }
+  - { id: deepseek-api-docs, use: linked }
+  - { id: hf-meta-llama, use: linked }
+  - { id: artificial-analysis-open-weights, use: linked }
+  - { id: arena-leaderboard, use: summarized, where: "Agent leaderboard" }
+  - { id: arena-style-control, use: summarized }
+  - { id: artificial-analysis-methodology, use: summarized }
+  - { id: deng-2025-swebench-pro, use: summarized }
+  - { id: metr-time-horizons-page, use: summarized }
+  - { id: panickssery-2024-self-preference, use: summarized }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 4, Evaluate AI Systems" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your support team wants a daily digest of what customers are saying about your product on X, with links to the
+      posts. Which choice is best supported by the providers' own documentation?
+    options:
+      - id: a
+        text: Any frontier model will do; they all know what happened yesterday.
+        rationale: No model knows events after its training cutoff unless a search tool supplies them.
+      - id: b
+        text: Grok with the X Search tool enabled, with a check that every summarized claim links to a fetched post.
+        correct: true
+        rationale: xAI documents X Search for searching posts, users, and threads with citations. The link check is your verification step.
+      - id: c
+        text: The model with the largest context window, so it can read more of X.
+        rationale: Context size is irrelevant if the model has no way to fetch the posts.
+    explanation: >-
+      Real-time and social data is a case where a distinctive tool, not raw model quality, decides the shortlist. Other
+      providers offer web search tools too, so test them, but only xAI documents first-party search over X. Whatever you
+      pick, require citations and verify that each one resolves to a real post that says what the summary claims.
+  - id: kc2
+    type: code-reading
+    prompt: >-
+      This function is meant to pick the cheapest model that is good enough. What is its main flaw?
+    code: |
+      def pick(results, price_per_task):
+          ok = [m for m, (passed, n) in results.items() if passed / n >= 0.9]
+          return min(ok, key=lambda m: price_per_task[m])
+
+      pick({"big": (46, 50), "small": (9, 10)}, {"big": 0.08, "small": 0.01})
+    options:
+      - id: a
+        text: It uses point estimates, so a model with 9 of 10 passes ties a model with 46 of 50, though the evidence for the small model is far weaker.
+        correct: true
+        rationale: Yes. With n = 10, the plausible range for the true pass rate is very wide. Use a lower confidence bound.
+      - id: b
+        text: It should pick the most expensive model to be safe.
+        rationale: Cost matters; the problem is how quality is judged, not the cost objective.
+      - id: c
+        text: Python's min cannot take a key function.
+        rationale: It can.
+    explanation: >-
+      Small evals are noisy. A Wilson lower bound for 9 of 10 is about 0.60, and for 46 of 50 about 0.81, so neither
+      clears 0.9 with confidence and the small model is far less certain. The exercise in this lesson implements the
+      fix: decide on the lower bound, and run more items when the decision is close.
+  - id: kc3
+    type: mcq
+    prompt: Which statement about independent leaderboards is most accurate?
+    options:
+      - id: a
+        text: An Arena top ranking shows the model is the most accurate for professional work.
+        rationale: Arena votes measure preference on users' prompts; style and length sway them, and preference is not correctness.
+      - id: b
+        text: They are useful for shortlisting, but each measures something specific (preference, a benchmark mix, speed and price) under conditions that may not match your task.
+        correct: true
+        rationale: Right. Use them to choose what to test, then test.
+      - id: c
+        text: Vendor-reported benchmark numbers are more reliable than independent leaderboards because the vendor knows its model best.
+        rationale: Vendors choose the prompts, scaffolds, and settings. Their numbers are claims to check.
+    explanation: >-
+      Each source answers a different question. Arena: what do users prefer? Artificial Analysis: how do models compare
+      on a fixed benchmark mix, speed, and price? SWE-bench Pro and METR: how do agents do on specific software tasks?
+      None answers "which is best for my task," which is what your own eval is for.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The question you are actually asking
+
+"Which model is best?" has no answer. "Which model is good enough for this task, at the lowest cost and risk, and how do I know?" does. This lesson gives you three things: what each provider says its models are for (claims), what independent measurement shows (evidence, with caveats), and a playbook that ends in the only evidence that settles your question, a small eval on your own task.
+
+Studio 1, lesson 3 introduced the landscape and the pricing math. This lesson is the decision layer on top: how to weigh distinctive features against raw capability, and how to build checks into the choice so you notice when it goes stale.
+
+A warning about this lesson's shelf life. Everything below was checked on 11 November 2026, and model lineups change every few months. The structure of the decision (features, evidence, eval) will outlast the names. When you use this lesson later, reread the providers' pages first; if a model named here no longer exists, the method still applies.
+</Listen>
+
+<Listen>
+## What each provider documents (vendor claims)
+
+These are the providers' own descriptions at the time of review. They are claims to test, not findings.
+
+**Anthropic (Claude).** The models overview recommends Claude Opus 5.5 as the starting point for most workloads ("long-running agentic coding and knowledge work"), Claude Fable 5.2 for demanding reasoning and long-horizon agentic work, Claude Sonnet 5.5 as the speed and intelligence balance, and Claude Haiku 5.5 for high-volume, latency-sensitive tasks such as classification, extraction, and routing. All four list 1M-token context windows and 128K output tokens, accept text and images, and produce text. Prices range from 0.10 dollars (input) per million tokens on Haiku to 8 dollars on Fable. The documentation leans on agentic coding, tool use, and controls such as effort and prompt caching.
+
+**OpenAI (GPT).** The models page features GPT-6 Astra as the flagship for complex reasoning and coding, GPT-6.1 Sol as a lower-cost model for complex work, GPT-6.1 Terra for visual reasoning, precise computer use, and natural writing, and GPT-6 Luna for cost-sensitive, high-volume workloads. All list context windows of about 1.05M tokens, accept text and images, and support function calling, web search, file search, and computer use. Prices range from 0.10 dollars (Luna input) to 10 dollars (Astra input) per million tokens.
+
+**Google (Gemini).** The models page describes Gemini 4 Carbon as its strongest reasoning model (complex software engineering, scientific reasoning, cybersecurity) and Gemini 4 Argon as efficient frontier reasoning, both with 1M-token windows and native input of text, images, audio, video, and PDF. Flash and Flash-Lite models cover speed and throughput, and the catalog includes dedicated live-audio, speech, image, video, embedding, and deep-research models. Native multimodality across audio and video is the documented differentiator.
+
+**xAI (Grok).** The models page recommends Grok 4.7 for code and chat, with a 500K-token window (some other Grok models list 1M), and long-context pricing that doubles once a prompt reaches 200K tokens. The distinctive feature is real-time data: the docs state Grok has no knowledge of events after training unless you enable the Web Search or X Search tools, and X Search queries posts, users, and threads on X and returns citations.
+</Listen>
+
+<Listen>
+## Open-weight models (publishers' claims)
+
+**Open-weight models.** You download weights and run them where you choose. OpenAI's gpt-oss (Apache 2.0), Meta's Llama family (under Meta's license), the Qwen series, DeepSeek's models, and Mistral's models are the widely used families; Studio 5 covers their licenses. Artificial Analysis maintains an open-weights leaderboard, which at the time of review showed several of the strongest open-weight models coming from Chinese labs. The documented strengths are control: data stays on your infrastructure, you can fine-tune, and you pay for hardware instead of tokens.
+</Listen>
+
+<Listen>
+## Data and privacy terms are part of the choice
+
+For many teams, the deciding factor is not capability but where data goes. Read each provider's terms for the exact surface you will use (API, consumer app, or a cloud platform), because they differ.
+
+- **OpenAI** states that data sent to its API is not used to train its models unless you opt in, that abuse-monitoring logs are kept for up to 30 days by default, and that zero data retention requires OpenAI's approval and covers only some endpoints.
+- **Google's** Gemini API terms distinguish unpaid services (prompts and responses may be used to improve Google's products and may be read by human reviewers, so the terms advise against sending sensitive data) from paid services (prompts are not used to improve products and are logged for a limited time for abuse detection).
+- **xAI's** API security FAQ says requests and responses are retained for 30 days for abuse auditing, are not used for training without explicit permission, and that a team admin can enable zero data retention, which disables features that depend on stored data such as batch and file storage.
+- **Anthropic** documents its API retention and zero data retention arrangements in its data retention docs; Studio 6 covers them alongside the others.
+- **Open weights** keep inference data entirely inside your systems, which is why they are often the only option for regulated or contractual "no third party" data.
+
+Two traps from Studio 6 apply here. Provider zero data retention says nothing about your own logs, traces, and eval datasets. And the consumer app's terms are not the API's terms; a policy written for one does not cover the other.
+</Listen>
+
+<Listen>
+## What independent evidence shows, and the caveat on each
+
+**Arena.** At the time of review, the Arena's agent leaderboard put Claude Fable 5.2 first overall, followed by Claude Opus 5.5 and Gemini 4 Carbon, and listed Fable 5.2 first in web development. Arena measures human preference on real prompts. Caveat: the Arena team's own analysis shows length and formatting sway votes, and providers can test private variants before release.
+
+**Artificial Analysis.** It combines a benchmark mix into indices and measures speed and price across endpoints. At the time of review it ranked Claude Fable 5.2 first across its capability categories, with Gemini 4 Carbon second in several and Claude Opus 5.5 and GPT-6 Astra close behind. Caveat: the indices are averages over benchmarks that may not resemble your work, and blended prices assume a token mix that may not match yours.
+
+**SWE-bench Pro and METR.** These are the most relevant independent signals for coding agents (lesson 2). Caveat: SWE-bench Pro's grader reliability has been disputed, and METR's horizon page stopped updating in September 2026, so the newest models have no METR horizon.
+
+**What this adds up to.** At the frontier, the top few models from Anthropic, Google, and OpenAI are close enough that rankings flip between leaderboards and months, and the gaps are often smaller than the differences in price (a factor of two or more between flagships, and up to about 100 times between a flagship and a small tier). That is the strongest argument for this lesson's method: when the public evidence says "these three are close," the tie-breakers are your task, your price, your data terms, and your latency, which only your own eval measures.
+</Listen>
+
+<Callout type="pitfall" title="Using one model to grade itself">
+If you compare Claude, GPT, and Gemini and use one of them as the judge, you have built in a bias. Panickssery and colleagues (2024) found that LLM evaluators recognize and favor their own generations. For a model comparison, prefer code-based checks (exact match, tests, schema validation), use human labels on a sample, or use a judge from a family that is not in the comparison, and calibrate it against your labels as Studio 3 taught. Also randomize the order in which answers are shown to a judge, since position bias is documented too.
+</Callout>
+
+<Listen>
+## The model selection playbook
+
+The table maps task types to candidates and to the check that would confirm or overturn the choice. "Candidates" means what to put in your eval first, based on documented features and independent evidence at the time of review, not a verdict.
+
+Two rules sit under the table. First, include at least one cheaper tier in every comparison; teams routinely discover it is good enough. Second, write down what would change your mind (a new release, a price change, a failure pattern) and rerun the eval when it happens.
+</Listen>
+
+| Task type | Start your eval with | Why (claim or evidence) | How to verify with a small eval |
+|---|---|---|---|
+| Coding agents (multi-file changes, long tasks) | Claude Opus 5.5 or Fable 5.2; GPT-6 Astra; Gemini 4 Carbon | Vendor positioning plus agent leaderboards and SWE-bench Pro at review time | 15 to 30 real tickets from your repos; pass = tests pass and a reviewer accepts the diff; read transcripts for test tampering |
+| Long-document analysis (contracts, filings) | Any 1M-context flagship; a mid tier (Sonnet 5.5, GPT-6.1 Sol, Gemini 4 Argon) | All list about 1M tokens; long context is not equal attention (Studio 1, lesson 1) | Questions whose answers sit early, middle, and late in long documents; require quotes and verify them |
+| Structured extraction at volume | Haiku 5.5, GPT-6 Luna, Gemini Flash-Lite, an open model | Cheap tiers are documented for classification and extraction | 50 labeled documents; field-level accuracy with intervals; schema-valid rate; cost per 1,000 documents |
+| Real-time or social data | Grok with X Search; any model with a web search tool | xAI documents first-party X search with citations | 20 recent questions with known answers; check every citation resolves and supports the claim |
+| Multimodal (audio, video, images) | Gemini 4 Carbon or Argon; for images only, any flagship | Gemini documents native audio and video input; Claude and GPT document text and image input | Your own media files; human-scored rubric; check timestamps or frame references |
+| High-volume, cheap, simple tasks | Smallest tier of each provider; open models on your hardware | Price differences of 10x to 100x within families | Compare against the flagship's outputs on 100 items; accept the cheap model where agreement and accuracy hold |
+| Self-hosted or private data | gpt-oss, Qwen, Llama, DeepSeek, or Mistral open weights | Data never leaves your infrastructure; licenses differ | Same task eval as a hosted baseline; measure the quality gap and the full cost of serving |
+
+<DragOrder
+  client:visible
+  prompt="Put the steps of a small model-selection eval in a sensible order"
+  items={[
+    "Write the task and a pass/fail rubric before looking at any model output",
+    "Collect 20 to 50 real inputs, including awkward ones, and label what a pass looks like",
+    "Shortlist three or more models from documented features and independent evidence, including a cheap tier",
+    "Run every model on every input with the same prompt and settings, recording cost and latency",
+    "Grade with code checks and human labels (or a calibrated judge from another family)",
+    "Compute pass rates with intervals and pick the cheapest model whose lower bound clears the bar",
+    "Record the decision, the date, and what would trigger a rerun",
+  ]}
+  explanation="Rubric first, so you are not grading toward the model you like. Real inputs, a cheap tier in the comparison, identical settings, independent grading, intervals, and a written trigger for re-evaluation. This is the skeleton of the project's playbook."
+/>
+
+<PyRunner
+  client:visible
+  id="e3-cheapest-good-enough"
+  title="Pick the cheapest model that is good enough, with confidence"
+  starter={`import math
+
+def wilson_lower(passed, n, z=1.96):
+    """Lower end of the Wilson score interval for a binomial proportion."""
+    # TODO: implement the Wilson lower bound
+    pass
+
+def choose(results, cost_per_task, bar):
+    """results: {model: (passed, n)}. Return the cheapest model whose Wilson lower
+    bound is at least bar. If none qualifies, return None."""
+    # TODO
+    pass
+
+RESULTS = {
+    "flagship": (47, 50),
+    "mid": (44, 50),
+    "small": (9, 10),
+    "open-8b": (38, 50),
+}
+COST = {"flagship": 0.060, "mid": 0.012, "small": 0.002, "open-8b": 0.004}
+
+for m, (p, n) in RESULTS.items():
+    lb = wilson_lower(p, n)
+    print(m, p, "/", n, "lower bound:", None if lb is None else round(lb, 3))
+print("choice at bar 0.75:", choose(RESULTS, COST, 0.75))
+`}
+  tests={`assert abs(wilson_lower(9, 10) - 0.5958) < 0.002, "Wilson lower bound for 9/10 is about 0.596"
+assert abs(wilson_lower(47, 50) - 0.8378) < 0.002, "Wilson lower bound for 47/50 is about 0.838"
+assert wilson_lower(0, 20) == 0 or abs(wilson_lower(0, 20)) < 1e-9, "0 passes gives a lower bound of 0"
+assert choose(RESULTS, COST, 0.75) == "mid", "at bar 0.75, 'small' (9/10) is not proven and 'mid' is the cheapest qualifier"
+assert choose(RESULTS, COST, 0.80) == "flagship", "at bar 0.80 only the flagship qualifies"
+assert choose(RESULTS, COST, 0.95) is None, "nothing clears 0.95 with this much data"`}
+  solution={`def wilson_lower(passed, n, z=1.96):
+    if n == 0:
+        return 0.0
+    p = passed / n
+    denom = 1 + z * z / n
+    centre = p + z * z / (2 * n)
+    margin = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return max(0.0, (centre - margin) / denom)
+
+def choose(results, cost_per_task, bar):
+    ok = [m for m, (p, n) in results.items() if wilson_lower(p, n) >= bar]
+    if not ok:
+        return None
+    return min(ok, key=lambda m: cost_per_task[m])`}
+>
+Implement the Wilson lower bound and the selection rule, then press **Check my answer**. Notice what happens to "small": 9 of 10 looks like 90%, but with ten items the plausible range is wide, so it does not qualify. The right response is not to reject it but to run 40 more items on it, because it is thirty times cheaper than the flagship. Deciding on lower bounds tells you where more data is worth buying.
+</PyRunner>
+
+<Listen>
+## Checks and balances on the choice itself
+
+A model choice is a claim about the future ("this model will keep handling our traffic well"), so it needs the same checks as any other claim.
+
+- **Pin and date it.** Record the exact model id, the effort setting, and the date of the eval. Current Claude model ids are pinned snapshots; other providers offer pinned versions too. An alias that silently moves to a new model invalidates your eval.
+- **Keep the eval set.** When a new model ships, rerunning the same set is an afternoon; without it, you are back to leaderboards and opinions.
+- **Watch production, not just the eval.** Sample live outputs for review and track the failure categories you found during the eval. Drift in your inputs can break a model choice as surely as a model change.
+- **Plan the fallback.** If your chosen provider has an outage or changes terms, which model is second, and has it passed the same eval? Studio 6 covers routing and fallbacks; the playbook should name the second choice.
+- **Separate "best model" from "best system."** Many quality problems are prompt, context, or retrieval problems. If no model passes, fix the system before shopping for a bigger model.
+</Listen>
+
+<GoDeeper title="Why a mixed portfolio is normal">
+Most mature teams end up with several models, not one: a frontier model for the hard minority of requests, a small tier for routing, extraction, and classification, a provider with distinctive tools for specific jobs (search over social data, native video), and sometimes an open model where data cannot leave. Anthropic's model-selection guide describes two starting strategies that fit this: start with the most capable model and step down where quality holds, or start small and step up where tests show a gap. Chip Huyen's AI Engineering (chapter 4) treats model selection as an evaluation problem with exactly this shape: define criteria, filter on hard constraints (data terms, license, latency), shortlist with public benchmarks, and decide with your own evaluation. The project for this elective asks you to write your personal version of that portfolio.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Read each provider's documentation for what its models are built to do, and label it as a claim. Use independent leaderboards to shortlist, knowing what each measures. Treat data terms and distinctive tools as first-class criteria, because they often decide the question before capability does. Then decide with a small eval on your task: a rubric written first, a cheap tier included, grading that does not favor any candidate, and a decision made on lower confidence bounds. Date the decision and keep the eval. That is the whole of model selection, and it is the first half of this elective's project.
+</Listen>

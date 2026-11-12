@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.472
+Reciprocal rank fusion.
+
+2
+00:00:01.752 --> 00:00:16.301
+Cormack, Clarke, and Buettcher introduced reciprocal rank fusion at SIGIR 2009, almost as an afterthought: they wanted a simple unsupervised baseline while studying learning-to-rank methods, and found the baseline hard to beat.
+
+3
+00:00:16.581 --> 00:00:30.384
+The formula: for each document d, sum over the input rankings r of 1 / (k + r(d)), where r(d) is d’s position (1 for the top) and a document absent from a list contributes nothing from that list.
+
+4
+00:00:30.664 --> 00:00:31.795
+Sort by the sum.
+
+5
+00:00:32.075 --> 00:00:34.016
+The constant k does real work.
+
+6
+00:00:34.296 --> 00:00:40.312
+Without it (k = 0), being first in one list is worth 1 and being second is worth 0.
+
+7
+00:00:40.592 --> 00:00:43.216
+5, so one system’s top pick dominates.
+
+8
+00:00:43.496 --> 00:00:50.493
+With k = 60, first is worth 1/61 and second 1/62: nearly the same.
+
+9
+00:00:50.773 --> 00:00:55.552
+The authors say k “mitigates the impact of high rankings by outlier systems”.
+
+10
+00:00:55.832 --> 00:01:02.787
+They fixed k = 60 in a pilot study, reported it as near-optimal but not critical, and never changed it.
+
+11
+00:01:03.067 --> 00:01:15.568
+Across their TREC experiments, RRF beat Condorcet Fuse and CombMNZ (two established fusion methods) and usually beat the best individual system, by 4 to 5 percent on average.
+
+12
+00:01:15.848 --> 00:01:27.517
+Elasticsearch’s RRF retriever uses the same formula, with rank_constant defaulting to 60 and a rank_window_size that sets how many results each retriever contributes.
+
+13
+00:01:27.797 --> 00:01:31.403
+What RRF buys you is that it needs no calibration.
+
+14
+00:01:31.683 --> 00:01:37.720
+Ranks are comparable across any retrievers, so there is nothing to normalize and nothing to tune at first.
+
+15
+00:01:38.000 --> 00:01:43.611
+What it costs you is the information in the scores: a runaway winner and a near tie look the same.
+
+16
+00:01:43.891 --> 00:02:03.496
+It also weighs every retriever equally unless your engine offers per-retriever weights, and documents found by only one retriever are at a disadvantage, which is usually what you want (agreement is evidence) but not always (an exact code match found only by BM25 may be the single right answer).

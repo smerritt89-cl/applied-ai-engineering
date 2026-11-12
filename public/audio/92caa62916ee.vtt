@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.456
+Public agent benchmarks: context, not substitutes.
+
+2
+00:00:03.736 --> 00:00:09.880
+Public benchmarks are useful for one question: which models are plausible candidates for this kind of work?
+
+3
+00:00:10.160 --> 00:00:17.840
+They can’t answer the question you actually have, which is how a model performs on your tasks, with your tools, prompts, and policies.
+
+4
+00:00:18.120 --> 00:00:32.520
+SWE-bench (Jimenez and colleagues, 2023) asks a system to resolve real GitHub issues from open-source Python repositories, graded by whether the repository’s tests pass after the change.
+
+5
+00:00:32.800 --> 00:00:43.787
+SWE-bench Verified is a 500-task subset that human annotators checked for clear problem statements, correct tests, and solvability, built with OpenAI.
+
+6
+00:00:44.067 --> 00:00:57.549
+The leaderboard’s own notes are a lesson in reading benchmarks: results mix very different systems (simple agent loops, multi-rollout systems), scores from different releases of the harness are not directly comparable,
+
+7
+00:00:57.829 --> 00:01:03.739
+and a minimal “bash only” setup exists precisely to compare models under the same scaffold.
+
+8
+00:01:04.019 --> 00:01:22.045
+tau-bench (Yao and colleagues, 2024) simulates customer-service conversations in retail and airline domains: an LLM plays the user, the agent has domain tools and a policy document, and success is the database end state plus required information.
+
+9
+00:01:22.325 --> 00:01:40.053
+At publication, even strong function-calling agents such as gpt-4o succeeded on fewer than half the tasks, and pass^8 in retail was below 25%, which is the paper’s evidence that reliability across trials is a separate problem from capability.
+
+10
+00:01:40.333 --> 00:01:55.181
+tau2-bench (Barres and colleagues, 2025) adds a telecom domain where the user also has tools and must act in a shared environment, and reports significant drops when agents must coordinate with an active user.
+
+11
+00:01:55.461 --> 00:01:57.680
+How to use them as a working engineer.
+
+12
+00:01:57.960 --> 00:02:01.053
+Read the scaffold and the version before comparing numbers.
+
+13
+00:02:01.333 --> 00:02:08.075
+Prefer benchmarks that resemble your task shape (a code-editing agent and a support agent need different evidence).
+
+14
+00:02:08.355 --> 00:02:16.589
+Remember contamination (popular test sets leak into training data) and saturation (scores near the ceiling stop discriminating).
+
+15
+00:02:16.869 --> 00:02:22.885
+Then shortlist two or three models and run your eval, with your tasks and graders, several trials each.
+
+16
+00:02:23.165 --> 00:02:26.109
+That is the evidence your model choice should rest on.

@@ -1,0 +1,256 @@
+---
+id: e3-w2-l4
+studio: e3
+week: 2
+order: 4
+title: Timelines and transformative AI, from the people building it
+summary: What Dario Amodei, Sam Altman, Demis Hassabis, and Google DeepMind have claimed about when very capable AI arrives and what it will do, each with its date, the evidence for and against, and a check on the predictions whose dates have already passed.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - State the main timeline claims of Anthropic, OpenAI, and Google DeepMind leaders, with dates and links
+  - For each claim, name the strongest evidence for it and against it, and the claimant's incentives
+  - Score past predictions whose dates have arrived, distinguishing "wrong", "partly right", and "not yet checkable"
+  - Show how sensitive a trend extrapolation is to the doubling time and the reliability level, by computing it
+  - Explain the evidence dilemma and why it makes timeline claims matter for decisions today
+sources:
+  - { id: amodei-2024-machines-loving-grace, use: summarized }
+  - { id: amodei-2026-adolescence, use: summarized }
+  - { id: amodei-2026-pace-frontier, use: summarized }
+  - { id: yt-dwarkesh-amodei-2026, use: embedded }
+  - { id: altman-2025-gentle-singularity, use: summarized }
+  - { id: altman-2025-reflections, use: linked }
+  - { id: shah-2025-deepmind-agi-safety, use: summarized }
+  - { id: fortune-2026-davos-agi, use: summarized }
+  - { id: intl-ai-safety-report-2026, use: summarized, where: "The evidence dilemma; capabilities" }
+  - { id: metr-frontier-risk-report-2026, use: summarized }
+  - { id: metr-time-horizon-1-1, use: summarized }
+  - { id: metr-time-horizons-page, use: summarized }
+  - { id: normaltech-2026-software-engineers, use: summarized }
+  - { id: stanford-canaries-2026, use: summarized }
+  - { id: yt-dwarkesh-karpathy-2025, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: In "Machines of Loving Grace" (October 2024), what did Dario Amodei mean by "powerful AI", and when did he say it could arrive?
+    options:
+      - id: a
+        text: A system with human-like consciousness, expected around 2040.
+        rationale: The essay explicitly avoids consciousness and gives a much earlier possible date.
+      - id: b
+        text: A model smarter than Nobel-level experts in most fields that can work autonomously on long tasks and run as millions of copies; possibly as early as 2026, though it could take much longer.
+        correct: true
+        rationale: Yes. His shorthand was "a country of geniuses in a datacenter."
+      - id: c
+        text: A model that passes the Turing test, expected in 2025.
+        rationale: The essay's definition is about capability across fields and autonomy, not imitation.
+    explanation: >-
+      Precise definitions are what make timeline claims checkable. Amodei's is unusually concrete, which is to his
+      credit: it lets you ask, in late 2026, whether such a system exists. Most observers, and METR's measurements, say
+      not yet in the full sense, while agreeing that progress toward parts of it has been fast.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your CFO forwards a news story: a lab CEO said at Davos in January 2026 that AI would do all of a software
+      developer's work within a year. She asks whether to freeze engineering hiring. It is now November 2026. What is
+      the best evidence-based answer?
+    options:
+      - id: a
+        text: Freeze hiring; the CEO knows the technology best.
+        rationale: Expertise and incentive both point the same way here; the claim needs outside evidence.
+      - id: b
+        text: Ignore it; CEOs always exaggerate.
+        rationale: Dismissal is no more evidence-based than acceptance. Some lab predictions have come true.
+      - id: c
+        text: Check the claim against measured outcomes since then (employment data, field studies, your own team's results), note that it has not come true in the broad sense, and make the hiring decision on your measured productivity and demand.
+        correct: true
+        rationale: Yes. The claim had a date; the date has nearly arrived, so you can score it.
+    explanation: >-
+      Dated predictions are a gift: they can be scored. By late 2026, payroll data (the Stanford Canaries update,
+      August 2026) showed reduced hiring of young workers in AI-exposed jobs but no widespread displacement, and
+      Narayanan and Kapoor argued in June 2026 that software engineering employment was still growing, if more slowly.
+      That is "partly right in direction, wrong in magnitude and timing," which is the most common outcome for bold forecasts.
+  - id: kc3
+    type: predict-output
+    prompt: A 50% time horizon is 12 hours and doubles every 131 days. Roughly how many years until it reaches 167 hours (about one working month), if the trend held?
+    code: |
+      import math
+      doublings = math.log2(167 / 12)
+      print(round(doublings * 131 / 365, 1))
+    options:
+      - id: a
+        text: "`1.4`"
+        correct: true
+        rationale: log2(167/12) is about 3.8 doublings; 3.8 times 131 days is about 1.4 years.
+      - id: b
+        text: "`3.8`"
+        rationale: That is the number of doublings, not years.
+      - id: c
+        text: "`13.9`"
+        rationale: That is the ratio 167/12, not a time.
+    explanation: >-
+      Simple arithmetic turns a trend into a date, which is why timeline claims are so persuasive. The exercise in this
+      lesson shows how much the date moves when you change the doubling time or ask for 80% reliability instead of 50%.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Why lab leaders' timelines matter, and how to read them
+
+The people who run frontier labs make public predictions about when very capable AI will arrive and what it will do. These claims move capital, shape regulation, and change how companies plan headcount, so as a PM or engineering leader you will be asked about them. They also come from the people with the best view of unreleased systems and the strongest incentives to sound confident. Both facts are true at once, and neither settles anything.
+
+This lesson treats each claim the same way, in a claim box: who said it, when, and where; the strongest evidence for; the strongest evidence against or the important nuance; and, where the date has arrived, a score. The goal is not to decide who is right about 2030. It is to practice a method you can apply to any claim in five minutes.
+
+One framing from the International AI Safety Report 2026 (February 2026) explains why this matters now rather than later. It calls it the **evidence dilemma**: capabilities change faster than evidence about their effects accumulates. Act too early and you may adopt useless or harmful policies; wait for conclusive evidence and you may be unprepared. Timeline claims are attempts to resolve that dilemma with forecasts, which is why they deserve scrutiny instead of either belief or dismissal.
+</Listen>
+
+<Listen>
+## Anthropic: Dario Amodei's essays, 2024 to 2026
+
+Anthropic's CEO has written three long essays that together form the most detailed public timeline argument from a lab leader.
+
+**"Machines of Loving Grace" (October 2024)** defines "powerful AI": a model smarter than Nobel Prize winners across most relevant fields, able to use computer interfaces, work autonomously on tasks lasting hours to weeks, and run as millions of copies at many times human speed. He calls this a country of geniuses in a datacenter and says it could arrive as early as 2026, while noting it could take much longer. The essay's optimistic core is that such systems could compress 50 to 100 years of progress in biology and medicine into 5 to 10 years, limited by experiments, physical constraints, and regulation rather than intelligence.
+
+**"The Adolescence of Technology" (January 2026)** is the risk counterpart. It repeats that powerful AI could be as little as one to two years away, while allowing that it could take considerably longer, and lays out five risk categories: autonomy (systems pursuing goals against human interests), misuse for mass-casualty attacks, misuse to seize power, economic disruption, and indirect destabilization. It includes the forecast that AI could disrupt half of entry-level white-collar jobs over one to five years.
+
+**"We Must Pace the Frontier" (12 September 2026)** argues that progress sped up from around mid-2026 because AI increasingly helps build the next generation of AI, cites the OpenAI and Hugging Face incident (week 3) as a warning, and proposes a three-step plan: embedded third-party evaluators, coordination among frontier companies in democracies, and broader international coordination. Anthropic committed unilaterally to the first step.
+
+In a February 2026 interview with Dwarkesh Patel, embedded below, Amodei explained the scaling hypothesis behind these views and why he thinks the public underestimates how close the field is.
+</Listen>
+
+<Video id="n1E9IZfvGMA" title="Dario Amodei: We are near the end of the exponential" channel="Dwarkesh Patel" minutes={25} source="https://www.youtube.com/@DwarkeshPatel">
+Released 13 February 2026. Watch the opening segment (about 25 minutes) on the scaling hypothesis and timelines. As you listen, write down each prediction that has a date or a measurable outcome. You will score some of them below.
+</Video>
+
+<Callout type="claim" title="Claim: powerful AI could arrive by 2026 to 2027 (Dario Amodei, October 2024 and January 2026)">
+**Who and when:** Dario Amodei, CEO of Anthropic, in [Machines of Loving Grace](https://www.darioamodei.com/essay/machines-of-loving-grace) (October 2024, "as early as 2026") and [The Adolescence of Technology](https://www.darioamodei.com/essay/the-adolescence-of-technology) (January 2026, "as little as 1 to 2 years away").
+
+**Evidence for:** METR's measured task horizons doubled roughly every four months since 2023 on its software suite (Time Horizon 1.1, January 2026), and its May 2026 report judged internal frontier agents to be at least 16 hours at 50% reliability. Models reached gold-medal level on International Mathematical Olympiad problems (International AI Safety Report 2026). Amodei has a view of unreleased systems that outsiders lack.
+
+**Evidence against, or nuance:** the definition requires Nobel-level work across most fields and autonomy over weeks; METR's 80% horizon for public models was about 1.5 hours in early 2026, and its suite cannot measure beyond about 16 hours. The same safety report calls capabilities "jagged." Amodei hedged both dates ("could take much longer"). He leads a company that raises capital on this thesis, which is a reason for scrutiny, not a refutation.
+
+**Score so far (November 2026):** not resolved. Strong progress on parts of the definition; no public evidence of the full "country of geniuses" yet. Revisit in 2027.
+</Callout>
+
+<Callout type="claim" title="Claim: AI will do essentially all of a software engineer's work within a year (Dario Amodei, January 2026)">
+**Who and when:** Amodei at the World Economic Forum in Davos, January 2026, as reported by [Fortune](https://fortune.com/2026/01/23/deepmind-demis-hassabis-anthropic-dario-amodei-yann-lecun-ai-davos/) on 23 January 2026. The same report has him forecasting half of white-collar jobs gone within five years.
+
+**Evidence for:** coding is where agents improved fastest; Anthropic's Economic Index (January 2026) found heavy software-development use of Claude, with API traffic roughly three-quarters automation rather than augmentation; developers increasingly refuse to work without AI tools (METR, February 2026, lesson 6).
+
+**Evidence against:** the Stanford Digital Economy Lab's August 2026 update of "Canaries in the Coal Mine" found reduced hiring of young workers in AI-exposed occupations (a gap of about 19%) but no widespread job displacement. Narayanan and Kapoor (June 2026) argued that deciding what to build and verifying what ships remain bottlenecks that coding agents do not remove, and that US software engineering employment was still growing, more slowly than it otherwise might.
+
+**Score (November 2026):** wrong on timing and magnitude so far, plausibly right on direction for some tasks and for entry-level hiring.
+</Callout>
+
+<Listen>
+## OpenAI: Sam Altman's essays
+
+OpenAI's CEO publishes shorter, more aphoristic essays. **"Reflections" (January 2025)**, covered in Studio 4, predicted that 2025 might see the first AI agents "join the workforce." **"The Gentle Singularity" (10 June 2025)** argued that the takeoff had already started and would feel gradual from the inside. It gave a year-by-year sketch: 2025 brought agents that do real cognitive work, especially writing code; 2026 would likely bring systems that can figure out novel insights; 2027 might bring robots that do tasks in the real world. It expected the 2030s to be wildly different in important ways, with intelligence and energy becoming abundant.
+
+Altman's predictions are harder to score than Amodei's because they are softer ("likely," "may"), and his 2026 public statements have mostly come through interviews rather than new essays. That softness is worth noticing as a reader: a claim that cannot fail is not much of a forecast.
+</Listen>
+
+<Callout type="claim" title="Claim: 2026 will see AI systems that can figure out novel insights (Sam Altman, June 2025)">
+**Who and when:** Sam Altman, CEO of OpenAI, [The Gentle Singularity](https://blog.samaltman.com/the-gentle-singularity), 10 June 2025.
+
+**Evidence for:** by 2026 labs and researchers reported AI contributions to mathematics and science, and the International AI Safety Report 2026 records gold-medal olympiad performance and expert-level science answers. Agents now run multi-hour research tasks.
+
+**Evidence against, or nuance:** "novel insight" is undefined, so almost any result can be counted. Olympiad problems have known answers; open research problems do not. The same report stresses that systems still fail at simple tasks and at recovering from errors in long workflows.
+
+**Score (November 2026):** not cleanly checkable as worded. The useful exercise is to rewrite it as something checkable (for example, "a peer-reviewed result in a major journal where an AI system is credited with the key idea") and then look for evidence.
+</Callout>
+
+<Listen>
+## Google DeepMind: Demis Hassabis and the lab's own paper
+
+Google DeepMind's public position is more hedged and has two sources worth separating: what the lab wrote, and what its leader said on stage.
+
+**The lab's paper.** In April 2025, Google DeepMind published "An Approach to Technical AGI Safety and Security" (Shah and colleagues). It stated that the authors found it plausible that powerful AI systems could be developed by 2030, and used that as a planning assumption for safety work rather than a prediction. Treating a date as a planning assumption is a useful model for your own team: you can prepare for a possibility without betting the company that it will happen.
+
+**Hassabis on stage.** At Davos in January 2026, as reported by Fortune, Hassabis put the chance of human-level AGI within the decade at about 50%, gave a range of five to ten years, and said one or two more breakthroughs might be needed, which is a different view from "scaling the current recipe will get there." He has given other estimates in later 2026 interviews, and secondhand reports of them vary in wording; read a primary transcript before quoting any of them.
+</Listen>
+
+<Callout type="claim" title="Claim: a 50% chance of human-level AGI within about five to ten years, with one or two breakthroughs still needed (Demis Hassabis, January 2026)">
+**Who and when:** Demis Hassabis of Google DeepMind at Davos, January 2026, as reported by [Fortune](https://fortune.com/2026/01/23/deepmind-demis-hassabis-anthropic-dario-amodei-yann-lecun-ai-davos/); consistent with the lab's April 2025 paper ([arXiv](https://arxiv.org/abs/2504.01849)) treating powerful AI by 2030 as plausible.
+
+**Evidence for:** the same capability trends as above; Google DeepMind's own frontier models rank near the top of independent leaderboards (lesson 3); the claim is hedged and conditional, which makes it more robust than a point date.
+
+**Evidence against, or nuance:** "human-level AGI" is not defined in a way that can be measured; "one or two breakthroughs" is unfalsifiable until named. A 50% probability over a five-year window cannot be scored from a single outcome; you would need many such forecasts from the same person to judge calibration.
+
+**Score (November 2026):** not yet checkable; it is a probability over a window that has not closed.
+</Callout>
+
+<Listen>
+## Scoring forecasts properly
+
+Three practical rules for scoring the predictions you meet.
+
+**Rewrite the claim until it can fail.** "Transformative AI soon" cannot fail. "By 31 December 2027, an AI agent completes a task that takes a skilled human a month, with 80% reliability, on an independent benchmark" can. If you cannot rewrite it, the claim is a mood, not a forecast.
+
+**Score with three outcomes, not two.** Most bold forecasts come out "partly right": correct in direction, wrong in timing or magnitude. That is useful information. It tells you to treat the next forecast from the same source as directional and to discount its dates.
+
+**Judge calibration, not single calls.** A forecaster who says 50% and is wrong is not discredited by one outcome. What you can evaluate is a track record: of the things a person said were 80% likely, did about 80% happen? Lab leaders rarely publish enough probabilistic forecasts to check this, which is itself worth knowing.
+
+And always attach incentives. Lab leaders benefit from short timelines when raising capital and from safety framing when shaping regulation. Critics (next lesson) benefit from contrarian visibility and sometimes from competing approaches. Incentives do not make a claim false; they tell you how much independent evidence to require.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e3-extrapolation-sensitivity"
+  title="How sensitive is a timeline to its assumptions?"
+  starter={`import math
+
+def years_to_reach(current_hours, target_hours, doubling_days):
+    """Years until a quantity growing by doubling every doubling_days goes from
+    current_hours to target_hours. Return 0 if already there."""
+    # TODO
+    pass
+
+def table(current_hours, target_hours, doubling_options):
+    """Return a list of (doubling_days, years) rounded to 1 decimal place."""
+    # TODO
+    pass
+
+WORK_MONTH = 167  # hours
+# METR, May 2026: public frontier 50% horizon about 12 h; 80% horizon about 1.5 h.
+# TH1.1 doubling times: about 89 days (since 2024), 131 (since 2023), 196 (full trend).
+for label, now in [("50% horizon", 12), ("80% horizon", 1.5)]:
+    print(label, table(now, WORK_MONTH, [89, 131, 196]))
+`}
+  tests={`assert years_to_reach(1, 2, 365) is not None, "years_to_reach returned None"
+assert abs(years_to_reach(1, 2, 365) - 1.0) < 1e-9, "one doubling at 365 days per doubling is one year"
+assert years_to_reach(10, 5, 100) == 0, "already past the target means zero years"
+t50 = dict(table(12, 167, [89, 131, 196]))
+assert t50[131] == 1.4, "12 h to 167 h at a 131-day doubling is about 1.4 years"
+t80 = dict(table(1.5, 167, [89, 131, 196]))
+assert t80[196] == 3.7, "the 80% horizon at the slowest doubling takes about 3.7 years"
+assert t80[196] > 3 * t50[89], "the most cautious assumptions give a date more than three times further away"`}
+  solution={`def years_to_reach(current_hours, target_hours, doubling_days):
+    if current_hours >= target_hours:
+        return 0
+    doublings = math.log2(target_hours / current_hours)
+    return doublings * doubling_days / 365
+
+def table(current_hours, target_hours, doubling_options):
+    return [(d, round(years_to_reach(current_hours, target_hours, d), 1)) for d in doubling_options]`}
+>
+Implement both functions, then press **Check my answer** and read the printed table. The same trend, from the same organization, gives "about eleven months" or "almost four years" for a month-long task depending on two choices: which doubling time you believe, and whether you require 50% or 80% reliability. When someone quotes a single date, ask which choices produced it.
+</PyRunner>
+
+<Callout type="note" title="Structured reflection (10 minutes, write it down)">
+Pick one claim from this lesson. In four sentences, write: (1) the claim rewritten so it could clearly fail, with a date; (2) the one piece of evidence that would most change your mind toward it; (3) the one piece that would most change your mind against it; (4) what, if anything, you would do differently at work this quarter if it were 50% likely. Keep this note: lesson 9 and the project's claim brief build on it.
+</Callout>
+
+<Callout type="pitfall" title="Treating a hedge as a prediction, or a prediction as a hedge">
+Lab leaders' statements often contain both: "could be as early as 2026, though it could take much longer." Press coverage keeps the first half; critics attack the first half; the speaker later points to the second half. Quote the whole sentence, and score the claim as the speaker actually made it. If the hedged version is too vague to score, say so; that is a legitimate finding about the claim, not a failure of your analysis.
+</Callout>
+
+<GoDeeper title="Other voices worth hearing">
+Andrej Karpathy, a co-founder of OpenAI who later led AI at Tesla, told Dwarkesh Patel in October 2025 that he expected useful agents to take about a decade, because current models still lack continual learning and reliable long-horizon behavior ([video](https://www.youtube.com/watch?v=lXUZvyajciY)). It is a useful counterweight from someone who builds with these systems daily and has no lab to raise money for. Also worth reading in full: METR's May 2026 Frontier Risk Report, which is the most careful public attempt to say what frontier agents could and could not do in early 2026, including the observation that internal models were not significantly more capable than the strongest publicly documented ones.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Lab leaders' timelines are informed, incentivized, and usually hedged. Read the primary source, quote the full sentence, and attach the date. Rewrite each claim until it can fail, score the ones whose dates have arrived with "right, partly right, or wrong," and notice that partly right is the usual outcome. When a claim rests on a trend, check how much the date moves under reasonable alternative assumptions; it often moves by years. Next lesson: the people who think these timelines are wrong, and the evidence for their view.
+</Listen>

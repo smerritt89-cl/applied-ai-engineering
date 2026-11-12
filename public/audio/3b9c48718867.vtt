@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.688
+What judging costs, and choosing the judge model.
+
+2
+00:00:02.968 --> 00:00:05.891
+A judge-graded eval multiplies model calls.
+
+3
+00:00:06.171 --> 00:00:11.013
+Suppose your eval has 400 cases and three criteria that need judgment.
+
+4
+00:00:11.293 --> 00:00:17.629
+That’s 1,200 judge calls per run, and a pairwise comparison judged in both orders doubles it.
+
+5
+00:00:17.909 --> 00:00:29.216
+Each call sends the rubric, the context (policy, transcript, retrieved documents), and the output, so judge input is often several times longer than the output being graded.
+
+6
+00:00:29.496 --> 00:00:33.592
+If thinking is on, the judge’s reasoning tokens are billed as output.
+
+7
+00:00:33.872 --> 00:00:35.771
+Three levers keep this manageable.
+
+8
+00:00:36.051 --> 00:00:44.051
+Cache the stable prefix: the rubric and few-shot examples are identical across calls, which is exactly what prompt caching is for.
+
+9
+00:00:44.331 --> 00:00:56.256
+Batch runs that aren’t urgent: Anthropic’s Batch API processes requests asynchronously at a 50 percent discount on input and output tokens, per the pricing page on the review date.
+
+10
+00:00:56.536 --> 00:01:02.040
+Use the cheapest judge that passes calibration: at the review date, Claude Haiku 5.
+
+11
+00:01:02.320 --> 00:01:07.184
+5’s base per-token prices were about one fortieth of Claude Opus 5.
+
+12
+00:01:07.464 --> 00:01:08.360
+5’s.
+
+13
+00:01:08.640 --> 00:01:19.819
+A cheap judge is a good deal only if it agrees with your expert as well as the expensive one does on this criterion, and the only way to know is to calibrate both on the same labels.
+
+14
+00:01:20.099 --> 00:01:35.587
+That is the model-selection habit for judges: the candidates (a small fast model, a frontier model, another provider’s model, an open-weight model you host) are hypotheses, and agreement with human labels on your criterion is the evidence.
+
+15
+00:01:35.867 --> 00:01:37.168
+Pick per criterion.
+
+16
+00:01:37.448 --> 00:01:45.832
+A rubric about policy facts may be handled well by a small model, while faithfulness to a long technical transcript may need a stronger one.

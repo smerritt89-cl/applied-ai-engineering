@@ -1,0 +1,459 @@
+# Elective 2: Working with Coding Agents.
+# Ids are prefixed e2- so they cannot collide with other studios' files.
+# Reused from elsewhere (not redefined here): jimenez-2023-swebench, swebench-verified, becker-2025-metr-rct,
+# kwa-2025-metr-horizon, metr-horizon-blog, claude-code-memory-docs, claude-code-subagents-docs, claude-code-mcp-docs,
+# cc-hooks-docs, cc-permissions-docs, cc-permission-modes-docs, cc-sandboxing-docs, anthropic-context-engineering,
+# anthropic-long-running-harnesses, willison-lethal-trifecta, greshake-2023-indirect-injection, invariant-github-mcp,
+# anthropic-containing-claude, zhu-2025-agentic-benchmark-checklist, claude-effort-docs, hamel-llm-judge,
+# owasp-secrets-cheatsheet, claude-agent-sdk-loop.
+# All URLs checked with curl (or a fetch, where curl is refused) on 2026-11-11.
+
+# ---------- Claude Code official docs (summarize) ----------
+- id: e2-cc-how-it-works
+  title: How Claude Code works (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/how-claude-code-works
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Gather context, take action, verify results; five tool categories; the harness; sessions, compaction, checkpoints, permission modes.
+
+- id: e2-cc-best-practices
+  title: Best practices for Claude Code (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/best-practices
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: >-
+    Deterministic versus non-deterministic instructions; tell Claude what it can't see; keep CLAUDE.md short; give
+    Claude a check to run; Stop hook example; deny rules; effort guidance; subagent costs; writer and reviewer
+    sessions; worktrees; "what you can stop doing". Checked 2026-11-11.
+
+- id: e2-cc-features-overview
+  title: Extend Claude Code (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/features-overview
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: When to use CLAUDE.md, rules, skills, subagents, hooks, MCP, and plugins; context cost by feature; the "build your setup over time" trigger table.
+
+- id: e2-cc-skills
+  title: Extend Claude with skills (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/skills
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: SKILL.md frontmatter (description, disable-model-invocation, allowed-tools, context fork); custom commands merged into skills; bundled skills.
+
+- id: e2-cc-hooks-guide
+  title: Automate actions with hooks (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/hooks-guide
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Settings format (hooks, event, matcher group, handlers); PostToolUse Edit|Write example; exit code 2; hook locations; Stop hook block cap of eight; stop_hook_active.
+
+- id: e2-cc-security
+  title: Security (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/security
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Prompt-injection safeguards, network command approval, workspace trust, MCP security, best practices for untrusted content.
+
+- id: e2-cc-model-config
+  title: Model configuration (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/model-config
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Aliases (opus, sonnet, haiku, fable, opusplan), default model per plan, effort levels low to max, ultrathink. Fast-moving; checked 2026-11-11.
+
+- id: e2-cc-headless
+  title: Run Claude Code programmatically (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/headless
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: claude -p, --bare, --allowedTools, --permission-mode, --output-format json with total_cost_usd; -p runs project hooks without a trust dialog.
+
+- id: e2-cc-worktrees
+  title: Run parallel sessions with git worktrees (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/worktrees
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+
+- id: e2-cc-checkpointing
+  title: Checkpointing (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/checkpointing
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Checkpoints cover edits made with Claude's file tools, not Bash changes or remote systems.
+
+- id: e2-cc-costs
+  title: Manage costs effectively (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/costs
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+
+- id: e2-cc-code-review-local
+  title: Review code locally with /code-review (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/code-review-local
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+
+- id: e2-cc-output-styles
+  title: Output styles (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/output-styles
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Built-in Proactive, Concise, Explanatory, and Learning styles; Learning leaves TODO(human) pieces for you to write.
+
+# ---------- Other coding agents (official docs, summarize) ----------
+- id: e2-codex-agents-md
+  title: Custom instructions with AGENTS.md (OpenAI Codex docs)
+  author: OpenAI
+  url: https://developers.openai.com/codex/guides/agents-md
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: Redirects to learn.chatgpt.com. Global and per-directory discovery, AGENTS.override.md, project_doc_max_bytes default 32 KiB.
+
+- id: e2-codex-approvals
+  title: Agent approvals and security (OpenAI Codex docs)
+  author: OpenAI
+  url: https://developers.openai.com/codex/agent-approvals-security
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: Sandbox modes read-only, workspace-write, danger-full-access; approval policies; network off by default; cached web search; treat web results as untrusted.
+
+- id: e2-codex-models
+  title: Models (OpenAI Codex docs)
+  author: OpenAI
+  url: https://developers.openai.com/codex/models
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: Fast-moving. Checked 2026-11-11; lists a most-capable model, a lower-cost near peer, and efficient models, plus reasoning effort levels.
+
+- id: e2-gemini-cli-context
+  title: Provide context with GEMINI.md files (Gemini CLI docs)
+  author: Google
+  url: https://geminicli.com/docs/cli/gemini-md/
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+  notes: Global, workspace, and just-in-time subdirectory context files; context.fileName can include AGENTS.md. Banner (2026-11-11) says Gemini CLI was replaced by Antigravity CLI for unpaid and Google One users on 2026-06-18.
+
+- id: e2-gemini-cli-tools
+  title: Tools reference (Gemini CLI docs)
+  author: Google
+  url: https://geminicli.com/docs/reference/tools/
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+  notes: run_shell_command, read_file, write_file, replace, glob, grep_search, web_fetch, plan mode tools; shell and write tools require confirmation.
+
+- id: e2-antigravity-migration
+  title: Migrating from Gemini CLI (Antigravity CLI docs)
+  author: Google
+  url: https://antigravity.google/docs/cli/gcli-migration
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+  notes: Antigravity CLI (agy) keeps Gemini CLI constructs; reads GEMINI.md and AGENTS.md; skills, MCP config, plugin import.
+
+- id: e2-copilot-on-github
+  title: GitHub Copilot on GitHub.com and GitHub Mobile (GitHub Docs)
+  author: GitHub
+  url: https://docs.github.com/en/copilot/concepts/copilot-surfaces/copilot-on-github
+  license: CC BY 4.0
+  licenseUrl: https://creativecommons.org/licenses/by/4.0/
+  policy: summarize
+  kind: docs
+  notes: Cloud agent in a GitHub Actions environment or cloud sandbox, one branch and one pull request per task, 59-minute limit for Actions sessions.
+
+- id: e2-copilot-repo-instructions
+  title: Adding repository custom instructions for GitHub Copilot (GitHub Docs)
+  author: GitHub
+  url: https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions
+  license: CC BY 4.0
+  licenseUrl: https://creativecommons.org/licenses/by/4.0/
+  policy: summarize
+  kind: docs
+  notes: .github/copilot-instructions.md, path-specific .instructions.md files, nearest AGENTS.md, or a root CLAUDE.md or GEMINI.md.
+
+- id: e2-vscode-agents
+  title: Build with AI in VS Code (VS Code docs)
+  author: Microsoft
+  url: https://code.visualstudio.com/docs/agents/overview
+  license: Copyright Microsoft
+  policy: summarize
+  kind: docs
+
+- id: e2-cursor-agent
+  title: Cursor Agent (Cursor docs)
+  author: Anysphere
+  url: https://cursor.com/docs/agent/overview
+  license: Copyright Anysphere
+  policy: summarize
+  kind: docs
+  notes: Search, edit, and terminal tools; checkpoints separate from git; per-task model choice.
+
+- id: e2-agents-md
+  title: AGENTS.md
+  author: Agentic AI Foundation (Linux Foundation)
+  url: https://agents.md/
+  license: Copyright LF Projects, LLC
+  policy: summarize
+  kind: docs
+  notes: Open format, "a README for agents"; nearest file wins; list of supporting tools.
+
+- id: e2-xai-models
+  title: Models and pricing (xAI docs)
+  author: xAI
+  url: https://docs.x.ai/docs/models
+  license: Copyright xAI
+  policy: summarize
+  kind: docs
+  notes: Fast-moving. Checked 2026-11-11; the page recommends its flagship Grok model for code.
+
+# ---------- Benchmarks and measurement ----------
+- id: e2-epoch-swebench-verified-review
+  title: SWE-bench Verified, benchmark review (Epoch AI)
+  author: Epoch AI
+  url: https://epoch.ai/benchmarks/swe-bench-verified/review
+  license: Copyright Epoch AI
+  policy: summarize
+  kind: report
+  notes: >-
+    Review published 2026-09-03. Reports OpenAI's 2026-02-23 audit (27.6% of tasks audited, 59.4% of those with flawed
+    tests, a floor of 16.4% of all tasks) and contamination finding; Epoch rates the benchmark Flawed.
+
+- id: e2-swebench-pro-2025
+  title: "SWE-Bench Pro: Can AI Agents Solve Long-Horizon Software Engineering Tasks? (Deng et al., 2025)"
+  author: Xiang Deng and colleagues (Scale AI)
+  url: https://arxiv.org/abs/2509.16941
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: 1,865 problems from 41 actively maintained repositories, split into public, held-out, and commercial sets.
+
+- id: e2-merrill-2026-terminal-bench
+  title: "Terminal-Bench: Benchmarking Agents on Hard, Realistic Tasks in Command Line Interfaces (Merrill et al., 2026)"
+  author: Mike A. Merrill, Alexander G. Shaw, Nicholas Carlini, and colleagues
+  url: https://arxiv.org/abs/2601.11868
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Terminal-Bench 2.0, 89 tasks, each with its own environment, a human-written reference solution, and tests; frontier agents under 65% at publication. ICLR 2026.
+
+- id: e2-tbench-site
+  title: Terminal-Bench
+  author: Terminal-Bench team
+  url: https://www.tbench.ai/
+  license: Copyright Terminal-Bench authors
+  policy: summarize
+  kind: report
+
+- id: e2-metr-2026-uplift-update
+  title: We are Changing our Developer Productivity Experiment Design (METR, 2026)
+  author: Joel Becker, Nate Rush, Tom Cunningham, David Rein, Khalid Mahamud (METR)
+  url: https://metr.org/blog/2026-02-24-uplift-update/
+  license: Copyright METR
+  policy: summarize
+  kind: report
+  notes: >-
+    Published 2026-02-24. 57 developers, 143 repositories, 800+ tasks from August 2025; estimates of -18% (CI -38% to
+    +9%) for returning developers and -4% (CI -15% to +9%) for new ones, which METR calls an unreliable, likely
+    lower-bound signal because of developer and task selection.
+
+- id: e2-metr-2025-study-blog
+  title: Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity (METR blog)
+  author: METR
+  url: https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/
+  license: Copyright METR
+  policy: summarize
+  kind: report
+
+- id: e2-metr-reward-hacking
+  title: Recent Frontier Models Are Reward Hacking (METR, 2025)
+  author: METR
+  url: https://metr.org/blog/2025-06-05-recent-reward-hacking/
+  license: Copyright METR
+  policy: summarize
+  kind: report
+  notes: Published 2025-06-05. Overwriting timers, stubbing evaluators, editing tests; telling the model not to cheat had a nearly negligible effect on one task.
+
+- id: e2-zhong-2025-impossiblebench
+  title: "ImpossibleBench: Measuring LLMs' Propensity of Exploiting Test Cases (Zhong, Raghunathan, Carlini, 2025)"
+  author: Ziqian Zhong, Aditi Raghunathan, Nicholas Carlini
+  url: https://arxiv.org/abs/2510.20270
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Tasks whose tests contradict the spec; frontier models frequently cheat, stronger models more; hiding tests cut cheating to near zero.
+
+- id: e2-peng-2023-copilot
+  title: "The Impact of AI on Developer Productivity: Evidence from GitHub Copilot (Peng et al., 2023)"
+  author: Sida Peng, Eirini Kalliamvakou, Peter Cihon, Mert Demirer
+  url: https://arxiv.org/abs/2302.06590
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Controlled experiment, one task (an HTTP server in JavaScript); treatment group 55.8% faster.
+
+- id: e2-cui-2025-field-experiments
+  title: "The Effects of Generative AI on High-Skilled Work: Evidence from Three Field Experiments with Software Developers (Cui et al.)"
+  author: Kevin Zheyuan Cui, Mert Demirer, Sonia Jaffe, Leon Musolff, Sida Peng, Tobias Salz
+  url: https://economics.mit.edu/sites/default/files/inline-files/draft_copilot_experiments.pdf
+  license: Copyright the authors
+  policy: summarize
+  kind: paper
+  notes: Randomized trials at Microsoft, Accenture, and a Fortune 100 company, 4,867 developers; about 26% more completed tasks among adopters; larger gains for less experienced developers. Published in Management Science (doi 10.1287/mnsc.2025.00535).
+
+- id: e2-dora-2025
+  title: State of AI-assisted Software Development 2025 (DORA)
+  author: DORA (Google Cloud)
+  url: https://dora.dev/research/2025/dora-report/
+  license: Copyright Google
+  policy: summarize
+  kind: report
+  notes: Central finding that AI acts as an amplifier of an organization's existing strengths and weaknesses.
+
+- id: e2-shen-2026-skill-formation
+  title: How AI assistance impacts the formation of coding skills (Anthropic research, 2026)
+  author: Judy Hanwen Shen, Alex Tamkin (Anthropic)
+  url: https://www.anthropic.com/research/AI-assistance-coding-skills
+  license: Copyright Anthropic
+  policy: summarize
+  kind: report
+  notes: >-
+    Published 2026-01-29, paper arXiv 2601.20245. RCT with 52 mostly junior engineers learning the Trio library; AI
+    group averaged 50% on a concept quiz versus 67% (d = 0.738, p = 0.01); time difference not significant;
+    conceptual inquiry and generation-then-comprehension patterns scored highest.
+
+- id: e2-spracklen-2024-package-hallucination
+  title: "We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code Generating LLMs (Spracklen et al., 2024)"
+  author: Joseph Spracklen, Raveen Wijewickrama, A H M Nazmus Sakib, Anindya Maiti, Bimal Viswanath, Murtuza Jadliwala
+  url: https://arxiv.org/abs/2406.10279
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: 16 models, 576,000 samples; hallucinated packages at least 5.2% on average for commercial models and 21.7% for open-source models. USENIX Security 2025.
+
+# ---------- Practice ----------
+- id: e2-willison-agentic-loops
+  title: Designing agentic loops (2025)
+  author: Simon Willison
+  url: https://simonwillison.net/2025/Sep/30/designing-agentic-loops/
+  license: Copyright Simon Willison
+  policy: summarize
+  kind: blog
+  notes: YOLO-mode risks, sandboxes, scoped credentials, problems with clear success criteria.
+
+- id: e2-willison-vibe-engineering
+  title: Vibe engineering (2025)
+  author: Simon Willison
+  url: https://simonwillison.net/2025/Oct/7/vibe-engineering/
+  license: Copyright Simon Willison
+  policy: summarize
+  kind: blog
+  notes: Practices that make coding agents more effective, from automated tests and planning to knowing what to outsource.
+
+- id: e2-google-review-looking-for
+  title: What to look for in a code review (Google Engineering Practices)
+  author: Google
+  url: https://google.github.io/eng-practices/review/reviewer/looking-for.html
+  license: CC BY 3.0
+  licenseUrl: https://creativecommons.org/licenses/by/3.0/
+  policy: summarize
+  kind: docs
+
+- id: e2-google-small-cls
+  title: Small CLs (Google Engineering Practices)
+  author: Google
+  url: https://google.github.io/eng-practices/review/developer/small-cls.html
+  license: CC BY 3.0
+  licenseUrl: https://creativecommons.org/licenses/by/3.0/
+  policy: summarize
+  kind: docs
+
+- id: e2-git-worktree
+  title: git-worktree documentation
+  author: Git project
+  url: https://git-scm.com/docs/git-worktree
+  license: GPL-2.0 (documentation)
+  policy: summarize
+  kind: docs
+
+- id: e2-coverage-branch
+  title: Branch coverage measurement (coverage.py docs)
+  author: Ned Batchelder and contributors
+  url: https://coverage.readthedocs.io/en/latest/branch.html
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+
+- id: e2-hypothesis-docs
+  title: Hypothesis documentation
+  author: Hypothesis developers
+  url: https://hypothesis.readthedocs.io/en/latest/
+  license: MPL 2.0
+  policy: summarize
+  kind: docs
+
+- id: e2-github-protected-branches
+  title: About protected branches (GitHub Docs)
+  author: GitHub
+  url: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches
+  license: CC BY 4.0
+  licenseUrl: https://creativecommons.org/licenses/by/4.0/
+  policy: summarize
+  kind: docs
+
+- id: e2-github-codeowners
+  title: About code owners (GitHub Docs)
+  author: GitHub
+  url: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+  license: CC BY 4.0
+  licenseUrl: https://creativecommons.org/licenses/by/4.0/
+  policy: summarize
+  kind: docs
+
+# ---------- Video (embed) ----------
+- id: e2-yt-cc-best-practices
+  title: Claude Code best practices | Code w/ Claude
+  author: Anthropic (Cal Rueb)
+  url: https://www.youtube.com/watch?v=gv0WHhKelSE
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: Official Anthropic channel, 2025, about 26 minutes. Some features have changed since; the docs are current.
+
+- id: e2-yt-mastering-cc
+  title: Mastering Claude Code in 30 minutes
+  author: Anthropic (Boris Cherny)
+  url: https://www.youtube.com/watch?v=6eBSHbLKuN0
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: Official Anthropic channel, 2025, about 28 minutes.

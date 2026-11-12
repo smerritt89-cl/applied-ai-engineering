@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+The limits of automated RAG metrics.
+
+2
+00:00:02.456 --> 00:00:06.403
+RAGAS-style metrics are useful, and they are LLM judges.
+
+3
+00:00:06.683 --> 00:00:09.264
+Everything week 2 taught about judges applies.
+
+4
+00:00:09.544 --> 00:00:11.592
+Four limits matter most in practice.
+
+5
+00:00:11.872 --> 00:00:13.749
+They need calibration on your data.
+
+6
+00:00:14.029 --> 00:00:26.381
+A faithfulness judge has a true positive rate and a true negative rate like any other, and lenient judges are common: they accept claims that sound like the passage but add a condition or a promise.
+
+7
+00:00:26.661 --> 00:00:33.275
+The lab’s recorded judge catches only half of the unsupported claims, which inflates faithfulness noticeably.
+
+8
+00:00:33.555 --> 00:00:39.933
+Measure your judge against an expert’s labels before you trust its number, exactly as you did for other judges.
+
+9
+00:00:40.213 --> 00:00:53.141
+ARES (Saad-Falcon and colleagues, 2023) builds this into the method: it uses a few hundred human-annotated examples to correct its automated judges’ estimates, with confidence intervals.
+
+10
+00:00:53.421 --> 00:00:55.491
+Claim splitting is a design choice.
+
+11
+00:00:55.771 --> 00:00:58.651
+How you break an answer into claims changes the score.
+
+12
+00:00:58.931 --> 00:01:08.168
+Split too coarsely and one unsupported clause hides inside a supported sentence; split too finely and trivial fragments pad the denominator.
+
+13
+00:01:08.448 --> 00:01:12.395
+Fix the splitter, version it, and don’t compare scores across splitters.
+
+14
+00:01:12.675 --> 00:01:14.125
+Scores are not portable.
+
+15
+00:01:14.405 --> 00:01:15.920
+A faithfulness of 0.
+
+16
+00:01:16.200 --> 00:01:21.704
+87 from one judge model, prompt, and library version is not comparable to 0.
+
+17
+00:01:21.984 --> 00:01:23.371
+87 from another.
+
+18
+00:01:23.651 --> 00:01:29.709
+Treat a judge change like a ruler change: rescore the baseline with the new judge before you compare.
+
+19
+00:01:29.989 --> 00:01:31.717
+Consistency is not truth.
+
+20
+00:01:31.997 --> 00:01:38.739
+Faithfulness and relevancy can both be high while the answer is wrong, because the context was wrong or stale.
+
+21
+00:01:39.019 --> 00:01:56.256
+Citations have the same gap: in an audit of generative search engines, Liu, Zhang, and Liang (2023) found only about half of generated sentences were fully supported by their citations, and about a quarter of citations didn’t support their sentence.
+
+22
+00:01:56.536 --> 00:02:04.173
+Check citation support explicitly if your product shows citations, and keep a reference-answer correctness check on a core set.

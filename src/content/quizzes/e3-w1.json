@@ -1,0 +1,157 @@
+{
+  "id": "e3-w1",
+  "studio": "e3",
+  "week": 1,
+  "title": "Week 1 quiz: Capabilities and how they are measured",
+  "questions": [
+    {
+      "id": "e3w1-q1",
+      "type": "mcq",
+      "prompt": "What quantity did the Kaplan (2020) and Chinchilla (2022) scaling laws model as a power law in compute, parameters, and data?",
+      "options": [
+        { "id": "a", "text": "Accuracy on downstream benchmarks such as MMLU", "rationale": "Benchmark accuracy is bounded and often S-shaped; the laws were fit to loss." },
+        { "id": "b", "text": "Pretraining test loss (next-token cross-entropy) on held-out text", "correct": true, "rationale": "Yes. Both papers fit loss, which is why claims about tasks are extrapolations from them." },
+        { "id": "c", "text": "The number of tasks a model can complete autonomously", "rationale": "That is closer to METR's time-horizon measure, introduced in 2025." },
+        { "id": "d", "text": "User preference votes", "rationale": "That is what arena leaderboards measure." }
+      ],
+      "explanation": "Scaling laws are among the most reliable empirical results in the field, for the quantity they measure. The mapping from lower loss to useful capability is a separate, weaker empirical relationship, and most public arguments about timelines quietly assume it.",
+      "week": 1,
+      "tags": ["scaling"],
+      "difficulty": 1
+    },
+    {
+      "id": "e3w1-q2",
+      "type": "predict-output",
+      "prompt": "Using the rule of thumb that training compute is about 6 times parameters times tokens, what does this print?",
+      "code": "N = 8e9        # parameters\nD = 15e12      # training tokens\nC = 6 * N * D\nprint(f\"{C:.1e}\", round(D / N))",
+      "options": [
+        { "id": "a", "text": "`7.2e+23 1875`", "correct": true, "rationale": "6 times 8e9 times 15e12 is 7.2e23; 15e12 divided by 8e9 is 1,875 tokens per parameter." },
+        { "id": "b", "text": "`1.2e+23 20`", "rationale": "That forgets the factor of 6 and assumes the Chinchilla ratio rather than computing it." },
+        { "id": "c", "text": "`7.2e+23 20`", "rationale": "The compute is right, but the tokens-per-parameter ratio is computed from the given numbers, not assumed." },
+        { "id": "d", "text": "`9.0e+22 1875`", "rationale": "Check the multiplication: 8 times 15 is 120, times 6 is 720." }
+      ],
+      "explanation": "At about 1,900 tokens per parameter, this model is trained far past the Chinchilla ratio of about 20. That is deliberate in many open-weight releases: extra training compute buys a smaller model that is cheaper to serve. Compute-optimal for training is not optimal for deployment.",
+      "week": 1,
+      "tags": ["scaling", "chinchilla"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w1-q3",
+      "type": "multi",
+      "prompt": "Which are documented drivers of capability gains from 2024 to 2026, according to this week's primary sources? Select all that apply.",
+      "options": [
+        { "id": "a", "text": "Reinforcement learning on tasks with checkable answers, such as math and code", "correct": true, "rationale": "The o1 announcement (September 2024) and the DeepSeek-R1 paper (January 2025) both describe this." },
+        { "id": "b", "text": "More test-time compute: letting models generate more intermediate reasoning before answering", "correct": true, "rationale": "The International AI Safety Report 2026 calls this inference-time scaling and credits it with large gains on complex reasoning." },
+        { "id": "c", "text": "Continued scaling of initial training compute", "correct": true, "rationale": "The same report notes that more initial training compute still improves models, even as post-training gains grow." },
+        { "id": "d", "text": "The discovery that loss no longer matters for capability", "rationale": "No source claims this." }
+      ],
+      "explanation": "The scaling story now has several axes with different cost curves. When someone says scaling is over or accelerating, ask which axis they mean.",
+      "week": 1,
+      "tags": ["scaling", "reasoning-models"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w1-q4",
+      "type": "scenario",
+      "prompt": "A board member shows you a chart of a capability metric that has risen in a straight line on a log scale for six years and says, \"So by 2028 it will be 100 times higher.\" What is the most useful response?",
+      "options": [
+        { "id": "a", "text": "Agree; log-linear trends in AI have been very stable.", "rationale": "Stable so far is evidence, not a guarantee, and it says nothing about what the metric measures." },
+        { "id": "b", "text": "Disagree; exponential trends always end.", "rationale": "True eventually, but it does not tell you when, so it is not a useful forecast either." },
+        { "id": "c", "text": "Ask what the metric measures and where its measurement ceiling is, show how the 2028 figure changes under a slower doubling time, and name the evidence that would confirm or break the trend.", "correct": true, "rationale": "Yes. That turns a single extrapolation into a range with explicit assumptions." }
+      ],
+      "explanation": "The METR horizon is a good example: the trend was steady, the measurement suite ran out of long tasks in 2026, and the implied dates move by years with reasonable changes in doubling time or reliability level.",
+      "week": 1,
+      "tags": ["extrapolation", "claims"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w1-q5",
+      "type": "mcq",
+      "prompt": "Why did OpenAI stop reporting SWE-bench Verified scores in February 2026?",
+      "options": [
+        { "id": "a", "text": "Its models scored too low to be competitive.", "rationale": "The issue was the benchmark's validity, not OpenAI's scores." },
+        { "id": "b", "text": "An audit found many remaining problems had flawed tests or descriptions, and gains increasingly reflected exposure to the benchmark during training.", "correct": true, "rationale": "Yes. Of 138 audited problems, 59.4% had material flaws; OpenAI recommended SWE-bench Pro instead." },
+        { "id": "c", "text": "The benchmark's maintainers withdrew it.", "rationale": "The decision described in this week's source was OpenAI's own." },
+        { "id": "d", "text": "Regulators banned public coding benchmarks.", "rationale": "No such regulation exists." }
+      ],
+      "explanation": "This is the full life cycle of a benchmark: introduced, trusted, saturated and contaminated, audited, replaced. When you see a score, ask where in that cycle the benchmark sits.",
+      "week": 1,
+      "tags": ["benchmarks", "contamination"],
+      "difficulty": 1
+    },
+    {
+      "id": "e3w1-q6",
+      "type": "code-reading",
+      "prompt": "This code is meant to report a model's improvement on a benchmark. What is the main problem with the conclusion it prints?",
+      "code": "old = [1]*412 + [0]*88   # 500 items, 82.4%\nnew = [1]*421 + [0]*79   # 500 items, 84.2%\ndelta = sum(new)/500 - sum(old)/500\nprint(f\"New model is better by {delta:.1%}\")",
+      "options": [
+        { "id": "a", "text": "It reports a 1.8-point difference with no interval, no paired comparison by item, and no check for run-to-run variance, so it may be noise.", "correct": true, "rationale": "Yes. Benchmark variance studies (Madaan and colleagues, 2024) show differences this size can flip between runs." },
+        { "id": "b", "text": "The arithmetic is wrong; the difference is 9 points.", "rationale": "9 is the difference in counts; divided by 500 it is 1.8 points." },
+        { "id": "c", "text": "500 items is too many to compare.", "rationale": "More items help; the problem is the missing uncertainty estimate." }
+      ],
+      "explanation": "With 500 items near 83%, the standard error of each rate is about 1.7 points, and of an unpaired difference about 2.4 points. A paired analysis by item can do better, but you have to run it. Report n, an interval, and the comparison method before concluding.",
+      "week": 1,
+      "tags": ["statistics", "benchmarks"],
+      "difficulty": 3
+    },
+    {
+      "id": "e3w1-q7",
+      "type": "mcq",
+      "prompt": "Which statement about METR's time-horizon measurements in 2026 is accurate?",
+      "options": [
+        { "id": "a", "text": "They show frontier agents reliably completing month-long tasks.", "rationale": "Public 80% horizons were about 1.5 hours in early 2026." },
+        { "id": "b", "text": "METR warned that measurements above about 16 hours are unreliable with its current task suite, and stopped actively updating its public page in September 2026.", "correct": true, "rationale": "Yes. The ruler ran out of length during 2026." },
+        { "id": "c", "text": "The doubling time slowed to about two years under Time Horizon 1.1.", "rationale": "TH1.1 found a faster post-2023 doubling time, about 131 days." },
+        { "id": "d", "text": "They cover all professional domains equally.", "rationale": "The suite is mostly software, ML, and cybersecurity." }
+      ],
+      "explanation": "Good measurement organizations publish the limits of their instruments. Quote them alongside the numbers.",
+      "week": 1,
+      "tags": ["metr", "time-horizon"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w1-q8",
+      "type": "scenario",
+      "prompt": "You must choose a model for transcribing and summarizing hour-long customer-call recordings (audio) into structured notes, at about 2,000 calls a day. Which plan is best supported by this week's lessons?",
+      "options": [
+        { "id": "a", "text": "Pick whichever model is first on the Arena text leaderboard.", "rationale": "Text preference rankings say little about audio input, structured output, or cost at volume." },
+        { "id": "b", "text": "Shortlist models whose providers document native audio input (for example Gemini 4 models) plus a pipeline of a speech-to-text model feeding a cheaper text model; evaluate both on 30 labeled calls for field accuracy, cost per call, and latency; pick the cheapest that clears the bar on its lower confidence bound.", "correct": true, "rationale": "Yes. Documented features set the shortlist; a small eval on your data decides." },
+        { "id": "c", "text": "Use the most expensive flagship available, because quality matters most.", "rationale": "At 2,000 calls a day, cost differences of 10x to 100x matter, and a cheaper option may clear the bar." }
+      ],
+      "explanation": "Modality is a hard constraint that filters the shortlist before capability does. Then the usual eval applies: real inputs, a written rubric, a cheaper alternative in the comparison, and a decision on lower bounds.",
+      "week": 1,
+      "tags": ["model-selection", "multimodal"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w1-q9",
+      "type": "predict-output",
+      "prompt": "What does this print? (It computes the lower end of a 95% Wilson interval.)",
+      "code": "import math\ndef wilson_lower(k, n, z=1.96):\n    p = k / n\n    d = 1 + z*z/n\n    c = p + z*z/(2*n)\n    m = z * math.sqrt(p*(1-p)/n + z*z/(4*n*n))\n    return (c - m) / d\nprint(round(wilson_lower(19, 20), 2), round(wilson_lower(95, 100), 2))",
+      "options": [
+        { "id": "a", "text": "`0.76 0.89`", "correct": true, "rationale": "Same 95% pass rate, but with 20 items the plausible floor is 76%; with 100 items it is 89%." },
+        { "id": "b", "text": "`0.95 0.95`", "rationale": "Those are the point estimates, not the lower bounds." },
+        { "id": "c", "text": "`0.89 0.76`", "rationale": "Reversed: more data gives a tighter interval and a higher lower bound." }
+      ],
+      "explanation": "Decide model choices on lower bounds, and buy more eval items when a cheap model's lower bound sits just under your bar. Sample size is part of the evidence.",
+      "week": 1,
+      "tags": ["model-selection", "statistics"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w1-q10",
+      "type": "multi",
+      "prompt": "Which of these are documented biases or caveats of arena-style leaderboards? Select all that apply.",
+      "options": [
+        { "id": "a", "text": "Answer length and formatting influence votes.", "correct": true, "rationale": "The Arena team's own style-control analysis found this." },
+        { "id": "b", "text": "Some providers privately tested many variants and could choose which to publish.", "correct": true, "rationale": "Reported in \"The Leaderboard Illusion\" (Singh and colleagues, 2025)." },
+        { "id": "c", "text": "Votes measure preference, which is not the same as correctness.", "correct": true, "rationale": "A confident wrong answer can win a vote." },
+        { "id": "d", "text": "Votes are cast by the model providers themselves.", "rationale": "Votes come from users; the concern is how providers can shape what gets ranked." }
+      ],
+      "explanation": "Arena rankings are a useful signal of what people prefer on their own prompts. Use them to shortlist, and remember what they cannot tell you.",
+      "week": 1,
+      "tags": ["leaderboards", "evaluation"],
+      "difficulty": 1
+    }
+  ]
+}

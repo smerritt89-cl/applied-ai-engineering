@@ -1,0 +1,297 @@
+{
+  "id": "e1-w3",
+  "studio": "e1",
+  "week": 3,
+  "title": "Week 3 quiz: activations, BatchNorm, and backprop by hand",
+  "questions": [
+    {
+      "id": "e1w3-q1",
+      "type": "predict-output",
+      "prompt": "What weight standard deviation does Kaiming initialization give for a tanh layer with fan_in = 256? (PyTorch's gain for tanh is 5/3.)",
+      "code": "import math\nprint(round((5 / 3) / math.sqrt(256), 4))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.0625`",
+          "rationale": "That's 1/sqrt(256), without the tanh gain."
+        },
+        {
+          "id": "b",
+          "text": "`0.1042`",
+          "correct": true,
+          "rationale": "gain / sqrt(fan_in) = (5/3) / 16."
+        },
+        {
+          "id": "c",
+          "text": "`0.0065`",
+          "rationale": "That divides by fan_in instead of its square root."
+        },
+        {
+          "id": "d",
+          "text": "`0.0884`",
+          "rationale": "That's sqrt(2)/16, the ReLU gain."
+        }
+      ],
+      "explanation": "Var(y) = fan_in x Var(w) x Var(x), so a standard deviation of 1/sqrt(fan_in) preserves scale for a linear layer. The gain compensates for how much the nonlinearity shrinks the signal: sqrt(2) for ReLU, 5/3 for tanh.",
+      "week": 3,
+      "tags": [
+        "initialization"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w3-q2",
+      "type": "code-reading",
+      "prompt": "A serving path uses this BatchNorm forward for inference, one request at a time. What does it output for any single input vector?",
+      "code": "def bn_infer(batch, gamma, beta, eps=1e-5):\n    n, d = len(batch), len(batch[0])\n    mean = [sum(r[j] for r in batch) / n for j in range(d)]\n    var = [sum((r[j] - mean[j]) ** 2 for r in batch) / n for j in range(d)]\n    return [[gamma[j] * (r[j] - mean[j]) / (var[j] + eps) ** 0.5 + beta[j] for j in range(d)] for r in batch]\n\nprint(bn_infer([[3.0, -7.0]], gamma=[1.0, 1.0], beta=[0.5, 0.0]))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "The correctly normalized features.",
+          "rationale": "With one example, the batch mean is the example itself."
+        },
+        {
+          "id": "b",
+          "text": "NaN, because the variance is zero.",
+          "rationale": "The eps term prevents division by zero, so the result is finite: beta."
+        },
+        {
+          "id": "c",
+          "text": "The input unchanged.",
+          "rationale": "The centering removes it entirely."
+        },
+        {
+          "id": "d",
+          "text": "Exactly `beta` for every feature, whatever the input, because x minus the batch mean is zero.",
+          "correct": true,
+          "rationale": "A batch of one has zero variance and the centered value is 0, so the output is gamma times 0 plus beta."
+        }
+      ],
+      "explanation": "Inference must use the running mean and variance accumulated during training. This bug is invisible in batched offline evaluation and catastrophic when serving single requests, a reminder to test the serving path, not only the training script.",
+      "week": 3,
+      "tags": [
+        "batchnorm",
+        "serving"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w3-q3",
+      "type": "predict-output",
+      "prompt": "A 10-class classifier is initialized so that all logits are zero. What is its initial cross-entropy loss?",
+      "code": "import math\nlogits = [0.0] * 10\np = math.exp(logits[3]) / sum(math.exp(z) for z in logits)\nprint(round(-math.log(p), 4))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.1`",
+          "rationale": "That's the probability of the correct class."
+        },
+        {
+          "id": "b",
+          "text": "`0.0`",
+          "rationale": "Zero loss needs probability 1 on the target."
+        },
+        {
+          "id": "c",
+          "text": "`2.3026`",
+          "correct": true,
+          "rationale": "Uniform probability 1/10 on every class gives -log(0.1) = log 10."
+        },
+        {
+          "id": "d",
+          "text": "`1.0`",
+          "rationale": "Cross-entropy of a uniform distribution is log C, not 1."
+        }
+      ],
+      "explanation": "log C is the loss you should see at step zero. The lecture's network starts far above it because the output layer is too confident; scaling the last layer down fixes the hockey-stick start of the loss curve.",
+      "week": 3,
+      "tags": [
+        "initialization",
+        "cross-entropy"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w3-q4",
+      "type": "mcq",
+      "prompt": "Why is the bias of a linear layer that feeds directly into BatchNorm usually disabled?",
+      "options": [
+        {
+          "id": "a",
+          "text": "BatchNorm subtracts the batch mean of each feature, which removes any constant bias, and its own beta provides the shift.",
+          "correct": true,
+          "rationale": "The bias's gradient is exactly zero, so it's dead weight."
+        },
+        {
+          "id": "b",
+          "text": "Biases cause the batch variance to be zero.",
+          "rationale": "A constant shift doesn't change the variance at all."
+        },
+        {
+          "id": "c",
+          "text": "BatchNorm cannot be differentiated when a bias is present.",
+          "rationale": "It can; the bias just receives zero gradient."
+        },
+        {
+          "id": "d",
+          "text": "Biases make the layer nonlinear.",
+          "rationale": "An affine map is still affine with a bias."
+        }
+      ],
+      "explanation": "Shifting every example's feature by the same constant shifts the batch mean by that constant, and the two cancel. That's why the ResNet code the lecture reads uses bias=False before BatchNorm.",
+      "week": 3,
+      "tags": [
+        "batchnorm"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w3-q5",
+      "type": "multi",
+      "prompt": "While training a deep MLP, which observations point to an unhealthy network? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "One layer's update-to-data ratio is orders of magnitude different from the others.",
+          "correct": true,
+          "rationale": "That layer is learning far faster or slower than the rest, a sign of mis-scaling."
+        },
+        {
+          "id": "b",
+          "text": "Activation distributions have similar spreads across layers.",
+          "rationale": "That's the healthy pattern good initialization and normalization aim for."
+        },
+        {
+          "id": "c",
+          "text": "Most tanh outputs in a layer sit very close to plus or minus 1.",
+          "correct": true,
+          "rationale": "Saturation means 1 - t squared is near zero, so gradients barely pass."
+        },
+        {
+          "id": "d",
+          "text": "Gradient magnitudes shrink steadily from the last layer toward the first.",
+          "correct": true,
+          "rationale": "That's vanishing gradients; early layers will learn slowly."
+        }
+      ],
+      "explanation": "The lecture's four diagnostics (activations, gradients, gradient-to-parameter ratios, update-to-data ratios) turn \"it's training badly\" into a specific layer and a specific cause.",
+      "week": 3,
+      "tags": [
+        "diagnostics"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w3-q6",
+      "type": "scenario",
+      "prompt": "A fine-tuning run you're responsible for produces NaN losses after a few hundred steps. The data pipeline hasn't changed since a run that worked. What is the best first move?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Switch to a larger model.",
+          "rationale": "That adds a variable without explaining the failure."
+        },
+        {
+          "id": "b",
+          "text": "Log per-layer gradient norms and the loss every step around the failure, and retry with a lower learning rate to see whether the divergence is an optimization instability.",
+          "correct": true,
+          "rationale": "Exploding gradients and too-large steps are the common cause; the logs locate it and the lower rate tests the hypothesis."
+        },
+        {
+          "id": "c",
+          "text": "Remove the normalization layers so they can't divide by zero.",
+          "rationale": "Normalization layers usually add stability, and they include eps against division by zero."
+        },
+        {
+          "id": "d",
+          "text": "Restart with a different random seed and hope it doesn't recur.",
+          "rationale": "Without a diagnosis, the same failure is likely to come back."
+        }
+      ],
+      "explanation": "Treat a divergence like any production incident: instrument, form a hypothesis, test it with a minimal change. The lecture's diagnostics are the instrumentation. Common culprits are a learning rate too high for this model, a bad batch, or a log of zero somewhere in a custom loss.",
+      "week": 3,
+      "tags": [
+        "debugging",
+        "training"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w3-q7",
+      "type": "code-reading",
+      "prompt": "In this manual backward pass for Y = X @ W + b (X is N x D, W is D x H), which line is wrong?",
+      "code": "dX = dY @ W.T\ndW = dY @ X.T\ndb = dY.sum(axis=0)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "Line 1, `dX = dY @ W.T`",
+          "rationale": "(N, H) @ (H, D) = (N, D), the shape of X. Correct."
+        },
+        {
+          "id": "b",
+          "text": "Line 3, `db = dY.sum(axis=0)`",
+          "rationale": "b was broadcast over the N rows, so its gradient sums over axis 0, giving shape (H)."
+        },
+        {
+          "id": "c",
+          "text": "Line 2, `dW = dY @ X.T`",
+          "correct": true,
+          "rationale": "That's (N, H) @ (D, N), which doesn't even multiply unless N = H. dW must be X.T @ dY, shape (D, H)."
+        },
+        {
+          "id": "d",
+          "text": "None of them.",
+          "rationale": "The shape rule rules out line 2."
+        }
+      ],
+      "explanation": "The gradient has the shape of its variable, and there's usually only one way to combine X and dY to produce it. Index notation confirms it: dW_jk = sum over n of X_nj dY_nk.",
+      "week": 3,
+      "tags": [
+        "manual-backprop",
+        "shapes"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w3-q8",
+      "type": "predict-output",
+      "prompt": "What does this print? (Batched cross-entropy gradient: softmax minus one-hot, divided by the batch size.)",
+      "code": "probs = [[0.7, 0.2, 0.1],\n         [0.1, 0.1, 0.8]]\nY = [0, 2]\nN = len(probs)\nd = [[(p - (1 if j == Y[i] else 0)) / N for j, p in enumerate(row)] for i, row in enumerate(probs)]\nprint([round(v, 2) for v in d[0]])",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[-0.15, 0.1, 0.05]`",
+          "correct": true,
+          "rationale": "Row 0 has target 0: (0.7 - 1)/2, 0.2/2, 0.1/2."
+        },
+        {
+          "id": "b",
+          "text": "`[-0.3, 0.2, 0.1]`",
+          "rationale": "That forgets to divide by the batch size N = 2."
+        },
+        {
+          "id": "c",
+          "text": "`[0.35, 0.1, 0.05]`",
+          "rationale": "That forgets to subtract the one-hot for the target."
+        },
+        {
+          "id": "d",
+          "text": "`[0.15, -0.1, -0.05]`",
+          "rationale": "The sign is flipped: the target's logit should be pushed up, so its gradient is negative."
+        }
+      ],
+      "explanation": "Each row of dlogits sums to zero, a free check on any implementation. The negative entry at the target means gradient descent increases that logit; the positive entries decrease the others in proportion to their probability.",
+      "week": 3,
+      "tags": [
+        "cross-entropy",
+        "manual-backprop"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

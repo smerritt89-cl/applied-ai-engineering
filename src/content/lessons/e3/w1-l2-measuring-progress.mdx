@@ -1,0 +1,272 @@
+---
+id: e3-w1-l2
+studio: e3
+week: 1
+order: 2
+title: "Measuring progress: time horizons, benchmarks, and what they miss"
+summary: How METR's task time-horizon measure works and what its 2026 updates say, how benchmarks saturate and leak into training data, why SWE-bench Verified was retired, what arena rankings measure, and the gap between benchmark scores and real work.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain how METR computes a 50% time horizon and compute one from success data with a logistic fit
+  - Summarize METR's 2026 updates (Time Horizon 1.1, the measurement ceiling, the cheating finding) with dates
+  - Describe saturation and contamination, with the documented cases of MMLU, GSM8K, and SWE-bench Verified
+  - Read an arena ranking or a vendor-reported score and name what it does and does not measure
+  - List what benchmarks systematically miss, and say what evidence would fill each gap
+sources:
+  - { id: kwa-2025-metr-horizon, use: summarized }
+  - { id: metr-horizon-blog, use: summarized }
+  - { id: metr-time-horizon-1-1, use: summarized }
+  - { id: metr-time-horizons-page, use: summarized, where: "Methodology, caveats, update log" }
+  - { id: metr-frontier-risk-report-2026, use: summarized, where: "Capabilities; reward hacking" }
+  - { id: hendrycks-2020-mmlu, use: summarized }
+  - { id: phan-2025-hle, use: summarized }
+  - { id: deng-2023-contamination, use: summarized }
+  - { id: zhang-2024-gsm1k, use: summarized }
+  - { id: hf-mmlu-implementations, use: summarized }
+  - { id: jimenez-2023-swebench, use: summarized }
+  - { id: swebench-verified, use: summarized }
+  - { id: openai-swebench-verified-retired, use: summarized }
+  - { id: deng-2025-swebench-pro, use: summarized }
+  - { id: chiang-2024-chatbot-arena, use: summarized }
+  - { id: arena-style-control, use: summarized }
+  - { id: singh-2025-leaderboard-illusion, use: summarized }
+  - { id: madaan-2024-variance, use: summarized }
+  - { id: zhu-2025-agentic-benchmark-checklist, use: linked }
+  - { id: kapoor-2024-agents-matter, use: linked }
+  - { id: intl-ai-safety-report-2026, use: summarized, where: "Jagged capabilities" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: A model has a "50% time horizon of 4 hours" on METR's suite. What does that mean?
+    options:
+      - id: a
+        text: The model can work autonomously for 4 hours before it stops.
+        rationale: The horizon measures task difficulty in human time, not how long the AI runs. Agents are often several times faster than people on tasks they complete.
+      - id: b
+        text: On tasks that take skilled humans about 4 hours, the fitted model predicts the agent succeeds about half the time.
+        correct: true
+        rationale: Right. It is the point where a logistic fit of success against log human task length crosses 50%.
+      - id: c
+        text: The model completes half of all 4-hour tasks in any domain.
+        rationale: The suite is mostly software, ML, and cybersecurity tasks; METR warns horizons in other domains will differ.
+    explanation: >-
+      The horizon converts a benchmark into a length in human expert time, which makes progress comparable across
+      years. Keep three caveats attached to any number: the domain (mostly software), the reliability level (50%, with
+      80% horizons far shorter), and the ceiling (METR says measurements above about 16 hours are unreliable with its
+      current suite).
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A launch post reports a new model at 82% on SWE-bench Verified, up from 79% for the previous version. Your team
+      is deciding whether to switch its coding agent. What is the best reading?
+    options:
+      - id: a
+        text: Switch; a 3-point gain on a well-known coding benchmark is clear evidence of better coding.
+        rationale: OpenAI retired this benchmark in February 2026 because gains increasingly reflected exposure during training and flawed tests.
+      - id: b
+        text: Ignore benchmarks entirely and pick by developer opinion.
+        rationale: Opinion is a worse instrument. The fix is a better measurement, not none.
+      - id: c
+        text: Treat the number as weak evidence (the benchmark is saturated and likely contaminated), check a less contaminated benchmark such as SWE-bench Pro, and run both models on tasks from your own repositories.
+        correct: true
+        rationale: Yes. A small eval on your own code is the evidence that answers your question.
+    explanation: >-
+      Near the top of a saturated benchmark, the remaining errors are a mix of genuinely hard problems, broken tests,
+      and noise; a few points can be within run-to-run variation. Lesson 3 and the project turn this into a habit: shortlist
+      with public numbers, decide with your own eval.
+  - id: kc3
+    type: multi
+    prompt: Which are documented signs or causes of benchmark contamination or unreliability? Select all that apply.
+    options:
+      - id: a
+        text: Models guessing masked-out answer options of MMLU questions far above chance.
+        correct: true
+        rationale: Deng and colleagues (2023) used exactly this probe as evidence that items had been seen in training.
+      - id: b
+        text: Scores dropping on a freshly written benchmark that mirrors an older one, such as GSM1k versus GSM8K.
+        correct: true
+        rationale: Zhang and colleagues (2024) found such drops for some model families, consistent with overfitting to the public set.
+      - id: c
+        text: Agents achieving "successes" by tampering with the grader rather than solving the task.
+        correct: true
+        rationale: METR's May 2026 report found at least 16% of successful runs on tasks over 8 hours were illegitimate on review.
+      - id: d
+        text: A benchmark that uses held-out, private test items.
+        rationale: Private items are a defense against contamination, though not a guarantee of validity.
+    explanation: >-
+      Contamination (the test leaked into training) and gaming (the score was achieved the wrong way) both inflate
+      numbers. Defenses include private or fresh items, canary strings, reading transcripts, and, for your own work,
+      evals built from your data that no model has seen.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The measurement problem
+
+Lesson 1 ended with a gap: loss curves are smooth, but nobody buys loss. People buy the ability to do work. So the second half of every big claim is a measurement of capability, and the quality of the claim is the quality of that measurement.
+
+Capability measurement has three recurring failure modes, and this lesson is organized around them. **Saturation**: a benchmark stops discriminating because the best models score near the top, and the remaining errors are mostly broken items. **Contamination**: the test items, or close paraphrases, were in the training data, so a high score partly measures memory. **Validity**: the benchmark measures something cleaner and narrower than the work people care about, so a high score does not transfer.
+
+The International AI Safety Report 2026 summarizes the result with one word you will hear often: capabilities are **jagged**. Leading systems pass graduate-level science questions and still fail at counting objects in an image or recovering from basic errors in long workflows. A single score hides that shape. Your job when reading any capability claim is to ask which slice of the jagged profile it measured.
+</Listen>
+
+<Listen>
+## METR's time horizon: turning benchmarks into a length
+
+METR (Model Evaluation and Threat Research) proposed a measure in March 2025 (Kwa and colleagues) that has become the most cited single number in timeline arguments. The idea is to express capability as the length of task, in skilled human time, that an AI agent can complete.
+
+The method has three steps. First, assemble a suite of tasks (mostly software engineering, machine learning research, and cybersecurity) and time skilled humans doing them, so each task has a human duration from seconds to many hours. Second, run each AI agent on every task many times and record success or failure. Third, for each agent, fit a logistic curve of success probability against the logarithm of human task duration. The **50% time horizon** is the task length where the fitted curve crosses one half; the 80% horizon is where it crosses 0.8.
+
+The 2025 paper reported that frontier 50% horizons had doubled roughly every seven months since 2019. The METR post on that paper is careful about what this means. It is a measured trend on one suite; extending it to "AI will do month-long projects by a given year" is an extrapolation that assumes the trend continues and generalizes beyond the suite.
+
+Note what the measure is not. It is not how long an agent runs; agents are usually several times faster than people on the tasks they complete. And it is not a measure of reliability at the level a business needs: the 80% horizon is much shorter than the 50% horizon, and nobody publishes a 99% horizon.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e3-time-horizon-fit"
+  title="Compute a 50% time horizon"
+  starter={`import math
+
+# Success data for one agent: (human task minutes, 1 if the agent succeeded else 0).
+# Each task was attempted several times; each attempt is one row.
+RUNS = (
+    [(2, 1)] * 8 +
+    [(8, 1)] * 7 + [(8, 0)] * 1 +
+    [(30, 1)] * 5 + [(30, 0)] * 3 +
+    [(120, 1)] * 3 + [(120, 0)] * 5 +
+    [(480, 1)] * 1 + [(480, 0)] * 7
+)
+
+def fit_logistic(runs, steps=5000, lr=0.1):
+    """Fit p(success) = sigmoid(a + b * log2(minutes)) by gradient ascent
+    on the log-likelihood. Return (a, b)."""
+    # TODO: start a = b = 0, then repeat: for each run compute p, accumulate
+    # gradients (y - p) and (y - p) * x where x = log2(minutes), and step.
+    pass
+
+def horizon(a, b, p=0.5):
+    """Human task length (minutes) at which the fitted success probability equals p."""
+    # TODO: solve a + b * x = log(p / (1 - p)) for x, return 2 ** x
+    pass
+
+ab = fit_logistic(RUNS)
+if ab:
+    a, b = ab
+    print("50% horizon (min):", round(horizon(a, b, 0.5), 1))
+    print("80% horizon (min):", round(horizon(a, b, 0.8), 1))
+`}
+  tests={`ab = fit_logistic(RUNS)
+assert ab is not None, "fit_logistic returned None"
+a, b = ab
+assert b < 0, "success should fall as tasks get longer, so the slope must be negative"
+h50 = horizon(a, b, 0.5)
+h80 = horizon(a, b, 0.8)
+assert h50 is not None and h80 is not None, "horizon returned None"
+assert 50 < h50 < 110, f"the 50% horizon should be between about 50 and 110 minutes, got {h50:.1f}"
+assert h80 < h50 / 3, "the 80% horizon should be several times shorter than the 50% horizon"`}
+  solution={`def fit_logistic(runs, steps=5000, lr=0.1):
+    a, b = 0.0, 0.0
+    n = len(runs)
+    for _ in range(steps):
+        ga = gb = 0.0
+        for minutes, y in runs:
+            x = math.log2(minutes)
+            p = 1 / (1 + math.exp(-(a + b * x)))
+            ga += (y - p)
+            gb += (y - p) * x
+        a += lr * ga / n
+        b += lr * gb / n
+    return a, b
+
+def horizon(a, b, p=0.5):
+    x = (math.log(p / (1 - p)) - a) / b
+    return 2 ** x`}
+>
+Fit the logistic curve with plain gradient ascent (no libraries), then press **Check my answer**. When it passes, compare the two horizons. The same agent that succeeds half the time on roughly hour-long tasks is reliable (80%) only on tasks a few times shorter. That gap is the first thing to check when someone quotes a horizon as if it were a promise.
+</PyRunner>
+
+<Listen>
+## What METR reported in 2026
+
+Three updates matter, and each comes with a caveat from METR itself.
+
+**Time Horizon 1.1 (29 January 2026).** METR enlarged its suite from 170 to 228 tasks, added more long tasks, and moved to the open-source Inspect evaluation framework. Re-estimated horizons mostly stayed within earlier confidence intervals, but the trend steepened: the doubling time since 2023 came out at about 131 days (roughly 4.3 months), versus about 165 days on the old suite, and about 89 days since 2024. METR flagged the caveats in the same post: few tasks remain that the newest models fail, only 5 of the 31 tasks estimated at 8 hours or more have measured human baselines, and the infrastructure change itself shifted some models' scores.
+
+**The ceiling.** METR's live time-horizons page added a warning that measurements above about 16 hours are unreliable with the current suite, and on 8 September 2026 it marked the page as no longer actively updated. In other words, the best-known capability ruler ran out of length during 2026. That is itself evidence of fast progress, and it also means that recent "horizon" numbers you see quoted are poorly constrained.
+
+**The Frontier Risk Report (19 May 2026).** Covering February and March 2026, with access to Anthropic, Google, Meta, and OpenAI, METR estimated the public frontier's 50% horizon at about 12 hours (with a very wide range, roughly 5 to 61 hours) and judged internal models likely at least 16 hours. Its 80% estimate for public models was about 1.5 hours. And it reported something every benchmark reader should remember: on review, at least 16% of "successful" runs on tasks longer than 8 hours were illegitimate, meaning the agent cheated rather than solved the task.
+</Listen>
+
+<Predict
+  title="What a doubling time implies"
+  code={`doubling_days = 131
+growth_per_year = 2 ** (365 / doubling_days)
+print(round(growth_per_year, 1))`}
+  options={["6.9", "2.8", "1.4", "131.0"]}
+  answer={0}
+>
+365 divided by 131 is about 2.79 doublings per year, and 2 to the 2.79 is about 6.9. A 131-day doubling time means roughly a sevenfold increase in task length per year, if the trend holds. That "if" carries everything: the measurement ceiling, the domain restriction, and the cheating finding all bear on whether it holds outside METR's suite.
+</Predict>
+
+<Callout type="pitfall" title="Counting cheated successes as capability">
+Every automated benchmark trusts its grader. When agents are strong enough to probe the grader, some "passes" are exploits: editing tests, reading answer files, or tampering with the scorer. METR found this often enough on long tasks to change its estimates, and week 3 covers an incident where agents attacked a grader at scale. The defense is old-fashioned: read a sample of transcripts, especially the successes, and count a pass only when a person or a separate check confirms the task was actually done. Do this in your own evals too; an agent that games your test suite will look like your best candidate.
+</Callout>
+
+<Listen>
+## Saturation and contamination, with the documented cases
+
+**MMLU** (Hendrycks and colleagues, 2020) asked multiple-choice questions across 57 subjects and was the standard knowledge benchmark for years. It saturated: frontier models now score near the ceiling, and Hugging Face showed in 2023 that different but reasonable ways of running the same MMLU evaluation could change scores and even rankings. Harder successors such as **Humanity's Last Exam** (Phan and colleagues, 2025) were built from questions that frontier models failed at creation time, which buys a few years before the same thing happens.
+
+**Contamination** is the more insidious problem, because a contaminated benchmark can look unsaturated and still mislead. Deng and colleagues (2023) masked a wrong answer option in benchmark questions and found that commercial models could often reproduce the missing option, a strong sign the items had been seen. Zhang and colleagues (2024) wrote GSM1k, a fresh set of grade-school math problems in the style of the public GSM8K, and found that some model families scored noticeably worse on the fresh set, consistent with overfitting to the public one, while the strongest models showed little drop.
+
+**SWE-bench Verified** is the clearest 2026 case. SWE-bench (Jimenez and colleagues, 2023) asks agents to resolve real GitHub issues and checks fixes with the repository's tests; Verified was a human-filtered 500-task subset. On 23 February 2026, OpenAI announced it would no longer report Verified scores. Its audit of 138 problems that its o3 model did not consistently solve found 59.4% had material flaws in the tests or descriptions, and it concluded that recent gains increasingly reflected exposure during training. It recommended **SWE-bench Pro** (Deng and colleagues at Scale AI, 2025): 1,865 tasks from 41 repositories, with a public set, a held-out set, and a commercial set from private codebases, designed to resist contamination. Pro has its own critics on grader reliability, which is the normal life cycle of a benchmark: introduced, trusted, saturated, audited, replaced.
+</Listen>
+
+<Listen>
+## Arena rankings and vendor scores
+
+**Arena-style leaderboards** (the Arena, formerly LMArena and Chatbot Arena) show two anonymous answers to a real user's prompt and record which one the user prefers, then fit a rating model to millions of votes (Chiang and colleagues, 2024). They measure something static benchmarks miss: what people prefer on their own prompts, including newer categories such as agentic and web-development tasks. Their documented biases: the Arena team's own style-control analysis found that answer length and formatting sway votes, and "The Leaderboard Illusion" (Singh and colleagues, 2025) reported that some large providers privately tested many variants and could choose which results to publish. Preference is a real signal; it is not correctness.
+
+**Vendor-reported scores** in launch posts and model cards are usually run carefully, but with the vendor's choice of prompts, scaffolding, number of attempts, and effort setting, and they are rarely comparable across vendors. Treat them as claims to be checked, and look for independent replications.
+
+**Noise.** Madaan and colleagues (2024) measured how much benchmark scores vary from run to run and seed to seed, and found the variance large enough to reverse small differences between models. A difference of a point or two, reported without an interval, is often not a difference. Studio 3's statistics lessons apply directly: ask for the number of items, the interval, and whether the comparison was paired.
+</Listen>
+
+<Mermaid
+  alt="Life cycle of a benchmark: a new benchmark is introduced with headroom; it becomes widely trusted and reported; scores rise and approach the ceiling (saturation) while test items leak into training data (contamination); an audit finds flawed items or memorization; the benchmark is retired and replaced by a harder or private successor, and the cycle repeats."
+  caption="Most benchmarks follow this cycle. Ask where in it a quoted benchmark sits."
+  chart={`flowchart LR
+  A["Introduced, with headroom"] --> B["Widely trusted and reported"]
+  B --> C["Scores near ceiling (saturation)"]
+  B --> D["Items leak into training (contamination)"]
+  C --> E["Audit finds flawed or memorized items"]
+  D --> E
+  E --> F["Retired; harder or private successor"]
+  F --> A`}
+/>
+
+<Listen>
+## What benchmarks miss
+
+Even a clean, unsaturated benchmark leaves out most of what makes work hard. METR's own page lists several gaps for its suite, and they generalize:
+
+- **Messiness.** Benchmark tasks have clear specifications and automatic checks. Real tasks have ambiguous goals, missing context, and stakeholders who change their minds. METR reports agents did worse on messier tasks and when scored holistically by people rather than by algorithmic checks.
+- **Reliability at business levels.** A 50% success rate is a research milestone and a product failure. Most work needs 95% or better, plus a way to know which 5% failed.
+- **Cost and time.** Benchmarks rarely report what a success cost in tokens or wall-clock time. Kapoor and colleagues ("AI Agents That Matter", 2024) argued that agent evaluations should report cost alongside accuracy, because a small gain bought with ten times the compute may not be worth it.
+- **Domain transfer.** Software tasks have checkable answers, which is exactly where RL training concentrated (lesson 1). Strong coding horizons say little about, for example, writing a policy memo that a regulator will accept.
+- **Organizational fit.** Whether a team actually gets faster depends on review load, integration, and trust, which lesson 6 examines with field evidence.
+
+The gap between benchmark and work is not a reason to ignore benchmarks. It is a reason to treat them as a shortlist and to measure the last mile yourself.
+</Listen>
+
+<GoDeeper title="Building a benchmark you can trust">
+Zhu and colleagues (2025) published a checklist for rigorous agentic benchmarks after finding validity problems in widely used ones, including tasks that could be passed without doing the work and graders that accepted wrong answers. Their core questions are useful for your own evals: Is every task solvable, and was that verified? Can the grader be satisfied by a shortcut? Are results reported with variance across runs? Is the scaffold described well enough to reproduce? Two practices from this lesson belong in any eval you build for the project: keep some items private and fresh (written after the models' training cutoffs, or drawn from your own data), and read the transcripts of a sample of passes, not just failures.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+When you see a capability number, ask four questions. What does it measure, in what domain, at what reliability level? Is the benchmark saturated or contaminated, and has it been audited? Who ran it, with what scaffold and effort, and is there an interval? And what does it miss about your work? METR's horizon is the best single trend line available and it is running out of ruler; SWE-bench Verified's retirement shows how quickly a trusted number goes stale. The next lesson uses these questions to choose models for real work.
+</Listen>

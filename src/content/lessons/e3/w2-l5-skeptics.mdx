@@ -1,0 +1,197 @@
+---
+id: e3-w2-l5
+studio: e3
+week: 2
+order: 5
+title: The skeptics and critics, and what the evidence says about them
+summary: Yann LeCun on the limits of language models, Gary Marcus on reliability and hype, Arvind Narayanan and Sayash Kapoor on AI as normal technology, and other 2025 and 2026 critiques, each with its date, the evidence for and against, and what it means for how you build.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - State the core argument of LeCun, Marcus, and Narayanan and Kapoor, with dates and primary sources
+  - For each critique, name the evidence that supports it and the evidence that has gone against it
+  - Distinguish critiques of capability (can models do X?) from critiques of impact (how fast will X change the world?)
+  - Explain the compounding-error argument and what breaks its independence assumption
+  - Steelman a position you disagree with in a way its holder would accept
+sources:
+  - { id: lecun-2022-path-ami, use: summarized }
+  - { id: brown-2026-lecun-lecture, use: summarized }
+  - { id: fortune-2026-davos-agi, use: summarized }
+  - { id: marcus-2022-hitting-wall, use: summarized }
+  - { id: narayanan-kapoor-2025-normal-tech, use: summarized }
+  - { id: normaltech-2026-software-engineers, use: summarized }
+  - { id: normaltech-2026-loss-of-control, use: summarized }
+  - { id: yt-dwarkesh-karpathy-2025, use: embedded }
+  - { id: yt-dwarkesh-sutskever-2025, use: linked }
+  - { id: intl-ai-safety-report-2026, use: summarized, where: "Jagged capabilities" }
+  - { id: metr-frontier-risk-report-2026, use: summarized }
+  - { id: metr-time-horizons-page, use: summarized, where: "Messier tasks" }
+  - { id: ord-2025-rl-scale, use: linked }
+  - { id: kapoor-2022-leakage, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: Which statement best captures the "AI as Normal Technology" thesis (Narayanan and Kapoor, April 2025)?
+    options:
+      - id: a
+        text: AI capabilities have stopped improving, so its effects will be small.
+        rationale: The essay does not claim capabilities stalled; it distinguishes capability progress from the slower process of diffusion.
+      - id: b
+        text: AI is a powerful general-purpose technology like electricity, whose economic and social effects will unfold over decades because adoption and diffusion are slow, and which humans can and should keep under control.
+        correct: true
+        rationale: Yes. The key distinction is between invention, innovation, adoption, and diffusion, which move at different speeds.
+      - id: c
+        text: AI is a passing fad comparable to earlier hype cycles.
+        rationale: The authors compare its eventual impact to the industrial revolution; their claim is about pace and control, not importance.
+    explanation: >-
+      This is a critique of impact and timelines, not mainly of capability. It is compatible with rapid benchmark
+      progress, which is why it has aged differently from capability critiques. In September 2026 the authors conceded
+      they had underestimated how fast cyber capabilities would advance, while keeping the core view.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A senior engineer on your team cites Yann LeCun to argue that the team should not build an agent for invoice
+      reconciliation because "LLMs are a dead end." What is the best response?
+    options:
+      - id: a
+        text: Agree and cancel the project; LeCun is a Turing Award winner.
+        rationale: Authority is not evidence about your task. LeCun's claim is about reaching human-level intelligence, not invoice work.
+      - id: b
+        text: Separate the claims. LeCun argues LLMs will not reach human-level intelligence; that is compatible with an LLM workflow doing a narrow, checkable task well. Decide with an eval on real invoices, with deterministic reconciliation checks.
+        correct: true
+        rationale: Right. The critique is about the long-run ceiling; your decision depends on measured performance on a bounded task.
+      - id: c
+        text: Dismiss LeCun; he has been proven wrong by recent progress.
+        rationale: His core claim (no human-level intelligence from text-only LLMs) has not been tested yet.
+    explanation: >-
+      Critics and boosters both talk about the ceiling. Your decisions mostly depend on the floor: does this system
+      reliably do this task, with these checks? Invoice reconciliation has checkable answers (totals must match), which is
+      exactly where current models plus deterministic checks do well.
+  - id: kc3
+    type: multi
+    prompt: Which of Gary Marcus's March 2022 claims in "Deep Learning Is Hitting a Wall" have substantial support in 2026 evidence? Select all that apply.
+    options:
+      - id: a
+        text: Larger models would become more fluent without becoming proportionally more trustworthy.
+        correct: true
+        rationale: Reliability failures persist in 2026 frontier models; the International AI Safety Report calls capabilities jagged.
+      - id: b
+        text: Combining neural networks with symbolic tools would be valuable.
+        correct: true
+        rationale: Current systems routinely call code interpreters, search, and other tools; one can debate whether that counts as his neurosymbolic program, but tool use is central.
+      - id: c
+        text: Scaling would stop producing gains on reasoning-heavy benchmarks such as competition mathematics.
+        rationale: Frontier systems reached gold-medal level on olympiad problems by 2025, largely through scale plus RL.
+    explanation: >-
+      Like most strong forecasts, Marcus's essay was partly right. The reliability critique has held up; predictions that
+      specific capabilities would not arrive have mostly not. Scoring a critic claim by claim is fairer and more useful than
+      declaring them right or wrong overall.
+---
+<Listen>
+## Why read the critics
+
+If the last lesson's speakers are right, very capable AI is close. The people in this lesson think that view is wrong in one of two ways, and the distinction is the most useful idea in the lesson.
+
+**Capability critiques** say the current approach cannot reach some level of ability: human-level reasoning, reliable autonomy, understanding of the physical world. These are claims about the ceiling.
+
+**Impact critiques** say that whatever the capabilities, effects on the economy and society will be slower, more uneven, and more controllable than the timelines suggest. These are claims about diffusion.
+
+The two can come apart. Benchmarks can soar while job markets barely move, and that combination would vindicate impact critics while embarrassing capability critics. Keep them separate when you read, and when you score.
+
+A second reason to read the critics is professional. When you lead a team, the critics' arguments are the failure modes you need to design against. Marcus's reliability critique is the reason for every validator you wrote in Studio 1. LeCun's planning critique is the reason agents need checkpoints and human approval in Studio 4. You do not have to agree with their forecasts to use their objections.
+</Listen>
+
+<Listen>
+## Yann LeCun: language models will not reach human-level intelligence
+
+LeCun is a Turing Award winner and was Meta's chief AI scientist until he left to lead AMI Labs, a company pursuing a different approach, where he is executive chairman. His position has been consistent for years. In his 2022 position paper "A Path Towards Autonomous Machine Intelligence," he argued that human-level intelligence requires **world models**: systems that predict how the world changes in response to actions, learned mostly from observation (video, sensor data) rather than text, and used for planning. He proposed a family of architectures (joint embedding predictive architectures) for learning such models.
+
+At Davos in January 2026, as reported by Fortune, he said that training on text alone would never get to human-level intelligence. In a lecture at Brown University on 1 April 2026, he called language models essentially a dead end for that goal, argued that current systems have no concept of how their actions affect the world, which makes most agentic systems risky, and said that at best, within five years, the field might be convinced it is on a good path toward human-level intelligence, but not there.
+
+A related argument you will hear in engineering discussions, often attached to critiques like his, is about **compounding error**: if each generated step has a small independent chance of going wrong, a long chain fails almost surely. The Predict below makes that concrete, and shows where the argument's assumption breaks.
+</Listen>
+
+<Predict
+  title="The compounding-error argument"
+  code={`p_step = 0.99
+steps = 100
+print(round(p_step ** steps, 3))`}
+  options={["0.366", "0.99", "0.01", "0.634"]}
+  answer={0}
+>
+If every step must succeed independently with 99% probability, a 100-step task succeeds about 37% of the time. That is the skeptic's arithmetic, and it is right under its assumption. The assumption is independence with no recovery. Agents that check their work (run tests, validate outputs, retry on detected failure) break it: as Studio 4 showed, a failure that is detected and retried turns a 0.9 step into a 0.99 step. Which is why verification, not raw model quality, decides whether long tasks work. The critique and the engineering response are both correct; the evidence question is how often failures are detectable in your task.
+</Predict>
+
+<Callout type="claim" title="Claim: language models trained mostly on text will not reach human-level intelligence (Yann LeCun, 2022 to 2026)">
+**Who and when:** Yann LeCun, in [A Path Towards Autonomous Machine Intelligence](https://openreview.net/forum?id=BZ5a1r-kVsf) (2022), at Davos (January 2026, reported by [Fortune](https://fortune.com/2026/01/23/deepmind-demis-hassabis-anthropic-dario-amodei-yann-lecun-ai-davos/)), and in a [Brown University lecture](https://www.brown.edu/news/2026-04-01/yann-lecun-artificial-intelligence-pioneer) (1 April 2026).
+
+**Evidence for:** the International AI Safety Report 2026 lists reasoning about physical space and recovering from basic errors in long workflows among persistent weaknesses; METR reports agents doing worse on messier tasks and under holistic scoring; robotics remains far behind language. Frontier models are no longer text-only, but most of their training signal is still text and code.
+
+**Evidence against, or nuance:** many capabilities that critics said needed world models (multi-step planning in software, competition mathematics) arrived through scale and reinforcement learning. Frontier models are now trained on images, audio, and video too, which blurs "text only." And "human-level intelligence" is not a measurable target, so the claim cannot yet be scored. LeCun leads a company built on the alternative approach, which is context for his confidence.
+
+**Score (November 2026):** not yet checkable as stated. His near-term predictions about specific failures have a mixed record.
+</Callout>
+
+<Listen>
+## Gary Marcus: fluent is not reliable
+
+Marcus, a cognitive scientist and entrepreneur, has been the most persistent public critic of the scaling thesis. His March 2022 essay "Deep Learning Is Hitting a Wall" argued that deep learning works where errors are tolerable but is unreliable where stakes are high; that larger models would become more fluent without becoming correspondingly more trustworthy; that scaling might show diminishing returns on truthfulness and common sense; and that the field would need hybrid, neurosymbolic systems that combine learned patterns with explicit symbols and reasoning. He has continued the argument since, through his newsletter and talks, extending it to the economics of the industry: that very large training and serving costs may not be repaid.
+
+Scoring him fairly means going claim by claim. The reliability critique has held up: confident errors remain a defining property of 2026 systems, and the safety report's word "jagged" is close to his argument. The hybrid prediction has arguably been partly vindicated, since today's systems lean heavily on tools such as code execution and search, though they bolt symbols onto a neural core rather than the reverse. The predictions that particular capabilities would not arrive (strong reasoning on hard math, for example) have mostly gone against him. And the economic critique is unresolved: revenues have grown quickly, and so have costs.
+</Listen>
+
+<Callout type="claim" title="Claim: scaling makes models more fluent but not reliably more trustworthy (Gary Marcus, March 2022 onward)">
+**Who and when:** Gary Marcus, [Deep Learning Is Hitting a Wall](https://nautil.us/deep-learning-is-hitting-a-wall-238440/), Nautilus, 10 March 2022, and his later writing.
+
+**Evidence for:** hallucination and confident error remain documented in every frontier model; METR found at least 16% of successful long-task runs were illegitimate on review (May 2026); week 3 documents reward hacking, sycophancy, and deception in production-scale systems.
+
+**Evidence against, or nuance:** reliability has improved materially on many tasks, and verification tooling (tests, structured outputs, citations) lets engineers get dependable results from unreliable components. "Not reliably trustworthy" is true; "not useful" does not follow, and he does not claim it.
+
+**Score (November 2026):** largely right on reliability; mostly wrong on specific capability ceilings.
+</Callout>
+
+<Listen>
+## Narayanan and Kapoor: AI as normal technology
+
+Arvind Narayanan and Sayash Kapoor, at Princeton, wrote "AI as Normal Technology" (Knight First Amendment Institute, 15 April 2025) as an alternative to both utopian and catastrophic framings. Their argument has three parts.
+
+**Diffusion is slow.** They separate invention (new methods), innovation (products), adoption (an organization choosing to use them), and diffusion (society-wide spread), and argue the later stages have their own speed limits: workflows, regulation, liability, and trust. In safety-critical areas, adoption lags innovation by years or decades. So economic effects unfold over decades, like electricity.
+
+**Superintelligence is a poor frame.** They argue intelligence is not a single scale, that human power comes from technology rather than raw intelligence, and that AI is unlikely to meaningfully outperform humans working with AI on most consequential tasks. They treat fast takeoff as unlikely.
+
+**Defenses belong downstream.** Rather than trying to make models themselves safe against all misuse, they argue for resilience: security systems, institutions, and monitoring around models.
+
+In 2026 they extended the framework. Their June 2026 essay argued that software engineering, the field most exposed to AI, shows why automation of a task does not equal automation of a job: deciding what to build and verifying what ships remain bottlenecks, and US software employment was still growing. Their 14 September 2026 essay applied the framework to the OpenAI and Hugging Face incident, arguing it was largely preventable with known monitoring and sandboxing, calling for liability and incident reporting, and conceding that they had underestimated how quickly cyber capabilities would advance.
+</Listen>
+
+<Callout type="claim" title="Claim: AI's economic and social effects will unfold over decades, like other general-purpose technologies (Narayanan and Kapoor, April 2025)">
+**Who and when:** Arvind Narayanan and Sayash Kapoor, [AI as Normal Technology](https://knightcolumbia.org/content/ai-as-normal-technology), 15 April 2025, and follow-ups on [normaltech.ai](https://www.normaltech.ai/p/why-ai-hasnt-replaced-software-engineers) (June and September 2026).
+
+**Evidence for:** the August 2026 Canaries update found no widespread job displacement; METR's developer studies (lesson 6) show smaller and less certain productivity effects than self-reports; adoption is highly uneven across countries (International AI Safety Report 2026).
+
+**Evidence against, or nuance:** some diffusion has been very fast: the same safety report says AI was adopted faster than the personal computer, with at least 700 million weekly users of leading systems. Hiring of young workers in exposed occupations has fallen measurably. And the authors themselves updated on the speed of cyber capabilities. "Normal" may describe the economy better than the security landscape.
+
+**Score (November 2026):** holding up on labor-market effects so far; weakened on the pace of some capabilities, as the authors acknowledge.
+</Callout>
+
+<Video id="lXUZvyajciY" title="Andrej Karpathy: We're summoning ghosts, not building animals" channel="Dwarkesh Patel" minutes={20} source="https://www.youtube.com/@DwarkeshPatel">
+Recorded October 2025 (the episode page is titled "AGI is still a decade away"). Karpathy is not a critic in the Marcus sense: he builds with these systems daily and is enthusiastic about them. Watch the first 20 minutes for his reasons to expect useful agents to take about a decade, including missing continual learning and the gap between demos and reliable products. It is a practitioner's skepticism, which is the kind most relevant to your work.
+</Video>
+
+<Callout type="pitfall" title="Scoring a critic by the boldest thing anyone says they said">
+Critics are often summarized by their most quotable line ("dead end," "hitting a wall") and then refuted by pointing at a benchmark. Read what they actually wrote. LeCun's "dead end" is about reaching human-level intelligence, not about usefulness; Marcus's "wall" was mostly about reliability; Narayanan and Kapoor's "normal" is about diffusion speed, not capability. A refutation that targets a claim nobody made teaches you nothing. The same courtesy applies to boosters.
+</Callout>
+
+<Callout type="note" title="Structured reflection: steelman exercise (15 minutes)">
+Choose the critique in this lesson you find least convincing. Write the strongest version of it in one paragraph, as its author would, using only evidence from this lesson's sources. Then write one paragraph on what observable evidence, by a date you choose, would make you adopt it. If you cannot name such evidence, ask whether your disagreement is about facts or about definitions. Bring this to lesson 9.
+</Callout>
+
+<GoDeeper title="Critics' methods are worth copying">
+Kapoor and Narayanan's earlier work on leakage in ML-based science (2022) catalogued how evaluation mistakes produced overoptimistic results across hundreds of papers. That is the same move this elective asks you to make with AI claims: look for leakage, for test sets that are not really held out, and for comparisons that are not like for like. Toby Ord's essays on RL scaling (lesson 1) are another model of careful skepticism: they work from published figures, state their assumptions, and invite correction. Skepticism is most useful when it is quantitative and falsifiable, exactly like the claims it targets.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Separate capability critiques from impact critiques; they age differently. Score critics claim by claim, as you scored the lab leaders, and expect "partly right." Use the critics' objections as a design checklist: reliability (validate everything), planning and compounding error (checkpoints, verification, recovery), and diffusion (organizational change is the bottleneck, not the model). And notice that the most careful voices on both sides, METR, the International AI Safety Report, Narayanan and Kapoor's updates, all revise their views in public when evidence arrives. That habit, more than any forecast, is what to emulate. Next lesson turns to the evidence that most directly concerns your career: AI and work.
+</Listen>

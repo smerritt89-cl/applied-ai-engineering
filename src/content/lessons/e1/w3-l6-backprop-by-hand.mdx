@@ -1,0 +1,313 @@
+---
+id: e1-w3-l6
+studio: e1
+week: 3
+order: 6
+title: "makemore, part 4: backpropagation by hand, at the tensor level"
+summary: The Backprop Ninja lecture, with the derivations in index notation. The shape rule, the duality between broadcasting and summing, the backward pass of a linear layer, tanh, the embedding lookup, the fused cross-entropy, and BatchNorm, plus Bessel's correction, all verified with gradient checks.
+estMinutes: 160
+reviewed: 2026-11-11
+objectives:
+  - Derive the gradients of a linear layer (dX, dW, db) in index notation and express them as matrix products
+  - Apply the rule that broadcasting in the forward pass becomes summation in the backward pass, and the reverse
+  - Derive the batched cross-entropy gradient (softmax minus one-hot, divided by the batch size)
+  - Derive the compact BatchNorm backward formula and explain where Bessel's correction changes it
+  - Implement a manual backward pass for a two-layer network and verify every gradient numerically
+sources:
+  - { id: yt-karpathy-backprop-ninja, use: embedded }
+  - { id: karpathy-zero-to-hero, use: adapted, where: "makemore part 4 exercises 1 to 4" }
+  - { id: ioffe-2015-batchnorm, use: summarized, where: "Section 3, the backward pass through BN" }
+  - { id: pytorch-batchnorm1d, use: summarized, where: "biased versus unbiased variance" }
+  - { id: baydin-2018-autodiff, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: "In the forward pass, a bias `b` of shape (3,) is broadcast-added to a (4, 3) matrix. If the upstream gradient `dY` is all ones, what is `db`?"
+    code: |
+      dY = [[1.0] * 3 for _ in range(4)]
+      db = [sum(dY[n][k] for n in range(4)) for k in range(3)]
+      print(db)
+    options:
+      - id: a
+        text: "`[1.0, 1.0, 1.0]`"
+        rationale: That treats b as if it were used once. It's used once per row.
+      - id: b
+        text: "`[3.0, 3.0, 3.0, 3.0]`"
+        rationale: That sums over the wrong axis and has the wrong shape.
+      - id: c
+        text: "`[4.0, 4.0, 4.0]`"
+        correct: true
+        rationale: Each bias entry is added to 4 rows, so its gradient sums 4 contributions.
+    explanation: >-
+      Broadcasting replicates a value, so each copy is a separate use, and the chain rule sums over uses. Replicate in
+      the forward pass, sum in the backward pass (and vice versa). The gradient always has the shape of the variable
+      it belongs to, which tells you which axis to sum.
+  - id: kc2
+    type: mcq
+    prompt: "For Y = X W with X of shape (N, D) and W of shape (D, H), and upstream gradient dY of shape (N, H), which expression is dW?"
+    options:
+      - id: a
+        text: "`X.T @ dY`"
+        correct: true
+        rationale: "Shape (D, N) @ (N, H) = (D, H), matching W. In index form, dW_jk = sum over n of X_nj dY_nk."
+      - id: b
+        text: "`dY @ W.T`"
+        rationale: That's dX, with shape (N, D).
+      - id: c
+        text: "`X @ dY.T`"
+        rationale: "Shape (N, N); it doesn't match W."
+    explanation: >-
+      Write Y_nk = sum over j of X_nj W_jk, differentiate with respect to W_jk, and sum over the n that use it. Or use
+      the shortcut the lecture recommends: the result must have W's shape, and there's only one way to multiply X and dY
+      to get it.
+  - id: kc3
+    type: code-reading
+    prompt: "This tanh backward line is wrong. Why? (`hpre` is the pre-activation, `h = tanh(hpre)`.)"
+    code: |
+      dhpre = (1 - hpre ** 2) * dh
+    options:
+      - id: a
+        text: It should divide by the batch size.
+        rationale: The 1/N enters once, at the loss. Elementwise layers don't add another.
+      - id: b
+        text: It should use the output h, not the pre-activation, because d tanh(u)/du = 1 - tanh(u) squared.
+        correct: true
+        rationale: The derivative is 1 minus the squared output. Using hpre gives a wrong (and possibly negative) factor.
+      - id: c
+        text: It should be a matrix multiply, not elementwise.
+        rationale: tanh acts elementwise, so its Jacobian is diagonal and the backward is elementwise.
+    explanation: >-
+      This is a typical slip that a decreasing loss won't reveal, because for small pre-activations hpre and tanh(hpre)
+      are close. A gradient check on random inputs with larger values catches it immediately.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Why do this by hand
+
+PyTorch computes every gradient for you. The lecture's opening argument (00:00:00 to 07:26) is that this convenience is a leaky abstraction: when training misbehaves, the cause is usually in how gradients flow through some operation, and you can only reason about that if you can compute it yourself. It also recounts how hand-written backward passes were simply normal practice in the field until fairly recently.
+
+For you, the payoff is different and very concrete. Lesson 1 gave you backprop on scalars. Real models do it on tensors, where a single node is a matrix multiply over a batch. Working out those tensor-level rules once, carefully, means that when you read a paper's update rule or a fine-tuning library's custom kernel, the math is legible. And the method you'll use, index notation plus a shape check plus a gradient check, works for any operation anyone invents.
+
+The video description is blunt that this lecture is not meant to be simply watched. Do the exercise in the linked notebook alongside it, pausing before each answer. The notes below give the derivations so you can check your work.
+</Listen>
+
+<Video id="q8SA3rM6ckI" title="Building makemore Part 4: Becoming a Backprop Ninja" channel="Andrej Karpathy" minutes={115} source="https://karpathy.ai/zero-to-hero.html">
+The whole video, worked alongside its notebook. Things to watch for:
+
+- **13:01 (exercise 1):** backpropagating through every atomic operation of the forward pass, one line at a time, each checked against PyTorch with a comparison helper.
+- **01:05:17:** the digression on Bessel's correction, and the mismatch between how BatchNorm normalizes in training and how it estimates the running variance.
+- **01:26:31 (exercise 2):** the whole cross-entropy backward in one expression.
+- **01:36:37 (exercise 3):** the whole BatchNorm backward in one expression.
+- **01:50:02 (exercise 4):** training the network with only the manual gradients.
+</Video>
+
+<Listen>
+## Two rules that do most of the work
+
+**The shape rule.** The gradient of the loss with respect to a tensor has exactly that tensor's shape. If W is 30 by 200, so is dW. This sounds trivial, and it's the most useful debugging tool in the lecture: when you're unsure whether a product needs a transpose or which axis to sum, the shapes usually leave only one option.
+
+**Broadcast and sum are duals.** If the forward pass replicates a value (adding a bias of shape (H) to every row of an (N, H) matrix, or subtracting a per-feature mean from every example), each copy is a separate use, and the backward pass must sum the gradients over the replicated axis. Conversely, if the forward pass sums over an axis (a row sum to normalize probabilities), the backward pass broadcasts the incoming gradient back along it. This is the tensor form of lesson 1's "the chain rule sums over paths."
+
+With those two rules plus each operation's local derivative, the rest is bookkeeping.
+</Listen>
+
+```text
+linear layer        Y = X W + b          X: (N, D)  W: (D, H)  b: (H)  Y: (N, H)
+
+index form          Y_nk = sum_j X_nj W_jk + b_k
+
+dW_jk = sum_n dY_nk X_nj        =>   dW = X^T dY          (D, H)
+dX_nj = sum_k dY_nk W_jk        =>   dX = dY W^T          (N, D)
+db_k  = sum_n dY_nk             =>   db = dY.sum(axis=0)  (H)     b was broadcast over n
+
+tanh                h = tanh(u)          du = (1 - h^2) * dh          elementwise
+
+embedding lookup    emb[n] = C[X[n]]     dC[X[n]] += demb[n]          scatter-add: rows can repeat
+```
+
+<Listen>
+## The linear layer, the nonlinearity, and the embedding
+
+The linear layer's gradients come straight from index notation. Each output Y_nk is a sum over j of X_nj times W_jk, plus b_k. Differentiating with respect to W_jk picks out X_nj from every row n that used it, so dW_jk sums dY_nk X_nj over n, which is the (j, k) entry of X transpose times dY. Differentiating with respect to X_nj picks out W_jk for every output k that used it, giving dY times W transpose. And b_k was broadcast over all n rows, so db sums dY over the batch axis.
+
+There's a pleasing symmetry here: the backward pass of a matrix multiply is two matrix multiplies. That's why a training step costs roughly three times a forward pass in compute (one forward multiply, two backward), a rule of thumb you'll see in training-cost estimates.
+
+The tanh backward is elementwise: multiply the incoming gradient by 1 minus the squared *output*. And the embedding lookup is the one place where indexing creates subtlety. The forward pass copies row C[ix] into each example that uses character ix. The same character appears in many contexts, so the backward pass must **add** each example's gradient into that row, not assign it. In NumPy or PyTorch this is a scatter-add (or an explicit loop), and assignment silently drops all but one contribution, the tensor version of lesson 1's overwrite bug.
+</Listen>
+
+<Predict
+  title="Scatter-add versus assignment"
+  code={`X = [2, 0, 2, 2]           # which embedding row each example used
+demb = [1.0, 5.0, 1.0, 1.0]  # gradient arriving at each example's embedding (1-D for simplicity)
+dC_assign = [0.0, 0.0, 0.0]
+dC_add = [0.0, 0.0, 0.0]
+for n, ix in enumerate(X):
+    dC_assign[ix] = demb[n]
+    dC_add[ix] += demb[n]
+print(dC_assign, dC_add)`}
+  options={["[5.0, 0.0, 1.0] [5.0, 0.0, 3.0]", "[5.0, 0.0, 3.0] [5.0, 0.0, 3.0]", "[1.0, 0.0, 5.0] [3.0, 0.0, 5.0]"]}
+  answer={0}
+>
+Row 2 was used by three examples, so its gradient is 1 + 1 + 1 = 3. Assignment keeps only the last one. Row 0 is used once, so both agree there, which is exactly why this bug survives a casual check.
+</Predict>
+
+<Listen>
+## Cross-entropy for a batch, in one line
+
+Exercise 2 collapses the cross-entropy backward, which exercise 1 did through a dozen intermediate tensors, into one expression. You derived the single-example version in lesson 3: the gradient of minus log softmax(z)_y with respect to z is softmax(z) minus the one-hot vector for y. The loss for a batch is the **mean** over N examples, so each example's term is scaled by 1/N.
+
+The result: dlogits equals (softmax(logits) minus one-hot(Y)), divided by N. Each row sums to zero, so the gradient only redistributes probability mass, pulling it toward the correct class. That zero-sum structure is a free sanity check on any implementation.
+
+This is also why frameworks fuse softmax with the loss. Backpropagating separately through exp, sum, divide, log, and index works, but it allocates several N by V intermediates and multiplies small numbers together. The fused formula is one subtraction and one division. With a 50,000-token vocabulary, as in GPT-2, that difference is very real.
+</Listen>
+
+```text
+BatchNorm forward (one feature, batch of n; the lecture's version uses n-1 in the variance):
+  mu = (1/n) sum_i x_i
+  var = (1/n) sum_i (x_i - mu)^2
+  xhat_i = (x_i - mu) / sqrt(var + eps)
+  y_i = gamma * xhat_i + beta
+
+backward, with s = sqrt(var + eps):
+  dgamma = sum_i dy_i xhat_i
+  dbeta  = sum_i dy_i
+  dx_i   = (gamma / (n s)) * ( n dy_i  -  sum_j dy_j  -  xhat_i sum_j dy_j xhat_j )
+
+with Bessel's correction (var divided by n-1), the last term gains a factor n/(n-1).
+```
+
+<Listen>
+## BatchNorm backward, and what the formula says
+
+Exercise 3 derives BatchNorm's backward pass as one expression. The derivation is a good workout: x_i affects the output through three paths, directly through x hat i, through the mean (which every x hat depends on), and through the variance (likewise). Summing the three, as the chain rule demands, and simplifying gives the compact formula above. Ioffe and Szegedy's paper states the same chain-rule decomposition in its section 3.
+
+Read the formula as a projection. Inside the parentheses, n dy_i minus the sum of dy removes the component of the gradient that would shift all examples equally, because BatchNorm's output is invariant to such a shift (the mean is subtracted). Then minus x hat i times the sum of dy x hat removes the component along x hat, because the output is also invariant to rescaling all inputs (the variance divides it out). The gradient that reaches x is the upstream gradient with exactly those two directions projected away. That's a nice example of the math explaining the behavior: BatchNorm makes a layer insensitive to the scale of its inputs, so gradients can't push along those directions.
+
+The Bessel digression at 01:05:17 matters for the details. The unbiased variance estimator divides by n minus 1. PyTorch's `BatchNorm1d` normalizes with the biased version (divide by n) during training but tracks the unbiased version for the running variance used at inference, so training and inference use slightly different statistics. The lecture argues for using the unbiased estimate consistently, and its formula carries the corresponding n over (n minus 1) factor. For a batch of 32, the difference is about 3 percent.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e1-w3-manual-backward"
+  title="Backpropagate a two-layer network by hand"
+  starter={`import math
+import random
+
+def matmul(A, B):
+    return [[sum(a * b for a, b in zip(row, col)) for col in zip(*B)] for row in A]
+
+def transpose(A):
+    return [list(r) for r in zip(*A)]
+
+def forward(X, Y, W1, b1, W2, b2):
+    """Linear -> tanh -> linear -> mean cross-entropy. Returns (loss, cache)."""
+    hpre = [[v + b for v, b in zip(row, b1)] for row in matmul(X, W1)]
+    h = [[math.tanh(v) for v in row] for row in hpre]
+    logits = [[v + b for v, b in zip(row, b2)] for row in matmul(h, W2)]
+    probs = []
+    for row in logits:
+        m = max(row)
+        e = [math.exp(v - m) for v in row]
+        s = sum(e)
+        probs.append([v / s for v in e])
+    n = len(X)
+    loss = -sum(math.log(probs[i][Y[i]]) for i in range(n)) / n
+    return loss, {"X": X, "Y": Y, "h": h, "probs": probs, "W2": W2}
+
+def backward(cache):
+    """TODO: return (dW1, db1, dW2, db2), each with the shape of its parameter.
+    1. dlogits = (probs - one_hot(Y)) / N
+    2. dW2 = h^T @ dlogits ; db2 = column sums of dlogits
+    3. dh = dlogits @ W2^T
+    4. dhpre = (1 - h^2) * dh        (elementwise, using the OUTPUT h)
+    5. dW1 = X^T @ dhpre ; db1 = column sums of dhpre"""
+    X, Y, h, probs, W2 = cache["X"], cache["Y"], cache["h"], cache["probs"], cache["W2"]
+    pass
+
+rng = random.Random(1)
+X = [[rng.gauss(0, 1) for _ in range(3)] for _ in range(4)]
+Y = [0, 2, 1, 2]
+W1 = [[rng.gauss(0, 0.5) for _ in range(5)] for _ in range(3)]
+b1 = [0.0] * 5
+W2 = [[rng.gauss(0, 0.5) for _ in range(3)] for _ in range(5)]
+b2 = [0.0] * 3
+loss, cache = forward(X, Y, W1, b1, W2, b2)
+print("loss", round(loss, 4), "(log 3 =", round(math.log(3), 4), ")")
+grads = backward(cache)
+if grads:
+    print("db2", [round(g, 4) for g in grads[3]], "sum", round(sum(grads[3]), 12))
+`}
+  tests={`rng = random.Random(42)
+N, D, H, C = 4, 3, 5, 6
+X = [[rng.gauss(0, 1) for _ in range(D)] for _ in range(N)]
+Y = [rng.randrange(C) for _ in range(N)]
+W1 = [[rng.gauss(0, 0.5) for _ in range(H)] for _ in range(D)]
+b1 = [rng.gauss(0, 0.1) for _ in range(H)]
+W2 = [[rng.gauss(0, 0.5) for _ in range(C)] for _ in range(H)]
+b2 = [rng.gauss(0, 0.1) for _ in range(C)]
+loss, cache = forward(X, Y, W1, b1, W2, b2)
+grads = backward(cache)
+assert grads is not None, "backward returned None"
+dW1, db1, dW2, db2 = grads
+assert len(dW1) == D and len(dW1[0]) == H, "dW1 must have the shape of W1 (D x H)"
+assert len(dW2) == H and len(dW2[0]) == C, "dW2 must have the shape of W2 (H x C)"
+assert len(db1) == H and len(db2) == C, "bias gradients have the bias shapes"
+assert abs(sum(db2)) < 1e-12, "db2 sums to zero: each row of softmax minus one-hot sums to zero"
+eps = 1e-6
+def num_grad(get, set_):
+    old = get()
+    set_(old + eps); lp = forward(X, Y, W1, b1, W2, b2)[0]
+    set_(old - eps); lm = forward(X, Y, W1, b1, W2, b2)[0]
+    set_(old)
+    return (lp - lm) / (2 * eps)
+def check(name, analytic, num):
+    err = abs(analytic - num) / max(1e-8, abs(analytic) + abs(num))
+    assert err < 1e-5, f"{name}: analytic {analytic:.6g} vs numeric {num:.6g}"
+for j in range(C):
+    check(f"db2[{j}]", db2[j], num_grad(lambda: b2[j], lambda v: b2.__setitem__(j, v)))
+for i in range(H):
+    for j in range(C):
+        check(f"dW2[{i}][{j}]", dW2[i][j], num_grad(lambda: W2[i][j], lambda v: W2[i].__setitem__(j, v)))
+for j in range(H):
+    check(f"db1[{j}]", db1[j], num_grad(lambda: b1[j], lambda v: b1.__setitem__(j, v)))
+for i in range(D):
+    for j in range(H):
+        check(f"dW1[{i}][{j}]", dW1[i][j], num_grad(lambda: W1[i][j], lambda v: W1[i].__setitem__(j, v)))`}
+  solution={`def backward(cache):
+    X, Y, h, probs, W2 = cache["X"], cache["Y"], cache["h"], cache["probs"], cache["W2"]
+    n = len(X)
+    dlogits = [[(p - (1.0 if j == Y[i] else 0.0)) / n for j, p in enumerate(row)]
+               for i, row in enumerate(probs)]
+    dW2 = matmul(transpose(h), dlogits)
+    db2 = [sum(col) for col in zip(*dlogits)]
+    dh = matmul(dlogits, transpose(W2))
+    dhpre = [[(1 - hv * hv) * g for hv, g in zip(hrow, grow)] for hrow, grow in zip(h, dh)]
+    dW1 = matmul(transpose(X), dhpre)
+    db1 = [sum(col) for col in zip(*dhpre)]
+    return dW1, db1, dW2, db2`}
+>
+Write `backward` and **Check my answer**. The tests gradient-check every single entry of every parameter against central differences of the forward pass, using a relative error, which is the same comparison the lecture makes against PyTorch. This is the lecture's exercise 4 in miniature, minus BatchNorm and the embedding.
+</PyRunner>
+
+<Callout type="pitfall" title="The four slips that a falling loss won't reveal">
+**Missing 1/N** in dlogits scales every gradient by the batch size, which looks like a learning-rate problem. **Summing the bias gradient over the wrong axis** gives the wrong shape (the shape rule catches it) or, for square matrices, the right shape and wrong values (only a gradient check catches it). **Using the pre-activation in tanh's derivative** is nearly right for small values. **Assigning instead of adding** for embedding rows drops gradient for repeated characters. Every one of these trains, a little. Every one fails a gradient check on random inputs immediately.
+</Callout>
+
+<Listen>
+## How this changes the way you read models
+
+After this lecture, a few things about large models stop being mysterious. The cost of training relative to inference: each matrix multiply in the forward pass implies two in the backward pass, so a training step costs about three forward passes, plus the memory to store activations (lesson 1's point about reverse mode). Why fused kernels matter: the cross-entropy over a vocabulary of tens of thousands is a large tensor operation, and fusing it saves real memory and time. And why normalization layers and residual paths are designed the way they are: they control how gradients move.
+
+It also sharpens your judgment as an applied engineer. If a vendor or a paper claims a new layer or training trick, you can ask the questions that matter. What is its backward pass? Does it add batch coupling? Does it preserve gradient scale? Was it gradient-checked, and does the reported improvement hold with a fair hyperparameter search for the baseline? Those questions are checks and balances for research claims, in the same spirit as checking model output.
+</Listen>
+
+<GoDeeper title="Index notation, and why matrix calculus identities aren't needed">
+Every result above came from one recipe: write the forward pass with explicit indices, take the partial derivative of the scalar loss with respect to one entry, sum over every index that entry appears with, and then recognize the result as a matrix product. You never need a table of matrix-calculus identities, and you avoid their notational conventions (numerator versus denominator layout), which differ between sources. The recipe also extends to operations no table covers, such as attention's masked softmax or a custom normalization. If you want the general theory, the reverse-mode discussion in Baydin and colleagues' survey frames each of these as a vector-Jacobian product: the Jacobian of a matrix multiply with respect to W is never formed, only its product with the upstream gradient, which is X transpose times dY.
+</GoDeeper>
+
+<Listen>
+## Review sheet
+
+The gradient has the shape of its variable. Broadcasting in the forward pass becomes summing in the backward pass, and summing becomes broadcasting. Linear layer: dW = X transpose dY, dX = dY W transpose, db = column sums of dY. tanh: multiply by 1 minus the squared output. Embedding: scatter-add into rows. Batched cross-entropy: (softmax minus one-hot) over N, rows summing to zero. BatchNorm's backward projects out the shift and scale directions; Bessel's correction adds an n over (n minus 1) factor. Gradient-check everything on random inputs. Next week: attention, the transformer, and the tokenizer.
+</Listen>

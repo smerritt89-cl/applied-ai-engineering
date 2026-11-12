@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.731
+Exact match, and the normalizations you choose.
+
+2
+00:00:03.011 --> 00:00:08.856
+The simplest grader compares the output with an expected answer: output == expected.
+
+3
+00:00:09.136 --> 00:00:18.139
+It fits any task whose answer space is closed: a label from a fixed set (refund, exchange, warranty), a number, a yes or no, an ID.
+
+4
+00:00:18.419 --> 00:00:25.117
+Anthropic’s sentiment-classification example does exactly this over a labeled set and reports accuracy.
+
+5
+00:00:25.397 --> 00:00:33.909
+Raw equality is usually too strict, so you normalize first: strip surrounding whitespace, lowercase, maybe collapse internal whitespace.
+
+6
+00:00:34.189 --> 00:00:40.739
+Each normalization is a decision about what counts as the same answer, and you should be able to say why it’s safe.
+
+7
+00:00:41.019 --> 00:00:43.280
+Lowercasing a category label is safe.
+
+8
+00:00:43.560 --> 00:00:47.059
+Lowercasing a product code might merge two different products.
+
+9
+00:00:47.339 --> 00:00:51.733
+Stripping punctuation from a number can turn “1,000.
+
+10
+00:00:52.013 --> 00:00:54.019
+5” into “10005”.
+
+11
+00:00:54.299 --> 00:01:03.813
+A close cousin is the contains check: does the output include a required phrase (“5 to 7 business days”), or exclude a forbidden one (“guaranteed”)?
+
+12
+00:01:04.093 --> 00:01:10.109
+These are useful guardrails, with a known weakness: substring checks can’t see negation or context.
+
+13
+00:01:10.389 --> 00:01:13.717
+“We do not offer a full refund” contains “full refund.
+
+14
+00:01:13.997 --> 00:01:14.295
+”.
+
+15
+00:01:14.575 --> 00:01:16.858
+Two habits make these graders trustworthy.
+
+16
+00:01:17.138 --> 00:01:26.311
+First, grade one property per check and keep the results separate ( category_correct, order_id_correct, no_promises ), rather than one blended pass.
+
+17
+00:01:26.591 --> 00:01:28.938
+When a score drops you’ll know which property broke.
+
+18
+00:01:29.218 --> 00:01:36.066
+Second, decide in advance what the grader does with outputs it can’t interpret, such as text that isn’t valid JSON.
+
+19
+00:01:36.346 --> 00:01:44.111
+Count those as a separate failure, never as a silent pass, and never “repair” them in the grader without counting how often you had to.

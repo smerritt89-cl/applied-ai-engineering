@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.771
+Executing generated code.
+
+2
+00:00:02.051 --> 00:00:05.400
+When the output is code, the strongest grader is to run it.
+
+3
+00:00:05.680 --> 00:00:24.091
+Chen and colleagues at OpenAI argued this in the 2021 paper that introduced the HumanEval benchmark: match-based metrics can’t account for the huge space of programs that are functionally equivalent to a reference solution, so they evaluated functional correctness instead,
+
+4
+00:00:24.371 --> 00:00:28.019
+counting a sample as correct if it passes a set of unit tests.
+
+5
+00:00:28.299 --> 00:00:32.821
+They pointed out that this mirrors how developers already judge code, through tests.
+
+6
+00:00:33.101 --> 00:00:41.549
+The paper also introduced the standard way to report it, pass@k: the probability that at least one of k sampled solutions passes.
+
+7
+00:00:41.829 --> 00:00:51.536
+To estimate it with low variance, generate n samples (n at least k), count the c that pass, and compute 1 minus C(n minus c, k) over C(n, k).
+
+8
+00:00:51.816 --> 00:00:59.261
+The obvious shortcut, 1 minus (1 minus the pass rate) to the k, is biased, which the paper shows in an appendix.
+
+9
+00:00:59.541 --> 00:01:02.741
+Executing model-written code is a security decision.
+
+10
+00:01:03.021 --> 00:01:10.211
+Generated code can delete files, read secrets from your environment, open network connections, or loop forever.
+
+11
+00:01:10.491 --> 00:01:14.267
+The HumanEval authors built a sandbox for exactly this reason.
+
+12
+00:01:14.547 --> 00:01:31.549
+In practice, run generated code in a disposable container or a managed sandbox with no credentials, no network unless the test needs it, a CPU and memory limit, and a timeout, and grade what the run left behind (test results, files written, exit code).
+
+13
+00:01:31.829 --> 00:01:41.003
+Anthropic’s agent-evals write-up makes the same point for agents generally: grade the outcome in the environment, not the transcript’s description of it.

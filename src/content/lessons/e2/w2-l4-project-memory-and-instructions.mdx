@@ -1,0 +1,303 @@
+---
+id: e2-w2-l4
+studio: e2
+week: 2
+order: 4
+title: Project memory and instructions
+summary: How CLAUDE.md and AGENTS.md load, what belongs in them and what doesn't, how to keep them short and current, and how to write instructions that actually change an agent's behavior, with a linter you build yourself.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Explain where CLAUDE.md files load from, in what order, and how Claude Code treats AGENTS.md
+  - Apply the "could it find this by reading the repo, and would it look?" test to decide what goes in project memory
+  - Rewrite vague instructions into concrete, checkable ones, and move procedures, path-specific rules, and zero-exception rules to the right mechanism
+  - Make one instruction file serve several agents (Claude Code, Codex, Copilot, Gemini CLI or Antigravity)
+  - Build a small linter that flags common instruction-file problems
+sources:
+  - { id: claude-code-memory-docs, use: summarized, where: "CLAUDE.md files, AGENTS.md, write effective instructions, troubleshooting" }
+  - { id: e2-cc-best-practices, use: summarized, where: "Tell Claude what it can't see; keep CLAUDE.md short; what you can stop doing" }
+  - { id: e2-cc-features-overview, use: summarized, where: "Build your setup over time" }
+  - { id: e2-agents-md, use: summarized }
+  - { id: e2-codex-agents-md, use: summarized }
+  - { id: e2-copilot-repo-instructions, use: summarized }
+  - { id: e2-gemini-cli-context, use: summarized }
+  - { id: e2-antigravity-migration, use: summarized }
+  - { id: e2-willison-agentic-loops, use: summarized, where: "Documenting tools in AGENTS.md" }
+  - { id: e2-yt-mastering-cc, use: embedded }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: A repository has `AGENTS.md` at the root and you add a personal `CLAUDE.local.md` next to it. With default settings, what does a current Claude Code session read as project instructions?
+    options:
+      - id: a
+        text: Both files, AGENTS.md first.
+        rationale: That's the non-default `claude-md-and-agents-md` setting.
+      - id: b
+        text: Only `CLAUDE.local.md`, because any CLAUDE.md or CLAUDE.local.md on the path means AGENTS.md isn't read.
+        correct: true
+        rationale: The memory docs call out exactly this trap. Fix it with an `@AGENTS.md` import or the Project instructions setting.
+      - id: c
+        text: Only AGENTS.md, because local files are ignored.
+        rationale: CLAUDE.local.md is loaded; its presence is what stops AGENTS.md from loading by default.
+    explanation: >-
+      By default Claude Code reads AGENTS.md only when no CLAUDE.md, .claude/CLAUDE.md, or CLAUDE.local.md exists in the
+      working directory or above. The robust pattern for mixed-tool teams is a CLAUDE.md whose first line is `@AGENTS.md`,
+      followed by any Claude-specific notes.
+  - id: kc2
+    type: multi
+    prompt: Which of these lines earn a place in a project CLAUDE.md? Select all that apply.
+    options:
+      - id: a
+        text: "Run one test file: `uv run pytest path/to/test_x.py -q`"
+        correct: true
+        rationale: The exact command to check work is the single most useful line.
+      - id: b
+        text: "`src/legacy/` is still in production; don't copy its patterns into new code"
+        correct: true
+        rationale: The code itself is misleading here, so the agent can't learn this by reading.
+      - id: c
+        text: "The project is organized into src/, tests/, and docs/."
+        rationale: The agent finds the layout itself in seconds. This line costs attention on every task.
+      - id: d
+        text: "Write clean, well-structured code."
+        rationale: Vague and unverifiable; it changes nothing.
+    explanation: >-
+      Write down what the agent can't find by reading the repo, or would waste time rediscovering every session: commands,
+      misleading spots, decisions made outside the code, and anything you've corrected twice.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      Your CLAUDE.md says "IMPORTANT: NEVER edit files in `migrations/`." The agent edited a migration anyway last week.
+      What is the best next step?
+    options:
+      - id: a
+        text: Add more emphasis and move the line to the top.
+        rationale: The best-practices doc says piling on emphasis mostly makes the model over-apply rules, and a must-never rule shouldn't depend on the model.
+      - id: b
+        text: Add a deny rule or PreToolUse hook that blocks edits under `migrations/`, and keep a short line in CLAUDE.md explaining why.
+        correct: true
+        rationale: Zero-exception rules belong in enforcement the harness runs. The CLAUDE.md line still helps the agent plan around the constraint.
+      - id: c
+        text: Delete the rule, since agents ignore CLAUDE.md anyway.
+        rationale: Agents usually follow clear instructions; "usually" just isn't enough for this one.
+    explanation: >-
+      CLAUDE.md is context, not configuration. If a rule must hold every time, enforce it with a deny rule, hook, or
+      sandbox; keep CLAUDE.md for guidance the model can weigh. Lesson 5 builds the hook.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The file you write once and the agent reads every time
+
+Every coding agent starts a session knowing nothing about your project except what it can read. Project memory is how you hand over the rest: a Markdown file the harness loads at the start of each session. In Claude Code it's `CLAUDE.md`; in Codex, Copilot's agents, and many others it's `AGENTS.md`; in Gemini CLI it's `GEMINI.md`. The idea is the same everywhere, and so are the mistakes.
+
+The Claude Code memory docs make one point that reframes everything else: Claude treats these files as **context, not enforced configuration**. The content is delivered as a message after the system prompt, and Claude reads it and tries to follow it, with no guarantee of strict compliance, especially for vague or conflicting instructions. The more specific and concise the instructions, the more consistently they're followed. So there are two jobs here: put the right things in the file, and write them in a way that changes behavior. Anything that must happen every time goes elsewhere (lesson 5).
+</Listen>
+
+<Listen>
+## Where the files load from
+
+Claude Code reads `CLAUDE.md` from several scopes and concatenates them rather than letting one override another. In load order, broadest first: an organization's managed policy file, your user file at `~/.claude/CLAUDE.md`, the project file at `./CLAUDE.md` or `./.claude/CLAUDE.md` (shared through git), and `./CLAUDE.local.md` for personal project notes you keep out of git. Files in the directories above where you launched load at startup; files in subdirectories load on demand, when Claude reads or edits something there. Instructions closer to your working directory are read last.
+
+A few mechanics are worth knowing. `@path` imports pull another file in, but the docs note imports organize content without reducing its context cost. Block-level HTML comments are stripped before loading, so you can leave notes for human maintainers for free. `.claude/rules/` holds topic files, and a rule with `paths:` frontmatter loads only when Claude works on matching files. After `/compact`, the project-root CLAUDE.md is re-read from disk. To confirm what loaded, run `/context all` and look under Memory files. And `/init` drafts a starting file from your codebase; the best-practices page says that from there "the work is mostly removing lines."
+
+**AGENTS.md.** Recent Claude Code versions read `AGENTS.md` directly, but by default only when there is no `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` in your working directory or above. That has a sharp edge: adding a personal `CLAUDE.local.md` to an AGENTS.md project silently stops Claude reading the AGENTS.md. The robust pattern for a mixed-tool team is one shared `AGENTS.md` plus a `CLAUDE.md` whose first line is `@AGENTS.md`, followed by any Claude-specific notes.
+</Listen>
+
+<Predict
+  title="Which instructions load?"
+  language="text"
+  code={`repo/
+  AGENTS.md            (team instructions, used by Codex and Copilot)
+  CLAUDE.local.md      (your personal notes, gitignored)
+  src/
+    billing/
+      CLAUDE.md        (billing rules)
+
+You start Claude Code in repo/ with default settings and ask about README.md.`}
+  options={[
+    "AGENTS.md and CLAUDE.local.md",
+    "CLAUDE.local.md only; billing/CLAUDE.md loads later, when Claude touches a file in src/billing/",
+    "All three files at startup",
+    "AGENTS.md only",
+  ]}
+  answer={1}
+>
+CLAUDE.local.md counts as a CLAUDE.md for the AGENTS.md check, so the team's AGENTS.md isn't read. The subdirectory file loads on demand. Your teammates on Codex follow the team instructions; you, unknowingly, don't. Fix: add a `CLAUDE.md` containing `@AGENTS.md`, or change the Project instructions setting to read both.
+</Predict>
+
+<Listen>
+## What belongs in the file
+
+The best-practices doc gives a two-question test before you write anything down: could the agent find this by reading the code, and would it actually go and look? If both answers are yes, leave it out. Current models read repositories well; they discover your layout, conventions, test framework, and component patterns faster than you'd explain them. What they can't find is information that was never in the repo.
+
+Things that pass the test:
+
+- **How to confirm work**: the exact test, typecheck, and lint commands, and how to run one test file. The docs call the check command "the single most useful line."
+- **Places where the code misleads**: an old pattern that's everywhere but mustn't be copied, a directory that looks dead but isn't.
+- **Decisions made outside the code**: which error helper the team chose, how deploys work, what needs migration review.
+- **Anything you've corrected twice.** The memory docs list the triggers: the same mistake a second time, a review comment the agent should have known, the same correction typed again, context a new teammate would need.
+
+Things that fail it: directory tours, dependency lists, architecture overviews the code already shows, generic advice ("write clean code"), and personal preferences (those go in `CLAUDE.local.md` or your user file).
+
+Things that belong somewhere else: multi-step procedures (a release, an incident runbook) go in a **skill**, which loads only when needed. Rules for one part of the codebase go in a path-scoped **rule**. Rules with zero exceptions go in a **hook or deny rule**. The features overview has a useful trigger table for this, covered in lesson 5.
+
+The target size is under 200 lines per file; longer files cost context on every request and the docs say they reduce adherence. Simon Willison adds a practical note for tooling: a few examples of how to run your project's scripts in the instruction file is usually enough for an agent to adapt them.
+</Listen>
+
+```markdown
+# Commands
+- Install: uv sync
+- All tests: uv run pytest -q
+- One test file: uv run pytest -q tests/path/to/test_x.py
+- Typecheck: uv run mypy src
+
+# Conventions
+- Errors: raise the classes in src/app/errors.py; never raise bare Exception
+- src/legacy/ is still in production; don't copy its patterns into new code
+
+# Gotchas
+- Integration tests need DATABASE_URL (see .env.example); unit tests don't
+- Money is integer cents; Decimal only at the API boundary
+
+# Boundaries
+- Ask before adding a dependency or changing a public API
+- Don't edit or skip tests to make them pass; if a test looks wrong, stop and say why
+```
+
+<Video id="6eBSHbLKuN0" title="Mastering Claude Code in 30 minutes" channel="Anthropic" minutes={28} source="https://code.claude.com/docs/en/memory">
+Boris Cherny, who created Claude Code, walks through how he and the team use it, including CLAUDE.md and the "write down what you'd otherwise re-explain" habit. It's from 2025, so specific commands and defaults have moved on; take the habits, and check the current docs for the mechanics.
+</Video>
+
+<Listen>
+## Writing instructions that change behavior
+
+Most instruction files fail not because they're missing a rule but because their rules can't be acted on. The memory docs' examples are the model to copy: "Use 2-space indentation" instead of "Format code properly"; "Run `npm test` before committing" instead of "Test your changes"; "API handlers live in `src/api/handlers/`" instead of "Keep files organized." Each rewrite is something you could check.
+
+Four more principles from the docs:
+
+**Specific over emphatic.** The best-practices page lists "add IMPORTANT or ALL CAPS" under advice you can stop following: current models follow a plainly worded line, and emphasis mostly makes them over-apply the rule. If a line keeps getting missed, either the file is too long or the rule can't bend and belongs in a hook.
+
+**Consistent.** If two instructions contradict each other, the docs say Claude may pick one arbitrarily. Review nested files and rules together; `/doctor prompt-audit` looks for stale, contradictory, or dead references.
+
+**Explain the why when it isn't obvious.** "Don't use `round()` for money: it rounds half to even and our rule is half up" lets the agent handle the case you didn't foresee. That's one reason the `/doctor` checkup keeps pitfalls and rationale while trimming what the code already shows.
+
+**Test the instruction.** Treat a new line like a code change: start a fresh session, give a task where the line should matter, and watch. If behavior doesn't change, the line is dead weight or wrongly worded.
+</Listen>
+
+<Callout type="pitfall" title="Keeping /init's draft as written">
+A generated CLAUDE.md is a starting point that describes what the generator could see in your repo, which is exactly the content the agent could find itself. Teams often commit it unchanged and then add to it for a year, ending with hundreds of lines of directory tours and stale commands. Delete everything the code already shows, keep commands and gotchas, and set a calendar reminder to prune. A line that hasn't prevented a mistake in months is a candidate for deletion.
+</Callout>
+
+<PyRunner
+  client:visible
+  id="e2-w2-claude-md-linter"
+  title="Build a CLAUDE.md linter"
+  starter={`VAGUE = ["properly", "clean code", "best practices", "as needed", "appropriate", "good code", "well-structured"]
+ABSOLUTE = ["never", "always", "must not", "do not ever"]
+
+def lint(text, max_lines=200):
+    """Return a list of (line_number, code) findings for a CLAUDE.md text. Line numbers start at 1.
+    Codes:
+      "too-long"        once, with line_number 0, if the file has more than max_lines lines
+      "no-test-command" once, with line_number 0, if no line contains a backticked command that
+                        includes "test" (for example \`pytest -q\` or \`npm test\`)
+      "shouting"        a line containing "IMPORTANT" or any word of 4+ letters in ALL CAPS
+                        (ignore text inside backticks and ignore lines starting with "#")
+      "vague"           a line containing any VAGUE phrase (case-insensitive)
+      "enforce"         a line containing an ABSOLUTE word (case-insensitive, whole word) and naming a
+                        path (a token containing "/"): a zero-exception rule that should be a hook or deny rule
+    Return findings sorted by (line_number, code)."""
+    # TODO
+    pass
+
+SAMPLE = """# Commands
+- Install: \`uv sync\`
+- Tests: \`uv run pytest -q\`
+
+# Conventions
+- Write clean code and follow best practices.
+- IMPORTANT: NEVER edit files in migrations/ by hand.
+- Use the helpers in src/app/errors.py for errors.
+- Always keep the CHANGELOG updated as needed."""
+
+for finding in lint(SAMPLE) or []:
+    print(finding)
+`}
+  tests={`f = lint(SAMPLE)
+assert f is not None, "lint returned None"
+assert (6, "vague") in f, "line 6 is vague"
+assert (7, "shouting") in f and (7, "enforce") in f, "line 7 shouts and names a path with an absolute rule"
+assert (9, "vague") in f, "'as needed' is vague"
+assert not any(n == 8 for n, _ in f), "line 8 is concrete"
+assert not any(c == "no-test-command" for _, c in f), "SAMPLE has a backticked test command"
+assert (0, "no-test-command") in lint("# Notes\\n- Use tabs.")
+assert (0, "too-long") in lint("- \`pytest\`\\n" * 201)
+assert lint("# IMPORTANT HEADING\\n- run \`pytest -q\`") == [], "headings and backticks are exempt"
+assert (1, "shouting") not in lint("- Use the \`README\` and \`HTTP\` client; run \`pytest\`"), "words inside backticks don't count"
+assert f == sorted(f), "sort findings"`}
+  solution={`def _strip_code(line):
+    out, inside = [], False
+    for ch in line:
+        if ch == "\`":
+            inside = not inside
+            continue
+        if not inside:
+            out.append(ch)
+    return "".join(out)
+
+def _has_test_command(text):
+    for line in text.splitlines():
+        parts = line.split("\`")
+        if any("test" in parts[i] for i in range(1, len(parts), 2)):
+            return True
+    return False
+
+def lint(text, max_lines=200):
+    lines = text.splitlines()
+    findings = []
+    if len(lines) > max_lines:
+        findings.append((0, "too-long"))
+    if not _has_test_command(text):
+        findings.append((0, "no-test-command"))
+    for n, line in enumerate(lines, start=1):
+        if line.lstrip().startswith("#"):
+            continue
+        plain = _strip_code(line)
+        words = [w.strip(".,:;()!?\\"'") for w in plain.split()]
+        if "IMPORTANT" in plain or any(len(w) >= 4 and w.isalpha() and w.isupper() for w in words):
+            findings.append((n, "shouting"))
+        low = plain.lower()
+        if any(p in low for p in VAGUE):
+            findings.append((n, "vague"))
+        lower_words = [w.lower() for w in words]
+        absolute = any(a in lower_words for a in ABSOLUTE if " " not in a) or any(a in low for a in ABSOLUTE if " " in a)
+        if absolute and any("/" in w for w in plain.split()):
+            findings.append((n, "enforce"))
+    return sorted(findings)`}
+>
+A linter can't tell whether an instruction is wise, but it can catch the mechanical problems the docs warn about: length, missing check commands, shouting, vague wording, and absolute rules that should be enforced instead. Write `lint`, then press **Check my answer**. Then run it on a real CLAUDE.md or AGENTS.md of yours (paste it in as a string) and fix what it finds. Note the heuristics' limits: "never" plus a path is a hint, not proof, that a rule wants a hook.
+</PyRunner>
+
+<Listen>
+## One file, many agents
+
+Teams rarely use a single tool. The open AGENTS.md format, now stewarded by the Agentic AI Foundation under the Linux Foundation, describes itself as a README for agents, with no required fields, and is read by a long list of tools including Codex, Copilot's coding agent, Cursor, Gemini CLI, and many others. Some details differ by tool:
+
+- **Codex** walks from the project root to the current directory, taking at most one file per directory (an `AGENTS.override.md` wins over `AGENTS.md`), concatenates them, and stops adding at a size limit that defaults to 32 KiB. It builds the chain once per session, so restart after edits.
+- **Copilot** uses `.github/copilot-instructions.md` for repository-wide instructions, `.instructions.md` files with `applyTo` globs for paths, and the nearest `AGENTS.md`; a single root `CLAUDE.md` or `GEMINI.md` can stand in for it.
+- **Gemini CLI** reads `GEMINI.md` by default and can be configured (`context.fileName`) to read `AGENTS.md`. Antigravity CLI, its successor for many users, reads both.
+- **Claude Code** reads `AGENTS.md` only when no CLAUDE.md is present, so import it explicitly.
+
+A practical layout: `AGENTS.md` holds everything tool-neutral (commands, conventions, boundaries); `CLAUDE.md` contains `@AGENTS.md` plus a few Claude-specific lines; enforcement lives in each tool's own configuration, because hooks, deny rules, and sandboxes are product-specific.
+</Listen>
+
+<GoDeeper title="Auto memory, and when to use it">
+Claude Code also keeps **auto memory**: notes Claude writes itself from your corrections and preferences, stored per repository and loaded each session (the first 200 lines or 25KB of its index). It's useful for personal working preferences, and risky as a substitute for team knowledge: it's yours alone, Claude chose what to record, and it can go stale. Run `/memory` to read it. A good habit is a monthly look: promote anything the whole team needs into the committed CLAUDE.md or AGENTS.md, and delete anything wrong. The same discipline applies to the shared file: it's code, so changes to it deserve review like any other change.
+</GoDeeper>
+
+<Listen>
+## Your checklist for project memory
+
+Under 200 lines. Commands to check work at the top, including how to run one test. Only what the agent can't learn by reading, plus what it would waste time rediscovering. Concrete, checkable wording, no shouting. Rationale for non-obvious rules. Procedures in skills, path-specific rules in `.claude/rules/`, zero-exception rules in hooks or deny rules. One shared `AGENTS.md` for a mixed-tool team, imported from `CLAUDE.md`. Verified with `/context all` and a fresh-session test. Pruned on a schedule. The project for this elective asks you to measure whether your file actually changes outcomes; most people are surprised how few lines matter.
+</Listen>

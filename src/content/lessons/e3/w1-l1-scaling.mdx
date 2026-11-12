@@ -1,0 +1,245 @@
+---
+id: e3-w1-l1
+studio: e3
+week: 1
+order: 1
+title: "Scaling: what the laws say, what changed, and whether it is slowing"
+summary: The empirical scaling laws (Kaplan 2020, Chinchilla 2022), the shift of effort to post-training, reinforcement learning, and test-time compute, and the live debate about whether progress is slowing, with named positions, dates, and evidence.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - State what the Kaplan and Chinchilla scaling laws claim, what they were measured on, and what they do not claim
+  - Compute a compute-optimal model size and token budget from the Chinchilla rule of thumb, and fit a power law in log-log space
+  - Explain why reinforcement learning on verifiable tasks and test-time compute became a second scaling axis, citing primary sources
+  - Summarize at least three named positions on whether scaling is slowing, with the date and the evidence behind each
+  - Separate the measurable claim (loss falls predictably with compute) from the extrapolated claim (capabilities will keep rising on schedule)
+sources:
+  - { id: kaplan-2020-scaling-laws, use: summarized }
+  - { id: hoffmann-2022-chinchilla, use: summarized }
+  - { id: openai-learning-to-reason, use: summarized }
+  - { id: guo-2025-deepseek-r1, use: summarized }
+  - { id: snell-2024-test-time-compute, use: summarized }
+  - { id: ord-2025-rl-scale, use: summarized }
+  - { id: villalobos-2022-data, use: summarized }
+  - { id: epoch-ai-trends, use: summarized, where: "Training compute trend" }
+  - { id: intl-ai-safety-report-2026, use: summarized, where: "Capabilities chapter" }
+  - { id: yt-dwarkesh-sutskever-2025, use: embedded }
+  - { id: yt-dwarkesh-amodei-2026, use: linked }
+  - { id: amodei-2026-pace-frontier, use: summarized }
+  - { id: metr-time-horizon-1-1, use: summarized, where: "Doubling times" }
+  - { id: marcus-2022-hitting-wall, use: linked }
+  - { id: ouyang-2022, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: What did the Chinchilla paper (Hoffmann and colleagues, 2022) change about how labs spent a fixed training budget?
+    options:
+      - id: a
+        text: It showed that model size should grow much faster than data, so the largest possible model is always best.
+        rationale: That was closer to the earlier reading of Kaplan and colleagues. Chinchilla argued the opposite balance.
+      - id: b
+        text: It found that parameters and training tokens should grow in roughly equal proportion, so many large models of the time were undertrained.
+        correct: true
+        rationale: Yes. Its 70B-parameter Chinchilla, trained on about 1.4 trillion tokens, beat the 280B-parameter Gopher on the same compute.
+      - id: c
+        text: It proved that loss stops improving beyond a fixed amount of compute.
+        rationale: Neither paper found a ceiling; both fit smooth power laws over the range they measured.
+    explanation: >-
+      Both papers fit power laws to pretraining loss. They disagree about the optimal split of a compute budget between
+      parameters and data. Chinchilla's answer (roughly 20 tokens per parameter) is a rule of thumb for minimizing
+      training loss; labs often train smaller models on far more tokens on purpose, because a smaller model is cheaper
+      to serve.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A vendor deck says: "Scaling laws guarantee our next model will be 2x better at your claims-processing task."
+      What is the most accurate response?
+    options:
+      - id: a
+        text: Accept it; scaling laws are among the most reliable results in machine learning.
+        rationale: The laws are reliable for what they measured, which is not your task.
+      - id: b
+        text: Reject it; scaling laws were disproven when pretraining gains slowed.
+        rationale: Nothing disproved the loss curves. The open question is how loss maps to useful capability.
+      - id: c
+        text: Scaling laws predict pretraining loss on a text distribution, not success on a specific downstream task, so ask for an eval on your own claims data.
+        correct: true
+        rationale: Right. The measured quantity is next-token loss. Task performance can jump, plateau, or depend on post-training.
+    explanation: >-
+      This is the gap between measured and extrapolated claims that runs through the whole elective. A smooth loss
+      curve is evidence that the next model will be a better next-token predictor. Whether that becomes "2x better"
+      at your task is an empirical question you answer with a small eval on your data.
+  - id: kc3
+    type: multi
+    prompt: Which of these are documented reasons that effort shifted toward post-training and test-time compute from 2024 onward? Select all that apply.
+    options:
+      - id: a
+        text: OpenAI reported in September 2024 that o1's performance improved with both more reinforcement-learning compute and more thinking time at inference.
+        correct: true
+        rationale: That is the central claim of the o1 announcement.
+      - id: b
+        text: DeepSeek reported in January 2025 that reinforcement learning with rule-based rewards on math and code produced strong reasoning behavior.
+        correct: true
+        rationale: The DeepSeek-R1 paper describes exactly this, including a variant trained with RL and no supervised fine-tuning first.
+      - id: c
+        text: Projections that the stock of high-quality public human text could be exhausted for frontier training within roughly a decade.
+        correct: true
+        rationale: Epoch AI's estimates (Villalobos and colleagues) put full use of the stock somewhere between 2026 and 2032.
+      - id: d
+        text: A proof that pretraining loss can no longer decrease.
+        rationale: There is no such proof. The argument is about cost and data supply, not a mathematical ceiling.
+    explanation: >-
+      The shift had positive evidence (RL and test-time compute worked) and a pressure behind it (data and cost limits on
+      ever-larger pretraining). Keep the two separate when you read claims that "scaling is over": it usually means one
+      axis got more expensive, not that all progress stopped.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Why this lesson comes first
+
+Almost every big public claim about AI rests on a claim about scaling. When a lab leader says powerful systems may arrive within a few years, part of the argument is that capability has risen predictably with compute and will keep doing so. When a critic says progress is stalling, the argument is usually that one of those curves is bending. You cannot weigh either claim without knowing what the curves actually are, what was measured, and where the measurements stop.
+
+This elective is built around one habit: separate what was **measured** from what is **extrapolated**, and attach a date and a source to both. Scaling is the cleanest place to practice, because the measured part is unusually solid and the extrapolated part is unusually contested.
+
+You have a mathematics background, so here is the short version. The core empirical result is that pretraining loss (how badly a model predicts the next token on held-out text) falls as a **power law** in model size, data, and compute, over many orders of magnitude. On a log-log plot that is a straight line. Everything interesting is in the questions the straight line does not answer: how far it continues, how much it costs to stay on it, and how loss maps to things people care about, such as writing correct code or finishing a week-long project.
+</Listen>
+
+<Listen>
+## Kaplan 2020: loss is a power law
+
+In January 2020, Jared Kaplan and colleagues at OpenAI published "Scaling Laws for Neural Language Models." They trained many transformer language models of different sizes, on different amounts of data, with different compute budgets, and measured test loss. Their finding was that loss followed smooth power laws in each of the three factors, across more than seven orders of magnitude, as long as the other two were not the bottleneck. Architectural details such as depth versus width mattered much less than raw scale within the range they tested.
+
+Two features of the paper shaped the next few years. First, the curves were smooth and predictable, so a lab could train small models, fit the line, and forecast what a much larger run would achieve before spending the money. That predictability is why scaling became an investment thesis and not just a research result. Second, the paper's reading of the optimal trade-off favored making models bigger faster than giving them more data: for a fixed compute budget, it suggested spending most of the increase on parameters.
+
+Notice what the paper measured: cross-entropy loss on text from the same distribution as training. It did not measure reasoning, factual accuracy, coding ability, or any downstream task. Loss is a good leading indicator, and lower loss has tended to come with better capabilities, but the link between the two is itself empirical and uneven. Some abilities improve smoothly with scale; others appear to jump; some barely move until post-training targets them.
+</Listen>
+
+<Listen>
+## Chinchilla 2022: most models were undertrained
+
+In March 2022, Jordan Hoffmann and colleagues at DeepMind revisited the question with a more careful experimental design: over 400 models from 70 million to over 16 billion parameters, trained on 5 to 500 billion tokens. Their conclusion contradicted the earlier reading. For compute-optimal training, parameters and training tokens should grow in roughly **equal proportion**: double the model, double the data.
+
+The paper's headline test made the point concrete. Chinchilla, a 70-billion-parameter model trained on about 1.4 trillion tokens, used the same compute as DeepMind's 280-billion-parameter Gopher but outperformed it on a wide range of evaluations. Many large models of the era had too many parameters for the data they saw.
+
+Two rules of thumb from this era are worth memorizing, because you will see them used in arguments:
+
+- **Training compute is about 6 times parameters times tokens** (in floating-point operations). A forward and backward pass costs roughly six operations per parameter per token.
+- **Compute-optimal training uses roughly 20 tokens per parameter.** This is an approximation from the Chinchilla fits, not a law of nature.
+
+One caution that working engineers care about: "compute-optimal" means the lowest training loss for a fixed training budget. It ignores serving cost. A smaller model trained on far more than 20 tokens per parameter costs more to train for the same loss but less to run millions of times, which is why many open-weight models are deliberately "overtrained" by the Chinchilla standard.
+</Listen>
+
+<Predict
+  title="Chinchilla arithmetic"
+  code={`# Rules of thumb: compute C = 6 * N * D, and compute-optimal D = 20 * N
+C = 6e23   # floating-point operations
+N = (C / 120) ** 0.5
+D = 20 * N
+print(f"{N:.1e} parameters, {D:.1e} tokens")`}
+  options={["7.1e+10 parameters, 1.4e+12 tokens", "2.2e+11 parameters, 4.5e+12 tokens", "1.0e+12 parameters, 2.0e+13 tokens", "5.0e+21 parameters, 1.0e+23 tokens"]}
+  answer={0}
+>
+Substitute D = 20N into C = 6ND to get C = 120 N squared, so N is the square root of C over 120. With C = 6e23, N is about 7.1e10 (71 billion) and D about 1.4e12 tokens. That is almost exactly Chinchilla itself, which is no coincidence: the rules of thumb were read off the same experiments. The last option forgot the square root.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="e3-power-law-fit"
+  title="Fit a scaling law, then test the extrapolation"
+  starter={`import math
+
+def fit_power_law(xs, ys):
+    """Fit y = a * x**b by ordinary least squares on (log x, log y).
+    Return (a, b)."""
+    # TODO: take logs, compute the least-squares slope and intercept, convert back
+    pass
+
+def predict(a, b, x):
+    return a * x ** b
+
+# Synthetic (compute, loss) points from small runs. Loss here is "reducible loss",
+# the part above an irreducible floor, which is what follows a clean power law.
+compute = [1e18, 1e19, 1e20, 1e21]
+loss = [2.0, 1.26, 0.80, 0.50]
+
+a, b = fit_power_law(compute, loss) or (None, None)
+print("a =", a, "b =", b)
+if a is not None:
+    print("predicted at 1e24:", round(predict(a, b, 1e24), 3))
+`}
+  tests={`a, b = fit_power_law([1, 10, 100], [5, 0.5, 0.05])
+assert a is not None, "fit_power_law returned None"
+assert abs(b - (-1)) < 1e-9 and abs(a - 5) < 1e-9, "y = 5 * x^-1 should give a = 5, b = -1"
+a, b = fit_power_law(compute, loss)
+assert -0.21 < b < -0.19, "the slope on the log-log plot should be about -0.2"
+p = predict(a, b, 1e24)
+assert 0.11 < p < 0.14, "extrapolating three decades past the data should give about 0.125"`}
+  solution={`def fit_power_law(xs, ys):
+    lx = [math.log(x) for x in xs]
+    ly = [math.log(y) for y in ys]
+    n = len(lx)
+    mx = sum(lx) / n
+    my = sum(ly) / n
+    b = sum((x - mx) * (y - my) for x, y in zip(lx, ly)) / sum((x - mx) ** 2 for x in lx)
+    log_a = my - b * mx
+    return math.exp(log_a), b`}
+>
+Implement `fit_power_law` with plain least squares on the logs (no libraries needed), then press **Check my answer**. When it passes, ask yourself what the prediction at 1e24 rests on. Your four points span three orders of magnitude, and the prediction reaches three more. The fit cannot tell you whether the line bends out there; only a run at that scale can. Labs make exactly this kind of forecast, with far more points and with checks at intermediate scales, and it has held up well for loss. The contested step is the next one: from loss to capability.
+</PyRunner>
+
+<Listen>
+## The second axis: reinforcement learning and test-time compute
+
+By 2024 the cost of each step up in pretraining scale had become enormous, and two developments shifted attention to what happens after pretraining.
+
+**Reinforcement learning on checkable tasks.** Post-training had long included supervised fine-tuning and reinforcement learning from human feedback (the InstructGPT line of work by Ouyang and colleagues, 2022). The new step was reinforcement learning against **verifiable rewards**: math answers that can be checked, code that must pass tests. On 12 September 2024, OpenAI announced o1 and reported that its performance improved smoothly with more reinforcement-learning compute during training and with more time spent thinking at inference. In January 2025, DeepSeek published the R1 paper, which described reasoning behavior (long chains of thought, self-checking, backtracking) emerging from large-scale RL with rule-based rewards, including a variant trained by RL without supervised fine-tuning first, and released the weights openly.
+
+**Test-time compute.** If a model can use more tokens to think, you can trade inference cost for accuracy. Snell and colleagues (August 2024) studied how to spend that budget well and reported that a compute-optimal strategy could be more than four times as efficient as simple best-of-N sampling, and that on some problems a smaller model with extra test-time compute beat a model about 14 times larger. You already use this axis: the effort settings on current Claude, GPT, and Gemini models are dials on test-time compute.
+
+Two consequences matter for you. First, "how big is the model" no longer predicts capability or cost on its own; thinking tokens are billed as output, so the same model can be cheap or expensive depending on effort. Second, gains from RL are concentrated where rewards are checkable. That is one reason current models improved fastest at math and code, and part of why the debate below is so heated: does the improvement generalize to messy work where nothing checks the answer?
+</Listen>
+
+<Callout type="note" title="How much does each axis cost?">
+Toby Ord's essay "How Well Does RL Scale?" (October 2025) analyzed public figures from OpenAI's o-series and argued that, to get the same gain, RL training compute had to grow far faster than inference compute: by his reading, roughly 10,000x of RL compute bought what 100x of inference compute bought. He also argued that RL had been cheap mainly because it started from a small base relative to pretraining. Treat this as one careful analyst's reading of limited public data; commenters on the essay disputed how far it generalizes. It is a good example of a claim you can check against later releases.
+</Callout>
+
+<Video id="aR20FWCCjAs" title="Ilya Sutskever: We're moving from the age of scaling to the age of research" channel="Dwarkesh Patel" minutes={20} source="https://www.youtube.com/@DwarkeshPatel">
+Recorded in November 2025. Watch the first 20 minutes or so, where Sutskever (co-founder of OpenAI, now leading Safe Superintelligence) explains why he thinks the period of simply scaling up recipes is giving way to a period of research, and why he believes models generalize much worse than people. Listen for which statements are observations and which are his conjectures.
+</Video>
+
+<Listen>
+## Is scaling slowing? The named positions
+
+"Is scaling hitting a wall?" has been asked every year since at least 2022, and the honest answer depends on which curve you mean. Here are the positions you will meet, each with its date and its evidence.
+
+**Pretraining returns are diminishing; the field is moving to research.** Ilya Sutskever, in the November 2025 interview above, argued that the era of scaling a known recipe (roughly 2020 to 2025) is ending, partly because data is finite, and that new ideas are needed, especially for generalization. Supporting evidence: Epoch AI's estimates (Villalobos and colleagues, revised 2024) that frontier training could use up the stock of high-quality public human text between 2026 and 2032. Evidence against: labs have kept improving models through synthetic data, RL environments, and test-time compute, so "pretraining is harder" has not meant "models stopped improving."
+
+**Scaling never delivered understanding.** Gary Marcus has argued since his March 2022 essay "Deep Learning Is Hitting a Wall" that scaling alone would not produce reliable reasoning. Lesson 5 covers his and other critics' positions in depth. Evidence for: persistent reliability problems, documented in week 3. Evidence against: many specific capabilities he and others predicted would not arrive (strong coding, competition math) did arrive with scale plus RL.
+
+**Progress is continuing and may be accelerating.** Dario Amodei said in a February 2026 interview with Dwarkesh Patel that he believes "we are near the end of the exponential" (the episode's title), meaning close to very capable systems rather than at a plateau. In his September 2026 essay "We Must Pace the Frontier" he went further, arguing that progress had sped up since roughly mid-2026 because AI systems increasingly help build their successors, and calling for the industry to slow down. Evidence for: METR's Time Horizon 1.1 update (January 2026) estimated a doubling time for task length of about 131 days since 2023, faster than the roughly seven months reported in 2025 (lesson 2 examines this). Evidence against: those measurements cover mostly software tasks and METR itself says its suite becomes unreliable above about 16 hours; and the claimant runs a lab whose business depends on the answer.
+
+**The careful middle.** The International AI Safety Report 2026 (February 2026, over 100 contributing experts) summarizes the state of evidence rather than taking a side: capabilities kept improving, increasingly through inference-time techniques and post-training, while forecasts of future progress remain highly uncertain. That framing is the one this elective recommends you start from.
+</Listen>
+
+<Callout type="claim" title="Claim: pretraining scaling is ending and the field must return to research">
+**Who and when:** Ilya Sutskever, in an interview on the Dwarkesh Podcast, November 2025 ([video](https://www.youtube.com/watch?v=aR20FWCCjAs)).
+
+**Evidence for:** finite high-quality text (Epoch AI's 2026 to 2032 window for exhausting the public stock); the rising cost of each pretraining step; Ord's analysis suggesting RL compute buys gains expensively; models that still fail in ways people would not, despite huge training runs.
+
+**Evidence against, or nuance:** capability measures kept rising through 2025 and 2026 (lesson 2), driven by RL and test-time compute rather than pretraining alone. "The recipe changes" is not the same claim as "progress stops." Sutskever also leads a company built on the premise that new research ideas are needed, which is worth noting as context, not as a refutation.
+</Callout>
+
+<Callout type="pitfall" title="Reading a log-scale chart as if it were linear (and the reverse)">
+Scaling plots almost always use log axes. A straight line on a log-log plot means each 10x of compute buys the same fractional improvement, which means each improvement costs ten times more than the last. "The curve is still straight" and "progress is getting much more expensive" are the same statement. When someone shows you a chart, first read the axes, then ask what quantity is on the vertical one: loss, a benchmark score that saturates at 100 percent, or a task length that can grow without bound. Each behaves differently near its limits.
+</Callout>
+
+<GoDeeper title="Why power laws, and why the exponent matters">
+A power law y = a times x to the b becomes log y = log a + b log x, which is why it is linear on log-log axes and why your fit used least squares on logs. The exponent b is the whole story: with b around minus 0.05, which is the order of magnitude Kaplan and colleagues reported for loss against compute, halving the reducible loss takes about 2 to the 20th, roughly a million times more compute. That is why small differences in fitted exponents produce large disagreements about forecasts, and why the Chinchilla correction mattered so much. Two further subtleties: real loss curves approach an irreducible floor (the entropy of the text itself), so only the reducible part follows a clean power law; and benchmark accuracies are bounded, so they often look like S-curves rather than straight lines even when the underlying loss improves smoothly. Read the two papers' figures with these in mind. Epoch AI's trends page is the best place to see current estimates of how fast frontier training compute is growing (it reported roughly 5x per year since 2020 when this lesson was reviewed).
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Three working rules. First, when someone cites scaling laws, ask which quantity was measured. Loss curves are well established; claims about tasks, jobs, or dates are extrapolations from them. Second, remember that the scaling story now has several axes: pretraining, reinforcement learning on checkable tasks, and test-time compute, each with its own cost curve, and the last one is a dial you control through effort settings. Third, when you hear "scaling is over" or "progress is accelerating," find the date, the speaker's incentives, and the specific measurement behind it. The next lesson looks at those measurements directly.
+</Listen>

@@ -1,0 +1,93 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+Fixing the query instead of the ranking.
+
+2
+00:00:02.456 --> 00:00:06.723
+Sometimes the problem isn’t how you combine results but what you searched for.
+
+3
+00:00:07.003 --> 00:00:10.651
+Three techniques rewrite or expand the query before retrieval.
+
+4
+00:00:10.931 --> 00:00:12.936
+Rewriting conversational queries.
+
+5
+00:00:13.216 --> 00:00:17.248
+In a chat, the user’s third message might be “what about for contractors?
+
+6
+00:00:17.528 --> 00:00:20.045
+” On its own, that retrieves nothing useful.
+
+7
+00:00:20.325 --> 00:00:28.923
+A model call that rewrites it into a standalone query, using the conversation (“What is the expense reimbursement policy for contractors?
+
+8
+00:00:29.203 --> 00:00:31.976
+”), is a common, cheap fix in chat-based RAG.
+
+9
+00:00:32.256 --> 00:00:43.200
+Check it the way you check any model output: log the rewritten query next to the original so you can see when the rewrite drifts, and make sure it never invents constraints the user didn’t state.
+
+10
+00:00:43.480 --> 00:00:45.016
+Multi-query expansion.
+
+11
+00:00:45.296 --> 00:00:50.971
+Generate a few paraphrases of the query, retrieve for each, and fuse the lists with RRF.
+
+12
+00:00:51.251 --> 00:00:56.072
+It raises recall for vague questions, at the cost of several retrievals per query.
+
+13
+00:00:56.352 --> 00:01:05.803
+For keyword search specifically, a hand-maintained synonym list for your domain (“PTO”, “vacation”, “annual leave”) is cheaper and fully predictable.
+
+14
+00:01:06.083 --> 00:01:06.872
+HyDE.
+
+15
+00:01:07.152 --> 00:01:13.360
+Gao, Ma, Lin, and Callan (2022) proposed Hypothetical Document Embeddings.
+
+16
+00:01:13.640 --> 00:01:20.957
+A query and the passage that answers it often look quite different: a short question versus a paragraph of explanation.
+
+17
+00:01:21.237 --> 00:01:32.309
+HyDE asks an instruction-following model to write a hypothetical document that would answer the query, embeds that document, and searches the real corpus with its embedding.
+
+18
+00:01:32.589 --> 00:01:46.328
+The paper is candid that the generated document may contain false details; the claim is that the search over real documents grounds the result, because the embedding captures relevance patterns rather than specific facts.
+
+19
+00:01:46.608 --> 00:01:59.813
+In their experiments HyDE beat the unsupervised dense retriever Contriever and was competitive with fine-tuned retrievers, across web search, QA, and fact verification tasks and several languages.
+
+20
+00:02:00.093 --> 00:02:06.749
+Read the setting carefully: HyDE was shown for zero-shot dense retrieval, with no relevance labels.
+
+21
+00:02:07.029 --> 00:02:15.179
+With a strong modern embedding model or a hybrid pipeline, the gain may be smaller, and every query now pays for a generation call.
+
+22
+00:02:15.459 --> 00:02:20.600
+The hypothetical document is a search key, never something to show a user or cite.
+
+23
+00:02:20.880 --> 00:02:23.973
+As always, measure it on your queries before keeping it.

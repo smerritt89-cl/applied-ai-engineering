@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.923
+Dimensionality: what the number of coordinates buys.
+
+2
+00:00:03.203 --> 00:00:23.256
+Embedding sizes in current use range from 384 (the popular open model all-MiniLM-L6-v2 ) through 1,024 (the default for Voyage AI’s current models) to 3,072 (OpenAI’s text-embedding-3-large and Google’s Gemini embedding models).
+
+3
+00:00:23.536 --> 00:00:29.851
+More dimensions can hold finer distinctions, but they cost memory, storage, and search time linearly.
+
+4
+00:00:30.131 --> 00:00:36.616
+Stored as 32-bit floats, one million 1,024-dimensional vectors take about 4.
+
+5
+00:00:36.896 --> 00:00:39.435
+1 GB before any index overhead.
+
+6
+00:00:39.715 --> 00:00:47.864
+Lesson 2 shows how Matryoshka-trained models let you keep only a prefix of the vector and trade a little quality for a lot of space.
+
+7
+00:00:48.144 --> 00:00:52.624
+Your math background helps with a counterintuitive fact about high dimensions.
+
+8
+00:00:52.904 --> 00:01:05.299
+Draw two random unit vectors in d dimensions: their cosine has mean 0 and variance 1/d, so in 1,024 dimensions nearly every random pair is close to orthogonal.
+
+9
+00:01:05.579 --> 00:01:16.309
+Meaning in an embedding space shows up as structured, measurable departures from that baseline, which is why ranking works even when the absolute differences between scores look small.
+
+10
+00:01:16.589 --> 00:01:22.264
+Real models are not random, though, and their scores rarely spread evenly over -1 to 1.
+
+11
+00:01:22.544 --> 00:01:33.872
+SimCSE’s authors described pretrained embedding spaces as anisotropic (not spread evenly in all directions) and showed that contrastive training makes them more uniform.
+
+12
+00:01:34.152 --> 00:01:37.160
+Different models end up with different score distributions.
+
+13
+00:01:37.440 --> 00:01:43.435
+The consequence is the most common embedding bug in practice, and it’s the subject of the pitfall below.

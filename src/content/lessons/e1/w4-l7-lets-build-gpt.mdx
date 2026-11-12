@@ -1,0 +1,344 @@
+---
+id: e1-w4-l7
+studio: e1
+week: 4
+order: 7
+title: "Let's build GPT: self-attention, the transformer block, and a Shakespeare model"
+summary: The centerpiece lecture, with the math made explicit. Attention as a data-dependent weighted average, the causal mask, why scores are divided by the square root of the head size, why positions must be added, multi-head attention, the feed-forward layer, residual connections, pre-norm LayerNorm, dropout, and what the trained model can and can't tell you.
+estMinutes: 160
+reviewed: 2026-11-11
+objectives:
+  - Explain how one chunk of T + 1 tokens yields T training examples, and why the model is trained on all context lengths at once
+  - Write single-head causal self-attention as a weighted average of value vectors and implement it
+  - Derive the variance argument for dividing attention scores by the square root of the head size
+  - Explain why attention needs positional embeddings, using permutation equivariance
+  - Describe the roles of multi-head attention, the feed-forward layer, residual connections, and LayerNorm in a transformer block
+sources:
+  - { id: yt-karpathy-build-gpt, use: embedded }
+  - { id: karpathy-zero-to-hero, use: adapted, where: "Let's build GPT, and its suggested exercises" }
+  - { id: karpathy-ng-video-lecture, use: adapted, where: "gpt.py (hyperparameters, Head, Block)" }
+  - { id: karpathy-nanogpt-repo, use: summarized, where: "README quick start and deprecation note" }
+  - { id: vaswani-2017, use: summarized, where: "Section 3.2.1, scaled dot-product attention, and footnote 4" }
+  - { id: radford-2019-gpt2, use: summarized, where: "Section 2.3, pre-norm placement and residual scaling" }
+  - { id: he-2015-resnet, use: summarized }
+  - { id: ba-2016-layernorm, use: summarized }
+  - { id: srivastava-2014-dropout, use: linked }
+  - { id: yt-3b1b-attention, use: embedded }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: "Query and key vectors have independent components with mean 0 and variance 1, and head size 64. What is the variance of a raw score q . k, and what does dividing by sqrt(64) do?"
+    options:
+      - id: a
+        text: "Variance 64; dividing by 8 brings it back to 1, so the softmax doesn't saturate toward one-hot."
+        correct: true
+        rationale: "This is the argument in footnote 4 of Vaswani et al.: unscaled scores grow with the head size and push the softmax into regions with tiny gradients."
+      - id: b
+        text: "Variance 1; dividing by 8 makes the softmax sharper."
+        rationale: The variance of a sum of 64 independent unit-variance products is 64, not 1.
+      - id: c
+        text: "Variance 8; dividing by 8 normalizes the weights to sum to 1."
+        rationale: The softmax already makes the weights sum to 1. The scaling controls their spread.
+    explanation: >-
+      Scores with large variance mean one key wins by a huge margin, the softmax is nearly one-hot at initialization,
+      and each token effectively attends to a single other token. The 1/sqrt(head_size) factor keeps scores at unit
+      scale. The video's corrections note that its code should use head_size here, not the embedding size C.
+  - id: kc2
+    type: predict-output
+    prompt: "With causal masking and all scores equal, what are the attention weights for the third token (index 2) in a sequence of length 4?"
+    code: |
+      import math
+      T, t = 4, 2
+      scores = [0.0 if s <= t else float("-inf") for s in range(T)]
+      e = [math.exp(v) for v in scores]
+      print([round(x / sum(e), 3) for x in e])
+    options:
+      - id: a
+        text: "`[0.25, 0.25, 0.25, 0.25]`"
+        rationale: The mask removes the future token, so only three positions share the weight.
+      - id: b
+        text: "`[0.0, 0.0, 1.0, 0.0]`"
+        rationale: Equal scores don't single out the current token.
+      - id: c
+        text: "`[0.333, 0.333, 0.333, 0.0]`"
+        correct: true
+        rationale: "exp(-inf) is 0, so position 3 gets nothing, and the three allowed positions split the mass evenly."
+    explanation: >-
+      This is the lecture's "version 3": a lower-triangular mask plus softmax computes a running average of the past.
+      Self-attention keeps this structure but lets the scores depend on the data, so the average becomes weighted by
+      relevance.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      You train a small character-level GPT. Training loss keeps falling, but validation loss bottoms out and starts to
+      rise after a few thousand steps. Which change is most directly aimed at this?
+    options:
+      - id: a
+        text: Increase the number of layers and the embedding size.
+        rationale: More capacity usually widens the gap when you're already overfitting.
+      - id: b
+        text: Add or increase dropout, and keep the checkpoint with the best validation loss.
+        correct: true
+        rationale: "That's the lecture's move when scaling up (dropout 0.2 in gpt.py), and nanoGPT's Shakespeare config saves a checkpoint only when validation loss improves, because it expects to overfit. More data would help too."
+      - id: c
+        text: Raise the learning rate so training finishes sooner.
+        rationale: That doesn't address memorization and may destabilize training.
+    explanation: >-
+      A falling training loss with a rising validation loss is overfitting: the model is memorizing a small corpus.
+      Regularize (dropout), stop early, or get more data. Record both curves for every run in your project; the gap is
+      the most informative number you have.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## From makemore to GPT
+
+Everything so far has been a model that reads a fixed, short context and predicts the next character. "Let's build GPT" keeps that framing (a character-level, autoregressive language model) and changes one thing: how a position gathers information from the positions before it. In the MLP, the context was concatenated and pushed through fixed weights. In a transformer, each position computes a **data-dependent weighted average** of the earlier positions, called self-attention, and stacks of those averages, interleaved with per-position MLPs, make up the model.
+
+The lecture trains on "tiny Shakespeare," about a megabyte of Shakespeare's plays as one text file, with a vocabulary of the characters that appear in it. It starts from a bigram baseline, builds attention in four versions, assembles transformer blocks, scales up, and ends with a model of about ten million parameters (about 10.8 million if you count the layers in its `gpt.py` with a 65-character vocabulary) that writes plausible-looking pseudo-Shakespeare. The code it builds is published as `ng-video-lecture` (MIT), and Karpathy's `nanoGPT` repository is the cleaned-up, faster version.
+
+The description recommends watching the makemore lectures first, which you have. The tensor operations that the video takes for granted are now the ones you've derived.
+</Listen>
+
+<Video id="kCc8FmEb1nY" title="Let's build GPT: from scratch, in code, spelled out." channel="Andrej Karpathy" minutes={116} source="https://karpathy.ai/zero-to-hero.html">
+The whole video. Things to watch for:
+
+- **09:28 and 14:27:** a 90/10 train/val split, and batches of random chunks of length block_size.
+- **42:13 to 01:02:00:** the four versions of "averaging the past": loops, a matrix multiply, a softmax over a mask, and finally self-attention. This is the crux.
+- **01:11:38 to 01:19:11:** six notes on attention. Each one is worth a pause.
+- **01:21:59 to 01:37:49:** multi-head attention, the feed-forward layer, residual connections, LayerNorm, then scaling up with dropout.
+- **01:48:53:** how this connects to ChatGPT: pretraining, then fine-tuning and RLHF.
+
+The description lists two corrections: at 00:57:00 it should say tokens from the *future* cannot communicate, and at 01:20:05 the normalization should use the head size, not C.
+</Video>
+
+<Listen>
+## One chunk, many training examples
+
+The data loader samples random chunks of block_size + 1 consecutive tokens. A chunk of length T + 1 contains T examples at once: token 1 predicts token 2, tokens 1 and 2 predict token 3, and so on up to all T tokens predicting the last one. Inputs are the first T tokens, targets are the same chunk shifted by one, and the loss averages over all T positions and the whole batch.
+
+This matters in two ways. It's efficient: one forward pass trains every context length from 1 to T. And it means the model must work with any amount of context up to block_size, which is exactly what generation needs, since generation starts from a short prompt and grows. The causal mask you'll build below is what makes this legal: position t must not see tokens after t, or predicting token t + 1 would be trivial.
+
+It also sets the meaning of block_size: it is the context window of this model, the same concept as a frontier model's context window in Studio 1, just a few hundred characters instead of hundreds of thousands of tokens. Positions beyond it don't exist for the model, and the generation loop crops the context to the last block_size tokens.
+</Listen>
+
+```text
+single head, causal, for positions t = 1..T, head size d:
+
+  q_t = x_t Wq      k_s = x_s Wk      v_s = x_s Wv
+
+  a_ts = (q_t . k_s) / sqrt(d)                  for s <= t   (else -inf: the mask)
+  w_ts = exp(a_ts) / sum_{u <= t} exp(a_tu)     softmax over the allowed positions
+  y_t  = sum_{s <= t} w_ts v_s                  a convex combination of earlier values
+
+matrix form:   Y = softmax( mask(Q K^T / sqrt(d)) ) V
+```
+
+<Listen>
+## Attention is a weighted average
+
+The lecture builds up to self-attention in steps that are worth replaying in mathematical terms. Version 1 averages all previous token vectors with loops. Version 2 notices that a running average is a matrix multiply: multiply the (T, C) token matrix by a lower-triangular (T, T) matrix whose row t holds 1/(t + 1) in its first t + 1 entries. Version 3 gets the same matrix by putting zeros on and below the diagonal, minus infinity above it, and applying a softmax to each row. Version 4 replaces those zeros with scores computed from the data.
+
+So each output y_t is a **convex combination** of value vectors v_s for s at most t: the weights are nonnegative and sum to 1. Geometrically, y_t lies in the convex hull of the past values. What the network learns is where to put the weight. Each position emits a query ("what am I looking for"), a key ("what do I contain"), and a value ("what I'll pass on if chosen"); the weight on s is a softmax of how well t's query matches s's key.
+
+The lecture's first note at 01:11:38 calls this communication: tokens are nodes in a directed graph, each aggregating information from the nodes that point to it. With the causal mask, the graph has an edge from every earlier position to every later one. The third note adds that no communication happens across the batch dimension: each sequence is its own graph.
+</Listen>
+
+<Predict
+  title="Version 2: averaging with a matrix"
+  code={`T = 3
+wei = [[1 / (t + 1) if s <= t else 0.0 for s in range(T)] for t in range(T)]
+x = [[3.0], [6.0], [0.0]]          # three tokens, one channel each
+out = [[sum(wei[t][s] * x[s][0] for s in range(T))] for t in range(T)]
+print(out)`}
+  options={["[[3.0], [4.5], [3.0]]", "[[3.0], [6.0], [0.0]]", "[[3.0], [3.0], [3.0]]"]}
+  answer={0}
+>
+Row t of the lower-triangular matrix averages tokens 0 through t: 3, then (3 + 6)/2 = 4.5, then (3 + 6 + 0)/3 = 3. Self-attention keeps this structure exactly and replaces the uniform weights with learned, data-dependent ones.
+</Predict>
+
+<Listen>
+## Why divide by the square root of the head size
+
+Suppose the components of q and k are independent with mean 0 and variance 1. Then q . k is a sum of d independent products, each with mean 0 and variance 1, so it has mean 0 and variance d. That's the argument in footnote 4 of "Attention Is All You Need" (Vaswani and colleagues, 2017). For a head size of 64, raw scores have a standard deviation of 8.
+
+Feed scores like that into a softmax and it saturates: the largest score wins by a wide margin and the weights are nearly one-hot. Two things go wrong. Each token attends to essentially one other token from the very start, before it has learned anything. And the softmax's Jacobian, diag(p) minus p p transpose, is nearly zero when p is nearly one-hot, so gradients through the attention weights vanish. Dividing by the square root of d restores unit variance and keeps the softmax in its responsive range (lecture note 6, at 01:16:56).
+
+This is the same variance bookkeeping as Kaiming initialization in lesson 5, applied to a different product. Once you see deep learning as a long chain of operations whose scales must be kept near 1, a surprising amount of transformer design reads as variance control.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e1-w4-attention-head"
+  title="A single causal self-attention head, on plain lists"
+  starter={`import math
+import random
+
+def matmul(A, B):
+    return [[sum(a * b for a, b in zip(row, col)) for col in zip(*B)] for row in A]
+
+def transpose(A):
+    return [list(r) for r in zip(*A)]
+
+def softmax(row):
+    """TODO: a numerically stable softmax that treats float('-inf') entries as probability 0."""
+    pass
+
+def causal_attention_weights(scores):
+    """TODO: scores is T x T. Replace entries above the diagonal (s > t) with -inf,
+    then softmax each row. Return the T x T weight matrix."""
+    pass
+
+def attention_head(x, Wq, Wk, Wv):
+    """TODO: x is T x C. Compute q, k, v (each T x head_size) with the weight matrices,
+    scores = q @ k^T / sqrt(head_size), weights = causal_attention_weights(scores),
+    and return (weights @ v, weights)."""
+    pass
+
+rng = random.Random(0)
+T, C, hs = 4, 4, 3
+x = [[rng.gauss(0, 1) for _ in range(C)] for _ in range(T)]
+Wq = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+Wk = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+Wv = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+res = attention_head(x, Wq, Wk, Wv)
+if res:
+    out, wei = res
+    for row in wei:
+        print([round(w, 3) for w in row])
+`}
+  tests={`w = causal_attention_weights([[0.0] * 4 for _ in range(4)])
+assert w is not None, "causal_attention_weights returned None"
+for t in range(4):
+    assert all(abs(w[t][s] - 1 / (t + 1)) < 1e-12 for s in range(t + 1)), "equal scores give a uniform average over positions 0..t"
+    assert all(w[t][s] == 0.0 for s in range(t + 1, 4)), "position t must put zero weight on future positions"
+assert abs(sum(softmax([1000.0, 999.0])) - 1) < 1e-12, "subtract the max inside softmax"
+rng = random.Random(0)
+T, C, hs = 5, 4, 3
+x = [[rng.gauss(0, 1) for _ in range(C)] for _ in range(T)]
+Wq = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+Wk = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+Wv = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+res = attention_head(x, Wq, Wk, Wv)
+assert res is not None, "attention_head returned None"
+out, wei = res
+assert len(out) == T and len(out[0]) == hs, "the output is T x head_size"
+assert all(abs(sum(row) - 1) < 1e-9 for row in wei), "every row of attention weights sums to 1"
+v = matmul(x, Wv)
+assert all(abs(a - b) < 1e-9 for a, b in zip(out[0], v[0])), "the first token can only attend to itself, so out[0] == v[0]"
+zero = [[0.0] * hs for _ in range(C)]
+avg, _ = attention_head(x, zero, zero, Wv)
+for t in range(T):
+    mean_v = [sum(v[s][j] for s in range(t + 1)) / (t + 1) for j in range(hs)]
+    assert all(abs(a - b) < 1e-9 for a, b in zip(avg[t], mean_v)), "with zero queries and keys, attention is the running mean of the values (version 2)"
+q, k = matmul(x, Wq), matmul(x, Wk)
+p2 = [math.exp(sum(a * b for a, b in zip(q[2], k[s])) / math.sqrt(hs)) for s in range(3)]
+assert abs(wei[2][1] - p2[1] / sum(p2)) < 1e-9, "scale scores by 1/sqrt(head_size) before the softmax"
+x2 = x[:3] + [[9.0] * C, [-9.0] * C]
+out2, _ = attention_head(x2, Wq, Wk, Wv)
+assert all(abs(a - b) < 1e-9 for r1, r2 in zip(out[:3], out2[:3]) for a, b in zip(r1, r2)), "changing future tokens must not change earlier outputs"`}
+  solution={`def softmax(row):
+    m = max(row)
+    e = [math.exp(v - m) if v != float("-inf") else 0.0 for v in row]
+    s = sum(e)
+    return [v / s for v in e]
+
+def causal_attention_weights(scores):
+    T = len(scores)
+    masked = [[scores[t][s] if s <= t else float("-inf") for s in range(T)] for t in range(T)]
+    return [softmax(row) for row in masked]
+
+def attention_head(x, Wq, Wk, Wv):
+    q, k, v = matmul(x, Wq), matmul(x, Wk), matmul(x, Wv)
+    d = len(q[0])
+    scores = [[val / math.sqrt(d) for val in row] for row in matmul(q, transpose(k))]
+    wei = causal_attention_weights(scores)
+    return matmul(wei, v), wei`}
+>
+Implement the three functions and **Check my answer**. The tests check the properties that define causal attention rather than particular numbers: rows sum to 1, the first token sees only itself, changing future tokens leaves past outputs untouched, and with zero queries and keys you recover the lecture's version 2, a running mean. This is the lecture's `Head` class with lists in place of tensors.
+</PyRunner>
+
+<Listen>
+## Attention works on sets, so positions must be added
+
+Lecture note 2 (01:12:46) observes that attention has no notion of space. Formally, self-attention without a mask is **permutation equivariant**: permute the input tokens and the outputs are permuted the same way, because every operation (the projections, the dot products, the softmax over keys, the weighted sum) treats positions symmetrically. Without some positional signal, "dog bites man" and "man bites dog" contain the same multiset of tokens and would get the same per-token representations (the causal mask breaks the symmetry only partially, by restricting who sees whom).
+
+The lecture's fix, at 01:00:18, is a second embedding table indexed by position: the input to the first block is the token embedding plus a learned position embedding, a vector for each of the block_size positions. The original transformer paper used fixed sinusoidal encodings instead; many recent models use other schemes that inject relative position into the attention scores. The common point is that order is information the architecture doesn't provide for free.
+
+One consequence is directly visible in your project: the position table has exactly block_size rows, so a model trained with context 64 has no representation at all for position 65. Context length is baked into the parameters.
+</Listen>
+
+<Mermaid
+  alt="Diagram of the GPT model from the lecture. Token indices go to a token embedding table and positions go to a position embedding table; the two embeddings are added. The sum passes through N transformer blocks. Each block applies LayerNorm then multi-head causal self-attention and adds the result back to its input (a residual connection), then applies LayerNorm then a feed-forward network and adds that result back too. After the blocks come a final LayerNorm and a linear layer that produces logits over the vocabulary, followed by softmax and cross-entropy against the next-token targets."
+  caption="The lecture's model. Pre-norm placement (LayerNorm before each sub-layer) follows GPT-2, not the original transformer paper."
+  chart={`flowchart TD
+  I["Token indices (B, T)"] --> TE["Token embedding (B, T, C)"]
+  P["Positions 0..T-1"] --> PE["Position embedding (T, C)"]
+  TE --> ADD["Sum: x"]
+  PE --> ADD
+  ADD --> B1["Block: x = x + MultiHeadAttention(LayerNorm(x))"]
+  B1 --> B2["Block: x = x + FeedForward(LayerNorm(x))"]
+  B2 --> R["Repeat for n_layer blocks"]
+  R --> LF["Final LayerNorm"]
+  LF --> LM["Linear to vocabulary: logits (B, T, V)"]
+  LM --> L["Softmax and cross-entropy vs targets"]`}
+/>
+
+<Listen>
+## The rest of the block
+
+**Multi-head attention** (01:21:59) runs several smaller heads in parallel, for example 6 heads of size 64 for an embedding of 384, concatenates their outputs, and applies a linear projection. Each head can attend to a different kind of relationship. The suggested exercise EX1 asks you to batch the heads as an extra tensor dimension, which is how nanoGPT does it.
+
+**The feed-forward layer** (01:24:25) is an MLP applied to each position independently, widening to 4 times the embedding size and back. The lecture's summary of the block is communication (attention) followed by computation (the MLP), repeated.
+
+**Residual connections** (01:26:48) write each sub-layer as x plus f(x) instead of f(x). In the backward pass the identity path carries the gradient straight through, so deep stacks remain trainable; this is the ResNet idea (He and colleagues, 2015). Early in training, when f contributes little, the network behaves like a shallow one and gradually brings each block into play.
+
+**LayerNorm** (01:32:51, Ba and colleagues, 2016) standardizes each token's vector across its features, with learned scale and shift. It's BatchNorm transposed: no batch statistics, no train and eval difference, no coupling between examples. The lecture places it before each sub-layer ("pre-norm"), which is the arrangement the GPT-2 paper describes in its section 2.3, along with a final LayerNorm after the last block.
+
+**Dropout** (Srivastava and colleagues, 2014) randomly zeroes activations during training, a regularizer the lecture adds when it scales up (dropout 0.2 in its `gpt.py`, with block_size 256, 384-dimensional embeddings, 6 heads, and 6 layers).
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the computation inside one pre-norm transformer block, as built in the lecture"
+  items={[
+    "Apply LayerNorm to the block input x",
+    "Run multi-head causal self-attention and project the concatenated heads",
+    "Add the attention output back to x (first residual connection)",
+    "Apply LayerNorm to the updated x",
+    "Run the position-wise feed-forward network (expand to 4C, nonlinearity, project back to C)",
+    "Add the feed-forward output back to x (second residual connection)",
+  ]}
+  explanation="Communication, then computation, each wrapped as x = x + f(LayerNorm(x)). Stacking these blocks, then a final LayerNorm and a linear layer to the vocabulary, gives the whole model."
+/>
+
+<Callout type="pitfall" title="Bugs that still produce Shakespeare-ish text">
+Character-level models generate plausible-looking text even when something is wrong, so samples are a poor test. Three bugs to check for explicitly. **A missing or wrong causal mask** lets positions see the future: training loss drops suspiciously fast and generation is garbage, because at generation time the future isn't there. Test that changing later tokens doesn't change earlier outputs, as the exercise does. **Scaling by the embedding size instead of the head size** (the lecture's own correction at 01:20:05) quietly mis-scales the scores. **Evaluating on one noisy batch** instead of averaging many (the lecture's `estimate_loss` averages 200 batches per split) makes runs look different when they aren't.
+</Callout>
+
+<Listen>
+## What the trained model shows, and what it doesn't
+
+For calibration, nanoGPT's README reports a best validation loss of 1.4697 for its baby GPT config (6 layers, 6 heads, 384 channels, context 256) after about 3 minutes on one A100 GPU, and about 1.88 for a much smaller CPU config. The samples have the shape of a play, with speaker names, line breaks, and archaic-looking words, and almost no meaning. Those numbers are useful calibration for your project: if your run is far from them with a similar config, look for a bug before tuning.
+
+At 01:48:53 the lecture connects this to ChatGPT. What you built is the pretraining stage: a document completer. The same architecture at vastly larger scale, trained on vastly more data, followed by supervised fine-tuning and reinforcement learning from human feedback, becomes an assistant. That's the arc from Studio 1's first lesson, now with every piece of the first stage in your own code.
+
+A note on the repositories: as of the review date, nanoGPT's README says it is old and deprecated and points to a newer project, nanochat, while leaving nanoGPT up. It remains a clear, readable reference for this lecture's model. For your project, follow the lecture and treat nanoGPT as a reference to compare against, not a dependency.
+</Listen>
+
+<LabLink path="labs/electives/e1-tiny-gpt" title="Lab e1: train a tiny GPT on a text you choose" needs={["Python 3.10+", "No API key", "PyTorch for training (the helper tests don't need it)"]} minutes={60}>
+Write and test the pieces around the model (cleaning a Project Gutenberg text, a character tokenizer, a contiguous train/validation split, shifted-target batches, a stable softmax, and the log V baseline), then use the provided training outline, with your own model from this lesson, to log loss curves. It's the starting point for the elective project.
+</LabLink>
+
+<GoDeeper title="Attention as kernel smoothing, and a visual explanation">
+If you know nonparametric statistics, attention has a familiar shape: y_t = sum over s of w(q_t, k_s) v_s with weights that are a normalized exponential kernel of query and key, which is a Nadaraya-Watson estimator with learned feature maps. Seen that way, the 1/sqrt(d) factor is a bandwidth, and multi-head attention fits several kernels at once. That's an analogy, not a theorem about what transformers learn, but it's a useful way to remember the mechanics. For a visual walkthrough of queries, keys, values, and multiple heads, 3Blue1Brown's chapter on attention complements the lecture well:
+
+<Video id="eMlx5fFNoYc" title="Attention in transformers, step-by-step | Deep Learning Chapter 6" channel="3Blue1Brown" minutes={26} />
+</GoDeeper>
+
+<Listen>
+## Review sheet
+
+A chunk of T + 1 tokens trains T next-token predictions at once; block_size is the context window. Single-head causal attention: y_t = sum over s at most t of softmax(q_t . k_s / sqrt(d)) v_s, a convex combination of past values. Divide by sqrt(head size) because q . k has variance d. Attention is permutation equivariant, so add position embeddings, which fixes the maximum context in the parameters. A block is x + attention(LayerNorm(x)), then x + MLP(LayerNorm(x)); residual paths keep gradients flowing; LayerNorm normalizes per token. Calibrate against published numbers (about 1.47 for nanoGPT's GPU config) before trusting your own. Next lesson: the tokenizer, the stage that turns text into the integers all of this consumes.
+</Listen>

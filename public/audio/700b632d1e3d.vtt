@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.259
+Choosing a reranker.
+
+2
+00:00:01.539 --> 00:00:03.117
+You have three broad options.
+
+3
+00:00:03.397 --> 00:00:10.907
+As with embedding models, treat the vendor’s benchmark claims as a reason to try a model, not as evidence it suits your data.
+
+4
+00:00:11.187 --> 00:00:12.723
+Hosted rerank APIs.
+
+5
+00:00:13.003 --> 00:00:22.219
+Cohere and Voyage both offer a rerank endpoint: send a query and a list of documents, get back the documents ordered by relevance with scores.
+
+6
+00:00:22.499 --> 00:00:26.616
+Voyage, for example, lists a full model and a faster “lite” variant.
+
+7
+00:00:26.896 --> 00:00:33.147
+Check both providers’ docs for today’s model names, prices, and context limits, which change often.
+
+8
+00:00:33.427 --> 00:00:45.139
+Hosted rerankers are the quickest to try, and the main questions are per-call cost, latency (an extra network round trip on every query), and whether your documents may leave your environment.
+
+9
+00:00:45.419 --> 00:00:47.296
+Open rerankers you run yourself.
+
+10
+00:00:47.576 --> 00:00:53.848
+BAAI’s bge-reranker-v2-m3 is a multilingual cross-encoder released under Apache 2.
+
+11
+00:00:54.128 --> 00:01:08.891
+0, and the Sentence Transformers project publishes small cross-encoders trained on MS MARCO, such as cross-encoder/ms-marco-MiniLM-L6-v2, that run acceptably on a CPU for short candidate lists.
+
+12
+00:01:09.171 --> 00:01:14.013
+You control the data and the cost; you also own the serving, batching, and upgrades.
+
+13
+00:01:14.293 --> 00:01:16.043
+An LLM as reranker.
+
+14
+00:01:16.323 --> 00:01:19.053
+You can ask a general model to rank passages.
+
+15
+00:01:19.333 --> 00:01:36.976
+Sun and colleagues (2023) found that properly instructed GPT-4 could match or beat strong supervised rerankers on standard benchmarks, and built a new test set from recent material to address the worry that the models had memorized benchmark data.
+
+16
+00:01:37.256 --> 00:01:51.848
+The cost is the catch: every candidate passage is input tokens on every query, so reranking 50 chunks of 300 tokens adds about 15,000 input tokens per question, plus the model’s latency.
+
+17
+00:01:52.128 --> 00:02:08.192
+The same paper distilled the ranking ability into a small 440M-parameter model that outperformed a 3B supervised model on BEIR, which is often the practical end state: use a large model to label or rank offline, and a small model online.
+
+18
+00:02:08.472 --> 00:02:09.773
+Does reranking help?
+
+19
+00:02:10.053 --> 00:02:21.189
+Anthropic’s contextual retrieval experiments are one data point: adding a reranker on top of hybrid contextual retrieval cut their top-20 retrieval failure rate from 2.
+
+20
+00:02:21.469 --> 00:02:22.451
+9 to 1.
+
+21
+00:02:22.731 --> 00:02:27.168
+9 percent, and the post explicitly flags the added latency and cost.
+
+22
+00:02:27.448 --> 00:02:38.072
+The BEIR authors reached a similar conclusion across 18 datasets: reranking architectures had the best average zero-shot results, at high computational cost.

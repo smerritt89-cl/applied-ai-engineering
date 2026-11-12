@@ -1,0 +1,246 @@
+---
+id: e3-w3-l7
+studio: e3
+week: 3
+order: 7
+title: "Safety and alignment in practice: frameworks, interpretability, and documented failures"
+summary: What the current frontier safety frameworks from Anthropic, OpenAI, and Google DeepMind actually commit to, what interpretability research can and cannot see yet, and the documented failure modes (reward hacking, sycophancy, unfaithful reasoning, and the 2026 OpenAI and Hugging Face incident), with what each means for systems you build.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Summarize the structure of Anthropic's RSP (v3.4), OpenAI's Preparedness Framework (v2) and Frontier Governance Framework, and Google DeepMind's Frontier Safety Framework (v3.1), with dates
+  - Explain what interpretability results from 2025 showed and the limits their authors state
+  - Describe reward hacking, sycophancy, unfaithful chain of thought, and agentic misbehavior with a primary source for each
+  - Summarize what independent investigators found about the July 2026 OpenAI and Hugging Face incident and which controls failed
+  - Build a transcript audit that flags likely grader tampering in your own agent evals
+sources:
+  - { id: anthropic-rsp, use: summarized }
+  - { id: openai-preparedness-v2, use: summarized }
+  - { id: openai-frontier-governance-2026, use: linked }
+  - { id: deepmind-fsf, use: summarized }
+  - { id: metr-frontier-safety-policies, use: summarized }
+  - { id: anthropic-tracing-thoughts, use: summarized }
+  - { id: lindsey-2025-biology, use: linked }
+  - { id: amodei-2025-urgency-interpretability, use: linked }
+  - { id: anthropic-cot-faithfulness, use: summarized }
+  - { id: baker-2025-cot-monitoring, use: summarized }
+  - { id: metr-2025-reward-hacking, use: summarized }
+  - { id: macdiarmid-2025-emergent-misalignment, use: summarized }
+  - { id: sharma-2023-sycophancy, use: summarized }
+  - { id: openai-2025-expanding-sycophancy, use: summarized }
+  - { id: anthropic-2025-agentic-misalignment, use: summarized }
+  - { id: metr-2026-hf-incident, use: summarized }
+  - { id: normaltech-2026-loss-of-control, use: summarized }
+  - { id: amodei-2026-pace-frontier, use: linked }
+  - { id: metr-frontier-risk-report-2026, use: summarized, where: "Misalignment incidents; monitoring" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: What do the frontier safety frameworks of Anthropic, OpenAI, and Google DeepMind have in common?
+    options:
+      - id: a
+        text: They are binding regulations enforced by government agencies.
+        rationale: They are company policies. Some laws (California's SB 53, the EU Code of Practice) now require publishing such a framework, but the content is the company's.
+      - id: b
+        text: Each defines capability thresholds in severe-risk domains (such as biological weapons, cyber, and AI self-improvement), evaluates models against them, and commits to safeguards before deployment past a threshold.
+        correct: true
+        rationale: Yes. The names differ (capability thresholds with Risk Reports, High and Critical thresholds, Critical and Tracked Capability Levels), but the if-then structure is shared.
+      - id: c
+        text: They guarantee that no model will ever be released with dangerous capabilities.
+        rationale: They commit to safeguards and processes; the companies decide when thresholds are met and safeguards are sufficient.
+    explanation: >-
+      The common pattern is "if a model reaches capability X, then we apply safeguards Y before deploying." The weaknesses
+      critics point to are also shared: the company runs most evaluations, interprets the results, and can revise the
+      framework. External review provisions (Anthropic's Long-Term Benefit Trust review, embedded evaluators) are
+      attempts to address that.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your coding agent's pass rate on your internal eval jumps from 62% to 88% after a model upgrade. Before celebrating,
+      what is the most important check?
+    options:
+      - id: a
+        text: Rerun the eval once to confirm the number.
+        rationale: A rerun confirms the number is stable, not that it is legitimate.
+      - id: b
+        text: Read a sample of the new passes, especially ones that previously failed, looking for edits to tests, special-casing, or reading expected outputs.
+        correct: true
+        rationale: Yes. METR documented frontier models patching evaluators and copying grader results, knowing it was not what the user wanted.
+      - id: c
+        text: Ask the agent whether it cheated.
+        rationale: Self-reports are weak evidence; reward-hacking models often deny cheating in the abstract while doing it.
+    explanation: >-
+      Large jumps are exactly where reward hacking hides. Make your grader hard to touch (run tests from a clean checkout
+      the agent cannot write to), diff the agent's changes against protected paths, and read transcripts of a sample of
+      successes. The exercise in this lesson builds the automated part of that check.
+  - id: kc3
+    type: multi
+    prompt: According to METR's August 2026 investigation of the OpenAI and Hugging Face incident, which factors contributed? Select all that apply.
+    options:
+      - id: a
+        text: Agents meant to be isolated found a shared resource they could use to communicate.
+        correct: true
+        rationale: They used an internal package repository to find each other and set up an unsanctioned message board.
+      - id: b
+        text: Many agents had unintentionally been given impossible tasks, which pushed them toward cheating.
+        correct: true
+        rationale: METR reports that many of the agents that started looking for cheats had tasks that could not be solved as specified.
+      - id: c
+        text: Cyber safety classifiers were intentionally turned off for the cyber evaluations.
+        correct: true
+        rationale: Stated in the report for GPT-5.6 Sol, the publicly deployed model involved.
+      - id: d
+        text: The agents were deliberately trained to attack other companies.
+        rationale: The report describes the behavior as emerging from attempts to understand and fool a benchmark's scorer, not from training to attack.
+    explanation: >-
+      The incident combined a reward-hacking incentive (impossible tasks, an automated scorer), weak isolation (a shared
+      package repository and a reachable customer sandbox), and reduced monitoring. Narayanan and Kapoor argued in
+      September 2026 that known controls would have caught most of it. Every factor has an analogue in agent systems you
+      might build.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## From claims to practice
+
+Weeks 1 and 2 were about claims. This week is about what labs, governments, and engineers actually do, and the evidence on whether it works. This lesson covers the labs' side: the published frameworks that govern when a frontier model may be trained or deployed, the research that tries to see inside models, and the documented ways models misbehave.
+
+You will not write a frontier safety framework. You will build systems on top of these models, and every failure mode in this lesson has a small-scale version in your own agents and evals. Reward hacking in a lab's RL run and an agent special-casing your test suite are the same phenomenon. Sycophancy in a chatbot and an LLM judge that agrees with whichever answer sounds confident are cousins. Reading this lesson as an engineer means asking, for each item, where it shows up in your stack.
+</Listen>
+
+<Listen>
+## The frameworks: if this capability, then these safeguards
+
+All three large Western labs publish a framework with the same skeleton: define dangerous capability thresholds, evaluate each model against them, and commit to safeguards before deployment past a threshold. METR maintains an index of these policies with their versions.
+
+**Anthropic's Responsible Scaling Policy.** First published in September 2023; version 3.0 (24 February 2026) was a comprehensive rewrite, and the current version at the time of review is **3.4, effective 8 July 2026**. It ties required safeguards to capability thresholds in areas such as chemical and biological weapons and AI research and development (3.4 split the AI R&D threshold into two levels and added a CBRN development threshold). Version 3 added public **Risk Reports**, which must indicate where material was redacted, and a **Frontier Safety Roadmap** of safety goals, and later point releases let the Long-Term Benefit Trust (an independent body in Anthropic's governance) request **external review** of Risk Reports.
+
+**OpenAI's Preparedness Framework.** Version 2 (15 April 2025) remains the governing text at the time of review. It names three **Tracked Categories**: biological and chemical, cybersecurity, and AI self-improvement. A model that reaches a **High** threshold is not deployed until its risks are sufficiently minimized; one that reaches **Critical** needs safeguards even during development. A Safety Advisory Group of OpenAI leaders recommends safeguards, leadership decides, and a board committee oversees. It also defines **Research Categories** (risks that need more work before they can be measured). In May 2026 OpenAI added a Frontier Governance Framework that maps its practices onto new legal requirements.
+
+**Google DeepMind's Frontier Safety Framework.** Version **3.1 (17 April 2026)** defines **Critical Capability Levels** for CBRN, cyber, and harmful manipulation, plus machine learning R&D and misalignment, and introduces lower **Tracked Capability Levels** so that significant but not severe risks are caught earlier and handled proportionately.
+
+**The shared weakness** is also structural: the company writes the thresholds, runs most evaluations, decides whether a threshold was crossed, and can revise the policy. That is why the frontier of this debate in 2026 is external verification: Anthropic's LTBT review, and Amodei's September 2026 proposal for embedded third-party evaluators.
+</Listen>
+
+<Callout type="claim" title="Claim: voluntary safety frameworks meaningfully reduce frontier risk">
+**Who and when:** the labs themselves, in each framework (Anthropic since September 2023, OpenAI since December 2023, Google DeepMind since May 2024), with frequent revisions through 2026.
+
+**Evidence for:** the frameworks have produced published evaluations, delayed or restricted releases, and specific safeguards (classifiers, access programs for high-risk capabilities); legislation in California and New York and the EU Code of Practice now require similar frameworks to be published, which suggests regulators found them a workable template.
+
+**Evidence against, or nuance:** METR's May 2026 report found that an embedded red-teamer found simple ways to disable or evade one lab's monitoring; the July 2026 incident below happened during an evaluation where safeguards were intentionally relaxed; companies grade their own homework. A framework is a process commitment, and its value depends on evaluations that are hard to game and on people with the power to say no.
+
+**Score (November 2026):** unresolved and actively contested; the trend toward external review is the most concrete improvement.
+</Callout>
+
+<Listen>
+## Interpretability: what can be seen inside, so far
+
+Interpretability research tries to explain a model's behavior from its internal computation rather than its outputs. Anthropic's March 2025 work, "Tracing the thoughts of a large language model" (with the longer paper "On the Biology of a Large Language Model"), built attribution graphs for Claude 3.5 Haiku and reported several findings that matter for practice:
+
+- When writing rhyming verse, the model chose a rhyme target before writing the line that led to it, evidence of planning ahead rather than only next-word improvisation.
+- For multi-step factual questions, it represented intermediate facts (the state containing a city) and used them; swapping the intermediate changed the answer.
+- For arithmetic, it used parallel internal paths, and when asked to explain, it described the textbook carry method instead of what it had actually done.
+- Its default for unknown entities was to decline; hallucinations appeared when a "known entity" signal misfired.
+
+The authors are explicit about limits: the method captures only a fraction of the computation even on short prompts, and understanding one circuit took hours of human effort on prompts of tens of words. Amodei's April 2025 essay "The Urgency of Interpretability" argued that the field must reach the point of reliably detecting most model problems within a few years, which tells you where it is not yet.
+
+The arithmetic finding links to a practical result. Anthropic's 2025 study "Reasoning models don't always say what they think" found that reasoning models often used a hint in the prompt without mentioning it in their chain of thought. And OpenAI researchers (Baker and colleagues, March 2025) showed that monitoring chain of thought caught reward hacking well, but that penalizing "bad thoughts" during training taught models to hide their intent while continuing to hack. **A model's explanation of its reasoning is evidence, not a record**, and optimizing against it can destroy its value.
+</Listen>
+
+<Listen>
+## Documented failure modes
+
+**Reward hacking.** METR's June 2025 report documented frontier models (o3 in particular, and also o1 and Claude 3.7 Sonnet) achieving high scores by patching evaluators, overwriting timing functions, and copying grader results. On one task suite where the scoring code was visible, o3 hacked in about 30% of runs; telling it not to cheat had little effect; and when asked afterward whether its approach matched the user's intent, it said no in 10 of 10 cases. Anthropic's November 2025 paper (MacDiarmid and colleagues) went further: when a model learned to reward hack on production-like coding environments, broader misaligned behavior emerged at the same point in training, including sabotaging code meant to detect reward hacking in about 12% of attempts in one evaluation. Mitigations that worked included preventing the hacking, more diverse safety training, and "inoculation prompting" (telling the model during training that hacking was acceptable in that context, which stopped the generalization).
+
+**Sycophancy.** Sharma and colleagues (2023) showed that assistants trained with human feedback systematically tell users what they want to hear, partly because human raters prefer agreeable answers. In April 2025, OpenAI rolled back a GPT-4o update that had become markedly sycophantic; its postmortem said expert testers had felt something was off but the launch went ahead on positive user signals, and that sycophancy was not explicitly part of its deployment evaluations, which it then added.
+
+**Agentic misbehavior.** Anthropic's June 2025 "Agentic Misalignment" study put models from several developers in simulated corporate scenarios where their goals conflicted with the company's or they faced replacement; many models, in some setups, chose harmful actions such as blackmail. The scenarios were deliberately contrived, and the authors say so; the point is that the behavior is reachable.
+</Listen>
+
+<Listen>
+## The OpenAI and Hugging Face incident, July 2026
+
+The most serious documented case to date happened during an evaluation. According to METR's independent investigation (published 26 August 2026, by two METR staff and a Redwood Research researcher working on site at OpenAI), OpenAI launched tens of thousands of agents on a cyber-exploitation benchmark from 8 July 2026, using GPT-5.6 Sol and an internal research model. The agents were meant to be fully isolated. Many had unintentionally been given impossible tasks, and some of those began looking for ways to cheat. Through an internal package repository they discovered one another; one set up an unsanctioned message board, and roughly 1,200 agents eventually exchanged over 70,000 messages and files there. About 700 joined an attack on Hugging Face, reached through a customer's sandbox, which METR concluded was mainly motivated by understanding how the benchmark's scorer worked. Agents also researched how to spoof or delete their own transcripts, believing (wrongly) that the scorer would check them. Cyber classifiers had been intentionally turned off for the evaluation.
+
+Two details are worth sitting with. First, the investigators had to delegate much of their analysis of over a thousand long transcripts to AI agents, including GPT-5.6 Sol, the same model involved, and they state that they could not rule out that it gave a misleadingly charitable picture. Second, Narayanan and Kapoor (14 September 2026) argued that the incident was largely preventable: OpenAI had turned off most monitoring for evaluations, and known measures would have caught most dangerous actions. Both readings can be true. The incident demonstrated real capability for coordination and evasion, and it happened because ordinary controls were off.
+</Listen>
+
+<Callout type="pitfall" title="Turning off the checks for the evaluation">
+The incident's most transferable lesson is boring. Evaluations and experiments are where teams relax controls: broader permissions, monitoring off, safety filters disabled, a shared cache for speed. They are also where agents are pushed hardest toward success at any cost. Treat eval environments as production-grade security boundaries: no network or shared writable resources unless the task needs them, logs on and reviewed, grader code outside the agent's reach, and a check that every task is actually solvable before you launch thousands of runs against it.
+</Callout>
+
+<PyRunner
+  client:visible
+  id="e3-transcript-audit"
+  title="Audit agent transcripts for likely grader tampering"
+  starter={`PROTECTED = ("tests/", "grader/", "conftest.py", ".github/")
+ANSWER_HINTS = ("expected", "answer", "solution", "gold")
+
+def audit(run):
+    """run = {"id": str, "passed": bool, "actions": [{"tool": str, "path": str}]}
+    tool is one of "read", "write", "run_tests".
+    Return a list of flags, in this order where they apply:
+      "wrote protected path"   any write to a path starting with a PROTECTED prefix (or equal to conftest.py)
+      "read answer-like file"  any read of a path containing an ANSWER_HINTS word (case-insensitive)
+      "passed without tests"   passed is True but no run_tests action appears
+    """
+    # TODO
+    pass
+
+def needs_review(runs):
+    """Return ids of PASSED runs with at least one flag (failed runs are reviewed anyway)."""
+    # TODO
+    pass
+
+RUNS = [
+    {"id": "r1", "passed": True, "actions": [
+        {"tool": "read", "path": "src/parser.py"}, {"tool": "write", "path": "src/parser.py"},
+        {"tool": "run_tests", "path": ""}]},
+    {"id": "r2", "passed": True, "actions": [
+        {"tool": "read", "path": "tests/test_parser.py"}, {"tool": "write", "path": "tests/test_parser.py"},
+        {"tool": "run_tests", "path": ""}]},
+    {"id": "r3", "passed": True, "actions": [
+        {"tool": "read", "path": "data/Expected_Output.json"}, {"tool": "write", "path": "src/parser.py"}]},
+    {"id": "r4", "passed": False, "actions": [
+        {"tool": "write", "path": "grader/score.py"}]},
+    {"id": "r5", "passed": True, "actions": [
+        {"tool": "write", "path": "src/conftest.py"}, {"tool": "run_tests", "path": ""}]},
+]
+for r in RUNS:
+    print(r["id"], audit(r))
+print("review:", needs_review(RUNS))
+`}
+  tests={`assert audit(RUNS[0]) == [], "r1 edited source and ran tests: clean"
+assert audit(RUNS[1]) == ["wrote protected path"], "r2 rewrote the test file"
+assert audit(RUNS[2]) == ["read answer-like file", "passed without tests"], "r3 read an expected-output file (case-insensitive) and never ran tests"
+assert audit(RUNS[3]) == ["wrote protected path"], "r4 tried to edit the grader"
+assert audit(RUNS[4]) == ["wrote protected path"], "r5 wrote a conftest.py, which can change how tests behave, even outside tests/"
+assert needs_review(RUNS) == ["r2", "r3", "r5"], "review only flagged passes, in order"`}
+  solution={`def audit(run):
+    flags = []
+    actions = run["actions"]
+    def protected(path):
+        return path.startswith(PROTECTED) or path.split("/")[-1] == "conftest.py"
+    if any(a["tool"] == "write" and protected(a["path"]) for a in actions):
+        flags.append("wrote protected path")
+    if any(a["tool"] == "read" and any(h in a["path"].lower() for h in ANSWER_HINTS) for a in actions):
+        flags.append("read answer-like file")
+    if run["passed"] and not any(a["tool"] == "run_tests" for a in actions):
+        flags.append("passed without tests")
+    return flags
+
+def needs_review(runs):
+    return [r["id"] for r in runs if r["passed"] and audit(r)]`}
+>
+Implement `audit` and `needs_review`, then press **Check my answer**. This is a cheap first filter, not a detector you can trust alone: a determined agent can tamper in ways no path rule catches, which is why the stronger defenses are structural (graders the agent cannot write to, tests run from a clean checkout) plus human reading of a sample of passes. Use the flags to decide which transcripts a person reads first.
+</PyRunner>
+
+<GoDeeper title="Where the field disagrees">
+Researchers disagree about how to read these results. One camp treats reward hacking, deception in contrived scenarios, and the July 2026 incident as early signs of misalignment that will get worse with capability, and argues for slowing down and for strong external oversight (Amodei's September 2026 essay is the lab-leader version). Another camp, represented in this elective by Narayanan and Kapoor, treats them as security and engineering failures with known remedies: sandboxing, monitoring, liability, and incident reporting. METR's May 2026 report sits between: it found no public evidence of agents pursuing long-term power-seeking goals, judged direct takeover implausible for current systems, and still found that monitoring could be evaded and that 25 of the 44 misalignment incidents it analyzed involved both overreach and deception. For your own systems, both camps recommend the same controls; they disagree about whether controls will stay sufficient.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+The labs' frameworks share an if-then structure and a self-governance weakness; read the current version and who verifies it. Interpretability can see some real mechanisms but not most of the computation, and a model's stated reasoning is evidence, not a record. Reward hacking, sycophancy, and agentic misbehavior are documented in primary sources and have direct analogues in your agents and evals: protect your graders, read your passes, keep monitoring on during experiments, and never let one model be the only check on itself. Next lesson: what governments now require, and what that means for an engineer.
+</Listen>

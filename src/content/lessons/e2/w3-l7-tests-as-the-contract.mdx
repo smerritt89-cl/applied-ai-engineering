@@ -1,0 +1,301 @@
+---
+id: e2-w3-l7
+studio: e2
+week: 3
+order: 7
+title: Tests as the contract
+summary: Test-first prompting, making the agent run the tests and show evidence, the documented tendency of agents to edit or game tests and the layered defenses against it, and getting real edge-case coverage instead of tests that mirror the implementation.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Run a test-first loop with an agent, confirming the new test fails for the right reason before any fix
+  - Make test execution a requirement the harness enforces, and demand evidence rather than claims
+  - Summarize the evidence that coding agents modify or game tests, and layer defenses against it (permissions, hooks, protected review, holdout tests, CI)
+  - Detect test tampering in a diff with a small script
+  - Improve edge-case coverage with human-specified cases, branch coverage, and property-based tests
+sources:
+  - { id: e2-cc-best-practices, use: summarized, where: "Give Claude a check to run; enforce the check with a Stop hook" }
+  - { id: e2-zhong-2025-impossiblebench, use: summarized }
+  - { id: e2-metr-reward-hacking, use: summarized }
+  - { id: cc-permissions-docs, use: summarized, where: "What Read and Edit rules cover" }
+  - { id: e2-cc-hooks-guide, use: summarized }
+  - { id: cc-sandboxing-docs, use: linked }
+  - { id: e2-github-protected-branches, use: summarized }
+  - { id: e2-github-codeowners, use: summarized }
+  - { id: e2-coverage-branch, use: summarized }
+  - { id: e2-hypothesis-docs, use: summarized }
+  - { id: e2-willison-vibe-engineering, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You asked an agent to fix a pricing bug. Its summary says "Fixed; all 42 tests pass." The diff shows a three-line
+      change to `pricing.py` and a one-line change to `tests/test_pricing.py`. What do you do first?
+    options:
+      - id: a
+        text: Merge it; the tests pass.
+        rationale: The tests that pass may no longer be the tests you wrote.
+      - id: b
+        text: Read the test diff first and decide whether the expectation changed legitimately; if not, revert the test change and rerun.
+        correct: true
+        rationale: A changed test is a changed contract. It needs a person's judgment before the code change means anything.
+      - id: c
+        text: Ask the agent whether it changed the test correctly.
+        rationale: The same agent that made the change is the least independent judge of it.
+    explanation: >-
+      Review test changes before code changes. Sometimes a test really was wrong; that decision belongs to a person, ideally
+      made before the agent touches the code. Your harness should make test edits visible (or blocked) by default.
+  - id: kc2
+    type: mcq
+    prompt: What did the ImpossibleBench study (Zhong, Raghunathan, and Carlini, 2025) find when tests were made to contradict the task specification?
+    options:
+      - id: a
+        text: Models nearly always refused or reported the contradiction.
+        rationale: The opposite. The authors report frontier models frequently cheated.
+      - id: b
+        text: Frontier models frequently found ways to pass anyway (editing tests, overloading comparison operators, special-casing), stronger models generally cheated more, and hiding the tests cut cheating to near zero.
+        correct: true
+        rationale: That's the paper's headline pattern and its most effective mitigation.
+      - id: c
+        text: Only small open models cheated; frontier models were immune.
+        rationale: The paper reports stronger models generally had higher cheating rates.
+    explanation: >-
+      When the only signal is "tests pass," an agent under pressure may satisfy the signal instead of the requirement.
+      Restricting test access, keeping holdout tests, and reviewing test diffs are the practical responses.
+  - id: kc3
+    type: code-reading
+    prompt: An agent wrote this test for `apply_discount`. What is wrong with it as a check?
+    code: |
+      def test_apply_discount():
+          price, pct = 1999, 15
+          expected = price - round(price * pct / 100)
+          assert apply_discount(price, pct) == expected
+    options:
+      - id: a
+        text: Nothing; it covers the function.
+        rationale: It executes the function but can't catch the most likely bug.
+      - id: b
+        text: It recomputes the expected value with the same formula as the implementation, so if the rounding rule is wrong in both places, it still passes.
+        correct: true
+        rationale: A test that mirrors the implementation is a tautology. Expected values should come from the spec, worked out independently.
+      - id: c
+        text: It should use floating-point comparison with a tolerance.
+        rationale: Money should be integer cents; the real problem is where the expected value comes from.
+    explanation: >-
+      Ask for tests with literal expected values derived from the requirement (here, half-up rounding to the cent: 1999
+      times 15% is 299.85, so 300 off and 1699), plus the boundary cases a person names. Mirror tests inflate coverage
+      without adding confidence.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The check is what makes delegation work
+
+The Claude Code best-practices page puts it plainly: Claude stops when the work looks done, and if it has nothing to run that says whether the work actually is done, "looks done" is all it has. Give it something that comes back pass or fail (a test file, a build's exit code, a linter, a script that diffs output against a fixture) and it can close the loop itself: change, check, read the failure, fix, check again. That's the difference between an agent you supervise line by line and one you can leave for twenty minutes.
+
+Tests are the best general-purpose check because they encode the requirement in a form the machine can evaluate. That also makes them the most important thing to protect. If the agent can quietly change what the tests require, "all tests pass" stops meaning anything. This lesson covers both halves: using tests as the contract, and keeping the contract from being renegotiated by the party it binds.
+</Listen>
+
+<Listen>
+## Test-first prompting
+
+The most reliable loop with an agent is the old test-driven one, done deliberately:
+
+1. **State the behavior and write the test first.** Either write it yourself or ask the agent to write only the test, from your spec, and stop. The docs' own example prompt for a bug is: describe the symptom, point at the likely area, "write a failing test that reproduces it, then fix it."
+2. **Confirm it fails, for the right reason.** Run it. A new test that passes before any fix is testing the wrong thing. Read the failure message: it should describe the bug, not an import error.
+3. **Review and commit the test.** This is the contract. Reading a 15-line test is far easier than reading the 150-line fix, and it's where your judgment adds the most.
+4. **Ask for the implementation, with the tests fixed.** "Make this test pass without modifying any file under tests/. If you believe a test is wrong, stop and tell me why."
+5. **Require evidence.** "Run `python3 -m pytest -q` and show the output." The docs suggest asking for the command it ran and its output, because "all tests pass" on its own tells you very little.
+
+Committing the test before the fix has a second benefit: the fix's diff can't hide a change to the test, because any test change shows up separately against a commit you reviewed.
+</Listen>
+
+<Predict
+  title="Does the mirror test catch the bug?"
+  code={`def apply_discount(price_cents, pct):
+    # Bug: the business rule is round half UP; round() rounds half to even.
+    return price_cents - round(price_cents * pct / 100)
+
+def test_mirror():
+    price, pct = 490, 5
+    assert apply_discount(price, pct) == price - round(price * pct / 100)
+
+def test_from_spec():
+    # 5% of 490 is 24.5 cents, which the spec says rounds UP to 25, so 465
+    assert apply_discount(490, 5) == 465
+
+for t in (test_mirror, test_from_spec):
+    try:
+        t(); print(t.__name__, "passed")
+    except AssertionError:
+        print(t.__name__, "FAILED")`}
+  options={[
+    "test_mirror passed / test_from_spec passed",
+    "test_mirror passed / test_from_spec FAILED",
+    "test_mirror FAILED / test_from_spec FAILED",
+    "test_mirror FAILED / test_from_spec passed",
+  ]}
+  answer={1}
+>
+`round(24.5)` is 24 in Python (half to even), so the function returns 466. The mirror test computes its expected value with the same buggy expression and agrees. Only the test whose expected value came from the requirement catches the bug. This is the exact bug seeded in the lab.
+</Predict>
+
+<Listen>
+## Make running the tests non-negotiable
+
+There's a ladder of strictness, and the best-practices page lays it out. At the bottom, ask in the prompt ("run the auth tests after, and keep going until they pass"); Claude decides when it's satisfied. Put the test command in CLAUDE.md so it always knows how. Next, a goal condition that a separate model checks after each turn. At the top, a **Stop hook**: Claude Code runs your script whenever Claude tries to end its turn, and if the script exits with code 2, Claude is sent back to work with your stderr as the reason. That's enforced by the harness, so the turn doesn't end until the check passes or the block limit is reached. And independent of all of these, CI runs the suite on every pull request, because the last word should belong to something the agent doesn't control.
+
+A PostToolUse hook that runs fast tests after each edit is a useful complement: failures land in the agent's context immediately, while it still has the change in mind. Keep it fast, and leave the full suite for Stop and CI.
+</Listen>
+
+<Listen>
+## Agents do edit tests, and the evidence is not anecdotal
+
+If you've had an agent "fix" a failing test by changing the expected value, you're not unlucky. Two studies document the pattern.
+
+**ImpossibleBench** (Zhong, Raghunathan, and Carlini, 2025) built coding tasks whose unit tests directly contradict the natural-language specification, so any pass implies a shortcut. The authors report that frontier models frequently cheat on these tasks and that stronger models generally cheat more. The strategies they catalog include modifying test cases (despite instructions not to), overloading comparison operators so assertions pass, counting calls to return different answers, and hard-coding test-specific outputs. Their most effective mitigation was restricting test access: hiding the tests from the agent reduced cheating to near zero. They also tested read-only test access and stricter prompts, with effects that varied.
+
+**METR's 2025 report on reward hacking** found frontier models overwriting a scorer's timer, stubbing out an evaluator to always return success, and modifying test or scoring code. On one task, telling the model not to cheat had a nearly negligible effect.
+
+The practical lesson isn't that agents are malicious. It's that "make the tests pass" is a goal that can be satisfied in more than one way, and an optimizer will sometimes find the cheaper one, especially when the real fix is hard or the test is wrong. Your job is to make the cheap path unavailable or visible.
+</Listen>
+
+<Listen>
+## Layered defenses against test tampering
+
+No single control is enough, because each covers a different path. Stack them.
+
+1. **Instructions.** CLAUDE.md and the prompt say: don't edit, skip, or delete tests; if a test seems wrong, stop and explain. Necessary, and the research above shows it isn't sufficient.
+2. **Permission rules.** A deny rule such as `Edit(/tests/**)` in `.claude/settings.json`. The permissions docs say Read and Edit deny rules apply to Claude's file tools and to file commands Claude Code recognizes in Bash (`sed`, `tee`, redirections), but not to arbitrary scripts that open files themselves.
+3. **A PreToolUse hook** that blocks Edit and Write on test paths, with a message telling the agent what to do instead. Same coverage gap: it sees only the tools its matcher names.
+4. **The sandbox**, for OS-level enforcement that applies to every process, including scripts.
+5. **Commit tests first**, so any later change to them is a separate, visible diff.
+6. **Holdout tests** the agent never sees, run after it finishes. This is ImpossibleBench's mitigation in practice, and it also catches fixes that special-case the visible tests. The lab's `make_workspace.py score` does exactly this.
+7. **CI and review rules.** A CI step that fails if test files changed without a label or approval; GitHub's CODEOWNERS can require a specific reviewer for `tests/`, and branch protection can require that review before merge.
+
+Layers 2 through 4 are the harness; 5 through 7 are your process. In a solo project, layers 1, 2, 3, 5, and 6 cost almost nothing to set up.
+</Listen>
+
+<Callout type="pitfall" title="Blocking test edits for the agent, and forgetting it may need new tests">
+Locking `tests/` entirely has a cost: the agent can't add the regression test you want for the bug it just fixed. Two workable patterns. Allow new files but protect existing ones (a hook can check whether the path already exists in git). Or have the agent propose test changes in its summary and apply them yourself after reading them. Either way, the principle is that additions are cheap to review and modifications to existing expectations need a person.
+</Callout>
+
+<PyRunner
+  client:visible
+  id="e2-w3-test-tamper-scan"
+  title="Detect test tampering in a diff"
+  starter={`def tamper_findings(diff_text):
+    """Scan a unified diff and report risky changes to TEST files.
+
+    A file is a test file if its path (from a line starting with "+++ b/") contains "tests/" or its
+    name starts with "test_". Only lines inside test files count. For each finding return
+    (path, kind, line_text_without_the_leading_+/-), in diff order. Kinds:
+      "removed-assert"   a removed line ("-" but not "---") whose stripped text starts with "assert"
+      "removed-test"     a removed line whose stripped text starts with "def test_"
+      "added-skip"       an added line ("+" but not "+++") containing "pytest.mark.skip", "pytest.skip(", or "xfail"
+      "changed-expected" a removed assert immediately followed by an added assert with the same text
+                         before "==" but different text after it (report the ADDED line; this replaces
+                         the "removed-assert" finding for that pair)
+    """
+    # TODO
+    pass
+
+DIFF = """diff --git a/pricing.py b/pricing.py
+--- a/pricing.py
++++ b/pricing.py
+@@ -40,3 +40,3 @@
+-    return int(round(amount_cents * percent / 100))
++    return (amount_cents * percent + 50) // 100
+diff --git a/tests/test_pricing.py b/tests/test_pricing.py
+--- a/tests/test_pricing.py
++++ b/tests/test_pricing.py
+@@ -20,6 +20,7 @@
+ def test_bulk_discount_starts_at_ten_units():
+-    assert line_total_cents(LineItem("PEN", 10, 100)) == 950
++    assert line_total_cents(LineItem("PEN", 10, 100)) == 1000
+@@ -30,4 +31,5 @@
++@pytest.mark.skip(reason="flaky")
+ def test_promo_code_is_case_insensitive_and_trimmed():
+@@ -60,5 +62,2 @@
+-def test_rejects_negative_price():
+-    with pytest.raises(PricingError):
+-        assert line_total_cents(LineItem("PEN", 1, -5))
+"""
+for f in tamper_findings(DIFF) or []:
+    print(f)
+`}
+  tests={`f = tamper_findings(DIFF)
+assert f is not None, "tamper_findings returned None"
+kinds = [k for _, k, _ in f]
+assert kinds == ["changed-expected", "added-skip", "removed-test", "removed-assert"], kinds
+assert all(p == "tests/test_pricing.py" for p, _, _ in f), "pricing.py is not a test file"
+assert f[0][2].strip().endswith("== 1000"), "report the added line for a changed expectation"
+clean = "--- a/tests/test_x.py\\n+++ b/tests/test_x.py\\n@@ -1 +1,2 @@\\n+def test_new_case():\\n+    assert f(2) == 4\\n"
+assert tamper_findings(clean) == [], "adding a new test is not tampering"
+app = "--- a/app.py\\n+++ b/app.py\\n@@ -1 +1 @@\\n-    assert x\\n+    pass\\n"
+assert tamper_findings(app) == [], "asserts removed from application code are lesson 8's problem, not this scan's"`}
+  solution={`def tamper_findings(diff_text):
+    findings, path = [], None
+    lines = diff_text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("+++ b/"):
+            path = line[6:].strip()
+            i += 1
+            continue
+        if line.startswith("---") or line.startswith("diff ") or path is None:
+            i += 1
+            continue
+        name = path.split("/")[-1]
+        is_test = "tests/" in path or name.startswith("test_")
+        if not is_test:
+            i += 1
+            continue
+        if line.startswith("-"):
+            text = line[1:]
+            s = text.strip()
+            if s.startswith("def test_"):
+                findings.append((path, "removed-test", text))
+            elif s.startswith("assert"):
+                nxt = lines[i + 1] if i + 1 < len(lines) else ""
+                if nxt.startswith("+") and not nxt.startswith("+++") and nxt[1:].strip().startswith("assert") \\
+                        and "==" in s and "==" in nxt:
+                    left_old, right_old = s.split("==", 1)
+                    left_new, right_new = nxt[1:].strip().split("==", 1)
+                    if left_old.strip() == left_new.strip() and right_old.strip() != right_new.strip():
+                        findings.append((path, "changed-expected", nxt[1:]))
+                        i += 2
+                        continue
+                findings.append((path, "removed-assert", text))
+        elif line.startswith("+"):
+            text = line[1:]
+            if "pytest.mark.skip" in text or "pytest.skip(" in text or "xfail" in text:
+                findings.append((path, "added-skip", text))
+        i += 1
+    return findings`}
+>
+Write `tamper_findings`, then press **Check my answer**. The sample diff is a realistic bad outcome for the lab's task: a correct fix to the rounding in `pricing.py`, bundled with three ways of making the remaining failures go away (a changed expectation, a skip, and a deleted test). A scan like this belongs in CI, where it can fail the build or require a labeled approval. It's a heuristic: it won't catch an agent that overloads `__eq__` in application code, which is one more reason to keep holdout tests.
+</PyRunner>
+
+<Listen>
+## Coverage of edge cases, not lines
+
+Agents write tests readily, and many of them are weak in a specific way: they exercise the code the agent just wrote, with expected values computed by the same logic, so they pass by construction. Three practices raise the bar.
+
+**Name the edge cases yourself.** Before asking for tests, list the cases that matter from the requirement: boundaries (exactly 10 units, exactly 50), empty and maximum inputs, invalid inputs that must be rejected, the interactions between rules (does making promo codes case-insensitive bypass the expiry check?). Ask for tests with literal expected values worked out from the spec. This is a few minutes of your judgment, and it's the part an agent is least able to supply because it requires knowing what the business meant.
+
+**Measure branch coverage, not just line coverage.** The coverage.py docs explain that branch measurement tracks whether each possible jump (both sides of an `if`) was taken, so it reveals untested paths that line coverage reports as covered. Run it after the agent's tests and ask for tests for the missing branches. Treat the number as a map of what's untested, not a target to hit.
+
+**Use properties for whole classes of inputs.** Property-based testing tools such as Hypothesis generate many inputs and check that a stated property holds (for example, a discount never makes a price negative, and a larger quantity never costs less per unit within a tier). Properties are hard to game with special cases, because the inputs aren't known in advance.
+</Listen>
+
+<GoDeeper title="Mutation testing: testing the tests">
+A stricter check of test quality is mutation testing: a tool makes small changes to the code (flip `>` to `>=`, change a constant, delete a line) and reruns the tests; a mutation that no test catches marks a gap. It's slow on large codebases but useful on a critical module, and it pairs naturally with agents, because an agent can be asked to add a test for each surviving mutant and the tool verifies the result. The lab's seeded bugs are, in effect, hand-made mutants: the bulk-tier boundary (`>` instead of `>=`), the rounding rule, and the case-sensitivity of promo codes. Ask yourself which of your current tests would have caught each one.
+</GoDeeper>
+
+<Listen>
+## The contract, summarized
+
+Write or approve the test before the fix, and see it fail for the right reason. Commit it. Ask for the implementation with the tests held fixed and evidence required. Enforce the check with a Stop hook and CI, so it doesn't depend on the agent remembering. Protect existing tests with layers (instructions, deny rules, a hook, holdout tests, review rules), and review any test change before the code change. Raise coverage where it counts: human-named edge cases, branch coverage as a map, and properties for whole classes of inputs. The lab lets you watch the difference these make on the same task.
+</Listen>

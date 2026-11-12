@@ -1,0 +1,379 @@
+{
+  "id": "e2-w2",
+  "studio": "e2",
+  "week": 2,
+  "title": "Week 2 quiz: Giving agents context",
+  "questions": [
+    {
+      "id": "e2w2-q1",
+      "type": "multi",
+      "prompt": "Which lines pass the best-practices test (\"could it find this by reading the code, and would it go and look?\") for a project CLAUDE.md? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "\"Run one test file: `pnpm vitest run path/to/file.test.ts`\"",
+          "correct": true,
+          "rationale": "The command to check work is the most useful line."
+        },
+        {
+          "id": "b",
+          "text": "\"We use React for the frontend.\"",
+          "rationale": "The agent sees this immediately in package.json."
+        },
+        {
+          "id": "c",
+          "text": "\"`src/legacy/` is still live; don't copy its patterns\"",
+          "correct": true,
+          "rationale": "The code misleads here; only a person knows."
+        },
+        {
+          "id": "d",
+          "text": "\"Integration tests need DATABASE_URL; see .env.example\"",
+          "correct": true,
+          "rationale": "A gotcha that costs a failed run to rediscover."
+        },
+        {
+          "id": "e",
+          "text": "\"Always write high-quality, maintainable code\"",
+          "rationale": "Vague and unverifiable."
+        }
+      ],
+      "explanation": "Write down what the agent can't learn from the repo or would waste time rediscovering: commands, misleading spots, decisions made outside the code, and anything corrected twice.",
+      "week": 2,
+      "tags": [
+        "claude-md"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e2w2-q2",
+      "type": "predict-output",
+      "prompt": "This is a simplified version of how Claude Code decides whether to read AGENTS.md by default. What does it print?",
+      "code": "def project_instructions(files):\n    claude_files = [f for f in files if f in (\"CLAUDE.md\", \".claude/CLAUDE.md\", \"CLAUDE.local.md\")]\n    if claude_files:\n        return claude_files\n    return [f for f in files if f == \"AGENTS.md\"]\n\nprint(project_instructions([\"AGENTS.md\", \"CLAUDE.local.md\", \"README.md\"]))\n",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`['CLAUDE.local.md']`",
+          "correct": true,
+          "rationale": "Any CLAUDE.md, .claude/CLAUDE.md, or CLAUDE.local.md on the path means AGENTS.md isn't read by default."
+        },
+        {
+          "id": "b",
+          "text": "`['AGENTS.md', 'CLAUDE.local.md']`",
+          "rationale": "That's the non-default claude-md-and-agents-md setting."
+        },
+        {
+          "id": "c",
+          "text": "`['AGENTS.md']`",
+          "rationale": "CLAUDE.local.md counts."
+        },
+        {
+          "id": "d",
+          "text": "`[]`",
+          "rationale": "Something is always read when instruction files exist."
+        }
+      ],
+      "explanation": "The trap: adding a personal CLAUDE.local.md to an AGENTS.md project stops Claude reading the team file. Use a CLAUDE.md that imports `@AGENTS.md`, or change the Project instructions setting.",
+      "week": 2,
+      "tags": [
+        "agents-md",
+        "claude-md"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w2-q3",
+      "type": "scenario",
+      "prompt": "Your CLAUDE.md is 450 lines: a directory tour, the full release runbook, frontend rules, backend rules, and \"IMPORTANT\" in a dozen places. The agent misses rules often. What's the best restructuring?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Add more IMPORTANT markers to the rules it misses.",
+          "rationale": "The docs say emphasis mostly causes over-application; long files lose lines."
+        },
+        {
+          "id": "b",
+          "text": "Delete the directory tour, move the runbook to a skill, move frontend and backend rules into path-scoped `.claude/rules/` files, move zero-exception rules to hooks or deny rules, and keep CLAUDE.md under 200 lines.",
+          "correct": true,
+          "rationale": "Each kind of content goes to the mechanism that loads it when needed or enforces it."
+        },
+        {
+          "id": "c",
+          "text": "Split it into five files imported with `@path`.",
+          "rationale": "Imports organize content but don't reduce context cost; all of it still loads."
+        },
+        {
+          "id": "d",
+          "text": "Move everything into the user-level ~/.claude/CLAUDE.md.",
+          "rationale": "Then teammates lose it, and it still loads every session."
+        }
+      ],
+      "explanation": "CLAUDE.md for facts every task needs; skills for procedures; path rules for one part of the codebase; hooks and deny rules for must-never. Shorter files get followed more reliably.",
+      "week": 2,
+      "tags": [
+        "claude-md",
+        "skills",
+        "rules"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w2-q4",
+      "type": "mcq",
+      "prompt": "What does exit code 2 from a **Stop** hook do in Claude Code?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ends the session immediately",
+          "rationale": "It does the opposite of letting Claude stop."
+        },
+        {
+          "id": "b",
+          "text": "Prevents Claude from stopping and continues the conversation, with the hook's stderr as the reason",
+          "correct": true,
+          "rationale": "That's what makes a Stop hook a gate, such as \"not done until tests pass.\""
+        },
+        {
+          "id": "c",
+          "text": "Rolls back the last edit",
+          "rationale": "Hooks don't undo edits."
+        },
+        {
+          "id": "d",
+          "text": "Has no effect; only PreToolUse can block",
+          "rationale": "Stop is one of the events exit 2 can block."
+        }
+      ],
+      "explanation": "Exit 2 blocks on PreToolUse (the call), Stop (finishing), and UserPromptSubmit (the prompt); on PostToolUse it can only feed stderr back to Claude. Check `stop_hook_active` to avoid loops; Claude Code also caps consecutive Stop blocks.",
+      "week": 2,
+      "tags": [
+        "hooks"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e2w2-q5",
+      "type": "code-reading",
+      "prompt": "This hooks configuration is meant to run the linter after every file edit. Why doesn't it work?",
+      "code": "{\n  \"hooks\": {\n    \"postToolUse\": [\n      {\n        \"matcher\": \"Edit|Write\",\n        \"hooks\": [{ \"type\": \"command\", \"command\": \"npm run lint\" }]\n      }\n    ]\n  }\n}\n",
+      "language": "json",
+      "options": [
+        {
+          "id": "a",
+          "text": "The event name is misspelled; it must be `PostToolUse`.",
+          "correct": true,
+          "rationale": "Event names are case-sensitive, and unrecognized keys are easy to miss. A shape check like the lab's catches this."
+        },
+        {
+          "id": "b",
+          "text": "Matchers can't contain a pipe character.",
+          "rationale": "`Edit|Write` is the documented pattern."
+        },
+        {
+          "id": "c",
+          "text": "Command hooks must be written in JavaScript.",
+          "rationale": "Any shell command works."
+        },
+        {
+          "id": "d",
+          "text": "Hooks only work in user settings, not project settings.",
+          "rationale": "Project `.claude/settings.json` hooks are shared with the repo."
+        }
+      ],
+      "explanation": "Validate hooks config the way you'd validate any config: JSON syntax, known event names, matcher groups with a `hooks` list, and handlers with a type and command. Then confirm with `/hooks` that it's registered.",
+      "week": 2,
+      "tags": [
+        "hooks"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w2-q6",
+      "type": "scenario",
+      "prompt": "You keep pasting the same 10-step \"debug a production incident\" playbook into chat. It involves reading logs and dashboards but no writes. What should you build?",
+      "options": [
+        {
+          "id": "a",
+          "text": "A skill whose description says when to use it (\"investigate a production incident or alert\"), with the playbook in SKILL.md",
+          "correct": true,
+          "rationale": "A procedure pasted repeatedly is the documented trigger for a skill; it loads only when relevant."
+        },
+        {
+          "id": "b",
+          "text": "A PostToolUse hook",
+          "rationale": "Hooks run on lifecycle events, not on demand for a procedure."
+        },
+        {
+          "id": "c",
+          "text": "Add it to CLAUDE.md",
+          "rationale": "It would cost context in every unrelated session."
+        },
+        {
+          "id": "d",
+          "text": "An MCP server",
+          "rationale": "MCP connects systems; the playbook is knowledge. A skill can use an MCP server if the logs need one."
+        }
+      ],
+      "explanation": "Skills hold procedures and reference material; CLAUDE.md holds what every session needs. Because this playbook has no side effects, letting Claude invoke it automatically is fine; for side-effect workflows, set `disable-model-invocation: true`.",
+      "week": 2,
+      "tags": [
+        "skills"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w2-q7",
+      "type": "multi",
+      "prompt": "Which statements about Claude Code subagents match the docs? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "A `tools` allowlist in the subagent's frontmatter is enforced by Claude Code.",
+          "correct": true,
+          "rationale": "Restriction by configuration, not by request."
+        },
+        {
+          "id": "b",
+          "text": "Delegating a task to a subagent makes the answer smarter.",
+          "rationale": "The docs say it's the same or a smaller model; you get parallelism or a fresh view, not a better answer."
+        },
+        {
+          "id": "c",
+          "text": "Each subagent's requests count against the same usage as the main session.",
+          "correct": true,
+          "rationale": "Subagents cost tokens."
+        },
+        {
+          "id": "d",
+          "text": "A fresh reviewer subagent hasn't seen the reasoning that produced the code.",
+          "correct": true,
+          "rationale": "That independence is the point of using one for review."
+        },
+        {
+          "id": "e",
+          "text": "Subagents share the main conversation's context window.",
+          "rationale": "They run in a separate window (forks start from a copy)."
+        }
+      ],
+      "explanation": "Use subagents for isolation, enforced restriction, parallel work, and independent review. Set `model: haiku` for simple jobs to cut cost.",
+      "week": 2,
+      "tags": [
+        "subagents"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w2-q8",
+      "type": "mcq",
+      "prompt": "In plan mode, what happens when Claude presents its plan?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It automatically starts editing after 30 seconds.",
+          "rationale": "Nothing edits until you approve."
+        },
+        {
+          "id": "b",
+          "text": "You can approve and continue in auto mode, approve with manual approval of edits, or keep planning; Ctrl+G opens the plan in your editor first.",
+          "correct": true,
+          "rationale": "That's the documented flow."
+        },
+        {
+          "id": "c",
+          "text": "The plan is discarded unless you save it with /export.",
+          "rationale": "Approval carries the plan into implementation."
+        },
+        {
+          "id": "d",
+          "text": "Claude opens a pull request with the plan.",
+          "rationale": "Plan mode is local and read-only for source files."
+        }
+      ],
+      "explanation": "Read the plan like a design doc (files, risks, verification, extras), edit it, and only then approve.",
+      "week": 2,
+      "tags": [
+        "planning"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e2w2-q9",
+      "type": "scenario",
+      "prompt": "You're running four agent sessions in parallel worktrees. Two finish with diffs that both change `api/routes.py`, and you have an hour of review time today. What's the best move?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Merge both and let git resolve the conflict.",
+          "rationale": "A textual merge can produce code neither spec describes."
+        },
+        {
+          "id": "b",
+          "text": "Review and merge one, then have the second session rebase onto it and rerun its checks before you review it; next time, sequence tasks that touch the same file.",
+          "correct": true,
+          "rationale": "Serializing shared-file work avoids an unchecked semantic merge; your review capacity is the real limit."
+        },
+        {
+          "id": "c",
+          "text": "Ask a fifth agent to merge all four branches at once.",
+          "rationale": "That creates the largest, least reviewable diff of all."
+        },
+        {
+          "id": "d",
+          "text": "Start four more sessions to use the time while you review.",
+          "rationale": "More streams than you can review just queues unreviewed code."
+        }
+      ],
+      "explanation": "Parallel agents multiply output, not review capacity. Isolate with worktrees, sequence work that shares files, and cap concurrency at what you can review.",
+      "week": 2,
+      "tags": [
+        "worktrees",
+        "planning"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e2w2-q10",
+      "type": "multi",
+      "prompt": "Which belong in a good task spec for an agent? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Acceptance criteria with specific inputs and observable outputs",
+          "correct": true,
+          "rationale": "Each one translates into a test you can write before the code."
+        },
+        {
+          "id": "b",
+          "text": "Non-goals, such as \"no new dependencies\" and \"no changes to the public API\"",
+          "correct": true,
+          "rationale": "Prevents scope creep and states where your ambition ends."
+        },
+        {
+          "id": "c",
+          "text": "A definition of done the agent can run (a test file plus the full suite)",
+          "correct": true,
+          "rationale": "Lets the agent close its own loop and gives you evidence to check."
+        },
+        {
+          "id": "d",
+          "text": "A request that the code be \"robust and elegant\"",
+          "rationale": "Unverifiable; it gives the agent nothing to check."
+        },
+        {
+          "id": "e",
+          "text": "Context the code doesn't show, such as a decision from a meeting",
+          "correct": true,
+          "rationale": "Exactly the information the agent can't find by reading."
+        }
+      ],
+      "explanation": "Goal, testable acceptance criteria, non-goals, context, and a runnable definition of done. The same spec becomes the reviewer's yardstick.",
+      "week": 2,
+      "tags": [
+        "planning",
+        "specs"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

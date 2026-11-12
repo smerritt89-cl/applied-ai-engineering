@@ -1,0 +1,279 @@
+# Sources for Elective 1, "Let's Build GPT" (a guided path through Karpathy's Neural Networks: Zero to Hero).
+# Reused from other files (do not redefine here): karpathy-zero-to-hero, vaswani-2017, yt-karpathy-build-gpt,
+# yt-karpathy-tokenizer, yt-3b1b-gpt, yt-3b1b-attention (core.yaml); pytorch-cross-entropy (s5-w3.yaml).
+# Video ids verified with YouTube oEmbed (author Andrej Karpathy, channel @AndrejKarpathy) and against the syllabus
+# links on karpathy.ai/zero-to-hero.html on 2026-11-11. Chapter timestamps cited in lessons come from each video's
+# official description.
+
+# ---------- Zero to Hero videos (embed) ----------
+- id: yt-karpathy-micrograd
+  title: "The spelled-out intro to neural networks and backpropagation: building micrograd"
+  author: Andrej Karpathy (YouTube)
+  url: https://www.youtube.com/watch?v=VMj-3S1tku0
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+- id: yt-karpathy-makemore
+  title: "The spelled-out intro to language modeling: building makemore"
+  author: Andrej Karpathy (YouTube)
+  url: https://www.youtube.com/watch?v=PaCmpygFfXo
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+- id: yt-karpathy-makemore-mlp
+  title: "Building makemore Part 2: MLP"
+  author: Andrej Karpathy (YouTube)
+  url: https://www.youtube.com/watch?v=TCH_1BHY58I
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+- id: yt-karpathy-makemore-batchnorm
+  title: "Building makemore Part 3: Activations & Gradients, BatchNorm"
+  author: Andrej Karpathy (YouTube)
+  url: https://www.youtube.com/watch?v=P6sfmUTpUmc
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+- id: yt-karpathy-backprop-ninja
+  title: "Building makemore Part 4: Becoming a Backprop Ninja"
+  author: Andrej Karpathy (YouTube)
+  url: https://www.youtube.com/watch?v=q8SA3rM6ckI
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+- id: yt-karpathy-wavenet
+  title: "Building makemore Part 5: Building a WaveNet"
+  author: Andrej Karpathy (YouTube)
+  url: https://www.youtube.com/watch?v=t3YJ5hKiMQ0
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+# ---------- Karpathy's code (MIT) ----------
+- id: karpathy-micrograd-repo
+  title: micrograd, a tiny scalar-valued autograd engine
+  author: Andrej Karpathy
+  url: https://github.com/karpathy/micrograd
+  license: MIT
+  licenseUrl: https://github.com/karpathy/micrograd/blob/master/LICENSE
+  policy: adapt
+  kind: repo
+  notes: About 100 lines of engine plus about 50 lines of neural-net library, per its README.
+
+- id: karpathy-makemore-repo
+  title: makemore, character-level language models from bigrams to transformers
+  author: Andrej Karpathy
+  url: https://github.com/karpathy/makemore
+  license: MIT
+  licenseUrl: https://github.com/karpathy/makemore/blob/master/LICENSE
+  policy: adapt
+  kind: repo
+  notes: Includes names.txt (32,033 names from ssa.gov for 2018, per the README).
+
+- id: karpathy-ng-video-lecture
+  title: nanogpt-lecture, the code built in "Let's build GPT"
+  author: Andrej Karpathy
+  url: https://github.com/karpathy/ng-video-lecture
+  license: MIT (stated in the README)
+  policy: adapt
+  kind: repo
+  notes: gpt.py hyperparameters (block_size 256, n_embd 384, 6 heads, 6 layers, dropout 0.2) and a 90/10 train/val split. README notes the video skipped weight initialization; see nanoGPT model.py.
+
+- id: karpathy-nanogpt-repo
+  title: nanoGPT
+  author: Andrej Karpathy
+  url: https://github.com/karpathy/nanoGPT
+  license: MIT
+  licenseUrl: https://github.com/karpathy/nanoGPT/blob/master/LICENSE
+  policy: adapt
+  kind: repo
+  notes: >-
+    README (checked 2026-11-11) marks the repo as old and deprecated as of Nov 2025, pointing to nanochat, but keeps it up.
+    Its shakespeare_char quick start reports best val loss 1.4697 in about 3 minutes on one A100, and a CPU config
+    (4 layers, 4 heads, 128 embd, block 64) reaching about 1.88.
+
+- id: karpathy-minbpe-repo
+  title: minbpe, minimal byte-level Byte Pair Encoding
+  author: Andrej Karpathy
+  url: https://github.com/karpathy/minbpe
+  license: MIT
+  licenseUrl: https://github.com/karpathy/minbpe/blob/master/LICENSE
+  policy: adapt
+  kind: repo
+  notes: The README's "aaabdaaabac" example with 3 merges encodes to [258, 100, 258, 97, 99]. exercise.md holds the staged tokenizer exercise.
+
+- id: openai-tiktoken
+  title: tiktoken, a fast BPE tokenizer for OpenAI models
+  author: OpenAI
+  url: https://github.com/openai/tiktoken
+  license: MIT
+  policy: summarize
+  kind: repo
+
+# ---------- Papers ----------
+- id: rumelhart-1986
+  title: Learning representations by back-propagating errors (Rumelhart, Hinton, and Williams, 1986)
+  author: David E. Rumelhart, Geoffrey E. Hinton, Ronald J. Williams
+  url: https://www.nature.com/articles/323533a0
+  license: Copyright Nature Publishing Group
+  policy: summarize
+  kind: paper
+
+- id: baydin-2018-autodiff
+  title: "Automatic differentiation in machine learning: a survey (Baydin et al., 2018)"
+  author: Atilim Gunes Baydin, Barak A. Pearlmutter, Alexey Andreyevich Radul, Jeffrey Mark Siskind
+  url: https://arxiv.org/abs/1502.05767
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Published in JMLR 2018. Forward versus reverse mode, and why reverse mode suits many-inputs, one-output functions.
+
+- id: bengio-2003-nplm
+  title: A Neural Probabilistic Language Model (Bengio et al., 2003)
+  author: Yoshua Bengio, Rejean Ducharme, Pascal Vincent, Christian Jauvin
+  url: https://www.jmlr.org/papers/v3/bengio03a.html
+  license: JMLR (author copyright, free online)
+  policy: summarize
+  kind: paper
+
+- id: glorot-2010
+  title: Understanding the difficulty of training deep feedforward neural networks (Glorot and Bengio, 2010)
+  author: Xavier Glorot, Yoshua Bengio
+  url: https://proceedings.mlr.press/v9/glorot10a.html
+  license: PMLR (author copyright, free online)
+  policy: summarize
+  kind: paper
+
+- id: he-2015-delving
+  title: "Delving Deep into Rectifiers: Surpassing Human-Level Performance on ImageNet Classification (He et al., 2015)"
+  author: Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
+  url: https://arxiv.org/abs/1502.01852
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: The "Kaiming init" paper linked from the makemore Part 3 description.
+
+- id: ioffe-2015-batchnorm
+  title: "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift (Ioffe and Szegedy, 2015)"
+  author: Sergey Ioffe, Christian Szegedy
+  url: https://arxiv.org/abs/1502.03167
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: wu-2021-rethinking-batch
+  title: Rethinking "Batch" in BatchNorm (Wu and Johnson, 2021)
+  author: Yuxin Wu, Justin Johnson (Facebook AI Research)
+  url: https://arxiv.org/abs/2105.07576
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Linked from the makemore Part 3 description as a paper illustrating practical problems with BatchNorm.
+
+- id: he-2015-resnet
+  title: Deep Residual Learning for Image Recognition (He et al., 2015)
+  author: Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
+  url: https://arxiv.org/abs/1512.03385
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: ba-2016-layernorm
+  title: Layer Normalization (Ba, Kiros, and Hinton, 2016)
+  author: Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+  url: https://arxiv.org/abs/1607.06450
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: srivastava-2014-dropout
+  title: "Dropout: A Simple Way to Prevent Neural Networks from Overfitting (Srivastava et al., 2014)"
+  author: Nitish Srivastava, Geoffrey Hinton, Alex Krizhevsky, Ilya Sutskever, Ruslan Salakhutdinov
+  url: https://jmlr.org/papers/v15/srivastava14a.html
+  license: JMLR (author copyright, free online)
+  policy: summarize
+  kind: paper
+
+- id: kingma-2014-adam
+  title: "Adam: A Method for Stochastic Optimization (Kingma and Ba, 2014)"
+  author: Diederik P. Kingma, Jimmy Ba
+  url: https://arxiv.org/abs/1412.6980
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: oord-2016-wavenet
+  title: "WaveNet: A Generative Model for Raw Audio (van den Oord et al., 2016)"
+  author: Aaron van den Oord et al. (DeepMind)
+  url: https://arxiv.org/abs/1609.03499
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: sennrich-2016-bpe
+  title: Neural Machine Translation of Rare Words with Subword Units (Sennrich, Haddow, and Birch, 2016)
+  author: Rico Sennrich, Barry Haddow, Alexandra Birch
+  url: https://arxiv.org/abs/1508.07909
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: radford-2019-gpt2
+  title: Language Models are Unsupervised Multitask Learners (Radford et al., 2019)
+  author: Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever (OpenAI)
+  url: https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf
+  license: Copyright OpenAI
+  policy: summarize
+  kind: paper
+  notes: The GPT-2 paper. Section 2.2 describes byte-level BPE; section 2.3 gives the 50,257-token vocabulary, 1024-token context, and layer norm moved to the input of each sub-block.
+
+# ---------- Docs and references ----------
+- id: pytorch-nn-init
+  title: torch.nn.init (including calculate_gain)
+  author: PyTorch
+  url: https://docs.pytorch.org/docs/stable/nn.init.html
+  license: BSD-style (PyTorch docs)
+  policy: summarize
+  kind: docs
+  notes: calculate_gain returns 5/3 for tanh and sqrt(2) for ReLU (checked in torch/nn/init.py on 2026-11-11).
+
+- id: pytorch-batchnorm1d
+  title: torch.nn.BatchNorm1d
+  author: PyTorch
+  url: https://docs.pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html
+  license: BSD-style (PyTorch docs)
+  policy: summarize
+  kind: docs
+  notes: Default momentum 0.1; biased variance in the training forward pass, unbiased variance for the running estimate.
+
+- id: goodfellow-2016-dlbook
+  title: Deep Learning (Goodfellow, Bengio, and Courville, 2016)
+  author: Ian Goodfellow, Yoshua Bengio, Aaron Courville
+  url: https://www.deeplearningbook.org/
+  license: Copyright MIT Press (free to read online)
+  policy: summarize
+  kind: book
+  notes: Chapter 6.5 (back-propagation and other differentiation algorithms) and chapter 8 (optimization).
+
+- id: gutenberg-permissions
+  title: "Project Gutenberg: Permission: How to Use Project Gutenberg eBooks"
+  author: Project Gutenberg
+  url: https://www.gutenberg.org/policy/permission.html
+  license: Project Gutenberg site terms
+  policy: summarize
+  kind: docs
+  notes: Most eBooks are public domain in the US; PG follows US law and status can differ in other countries.
+
+- id: gutenberg-robot-access
+  title: "Project Gutenberg: Information About Robot Access to our Pages"
+  author: Project Gutenberg
+  url: https://www.gutenberg.org/policy/robot_access.html
+  license: Project Gutenberg site terms
+  policy: summarize
+  kind: docs
+  notes: The website is for human users; automated access can get an IP blocked; use the mirroring options instead.

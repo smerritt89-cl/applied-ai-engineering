@@ -1,0 +1,302 @@
+---
+id: e2-w3-l8
+studio: e2
+week: 3
+order: 8
+title: Reviewing agent code
+summary: A review checklist for agent-written changes (correctness, security, hidden scope creep, new dependencies, deleted safeguards), reading diffs efficiently, using a fresh session or a second model as a reviewer and where that breaks down, and the security risks specific to coding agents, from prompt injection in repo content to secrets and destructive commands.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Apply a review checklist tuned to the ways agent-written changes go wrong
+  - Read a large diff efficiently by triaging files, reading tests and risky files first, and checking scope against the spec
+  - Use a fresh session, a read-only subagent, or a different model as a reviewer, and explain the limits of model review
+  - Identify prompt-injection paths into a coding agent (repository content, issues, web pages, MCP results) and apply the lethal-trifecta test
+  - Configure permissions, deny rules, and isolation to limit secrets exposure and destructive commands
+  - Build a scanner that flags risky patterns in a diff for human attention
+sources:
+  - { id: e2-google-review-looking-for, use: summarized }
+  - { id: e2-cc-best-practices, use: summarized, where: "Review against your spec; limit access with permission rules and the sandbox; run sessions in parallel" }
+  - { id: e2-cc-code-review-local, use: summarized }
+  - { id: claude-code-subagents-docs, use: summarized }
+  - { id: e2-dora-2025, use: summarized }
+  - { id: e2-spracklen-2024-package-hallucination, use: summarized }
+  - { id: hamel-llm-judge, use: linked }
+  - { id: e2-cc-security, use: summarized }
+  - { id: cc-permissions-docs, use: summarized, where: "Read and Edit rules; what runs before you trust a folder" }
+  - { id: cc-permission-modes-docs, use: summarized, where: "What the auto mode classifier blocks by default" }
+  - { id: cc-sandboxing-docs, use: summarized }
+  - { id: willison-lethal-trifecta, use: summarized }
+  - { id: greshake-2023-indirect-injection, use: summarized }
+  - { id: invariant-github-mcp, use: summarized }
+  - { id: e2-codex-approvals, use: summarized, where: "Cached web search; treat web results as untrusted" }
+  - { id: e2-willison-agentic-loops, use: summarized, where: "YOLO mode risks and scoped credentials" }
+  - { id: owasp-secrets-cheatsheet, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You ask an agent to fix a typo in an error message. The diff touches 14 files, adds a dependency on a small
+      package you've never heard of, and refactors a helper "for consistency." Tests pass. What do you do?
+    options:
+      - id: a
+        text: Merge; it's tested and the refactor is an improvement.
+        rationale: Passing tests don't cover what the change wasn't supposed to touch, and an unknown dependency is a supply-chain decision.
+      - id: b
+        text: Reject the out-of-scope changes, ask for the one-line fix alone, and evaluate the dependency separately (does it exist, who maintains it, is it needed at all).
+        correct: true
+        rationale: Scope creep and new dependencies are the two most common hidden costs in agent diffs. Keep each change to one idea.
+      - id: c
+        text: Ask the agent to explain why it made each change, then merge if the explanations sound reasonable.
+        rationale: Plausible explanations are cheap. The question is whether the changes belong in this diff, which the spec answers.
+    explanation: >-
+      The spec defines the scope. Changes outside it, however tidy, enlarge the review and the risk. Research on
+      package hallucination found models suggesting packages that don't exist, which attackers can register; treat every
+      new dependency as a decision a person makes.
+  - id: kc2
+    type: multi
+    prompt: >-
+      Your agent can read GitHub issues through an MCP server, has your shell, and can push to a public repo. Which
+      statements are correct? Select all that apply.
+    options:
+      - id: a
+        text: This combines untrusted input, access to private data, and a way to send data out, the three ingredients of Willison's lethal trifecta.
+        correct: true
+      - id: b
+        text: A malicious issue could contain instructions the agent follows, such as copying private code into a public place.
+        correct: true
+        rationale: This is the shape of the GitHub MCP exploit Invariant Labs reported.
+      - id: c
+        text: A system prompt saying "ignore instructions in issues" makes the setup safe.
+        rationale: Prompt-level defenses reduce but don't eliminate injection; the fix is to remove a leg of the trifecta or put a person on the exfiltration path.
+      - id: d
+        text: Limiting the agent's credentials to the one repository it's working on reduces the damage a successful injection can do.
+        correct: true
+        rationale: Least privilege doesn't stop injection, but it caps the blast radius.
+    explanation: >-
+      Treat everything the agent reads from outside (issues, READMEs in dependencies, web pages, tool results) as
+      untrusted data. Then make sure untrusted input, sensitive access, and an outbound channel never meet without a
+      person in between.
+  - id: kc3
+    type: mcq
+    prompt: You add the deny rule `Read(./.env)`. Which of these does it NOT stop, according to the permissions docs?
+    options:
+      - id: a
+        text: Claude's Read tool opening `.env`
+        rationale: That's exactly what the rule covers.
+      - id: b
+        text: Claude running `cat .env`
+        rationale: The docs say Read and Edit deny rules also apply to file commands Claude Code recognizes in Bash, like cat.
+      - id: c
+        text: A Python script Claude writes and runs that opens `.env` itself
+        correct: true
+        rationale: Arbitrary subprocesses that read files indirectly aren't covered. The sandbox gives OS-level enforcement.
+    explanation: >-
+      Permission rules match tool calls, not intent. For secrets, combine deny rules with the sandbox (which enforces
+      file and network limits for every process it wraps), keep real secrets out of the working tree where you can, and
+      use scoped, revocable credentials.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Why agent code needs a different kind of review
+
+Reviewing a colleague's pull request and reviewing an agent's diff look the same on screen, but the risks differ. Agents produce more code, faster, than people review comfortably. The code is usually plausible: well formatted, idiomatic, with confident comments and a tidy summary. And the failure modes are distinctive: doing more than asked, quietly weakening a safeguard to make something work, adding a dependency, satisfying a test rather than the requirement, or following an instruction that came from a file rather than from you.
+
+The DORA 2025 report's central finding is a useful frame: AI acts as an amplifier of an organization's existing strengths and weaknesses. A team with disciplined review and good tests gets faster; a team that rubber-stamps gets more unreviewed code, faster. Review is where that difference is decided. This lesson gives you a checklist built for agent diffs, a reading order that makes large diffs tractable, honest guidance on model reviewers, and the security picture specific to agents.
+</Listen>
+
+<Listen>
+## The checklist
+
+Google's engineering practices list what reviewers look for: design, functionality, complexity, tests, naming, comments, style, and documentation. Keep that as the base. For agent-written changes, add six questions, in this order:
+
+1. **Does it match the spec, and only the spec?** List the files you expected to change; compare with the files that did. Every extra file needs a reason. "For consistency" refactors, renamed variables, and reformatted files are scope creep: they enlarge the review and hide the real change.
+2. **Did any test change?** Read test diffs first (lesson 7). A changed expectation, a new skip, or a deleted test needs your judgment before anything else means anything.
+3. **Were safeguards removed or weakened?** Look at removed lines, not just added ones: input validation, permission and auth checks, expiry checks, rate limits, error handling replaced by a bare `except: pass`, a `timeout` raised to "fix" a flaky test, a security header dropped. Agents remove obstacles; some obstacles are the point.
+4. **New dependencies?** Any change to `requirements.txt`, `pyproject.toml`, `package.json`, or a lockfile. Spracklen and colleagues (2024) tested 16 code-generating models and found hallucinated package names in at least 5.2% of suggestions on average for commercial models and 21.7% for open-source models; a name that doesn't exist can be registered by an attacker. Check that each package exists, is maintained, and is actually needed.
+5. **Security-sensitive patterns?** Shell commands built from strings, `eval`, disabled certificate checks, secrets or tokens in code, broadened CORS or permissions, SQL built by concatenation, new network calls, changes to CI workflows or agent configuration (`.github/workflows/`, `.claude/settings.json`, hooks).
+6. **Would you understand this in six months?** Agents can write code that works and is still wrong for your codebase: a second way of doing something you already do one way, an abstraction nobody asked for. If you couldn't explain it to a teammate, you can't maintain it.
+</Listen>
+
+<Listen>
+## Reading a big diff efficiently
+
+You can't read every line of every agent diff with equal care, so read in an order that puts your attention where risk is.
+
+**Triage first.** `git diff --stat` (or the file list in your review tool) shows what changed and how much. Compare it with the spec before reading any code. Unexpected files are the first finding.
+
+**Tests before code.** Read the test changes and confirm they encode the requirement (lesson 7). Then you can read the code asking "does this satisfy these tests for the right reason?" rather than "what is this doing?"
+
+**Risky files next.** Anything on checklist items 3 to 5: auth, payments, data deletion, migrations, dependency manifests, CI and agent configuration. Read these line by line.
+
+**Mechanical changes last, and separately.** Renames and formatting hide logic changes. Ask for them in separate commits, and use `git diff -w` to ignore whitespace-only changes when reading logic.
+
+**Run it.** Check out the branch and exercise the behavior, especially for user-facing changes. Claude Code's bundled `/verify` skill builds and runs the app to look at the result, which catches problems tests miss, but you should still look yourself at anything a user will see.
+
+**Ask for evidence, not reassurance.** If the agent's summary says "handled the edge case," find the test that proves it.
+</Listen>
+
+<Callout type="pitfall" title="Reviewing the summary instead of the diff">
+Agent summaries are fluent and organized, and they describe what the agent intended, which is not always what it did. The most common review failure with agents is reading the summary, skimming the diff for anything alarming, and approving. Use the summary as a map of claims to verify: for each claim, find the line or test that backs it. Anything in the diff the summary doesn't mention deserves the closest look.
+</Callout>
+
+<Listen>
+## A second reviewer: fresh sessions, subagents, other models
+
+An independent reviewer catches what the author missed, and with agents you can get one cheaply. The best-practices page describes three ways. Claude Code's `/code-review` reviews the diff in a fresh subagent that never saw your conversation, so it isn't swayed by the reasoning that produced the code. A custom read-only reviewer subagent (lesson 5) does the same with your own brief, and can't edit anything. Or open a second session, have it review the files, and carry the findings back yourself: the writer-reviewer pattern.
+
+Three things make model review useful rather than noisy. **Give it the spec**, and ask it to check that every requirement is implemented and each listed edge case has a test. **Narrow the question** to correctness and the checklist items above, and tell it to skip style. The docs warn that a reviewer asked to find problems will always find something, and fixing every finding leads to needless abstraction and tests for impossible cases. **Make it independent**: a fresh context at minimum, and for high-stakes changes, consider a different model family, whose errors are less likely to be correlated with the author's.
+
+Then remember what Studio 3 established about model judges: they have biases, they agree with people often but not always, and they need calibration against human labels before you rely on them. A model reviewer is a filter that raises issues for you to judge. It is not the approval. The best-practices page's own table puts "a person who approves the merge" and branch protection in the deterministic column; the model's summary of its work is in the other one.
+</Listen>
+
+<Mermaid
+  alt="Review pipeline for an agent-written change: automated checks run first (tests, lint, typecheck, a risky-diff scan, and a test-tampering scan); failures go back to the agent. Then a model reviewer in a fresh context compares the diff with the spec and reports correctness gaps. Then a person reviews in risk order: file list against the spec, test changes, risky files, the rest, and runs the change. Only the person approves the merge, which branch protection enforces."
+  caption="Cheap automated checks first, a fresh model reviewer as a filter, and a person with the final say."
+  chart={`flowchart TD
+  D["Agent's diff"] --> A{"Automated: tests, lint, risky-diff scan, tamper scan"}
+  A -- "fail" --> X["Back to the agent"]
+  A -- "pass" --> R["Fresh-context model reviewer vs SPEC.md"]
+  R --> H["Person: file list vs spec, tests, risky files, run it"]
+  H -- "changes needed" --> X
+  H -- "approve" --> M["Merge (branch protection requires the approval)"]`}
+/>
+
+<PyRunner
+  client:visible
+  id="e2-w3-risky-diff-scan"
+  title="Flag risky patterns in a diff"
+  starter={`DEP_FILES = ("requirements.txt", "pyproject.toml", "package.json", "poetry.lock", "package-lock.json", "uv.lock")
+CONFIG_PREFIXES = (".github/workflows/", ".claude/", ".mcp.json")
+SAFEGUARD_WORDS = ("raise ", "assert ", "permission", "authorize", "is_authenticated", "expire", "validate")
+DANGER_ADDED = ("shell=True", "eval(", "verify=False", "rm -rf", "chmod 777")
+SECRET_MARKERS = ("AKIA", "sk-", "BEGIN PRIVATE KEY", "ghp_")
+
+def scan(diff_text, allowed_paths):
+    """Return sorted, de-duplicated (path, kind) findings for a unified diff.
+    allowed_paths: the files the spec says may change.
+    Kinds:
+      "out-of-scope"      a changed file (from "+++ b/<path>") not in allowed_paths
+      "dependency"        a changed file whose name is in DEP_FILES (in addition to out-of-scope, if it applies)
+      "agent-config"      a changed file whose path starts with any CONFIG_PREFIXES entry
+      "removed-safeguard" a removed line (starts with "-" but not "---") containing any SAFEGUARD_WORDS
+      "swallowed-error"   an added line whose stripped text is "except:" or starts with "except Exception"
+                          and the NEXT added line's stripped text is "pass"
+      "dangerous-call"    an added line containing any DANGER_ADDED string
+      "possible-secret"   an added line containing any SECRET_MARKERS string
+    A new file shows as "+++ b/<path>" after "--- /dev/null"; a deleted file as "+++ /dev/null" (skip those lines)."""
+    # TODO
+    pass
+
+DIFF = """--- a/pricing.py
++++ b/pricing.py
+@@ -60,8 +60,6 @@
+-    if expires is not None and today > expires:
+-        raise PricingError(f"promo code {code!r} expired")
+     return promo["percent"]
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1 +1,2 @@
+ pytest
++fastround==0.1.2
+--- a/utils/net.py
++++ b/utils/net.py
+@@ -3,3 +3,6 @@
++    try:
++        resp = requests.get(url, verify=False)
++    except Exception:
++        pass
+--- a/.claude/settings.json
++++ b/.claude/settings.json
+@@ -2,1 +2,1 @@
+-    "deny": ["Edit(/tests/**)"]
++    "deny": []
+"""
+for f in scan(DIFF, allowed_paths={"pricing.py"}) or []:
+    print(f)
+`}
+  tests={`f = scan(DIFF, allowed_paths={"pricing.py"})
+assert f is not None, "scan returned None"
+assert ("pricing.py", "removed-safeguard") in f, "the expiry check was deleted"
+assert ("requirements.txt", "dependency") in f and ("requirements.txt", "out-of-scope") in f
+assert ("utils/net.py", "dangerous-call") in f, "verify=False disables TLS checks"
+assert ("utils/net.py", "swallowed-error") in f
+assert (".claude/settings.json", "agent-config") in f, "an agent loosening its own guardrails needs a person"
+assert ("pricing.py", "out-of-scope") not in f
+assert f == sorted(set(f)), "sorted and de-duplicated"
+secret = "--- /dev/null\\n+++ b/config.py\\n@@ -0,0 +1 @@\\n+API_KEY = 'sk-live-abc123'\\n"
+assert ("config.py", "possible-secret") in scan(secret, allowed_paths={"config.py"})
+clean = "--- a/pricing.py\\n+++ b/pricing.py\\n@@ -1 +1 @@\\n-    return int(round(x))\\n+    return (x + 50) // 100\\n"
+assert scan(clean, allowed_paths={"pricing.py"}) == [], "a focused fix produces no findings"`}
+  solution={`def scan(diff_text, allowed_paths):
+    findings, path = set(), None
+    lines = diff_text.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("+++ "):
+            target = line[4:].strip()
+            if target == "/dev/null":
+                path = None
+                continue
+            path = target[2:] if target.startswith("b/") else target
+            if path not in allowed_paths:
+                findings.add((path, "out-of-scope"))
+            if path.split("/")[-1] in DEP_FILES:
+                findings.add((path, "dependency"))
+            if any(path.startswith(p) for p in CONFIG_PREFIXES):
+                findings.add((path, "agent-config"))
+            continue
+        if path is None or line.startswith("---"):
+            continue
+        if line.startswith("-"):
+            if any(w in line for w in SAFEGUARD_WORDS):
+                findings.add((path, "removed-safeguard"))
+        elif line.startswith("+"):
+            text = line[1:]
+            s = text.strip()
+            if any(d in text for d in DANGER_ADDED):
+                findings.add((path, "dangerous-call"))
+            if any(m in text for m in SECRET_MARKERS):
+                findings.add((path, "possible-secret"))
+            if s == "except:" or s.startswith("except Exception"):
+                nxt = lines[i + 1] if i + 1 < len(lines) else ""
+                if nxt.startswith("+") and nxt[1:].strip() == "pass":
+                    findings.add((path, "swallowed-error"))
+    return sorted(findings)`}
+>
+Write `scan`, then press **Check my answer**. The sample is the lab's ticket done badly: the promo fix "worked" by deleting the expiry check, a dependency appeared, an unrelated file disabled TLS verification and swallowed errors, and the agent loosened its own deny rule. A scanner like this doesn't approve anything; it routes attention, so a reviewer looks at these lines first. Run it in CI and on your own agent diffs, and expect false positives (a removed `raise` can be a legitimate refactor). Then ask what it can't see: a subtle logic error, which only tests and careful reading catch.
+</PyRunner>
+
+<Listen>
+## Security risks specific to coding agents
+
+A coding agent combines three things that are each manageable alone: it reads untrusted text, it has access to your code and often your secrets, and it can run commands and reach the network. Simon Willison's **lethal trifecta** names the dangerous combination: private data, exposure to untrusted content, and the ability to communicate externally. When all three meet, an attacker who controls some of the content can try to steer the agent into sending the data out.
+
+**Prompt injection through what the agent reads.** Greshake and colleagues (2023) showed indirect injection: instructions planted in content an LLM application retrieves can hijack it. For a coding agent, the content is everywhere: a README or code comment in a dependency, an issue or pull request description, a web page it fetched for documentation, a tool result from an MCP server. Invariant Labs reported an attack on the GitHub MCP integration in which a malicious issue in a public repository led an agent to pull data from the user's private repositories into a public pull request. Codex's docs make the same point from the vendor side: they default web search to a cached index to reduce exposure, and tell you to treat web results as untrusted.
+
+**What Claude Code does about it**, per its security docs: network commands like `curl` and `wget` aren't auto-approved by default; most web fetches go through a separate model call that summarizes the page rather than handing Claude the raw text; a workspace trust dialog appears in folders you haven't trusted; project MCP servers need their own approval. In auto mode, the classifier blocks by default things like downloading and executing code, sending sensitive data to external endpoints, production deploys, force pushes, and destructive git commands, and the best-practices page lists actions that look driven by content Claude read rather than by you among the things it watches for. The docs are also clear that no system is immune and that auto mode is a model's judgment, so your "never" rules belong in deny rules and hooks.
+
+**Secrets.** Deny rules such as `Read(./.env)` and `Read(./secrets/**)` block Claude's file tools and recognized shell file commands, but not a script that opens the file itself; the sandbox adds OS-level enforcement for the commands it wraps. Better still, keep production secrets off the machine the agent runs on, and give it scoped, revocable credentials for test environments. Willison's advice for running agents with few prompts is to use exactly that: credentials for test or staging, tight budgets on anything that can spend money, and a container or remote environment rather than your laptop.
+
+**Destructive commands.** Checkpoints don't undo remote effects (lesson 1). Keep force pushes, migrations, deploys, and deletions behind a person: deny or ask rules for the commands, branch protection on `main`, and, for unattended runs, a disposable environment. And remember that repository configuration is itself an attack surface: a cloned repo's hooks run in `claude -p` sessions without a trust dialog, so read `.claude/` and `.mcp.json` before running an agent on code you didn't write.
+</Listen>
+
+```json
+{
+  "permissions": {
+    "deny": ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)", "Bash(git push --force *)", "Edit(/.github/workflows/**)"],
+    "ask": ["Bash(git push *)", "Bash(curl *)", "WebFetch"],
+    "allow": ["Bash(python3 -m pytest *)", "Bash(git diff *)", "Bash(git status)"]
+  }
+}
+```
+
+<GoDeeper title="Breaking the trifecta in practice">
+The durable defense is architectural: make sure the three legs don't meet without a person. Options, from least to most disruptive: remove the outbound channel during sessions that read untrusted content (deny network commands and web fetches, or use the sandbox's network allowlist); remove the private data (run the agent in a container or cloud environment that holds only the repository it needs and test credentials); or separate the roles (a read-only agent summarizes untrusted issues for you, and a different session with write access acts only on what you approve). Studio 4's security lessons cover the design patterns behind these choices in depth. The same habits that limit injection also limit plain mistakes: least privilege, reversible actions, and a human on every irreversible step.
+</GoDeeper>
+
+<Listen>
+## Your review routine
+
+Before reading: compare the file list with the spec. Then: test changes, removed lines in risky files, dependency and config changes, security patterns, then the rest, with whitespace ignored. Run the change. Use a fresh-context reviewer with the spec and a narrow brief as a filter, and make your own decision. For security: assume anything the agent reads from outside may contain instructions, keep the trifecta from meeting, protect secrets with deny rules plus isolation, and keep irreversible actions for a person. The goal isn't to distrust the agent's code more than a colleague's. It's to review it the way its specific failure modes demand.
+</Listen>

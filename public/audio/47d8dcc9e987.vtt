@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.027
+What embeddings miss, and how to check.
+
+2
+00:00:02.307 --> 00:00:08.344
+A single vector per passage compresses a lot of text into a few kilobytes, and something has to give.
+
+3
+00:00:08.624 --> 00:00:20.165
+Be suspicious of how well an embedding represents exact identifiers (error codes, SKUs, ticket numbers), rare names, numbers, and fine logical distinctions such as negation.
+
+4
+00:00:20.445 --> 00:00:34.803
+Don’t assume either way: test pairs from your own data, such as “error E-417” against the article about E-417 and the article about E-416, and see whether the scores separate them.
+
+5
+00:00:35.083 --> 00:00:37.259
+The research gives a reason for caution.
+
+6
+00:00:37.539 --> 00:00:54.861
+The BEIR benchmark (Thakur and colleagues, 2021) evaluated retrieval systems on 18 datasets from domains they weren’t trained on, and found BM25 keyword search was a robust baseline that dense retrievers often failed to beat out of domain.
+
+7
+00:00:55.141 --> 00:01:03.461
+Models have improved a lot since, but the lesson stands: semantic and keyword search fail differently, which is why week 3 combines them.
+
+8
+00:01:03.741 --> 00:01:09.629
+The checks and balances for this lesson are simple and worth doing every time you touch embeddings.
+
+9
+00:01:09.909 --> 00:01:15.541
+Look at actual nearest neighbors for a handful of real queries, not just aggregate scores.
+
+10
+00:01:15.821 --> 00:01:20.131
+Confirm vector norms (if the docs say unit length, assert it in a test).
+
+11
+00:01:20.411 --> 00:01:25.061
+And confirm the metric your vector store uses matches the one your model expects.
+
+12
+00:01:25.341 --> 00:01:29.203
+Lesson 2 turns “look at neighbors” into a measured evaluation.

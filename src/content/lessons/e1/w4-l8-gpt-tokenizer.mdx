@@ -1,0 +1,302 @@
+---
+id: e1-w4-l8
+studio: e1
+week: 4
+order: 8
+title: "Let's build the GPT tokenizer: bytes, BPE, and why tokens explain odd behavior"
+summary: The stage before the model. Unicode code points and UTF-8 bytes, byte-level Byte Pair Encoding trained from scratch, encode and decode, the vocabulary-size trade-off, GPT-2's regex pre-splitting and special tokens, and the model quirks that trace back to tokenization, with what they mean for cost and model choice.
+estMinutes: 175
+reviewed: 2026-11-11
+objectives:
+  - Explain the difference between Unicode code points and UTF-8 bytes, and why byte-level tokenizers start from 256 tokens
+  - Implement BPE training, encoding (merges applied in rank order), and decoding (with invalid UTF-8 handled)
+  - Analyze the vocabulary-size trade-off between sequence length and the size and training of the embedding and output layers
+  - Explain why GPT-2 splits text with a regex before merging, and what special tokens are
+  - Connect specific model quirks (spelling, arithmetic, non-English cost) to tokenization, and measure token counts rather than assume them
+sources:
+  - { id: yt-karpathy-tokenizer, use: embedded }
+  - { id: karpathy-zero-to-hero, use: adapted, where: "Let's build the GPT Tokenizer" }
+  - { id: karpathy-minbpe-repo, use: adapted, where: "BasicTokenizer design, README example, and exercise.md" }
+  - { id: sennrich-2016-bpe, use: summarized }
+  - { id: radford-2019-gpt2, use: summarized, where: "Section 2.2, input representation; section 2.3, vocabulary size" }
+  - { id: openai-tiktoken, use: summarized }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      s = "naïve 😀"
+      print(len(s), len(s.encode("utf-8")))
+    options:
+      - id: a
+        text: "`7 7`"
+        rationale: Code points and bytes coincide only for ASCII text.
+      - id: b
+        text: "`6 11`"
+        rationale: The space is a code point too, so there are 7.
+      - id: c
+        text: "`7 11`"
+        correct: true
+        rationale: "7 code points. In UTF-8, 'ï' takes 2 bytes and the emoji takes 4, so 5 ASCII bytes + 2 + 4 = 11."
+    explanation: >-
+      A byte-level tokenizer starts from UTF-8 bytes, so non-ASCII text begins life as more symbols than characters.
+      Merges recover some of that for text well represented in the tokenizer's training data, and less for text that
+      isn't, which is one reason the same content can cost different numbers of tokens in different languages.
+  - id: kc2
+    type: mcq
+    prompt: "Why do byte-level BPE tokenizers (as in GPT-2) start from 256 base tokens rather than from Unicode characters?"
+    options:
+      - id: a
+        text: Because English has 256 common characters.
+        rationale: The 256 comes from bytes, not from any language.
+      - id: b
+        text: Every string is a sequence of bytes, so 256 base tokens can represent any text without an unknown token, while a code-point base vocabulary would need well over 100,000 entries.
+        correct: true
+        rationale: "The GPT-2 paper makes this argument: a Unicode base would exceed 130,000 symbols before any merges."
+      - id: c
+        text: Because 256 is the maximum vocabulary a transformer can embed.
+        rationale: GPT-2's vocabulary has 50,257 entries. Any size works; it's a trade-off.
+    explanation: >-
+      Bytes give complete coverage with a tiny base. BPE merges then add frequent multi-byte chunks on top, up to the
+      chosen vocabulary size (GPT-2: 50,257, which the lecture breaks down as 256 bytes, 50,000 merges, and one special token).
+  - id: kc3
+    type: scenario
+    prompt: >-
+      You're estimating the cost of running a support-ticket classifier on tickets in English, Japanese, and Hindi,
+      using two different providers' models. A colleague estimates tokens as characters divided by 4 for everything.
+      What do you do?
+    options:
+      - id: a
+        text: Tokenize a sample of real tickets in each language with each provider's own tokenizer or token-counting tool, and estimate from measured counts.
+        correct: true
+        rationale: Token counts depend on the tokenizer and on how well its training data covered each language. Measure, per language and per model.
+      - id: b
+        text: Accept it; tokens are roughly 4 characters in every language and every model.
+        rationale: That rule of thumb is for English with a particular tokenizer. It can be far off for other scripts and other tokenizers.
+      - id: c
+        text: Use the cheapest model's tokenizer for all estimates, since tokens are interchangeable.
+        rationale: Each model family has its own tokenizer; the same text produces different counts.
+    explanation: >-
+      Tokenization is a separate, trained stage, so its efficiency mirrors its training data. Cost, context-window
+      usage, and latency are all in tokens, which makes measured token counts per language a legitimate input to model
+      selection, alongside quality.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The stage you didn't build last lesson
+
+Your Shakespeare GPT read characters: a vocabulary of a few dozen symbols, one per character. Production language models don't. They read **tokens** from a vocabulary of tens or hundreds of thousands of chunks, produced by a separate component, the tokenizer, which has its own training data and its own training algorithm. The lecture's description stresses that it is a completely separate stage of the pipeline, with exactly two jobs after training: encode strings to tokens, and decode tokens back to strings.
+
+This lecture is about that stage, and it's the most directly useful one in the series for an applied engineer. Token counts are what you pay for, what context windows are measured in, and what latency scales with. And, as the lecture shows in its last half hour, a surprising number of odd model behaviors trace back to how text was cut into tokens.
+
+The lecture builds the GPT-2 tokenizer from scratch. Its companion repository, `minbpe` (MIT), contains the finished code, and its `exercise.md` lays out the build in stages so you can try each one before watching the answer.
+</Listen>
+
+<Video id="zduSFxRajkE" title="Let's build the GPT Tokenizer" channel="Andrej Karpathy" minutes={134} source="https://karpathy.ai/zero-to-hero.html">
+The whole video; the second half can be watched at higher speed if you're short on time. Things to watch for:
+
+- **14:56 to 22:47:** strings as Unicode code points, and the UTF-8, UTF-16, and UTF-32 encodings. Why UTF-8.
+- **23:50 to 39:20:** the BPE algorithm: count pairs, merge the most common, repeat; and the compression ratio as you train.
+- **42:47 and 48:21:** decode and encode. Note what can go wrong in decode, and the order merges are applied in encode.
+- **57:36 to 01:18:26:** GPT-2's regex pre-splitting, tiktoken, and special tokens.
+- **01:43:27:** how to choose the vocabulary size, revisiting the GPT you just built.
+- **01:51:41:** the tour of tokenization-related quirks.
+</Video>
+
+<Listen>
+## Code points and bytes
+
+A Python string is a sequence of Unicode **code points**, integers assigned to characters by the Unicode standard (`ord("a")` is 97, and an emoji's code point is above 100,000). There are well over a hundred thousand assigned code points, and the standard keeps growing, so code points make an awkward base vocabulary.
+
+**UTF-8** encodes each code point as 1 to 4 bytes: ASCII characters take 1 byte, most Latin, Greek, and Cyrillic letters with accents take 2, most Chinese, Japanese, and Korean characters take 3, and emoji take 4. It's backward compatible with ASCII and dominant on the web, which is why the lecture prefers it over UTF-16 and UTF-32.
+
+The GPT-2 paper (Radford and colleagues, 2019, section 2.2) gives the argument for a byte-level base: a tokenizer working on code points would need a base vocabulary of over 130,000 symbols before adding any multi-symbol tokens, whereas bytes need only 256, and any string at all can be represented. Feeding raw bytes straight into a model would make sequences long (one token per byte), so BPE compresses them. The lecture's "daydreaming" aside at 22:47 notes that deleting tokenization and modeling raw bytes would be cleaner if the sequence-length cost could be solved.
+</Listen>
+
+```text
+BPE training (byte level), target vocabulary size V:
+  ids    = list(text.encode("utf-8"))           # integers 0..255
+  merges = {}                                   # (a, b) -> new id
+  for new_id in 256 .. V-1:
+      pair   = most frequent adjacent pair in ids
+      ids    = ids with every occurrence of pair replaced by new_id
+      merges[pair] = new_id
+
+encode(text):  start from UTF-8 bytes; repeatedly merge the adjacent pair with the LOWEST merge id
+               present, until no pair in the sequence is in merges
+decode(ids):   concatenate each id's bytes; bytes.decode("utf-8", errors="replace")
+```
+
+<Listen>
+## Byte Pair Encoding
+
+BPE started as a data compression method and was brought to NLP for subword units by Sennrich, Haddow, and Birch (2016). The training algorithm is greedy and simple: count every adjacent pair of tokens in the training text, merge the most frequent pair into a new token, and repeat until the vocabulary reaches the target size. Each merge shortens the sequence; the ratio of bytes to tokens is the compression ratio, which the lecture tracks as training proceeds (34:58).
+
+The vocabulary is then 256 byte tokens plus one token per merge, and each merged token stands for a byte string (the concatenation of its two parts, recursively). GPT-2's vocabulary has 50,257 entries, which the lecture breaks down as 256 bytes, 50,000 merges, and one special token, `<|endoftext|>`, which marks document boundaries.
+
+Encoding new text replays the merges, and the order matters: merges must be applied in the order they were learned (lowest new id first), because later merges are built out of earlier ones. Decoding is a lookup plus a byte concatenation, with one catch the lecture highlights at 42:47: an arbitrary sequence of token ids may not form valid UTF-8 (for example, a lone continuation byte), so decoding must handle errors, typically by inserting the replacement character.
+</Listen>
+
+<Predict
+  title="Three merges, by hand"
+  code={`# The minbpe README example: train on "aaabdaaabac" with 3 merges.
+# Bytes: a=97, b=98, c=99, d=100. New ids start at 256.
+ids = [97, 97, 97, 98, 100, 97, 97, 97, 98, 97, 99]
+# merge 1: (97, 97) -> 256   gives [256, 97, 98, 100, 256, 97, 98, 97, 99]
+# merge 2: (256, 97) -> 257  gives [257, 98, 100, 257, 98, 97, 99]
+# merge 3: (257, 98) -> 258
+final = [258, 100, 258, 97, 99]
+print(len(ids), len(final))`}
+  options={["11 5", "11 7", "5 11"]}
+  answer={0}
+>
+Eleven bytes compress to five tokens, the same result the minbpe README shows. (After merge 1 there's a tie between (256, 97) and (97, 98), both appearing twice. Breaking the tie the other way gives different merges but, for this string, the same final encoding.) Token 258 decodes to "aaab", four bytes.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="e1-w4-bpe-tokenizer"
+  title="Train a byte-level BPE tokenizer"
+  starter={`def get_counts(ids):
+    """TODO: return a dict mapping each adjacent pair (ids[i], ids[i+1]) to its count."""
+    pass
+
+def merge(ids, pair, new_id):
+    """TODO: return a new list with every non-overlapping occurrence of pair (left to right)
+    replaced by new_id."""
+    pass
+
+def train(text, vocab_size):
+    """TODO: start from list(text.encode("utf-8")); for new_id in range(256, vocab_size),
+    merge the most frequent pair (stop early if there are no pairs). Return merges: dict pair -> new_id."""
+    pass
+
+def build_vocab(merges):
+    """Map every id to its bytes: 0..255 are single bytes; each merge concatenates its parts."""
+    vocab = {i: bytes([i]) for i in range(256)}
+    for (a, b), idx in sorted(merges.items(), key=lambda kv: kv[1]):
+        vocab[idx] = vocab[a] + vocab[b]
+    return vocab
+
+def encode(text, merges):
+    """TODO: start from UTF-8 bytes. While at least two ids remain, find the adjacent pair with
+    the lowest merge id; if it isn't in merges, stop; otherwise merge it."""
+    pass
+
+def decode(ids, merges):
+    """TODO: join the bytes of each id and decode as UTF-8 with errors="replace"."""
+    pass
+
+corpus = "the cat sat on the mat. the hat is on the cat. " * 4
+merges = train(corpus, 256 + 12)
+if merges:
+    vocab = build_vocab(merges)
+    print([vocab[i] for i in sorted(merges.values())])
+    ids = encode("the cat", merges)
+    print(ids, "->", repr(decode(ids, merges)))
+`}
+  tests={`assert get_counts([1, 2, 3, 1, 2]) == {(1, 2): 2, (2, 3): 1, (3, 1): 1}, "count consecutive pairs"
+assert merge([5, 6, 6, 7, 9, 1], (6, 7), 99) == [5, 6, 99, 9, 1], "replace each occurrence of the pair"
+assert merge([1, 1, 1], (1, 1), 2) == [2, 1], "merge left to right without overlapping"
+m = train("aaabdaaabac", 256 + 3)
+assert m is not None and len(m) == 3, "vocab_size 259 means exactly 3 merges"
+assert m.get((97, 97)) == 256, "the first merge is (a, a), the most frequent pair"
+assert encode("aaabdaaabac", m) == [258, 100, 258, 97, 99], "matches the minbpe README example"
+assert decode([258, 100, 258, 97, 99], m) == "aaabdaaabac", "decode inverts encode"
+corpus = "the cat sat on the mat. the hat is on the cat. caf\\u00e9 na\\u00efve \\U0001F600 " * 3
+merges = train(corpus, 256 + 20)
+assert len(merges) == 20, "vocab_size - 256 merges"
+for s in [corpus, "the theatre", "", "\\U0001F600\\U0001F600", "zzz unseen text"]:
+    assert decode(encode(s, merges), merges) == s, f"round trip failed for {s!r}"
+assert len(encode("the cat sat on the mat", merges)) < len("the cat sat on the mat".encode("utf-8")), "trained merges should compress familiar text"
+assert decode([128], merges) == "\\ufffd", "a lone continuation byte is invalid UTF-8: decode with errors='replace'"`}
+  solution={`def get_counts(ids):
+    counts = {}
+    for pair in zip(ids, ids[1:]):
+        counts[pair] = counts.get(pair, 0) + 1
+    return counts
+
+def merge(ids, pair, new_id):
+    out, i = [], 0
+    while i < len(ids):
+        if i < len(ids) - 1 and (ids[i], ids[i + 1]) == pair:
+            out.append(new_id)
+            i += 2
+        else:
+            out.append(ids[i])
+            i += 1
+    return out
+
+def train(text, vocab_size):
+    ids = list(text.encode("utf-8"))
+    merges = {}
+    for new_id in range(256, vocab_size):
+        counts = get_counts(ids)
+        if not counts:
+            break
+        pair = max(counts, key=counts.get)
+        ids = merge(ids, pair, new_id)
+        merges[pair] = new_id
+    return merges
+
+def encode(text, merges):
+    ids = list(text.encode("utf-8"))
+    while len(ids) >= 2:
+        counts = get_counts(ids)
+        pair = min(counts, key=lambda p: merges.get(p, float("inf")))
+        if pair not in merges:
+            break
+        ids = merge(ids, pair, merges[pair])
+    return ids
+
+def decode(ids, merges):
+    vocab = build_vocab(merges)
+    return b"".join(vocab[i] for i in ids).decode("utf-8", errors="replace")`}
+>
+Implement the TODOs and **Check my answer**. The tests reproduce the minbpe README example, round-trip text containing accented letters and an emoji (multi-byte UTF-8), and check that decoding an invalid byte sequence doesn't crash. Round-trip tests like these are exactly the offline tests you'll write in the lab. This mirrors minbpe's `BasicTokenizer` (MIT), rewritten for the exercise.
+</PyRunner>
+
+<Listen>
+## The vocabulary-size trade-off
+
+At 01:43:27 the lecture returns to its GPT to ask how big the vocabulary should be, and the answer is a genuine trade-off you can reason about with the model you built. A larger vocabulary compresses text into fewer tokens, so the same context window covers more text and generation needs fewer steps. But the token embedding table and the final linear layer each grow by one row per vocabulary entry, so parameters and the cost of the output softmax grow linearly with V. And each token appears less often in the training data, so rare tokens' embeddings get few updates and may be poorly trained.
+
+Characters (V around 65 for Shakespeare) sit at one extreme: tiny embedding table, long sequences. GPT-2's 50,257 sits far toward the other. The lecture also shows that you can extend a trained model's vocabulary with new tokens by adding rows to those two matrices and fine-tuning, which is how special tokens for chat formats or tools can be introduced later.
+
+This is a design choice that model providers make for you, but it shows up directly in your numbers: the same document has a different token count, and so a different cost and context footprint, under each provider's tokenizer.
+</Listen>
+
+<Listen>
+## Regex splitting and special tokens
+
+Pure BPE on raw bytes makes wasteful merges. The GPT-2 paper's example is "dog" followed by different punctuation: BPE would learn separate tokens for "dog.", "dog!", and "dog?", spending vocabulary on combinations. GPT-2's fix (section 2.2) is to prevent merges across character categories, with an exception for spaces. In practice, as the lecture shows at 57:36, the text is first split by a regular expression into chunks (letters, numbers, punctuation, whitespace, with a leading space attached to words), and BPE runs within each chunk only. The lecture compares GPT-2's pattern with GPT-4's, which changes details such as how runs of digits and whitespace are split. minbpe's `RegexTokenizer` implements this stage, and its README reports that its GPT-4 variant reproduces tiktoken's `cl100k_base` encoding exactly.
+
+**Special tokens** are vocabulary entries that never come from merges and are inserted by the application: `<|endoftext|>` in GPT-2, and in chat models a family of tokens that mark roles and turn boundaries. The tokenizer must handle them separately so that ordinary user text can't produce them by accident, which is a small piece of the prompt-injection story from Studio 4.
+</Listen>
+
+<Callout type="pitfall" title="Tokenization quirks that look like reasoning failures">
+Several behaviors the lecture tours at 01:51:41 are tokenization artifacts rather than failures of intelligence. **Spelling and letter counting**: a word that is one token gives the model no direct view of its letters. **Arithmetic**: numbers are split into chunks that don't align with place value, so digit-level operations are harder than they look. **Non-English text** often splits into more tokens, so it costs more and uses context faster. **Leading and trailing whitespace** changes which tokens appear (" hello" and "hello" are different tokens), so a prompt that ends in a stray space can behave oddly. When you see a strange failure, inspect the tokens before blaming the model's reasoning, and for character-level tasks, consider doing that part in code and giving the model the result.
+</Callout>
+
+<Listen>
+## What this means when you choose and use models
+
+Three working rules follow from this lecture.
+
+**Measure tokens, per model.** Every model family has its own tokenizer, so the "about four characters per token" rule of thumb is only a rough guide for English with one tokenizer. When cost or context matters, count with the provider's own tooling on a sample of your real data, broken down by language and content type. Studio 1 showed where providers report token usage; this lecture explains why the numbers differ.
+
+**Route character-level work to code.** Exact string operations (counting letters, reversing text, checking an ID format) are easy in Python and needlessly hard for a model that sees chunks. This is a model-selection decision in the broad sense: the best "model" for a subtask is sometimes a regular expression.
+
+**Treat token boundaries as an input-format concern.** Whitespace, formatting, and the way you serialize structured data all change the token sequence. When a prompt's behavior shifts after an innocuous formatting change, tokenization is a reasonable first hypothesis, and an A/B comparison on your eval set is how you confirm it.
+</Listen>
+
+<GoDeeper title="SentencePiece, and the minbpe exercise">
+Not every tokenizer works on bytes first. The lecture's section at 01:28:42 introduces SentencePiece, the library used to train Llama 2's vocabulary, which runs BPE on code points and falls back to bytes for rare characters, a different trade-off from GPT-2's byte-first design. The lecture also covers multimodal tokenization briefly (01:49:58), where images or audio are turned into discrete tokens by vector quantization. If you want to go further, work through minbpe's `exercise.md`: it stages the build from the basic tokenizer you just wrote, to regex splitting, to loading GPT-4's merges and matching tiktoken's output token for token. Matching a reference implementation exactly is the tokenizer equivalent of a gradient check.
+</GoDeeper>
+
+<Listen>
+## Review sheet
+
+Strings are code points; UTF-8 encodes them as 1 to 4 bytes; byte-level tokenizers start from 256 tokens and can represent anything. BPE training merges the most frequent adjacent pair repeatedly; GPT-2 has 50,257 tokens (256 bytes, 50,000 merges, one special token). Encode applies merges in the order learned; decode concatenates bytes and must handle invalid UTF-8. Bigger vocabularies mean shorter sequences but larger embedding and output layers and rarer tokens. GPT-2 pre-splits with a regex so merges don't cross categories; special tokens are inserted, never merged. Measure tokens with each provider's tokenizer, and route character-level work to code. That completes the series' path from a derivative to a GPT; the project asks you to build and train your own.
+</Listen>

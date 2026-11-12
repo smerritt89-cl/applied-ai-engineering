@@ -1,0 +1,244 @@
+---
+id: e3-w2-l6
+studio: e3
+week: 2
+order: 6
+title: "AI and work: what the productivity evidence shows"
+summary: Randomized and field evidence on AI and productivity (customer support, Copilot, METR's developer trials and their 2026 redesign), usage data from the Anthropic Economic Index, payroll evidence on young workers, what it means for engineers and PM leaders, and how to read such studies critically.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Summarize the main productivity studies (design, population, effect, interval) and their dates
+  - Explain why self-reported speedups and measured speedups diverge, citing METR's 2025 and 2026 work
+  - Describe what usage data (Anthropic Economic Index) and payroll data (Stanford Canaries) can and cannot show
+  - Compute a speedup estimate with a bootstrap interval and judge whether it supports a claim
+  - Apply a study-reading checklist (population, task, comparison, outcome, interval, selection) to a new productivity claim
+sources:
+  - { id: brynjolfsson-2023-genai-at-work, use: summarized }
+  - { id: peng-2023-copilot-rct, use: summarized }
+  - { id: becker-2025-metr-rct, use: summarized }
+  - { id: metr-2026-uplift-update, use: summarized }
+  - { id: metr-2026-transcript-time-savings, use: summarized }
+  - { id: anthropic-econ-index-2026-01, use: summarized }
+  - { id: anthropic-econ-index-2026-06, use: summarized }
+  - { id: stanford-canaries-2026, use: summarized }
+  - { id: normaltech-2026-software-engineers, use: summarized }
+  - { id: amodei-2026-adolescence, use: linked }
+  - { id: efron-1979-bootstrap, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: In METR's early-2025 randomized trial, experienced open-source developers using AI tools on their own repositories took longer. What did the developers themselves believe?
+    options:
+      - id: a
+        text: They correctly estimated that they had been slowed down.
+        rationale: The striking finding was the opposite gap between perception and measurement.
+      - id: b
+        text: They expected a speedup beforehand and still believed afterward that AI had sped them up, by about 20%.
+        correct: true
+        rationale: Yes. Measured time went up about 19% while perceived time went down about 20%.
+      - id: c
+        text: They had no opinion because they did not know which tasks used AI.
+        rationale: Developers knew; the randomization was per task and visible to them.
+    explanation: >-
+      The perception gap is the most transferable lesson from this study: self-reports of productivity are not
+      measurements. METR's February 2026 update says it now believes developers are probably faster with current tools,
+      but that its new data are too affected by selection to say by how much.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A vendor tells you "customers using our coding assistant report saving 10 hours a week" and wants a seat license
+      for your 200-person engineering org. What is the most useful next step?
+    options:
+      - id: a
+        text: Buy; 10 hours a week is large enough that even half of it pays back.
+        rationale: The number is self-reported and selected (happy customers answer surveys).
+      - id: b
+        text: Refuse; METR showed AI tools slow developers down.
+        rationale: That result was for one population and era, and METR itself says it is out of date.
+      - id: c
+        text: Run a time-boxed pilot with a pre-registered outcome (for example cycle time or review-accepted changes per engineer), a comparison group or randomized task assignment, and measured rather than self-reported time.
+        correct: true
+        rationale: Yes. A small controlled pilot gives you evidence about your org, which no external study can.
+    explanation: >-
+      External studies tell you the effect can be large, small, or negative depending on task, experience, and tooling.
+      Your org's number is the one that matters for the decision, and you can measure it cheaply with the same discipline
+      as a model eval: outcome defined in advance, a comparison, and an interval.
+  - id: kc3
+    type: multi
+    prompt: Which limitations does Anthropic itself state for its Economic Index data? Select all that apply.
+    options:
+      - id: a
+        text: Classifiers that label conversations are directionally accurate but not exact.
+        correct: true
+        rationale: The January 2026 report says none of the measures should be taken as exact or definitive.
+      - id: b
+        text: Task success is Claude's own assessment and reflects which tasks users chose to bring, so it may overstate reliability.
+        correct: true
+        rationale: Stated in the January 2026 report.
+      - id: c
+        text: The worker survey reaches Claude users and is not representative of the general population.
+        correct: true
+        rationale: Stated in the June 2026 report.
+      - id: d
+        text: The data are randomized controlled trial results.
+        rationale: They are observational usage data and a survey; the reports describe their measures as correlational.
+    explanation: >-
+      Usage data are excellent for describing what people do with a tool and poor for estimating what the tool causes.
+      Read the provider's own limitations section first; good reports, like these, list them.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The claim behind the claims
+
+Most of the big claims in week 2 are, underneath, claims about work: AI will do a software engineer's job within a year; half of entry-level white-collar jobs could be disrupted within five years; effects will take decades, like electricity. These are testable, and unlike timelines to superintelligence, evidence is accumulating now.
+
+The evidence comes in four kinds, each with its own strengths:
+
+- **Randomized experiments** assign AI access by chance and measure outcomes. They give clean causal estimates for a specific population and task, and are hard to generalize.
+- **Field studies** use a natural rollout inside a company. They are realistic and less controlled.
+- **Usage data** from providers show what people actually do with the tools at enormous scale. They describe; they do not establish cause.
+- **Labor-market data** (payroll, employment) show what is happening to jobs, with a lag and with many other causes mixed in.
+
+A careful reader holds all four at once and notices where they disagree.
+</Listen>
+
+<Listen>
+## The early field and lab evidence: large gains, unevenly spread
+
+**Customer support (Brynjolfsson, Li, and Raymond).** First released as an NBER working paper in 2023 and published in the Quarterly Journal of Economics in 2025, this study followed the staggered rollout of an AI assistant to over 5,000 customer support agents. Access raised productivity, measured as issues resolved per hour, by about 14% on average, with gains of about 34% for novice and lower-skilled workers and minimal effect for the most experienced. The authors also report improved customer sentiment and retention. The interpretation they offer: the tool spread the tacit knowledge of top performers to everyone else.
+
+**GitHub Copilot (Peng and colleagues, 2023).** In a controlled experiment, developers asked to implement an HTTP server in JavaScript finished about 56% faster with Copilot than without. The task was small, self-contained, and well specified, which is where code completion helps most.
+
+These two studies set the early narrative: big gains, especially for less experienced workers. Both are real and both are narrow. Notice the populations (support agents with a scripted job; developers on a greenfield toy task) before applying the numbers to your team.
+</Listen>
+
+<Listen>
+## METR's developer trials: the perception gap and the 2026 redesign
+
+**The July 2025 study (Becker and colleagues).** METR recruited 16 experienced open-source developers working on their own large, mature repositories, and randomized 246 real tasks to allow or forbid AI tools (mostly Cursor with Claude models of early 2025). Developers took about **19% longer** with AI allowed. Beforehand they forecast a 24% speedup; afterward they still believed AI had sped them up by about 20%. Possible reasons the paper discusses include high familiarity with their codebases, high quality standards, and time spent reviewing and correcting AI output.
+
+**The February 2026 update.** METR ran a larger follow-up (57 developers, over 800 tasks) and reported that the data had become unreliable as a measure of current effects. Point estimates leaned toward speedups (about 18% less time per task for the 10 returning developers, with an interval from about 38% less to 9% more; about 4% less for the 47 new recruits, interval from 15% less to 9% more), but selection had crept in: many developers would no longer work without AI, some withheld tasks they did not want to do without it, and a pay cut likely changed who participated. METR's stated view: developers are probably sped up by current tools, the size is uncertain, and it is redesigning the study.
+
+**An upper bound from transcripts (17 February 2026).** A separate METR note estimated time savings of roughly 1.5x to 13x on Claude Code-assisted tasks for seven METR staff, explicitly as a soft upper bound rather than an estimate of real productivity.
+
+The lesson is not "AI slows developers" or "AI speeds developers." It is that measured effects depend heavily on population, task, and tool generation, that self-reports overstate, and that even a well-run trial can be undermined when the treatment becomes too useful for people to give up.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e3-speedup-bootstrap"
+  title="Estimate a speedup, with an honest interval"
+  starter={`import math
+import random
+
+# Minutes per task in a small trial: tasks were randomly assigned to AI-allowed or AI-forbidden.
+AI = [42, 95, 30, 120, 60, 75, 25, 200, 55, 80, 38, 150]
+NO_AI = [50, 80, 45, 100, 90, 70, 40, 180, 50, 110, 35, 210]
+
+def speedup(ai, no_ai):
+    """Speedup from AI as a fraction, using geometric means of task times
+    (task lengths vary a lot, so compare on a log scale):
+    exp(mean(log no_ai) - mean(log ai)) - 1.  Positive means faster with AI."""
+    # TODO
+    pass
+
+def bootstrap_interval(ai, no_ai, reps=2000, seed=0):
+    """95% percentile bootstrap interval for speedup(). Resample each group
+    with replacement, independently. Return (low, high)."""
+    # TODO
+    pass
+
+est = speedup(AI, NO_AI)
+print("estimated speedup:", None if est is None else f"{est:.0%}")
+print("95% interval:", bootstrap_interval(AI, NO_AI))
+`}
+  tests={`est = speedup(AI, NO_AI)
+assert est is not None, "speedup returned None"
+assert abs(est - 0.124) < 0.005, f"the geometric-mean speedup should be about 12%, got {est:.3f}"
+assert abs(speedup([10, 20], [10, 20])) < 1e-12, "identical times mean zero speedup"
+lo, hi = bootstrap_interval(AI, NO_AI)
+assert lo < est < hi, "the point estimate should sit inside its interval"
+assert lo < 0 < hi, "with 12 tasks per arm the interval should include zero: the data cannot rule out no effect"
+lo2, hi2 = bootstrap_interval([30] * 12, [60] * 12)
+assert abs(lo2 - 1) < 1e-9 and abs(hi2 - 1) < 1e-9, "constant times give a zero-width interval at 100% speedup"`}
+  solution={`def speedup(ai, no_ai):
+    m_ai = sum(math.log(x) for x in ai) / len(ai)
+    m_no = sum(math.log(x) for x in no_ai) / len(no_ai)
+    return math.exp(m_no - m_ai) - 1
+
+def bootstrap_interval(ai, no_ai, reps=2000, seed=0):
+    rng = random.Random(seed)
+    stats = []
+    for _ in range(reps):
+        a = [rng.choice(ai) for _ in ai]
+        n = [rng.choice(no_ai) for _ in no_ai]
+        stats.append(speedup(a, n))
+    stats.sort()
+    return stats[int(0.025 * reps)], stats[int(0.975 * reps) - 1]`}
+>
+Implement both functions, then press **Check my answer**. The point estimate says AI made this team about 12% faster, which is the number that would go in a slide. The interval runs from roughly 29% slower to 75% faster. With a dozen tasks per arm and task lengths that vary by a factor of eight, this pilot cannot distinguish a real speedup from none. Before you run a pilot, decide how many tasks you need; the bootstrap on a dry run tells you.
+</PyRunner>
+
+<Listen>
+## Usage data: the Anthropic Economic Index
+
+Anthropic publishes an Economic Index based on privacy-preserving analysis of Claude conversations, where another Claude instance classifies transcripts and only aggregates leave the analysis. Two 2026 reports are worth knowing.
+
+**"Economic primitives" (15 January 2026)**, using about two million conversations from November 2025, introduced five measures: task complexity, required skills, use case, AI autonomy, and task success. On Claude.ai, augmentation (working with Claude) slightly exceeded automation (delegating to it), 52% to 45%, while API traffic was roughly three-quarters automation. Claude's own assessment of task success was 67% on Claude.ai and 49% for API transcripts. The report estimated large speedups on complex tasks and, from them, a range of possible contributions to US labor productivity growth, roughly 1 to 1.8 percentage points a year in its main scenarios.
+
+**"Cadences" (26 June 2026)** paired usage data with a survey of about 9,700 users. Over a third expected AI to handle most of their tasks within a year, about 10% rated losing their own job as likely, and large majorities self-reported gains in speed and scope.
+
+Both reports list their limitations clearly, and they are the right model for how a provider should publish: classifiers are directional, task success is self-assessed and reflects which tasks users chose, the survey is not representative, and the measures are correlational. Use the Index to understand what people do with these tools. Do not use it as evidence of what the tools cause, and note who publishes it.
+</Listen>
+
+<Listen>
+## Labor-market data: young workers first
+
+The Stanford Digital Economy Lab's "Canaries in the Coal Mine?" (Brynjolfsson, Chandar, and Chen) uses large-scale ADP payroll data. Its August 2026 update found **no widespread job displacement** from AI, but a widening gap for young workers: employment of 22 to 25 year olds in the most AI-exposed occupations was about 19% below where it would have been had it kept pace with peers in less exposed occupations, up from the gap in the first version. The adjustment ran mainly through **reduced hiring** rather than layoffs, and in occupations where AI is used to complement workers, employment was flat or rising, especially for experienced workers. The authors report that interest rates, remote work, and the tech boom and bust do not appear to explain the pattern.
+
+Narayanan and Kapoor's June 2026 essay reads the same period from the software side: tasks can be automated without jobs disappearing, because deciding what to build and verifying what ships remain human bottlenecks, and US software employment was still growing, though more slowly than it might have.
+
+Put together, the 2026 evidence fits neither extreme. It supports "AI is changing who gets hired, starting at the entry level, and productivity gains are real but uneven," and does not yet support "jobs are disappearing broadly."
+</Listen>
+
+<Callout type="pitfall" title="Treating self-reported productivity as measured productivity">
+Every source in this lesson that measured both found a gap. METR's 2025 developers believed they were 20% faster while measuring 19% slower; METR's 2026 note frames its 1.5x to 13x figure as an upper bound; the Economic Index survey's 86% reporting faster work is self-assessment. Self-reports are useful for adoption and satisfaction, and as a hypothesis. When a decision depends on the size of a productivity effect (headcount, pricing, staffing a project), measure the outcome directly, with a comparison, and report an interval.
+</Callout>
+
+<Listen>
+## What it means for engineers and PM leaders
+
+Four implications follow from the evidence, not from anyone's forecast.
+
+**The bottleneck moves to specification and verification.** Every careful study finds that the time saved writing is partly spent reviewing, correcting, and integrating. Teams that get large gains invest in tests, review practices, and clear specs, which is the checks-and-balances theme of this whole program.
+
+**Entry-level work changes first.** The hiring evidence is a reason to design how juniors learn (pairing, review of AI-generated work, tasks that build judgment) rather than to stop hiring them; someone has to become the senior engineer who can verify the agent.
+
+**Measure your own team.** External effects range from negative to very large. A small, pre-registered pilot (the exercise above, with more tasks) is cheap and beats any vendor claim.
+
+**Expect the tools to keep changing the answer.** METR's study broke because the treatment improved faster than the experiment ran. Plan to re-measure every six months, the same way you rerun a model eval.
+</Listen>
+
+<Mermaid
+  alt="Checklist for reading a productivity study, as a flow: Who was studied (population and experience)? What task (narrow and specified, or real and messy)? What comparison (randomized, staggered rollout, or none)? What outcome (measured time or output, or self-report)? How uncertain (interval and sample size)? What selection (who opted in or dropped out)? Then decide how far the result transfers to your team."
+  caption="Six questions before you quote a productivity number."
+  chart={`flowchart TD
+  A["Population: who, how experienced?"] --> B["Task: toy and specified, or real and messy?"]
+  B --> C["Comparison: randomized, rollout, or none?"]
+  C --> D["Outcome: measured, or self-reported?"]
+  D --> E["Uncertainty: n and interval?"]
+  E --> F["Selection: who opted in or dropped out?"]
+  F --> G["How far does it transfer to your team?"]`}
+/>
+
+<GoDeeper title="Why randomized trials of AI tools are getting harder">
+METR's February 2026 post is worth reading in full as a methods document. It lists problems that will affect anyone measuring AI productivity: developers refusing the control condition, substitution of task types between conditions, differences in code quality that time measures miss, lower completion in the no-AI arm, and time accounting when developers multitask while agents run. Its proposed alternatives include shorter intensive experiments, fixed-task designs, and randomizing at the developer level. For your own pilots, the simplest robust design is often a fixed set of representative tasks done by comparable people under each condition, scored for both time and review-accepted quality. The bootstrap you implemented is the standard tool for the interval (Efron, 1979).
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Read productivity claims with six questions: population, task, comparison, outcome, uncertainty, selection. Hold four kinds of evidence together: experiments, field studies, usage data, labor data. In late 2026 they agree on a pattern (real, uneven gains; verification as the bottleneck; entry-level hiring affected first; no broad displacement yet) and disagree on magnitude. For your own team, measure rather than survey, and re-measure as the tools change. Week 3 turns to the risks side: what goes wrong, how labs and governments are responding, and how to judge any claim you meet.
+</Listen>

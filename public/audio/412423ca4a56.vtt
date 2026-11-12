@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.008
+Retrieval metrics: the half you can measure exactly.
+
+2
+00:00:03.288 --> 00:00:07.960
+Retrieval metrics need one label per question: which chunks contain the answer.
+
+3
+00:00:08.240 --> 00:00:10.949
+With that, Studio 2’s metrics apply directly.
+
+4
+00:00:11.229 --> 00:00:15.709
+Recall@k is the fraction of relevant chunks that appear in the top k.
+
+5
+00:00:15.989 --> 00:00:19.637
+Precision@k is the fraction of the top k that are relevant.
+
+6
+00:00:19.917 --> 00:00:25.037
+MRR (mean reciprocal rank) rewards putting the first relevant chunk near the top.
+
+7
+00:00:25.317 --> 00:00:29.648
+All three are deterministic code: no model, no judge, no drift.
+
+8
+00:00:29.928 --> 00:00:32.019
+That is a strong reason to lean on them.
+
+9
+00:00:32.299 --> 00:00:34.709
+For RAG, recall usually matters most.
+
+10
+00:00:34.989 --> 00:00:41.368
+A generator can often ignore an irrelevant passage, but it cannot use a passage that was never retrieved.
+
+11
+00:00:41.648 --> 00:00:50.459
+Precision still matters for cost, latency, and distraction, since every extra chunk is tokens you pay for and noise the model must ignore.
+
+12
+00:00:50.739 --> 00:00:57.203
+Report both at the k your system actually uses, plus a smaller k if you are considering a reranker.
+
+13
+00:00:57.483 --> 00:00:58.891
+Where do labels come from?
+
+14
+00:00:59.171 --> 00:01:01.027
+Two sources, and you want both.
+
+15
+00:01:01.307 --> 00:01:05.957
+Real questions from logs or users, labeled by someone who knows the corpus.
+
+16
+00:01:06.237 --> 00:01:17.715
+Synthetic questions: the FAQ suggests taking a document, extracting its key facts, and generating questions those facts answer, which gives you a label for free (the source chunk).
+
+17
+00:01:17.995 --> 00:01:27.680
+Synthetic questions are cheap and plentiful but tend to reuse the document’s wording, which flatters keyword search and makes retrieval look easier than it is.
+
+18
+00:01:27.960 --> 00:01:32.227
+Check a sample by hand, and report real and synthetic results separately.
+
+19
+00:01:32.507 --> 00:01:33.445
+Two traps.
+
+20
+00:01:33.725 --> 00:01:40.595
+A question whose answer is spread across several chunks needs all of them labeled, or recall will look worse than it is.
+
+21
+00:01:40.875 --> 00:01:45.973
+And if your chunking changes, chunk ids change, so labels keyed to ids break.
+
+22
+00:01:46.253 --> 00:01:50.925
+Key labels to stable document positions or to the answer text where you can.

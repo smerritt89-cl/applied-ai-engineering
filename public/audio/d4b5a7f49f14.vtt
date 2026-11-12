@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.387
+Pairwise comparison.
+
+2
+00:00:01.667 --> 00:00:06.936
+Sometimes the question is comparative by nature: is the new prompt better than the old one?
+
+3
+00:00:07.216 --> 00:00:09.819
+Is model B better than model A on our traffic?
+
+4
+00:00:10.099 --> 00:00:14.920
+A pairwise judge reads the input and two outputs and picks the better one, or a tie.
+
+5
+00:00:15.200 --> 00:00:28.107
+Eugene Yan’s survey notes that pairwise judgments tend to be more reliable than scoring each output alone for subjective criteria such as tone or persuasiveness, because “which of these is better?
+
+6
+00:00:28.387 --> 00:00:32.483
+” is an easier question than placing one output on an absolute scale.
+
+7
+00:00:32.763 --> 00:00:39.909
+Direct scoring remains the better fit for objective, per-output checks such as faithfulness or policy compliance.
+
+8
+00:00:40.189 --> 00:00:46.184
+Pairwise judging has one bias you must design around from the start: the order of the two answers.
+
+9
+00:00:46.464 --> 00:01:01.056
+Zheng and colleagues (2023), in the paper that introduced MT-Bench and studied judges systematically, found that GPT-4 gave the same verdict after the two answers were swapped only 65 percent of the time.
+
+10
+00:01:01.336 --> 00:01:15.565
+Wang and colleagues (2023) showed how much this can matter: with ChatGPT as the judge, simply changing the order made Vicuna-13B beat ChatGPT on 66 of 80 test questions.
+
+11
+00:01:15.845 --> 00:01:19.536
+The standard defenses, from both papers: Judge both orders.
+
+12
+00:01:19.816 --> 00:01:26.152
+Zheng and colleagues count a win only if the same answer wins in both orders, and call anything else a tie.
+
+13
+00:01:26.432 --> 00:01:30.805
+Wang and colleagues average over orders (balanced position calibration).
+
+14
+00:01:31.085 --> 00:01:35.565
+Allow ties, so the judge isn’t forced to pick between two equally good answers.
+
+15
+00:01:35.845 --> 00:01:37.317
+Strip origin labels.
+
+16
+00:01:37.597 --> 00:01:42.077
+Don’t tell the judge which answer is new, baseline, reference, or human-written.
+
+17
+00:01:42.357 --> 00:01:45.643
+Judging both orders doubles the cost of a pairwise eval.
+
+18
+00:01:45.923 --> 00:01:53.347
+That is the price of a number you can trust, and the exercise below shows how much a one-order eval can overstate a win.

@@ -1,0 +1,246 @@
+---
+id: e2-w3-l9
+studio: e2
+week: 3
+order: 9
+title: When not to delegate, and building judgment
+summary: The tasks coding agents do poorly or dangerously, a decision rule for what to delegate and how, the 2026 evidence on AI use and skill formation, habits that keep you learning while you delegate, and a personal operating manual for working with agents.
+estMinutes: 50
+reviewed: 2026-11-11
+objectives:
+  - Identify task properties that make delegation risky (unverifiable outcomes, irreversibility, tribal context, ambiguity, learning goals) and choose a delegation mode accordingly
+  - Summarize what the 2026 randomized study on AI assistance and coding skill formation found, including its limits
+  - Adopt specific habits that preserve and build skill while using agents
+  - Write a personal operating manual that encodes your defaults, checks, and boundaries
+sources:
+  - { id: e2-shen-2026-skill-formation, use: summarized }
+  - { id: e2-cui-2025-field-experiments, use: summarized }
+  - { id: becker-2025-metr-rct, use: summarized }
+  - { id: kwa-2025-metr-horizon, use: summarized }
+  - { id: metr-horizon-blog, use: summarized }
+  - { id: e2-cc-output-styles, use: summarized }
+  - { id: e2-cc-best-practices, use: summarized, where: "Let Claude run without you; steer the session" }
+  - { id: e2-willison-vibe-engineering, use: summarized, where: "Knowing what to outsource" }
+  - { id: e2-willison-agentic-loops, use: summarized }
+  - { id: e2-dora-2025, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: In Anthropic's 2026 randomized study of engineers learning a new Python library, what happened to the group with an AI assistant?
+    options:
+      - id: a
+        text: They finished much faster and scored the same on the follow-up quiz.
+        rationale: The time difference was small and not statistically significant, and quiz scores were lower.
+      - id: b
+        text: They scored lower on a quiz of the concepts (about 50% versus 67%), with the largest gap on debugging questions, and weren't significantly faster.
+        correct: true
+        rationale: That's the reported result; participants who used AI to ask conceptual questions or to understand generated code did much better than those who delegated.
+      - id: c
+        text: They scored higher, because the assistant explained the library.
+        rationale: Some AI users did score well, but on average the AI group scored lower.
+    explanation: >-
+      The study measured immediate comprehension, with 52 mostly junior engineers and one library, so it isn't the last
+      word. Its practical message holds anyway: how you use the assistant matters. Delegating everything was the
+      lowest-scoring pattern; asking why scored highest.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      You need to change how refunds are calculated for enterprise contracts. The rules live partly in a spreadsheet
+      Finance maintains and partly in people's heads; there are no tests for this module; a mistake would show up as
+      wrong invoices weeks later. How should you use an agent?
+    options:
+      - id: a
+        text: Delegate the change fully with a detailed prompt; agents are good at refactoring.
+        rationale: The outcome is hard to verify, the context is tribal, and errors surface late and costly. That's the profile for not delegating the decision.
+      - id: b
+        text: Do the rules work yourself with Finance (write the cases as tests with literal expected values), then use the agent to implement against those tests and to help you read the existing code.
+        correct: true
+        rationale: Keep the judgment (what the rules are) with people; delegate the parts with a check once the check exists.
+      - id: c
+        text: Don't use an agent at all for anything in this module.
+        rationale: Agents can still help you read unfamiliar code and implement once there's a contract. The risk is in delegating the unverifiable part.
+    explanation: >-
+      The question is rarely "agent or no agent." It's which parts have a check. Turn the unverifiable part into a
+      verifiable one (tests from the domain experts), then delegate implementation against it.
+  - id: kc3
+    type: multi
+    prompt: Which habits does the evidence in this lesson support for keeping your skills while using agents? Select all that apply.
+    options:
+      - id: a
+        text: Ask the agent to explain its choices and ask follow-up conceptual questions.
+        correct: true
+        rationale: Conceptual inquiry and generation-then-comprehension were the highest-scoring patterns in the Anthropic study.
+      - id: b
+        text: Accept generated code without reading it, to save time.
+        rationale: Pure delegation was among the lowest-scoring patterns.
+      - id: c
+        text: Use a learning-oriented mode (such as Claude Code's Learning output style) when working in an area you want to master.
+        correct: true
+        rationale: The authors recommend learning-oriented modes; the Learning style leaves design decisions for you to write.
+      - id: d
+        text: Predict the fix or the cause before reading the agent's answer.
+        correct: true
+        rationale: Committing to a guess first turns review into practice and keeps you calibrated about your own understanding.
+    explanation: >-
+      The researchers note that cognitive effort, even getting stuck, is likely important for mastery. Keep some of that
+      effort in your loop deliberately, especially on the skills you'll need for oversight: reading code and debugging.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Delegation is a decision, not a default
+
+After a year of using an agent for everything, the most valuable skill to build is the one that doesn't show up in any feature list: deciding what not to hand over, and how much to hand over when you do. Simon Willison lists "knowing what to outsource" among the practices of engineers who get the most out of coding agents. This lesson gives you a way to make that call deliberately, looks at what agents do poorly, and then turns to a quieter risk: what heavy delegation does to your own skills, and how to keep growing while you use these tools.
+</Listen>
+
+<Listen>
+## What makes a task risky to delegate
+
+Agents are improving fast, so a list of "things agents can't do" ages badly. Properties of tasks age much better. Five of them predict trouble.
+
+**The outcome can't be checked.** Everything in this elective rests on verification. Where there's no test, no reproducible behavior, no reference output, the agent stops when the work looks done, and so might you. Data analyses with plausible but wrong joins, numerical code without known answers, and UI behavior nobody has specified all fall here until you create the check.
+
+**Mistakes are irreversible or surface late.** Migrations on shared data, deletions, deploys, financial calculations whose errors appear on next month's invoices. Checkpoints don't reach these (lesson 1), and the cost of a miss is high.
+
+**The context is tribal.** When the real requirements live in a spreadsheet, a Slack thread, or a senior engineer's head, the agent fills the gap with a guess. The best-practices doc's first diagnosis for bad sessions is exactly this: information it can't get from the repo.
+
+**The task is long and entangled.** METR's time-horizon research found success falls sharply with task length: models at the time of the study nearly always succeeded on tasks that take experts under about four minutes and rarely on tasks over about four hours, and the length an agent handles at high reliability is much shorter than at 50%. Horizons have grown quickly since, but the shape holds: decompose long tasks into checkable pieces (lesson 6).
+
+**The point is for you to learn.** If you need to own this code, debug it at 2 a.m., or explain it in a design review, delegating the thinking defeats the purpose. That's the subject of the second half of this lesson.
+
+A sixth isn't a property of the task but of the situation: **you can't evaluate the result.** If you couldn't tell a correct solution from a plausible wrong one, you're not delegating, you're hoping. Either learn enough to review it, or bring in someone who can.
+</Listen>
+
+<Listen>
+## Four modes, not two
+
+The choice isn't "agent or me." There are at least four modes, and most work mixes them.
+
+**Delegate** when the task has a strong check, is reversible, and needs little tribal context: a reproducible bug with a failing test, a dependency upgrade with a good suite, a mechanical migration. Let it run, review the result.
+
+**Delegate with a gate** when the check is good but the stakes are higher: run in plan mode first, require a Stop hook and CI, and keep the irreversible step (merge, deploy, migration) for a person.
+
+**Pair** when the check is weak or the context is tribal: you hold the requirements and the judgment; the agent reads code for you, drafts, explains, and implements in small steps you review as they happen. Turn the weak check into a strong one as you go (write the tests together, from the domain experts' cases).
+
+**Do it yourself** when the goal is learning, when you can't evaluate the result, or when the task is mostly judgment (a product decision, a trade-off between teams, a security design) rather than code. You can still use the agent as a reference or a sparring partner.
+
+The exercise below turns these into an explicit rule. Disagree with its thresholds; the point is to make your rule explicit enough to disagree with.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e2-w3-delegation-rule"
+  title="Write your delegation rule"
+  starter={`def delegation_mode(task):
+    """task: dict with
+         verifiable   0-3  (0 none, 1 manual check only, 2 partial tests, 3 strong automated check)
+         reversible   bool (can it be fully undone with git?)
+         context      "repo" | "docs" | "tribal"   (where the requirements live)
+         learning     bool (is building your own skill a goal?)
+         can_evaluate bool (could you tell a correct result from a plausible wrong one?)
+    Return one of "do it yourself", "pair", "delegate with a gate", "delegate", applying these rules in order:
+      1. learning is True or can_evaluate is False      -> "do it yourself"
+      2. verifiable <= 1 or context == "tribal"           -> "pair"
+      3. not reversible or verifiable == 2                -> "delegate with a gate"
+      4. otherwise                                        -> "delegate"
+    """
+    # TODO
+    pass
+
+TASKS = {
+    "flaky test with a reproduction script": dict(verifiable=3, reversible=True, context="repo", learning=False, can_evaluate=True),
+    "enterprise refund rules (in Finance's heads)": dict(verifiable=1, reversible=False, context="tribal", learning=False, can_evaluate=True),
+    "migration that rewrites the orders table": dict(verifiable=3, reversible=False, context="docs", learning=False, can_evaluate=True),
+    "first Rust service (you're learning Rust)": dict(verifiable=2, reversible=True, context="docs", learning=True, can_evaluate=False),
+    "rename a module across 40 files": dict(verifiable=3, reversible=True, context="repo", learning=False, can_evaluate=True),
+}
+for name, t in TASKS.items():
+    print(f"{name:48} -> {delegation_mode(t)}")
+`}
+  tests={`assert delegation_mode(TASKS["rename a module across 40 files"]) is not None, "delegation_mode returned None"
+assert delegation_mode(TASKS["flaky test with a reproduction script"]) == "delegate"
+assert delegation_mode(TASKS["enterprise refund rules (in Finance's heads)"]) == "pair"
+assert delegation_mode(TASKS["migration that rewrites the orders table"]) == "delegate with a gate"
+assert delegation_mode(TASKS["first Rust service (you're learning Rust)"]) == "do it yourself"
+assert delegation_mode(TASKS["rename a module across 40 files"]) == "delegate"
+assert delegation_mode(dict(verifiable=3, reversible=True, context="repo", learning=False, can_evaluate=False)) == "do it yourself", "if you can't evaluate it, you can't delegate it"
+assert delegation_mode(dict(verifiable=2, reversible=True, context="docs", learning=False, can_evaluate=True)) == "delegate with a gate"`}
+  solution={`def delegation_mode(task):
+    if task["learning"] or not task["can_evaluate"]:
+        return "do it yourself"
+    if task["verifiable"] <= 1 or task["context"] == "tribal":
+        return "pair"
+    if not task["reversible"] or task["verifiable"] == 2:
+        return "delegate with a gate"
+    return "delegate"`}
+>
+Write `delegation_mode`, then press **Check my answer**. Then add five tasks from your own last two weeks and see where they land. If the rule puts something in "delegate" that went badly, find the property it missed (often context that looked like "repo" but was really tribal), and adjust your rule. That adjusted rule goes into your operating manual.
+</PyRunner>
+
+<Listen>
+## What heavy delegation does to skill
+
+In January 2026, Anthropic researchers Judy Hanwen Shen and Alex Tamkin published a randomized controlled trial on exactly this question. Fifty-two mostly junior software engineers, each with more than a year of weekly Python use, learned Trio, an asynchronous programming library none of them had used. Half had an AI assistant in a sidebar; half coded by hand. Afterwards, everyone took a quiz on the concepts they'd just used.
+
+The AI group averaged 50% on the quiz; the hand-coding group averaged 67%, a difference the authors describe as nearly two letter grades, and statistically significant. The largest gap was on debugging questions. The AI group finished about two minutes faster, but that difference was not statistically significant.
+
+The more useful finding is about how people used the assistant. The authors grouped participants by interaction pattern. The lowest scorers, averaging under 40%, delegated code generation to the AI, increasingly relied on it, or used it to debug iteratively without understanding. The highest scorers, at 65% or more, generated code and then worked to understand it, asked for explanations alongside code, or used the AI only for conceptual questions. The authors' interpretation is that cognitive effort, including getting painfully stuck, is likely important for building mastery.
+
+The limits are real and the authors state them: a small sample, one library, comprehension measured immediately rather than over months, and a chat-style assistant rather than an agentic tool like Claude Code, which they expect could have larger effects. Put it next to the field evidence and a coherent picture emerges. Cui and colleagues found the largest output gains among less experienced developers; this study suggests those same developers are the ones most at risk of not building the skills they'll need to oversee the output. Both can be true, and a team lead should plan for both.
+</Listen>
+
+<Callout type="pitfall" title="Losing the skills you need for oversight">
+The skills that atrophy first under delegation (reading unfamiliar code closely, debugging, knowing why a design is the way it is) are exactly the skills that make you a competent reviewer of agent output. That's a loop worth worrying about: the more you delegate without engaging, the less able you are to catch what goes wrong, and the more you have to trust. Deliberately keep a share of your work in the modes that exercise those skills.
+</Callout>
+
+<Listen>
+## Habits that keep you learning
+
+These follow from the study's high-scoring patterns and from the verification habits of this elective.
+
+**Predict before you read.** Before opening the agent's diagnosis or fix, write down what you think the cause is. Then compare. You'll learn where your mental model is wrong, and you'll review more carefully.
+
+**Ask why, not just what.** After a change you couldn't have written yourself, ask for an explanation of the key decision and the alternative it rejected, then check the explanation against the code.
+
+**Use learning-oriented modes in areas you want to master.** Claude Code's built-in Explanatory output style adds short "Insight" notes on the choices behind the code; the Learning style also leaves small pieces of real design decisions (marked `TODO(human)`) for you to write, then comments on your code. Switch with `/output-style`. Other tools have similar modes; the study's authors recommend tool designers build more of them.
+
+**Write the first version yourself, sometimes.** For a new library, language, or domain, do the first small task by hand, then compare with what the agent would have done.
+
+**Do the debugging when it's teachable.** When a bug is in a system you'll own, drive the investigation yourself and use the agent as a fast pair of hands (run this, search that), not as the detective.
+
+**Review as practice.** Reading agent code carefully, against a checklist, is itself skill-building. Skimming isn't.
+</Listen>
+
+<Listen>
+## Your personal operating manual
+
+The elective ends with a document only you can write: how you work with coding agents, written down so you follow it on busy days and revise it as tools change. Keep it to a page. Here's a skeleton to fill in from your lab and project results.
+
+**Defaults.** Tool, model, and effort for everyday work, and when you change each (from lesson 3 and your own comparison).
+
+**Before a task.** Your delegation rule (the exercise above, adjusted). When you write a spec, when you use plan mode, what a good prompt for you includes (the symptom, the place, what done looks like).
+
+**Context.** What lives in your CLAUDE.md or AGENTS.md, and your pruning schedule.
+
+**Checks.** Which hooks run in your repos, what your Stop condition is, which paths are protected, what CI enforces.
+
+**Review.** Your checklist and reading order (lesson 8), and when you add a second-model review.
+
+**Security.** What the agent may never touch, which credentials it gets, when you use a container or the sandbox, and how you handle untrusted repositories.
+
+**Learning.** Which skills you're deliberately keeping in your own hands this quarter, and which habits from the list above you're using.
+
+**Measurement.** One number you'll track (cost per merged change, rework minutes, defects found in review) and when you'll look at it.
+
+Date it, keep it in your notes or your dotfiles, and revisit it whenever your tools change in a way that matters. A manual you haven't revised in six months is describing a different set of tools.
+</Listen>
+
+<GoDeeper title="Judgment as a calibrated forecast">
+A useful way to think about delegation judgment is as calibration, in the forecaster's sense. Before each delegated task, write a one-line prediction: "will succeed without rework," "will need one correction," or "will go wrong." After a few weeks, compare predictions with outcomes. If you're overconfident (predicting success that doesn't come), your rule is delegating too much; if underconfident, you're doing work you could hand off. This is the individual version of what METR did at scale, and it guards against the felt-versus-measured gap from lesson 2. Twenty predictions will teach you more about your own judgment than a year of unexamined use.
+</GoDeeper>
+
+<Listen>
+## Closing the elective
+
+You started this elective relying on an agent without knowing what was best. You now have the parts: how the loop and context work, what benchmarks and studies do and don't show, how to choose tools and settings with evidence, how to give context that changes behavior, how to make checks run by default, how to review and secure agent work, and when to keep the work yourself. The project asks you to put all of it on one of your own repositories and measure the difference. The habit to keep afterwards is the one under all the others: treat every claim, including the agent's "done," as a hypothesis you can check.
+</Listen>

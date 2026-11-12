@@ -1,0 +1,218 @@
+---
+id: e3-project
+studio: e3
+title: "Your model selection playbook and a claim brief"
+summary: >-
+  Two deliverables that turn this elective into habits you will use at work: a personal model selection playbook for
+  your own job, backed by a small eval comparing at least three models (including Claude and at least one of GPT,
+  Gemini, or Grok) on three task types you care about; and a two-page, evidence-weighted brief on one current public
+  AI claim.
+estHours: 10
+repoName: ai-playbook
+requirements:
+  - { id: r1, text: "Three task types drawn from your own work (for example extracting fields from contracts, drafting a status update from notes, reviewing a pull request, summarizing customer calls), each described in two or three sentences with who uses the output and what a bad output costs" }
+  - { id: r2, text: "For each task type, a written pass/fail rubric (or a small scored rubric) committed to the repository before any model output is generated, with the commit visible in history" }
+  - { id: r3, text: "At least 15 real or realistic inputs per task type (45 or more in total), stored in the repo with any personal or confidential data removed or replaced, and including at least three awkward cases per task (long, ambiguous, or adversarial)" }
+  - { id: r4, text: "An eval comparing at least three models, including a Claude model and at least one of GPT, Gemini, or Grok, plus at least one cheaper tier or open-weight model, all run with the same prompt, inputs, and documented settings (model id, effort or reasoning setting, date)" }
+  - { id: r5, text: "Grading that does not favor any candidate: code checks where possible, your own labels on every item or on a stated random sample, and, if you use an LLM judge, one from a family not being compared, with its agreement against your labels reported" }
+  - { id: r6, text: "Results per model and task: pass rate with a 95% interval and n, cost per task from the usage fields, and median latency, plus at least three failure examples you read and categorized" }
+  - { id: r7, text: "A playbook (PLAYBOOK.md) mapping each of your task types, and at least four more common types from lesson 3, to a first-choice model, a fallback, the check you apply to its output, and what would trigger re-evaluation, with every row labeled as measured by you or based on documented claims" }
+  - { id: r8, text: "A data and terms section for the providers you used: what each one's documentation says about retention, training on your data, and zero data retention for the surface you used, with links and the date checked" }
+  - { id: r9, text: "A claim brief (CLAIM_BRIEF.md, at most two pages) on one public AI claim made in 2026 by a named person or organization, following the template on this page: primary source and date, the claim rewritten so it can fail, incentives, evidence for and against with sources, measured versus extrapolated, base rates, your probability, and what would change it" }
+  - { id: r10, text: "A write-up (WRITEUP.md) using the template on this page, including how you used AI assistants in the project and what you had to verify or correct" }
+  - { id: s1, text: "Run the eval on a fourth model from a fourth provider, or an open-weight model on your own hardware, and report the quality gap and the full cost per task including hardware", required: false }
+  - { id: s2, text: "Make three dated probabilistic forecasts related to your claim (for example about a benchmark result or a release by a date) and commit them, so they can be scored with the Brier score later", required: false }
+rubric:
+  - id: eval
+    criterion: Eval design and validity
+    levels:
+      1: "A handful of inputs tried by hand in a chat window; no rubric, or a rubric written after seeing outputs."
+      2: "A rubric and enough inputs, but settings not held constant across models, or grading by a judge from one of the compared families without checking it."
+      3: "Rubrics committed before outputs, at least 15 inputs per task with awkward cases, identical settings, and grading that is either code-based or checked against your labels."
+      4: "Level 3, plus failure categories that came from reading outputs, at least one rubric revision justified by what you found (with a rerun), and a note on what the eval cannot detect."
+  - id: evidence
+    criterion: Evidence and statistics in the playbook
+    levels:
+      1: "Recommendations by reputation or leaderboard rank alone."
+      2: "Pass rates reported, but without intervals or n, or decisions made on point estimates."
+      3: "Every result has n, an interval, cost, and latency; choices are made on lower bounds; rows are labeled measured or claimed."
+      4: "Level 3, plus a clear account of which close calls would need more data, and an estimate of how many more items would settle them."
+  - id: selection
+    criterion: Model selection judgment
+    levels:
+      1: "One model recommended for everything, or choices that ignore cost or data terms."
+      2: "Different models per task, but without fallbacks, re-evaluation triggers, or data-term constraints."
+      3: "Each task has a first choice and fallback justified by quality, cost, latency, distinctive features, and data terms; a cheaper tier was tested and adopted where it cleared the bar."
+      4: "Level 3, plus a portfolio view (where to route by difficulty or volume), and a dated re-evaluation plan you would actually follow."
+  - id: brief
+    criterion: Claim brief quality
+    levels:
+      1: "A summary of a news story, or an opinion without sources."
+      2: "Primary source found and evidence listed, but one-sided, or the claim not rewritten so it can fail."
+      3: "Primary source and date, a falsifiable rewrite, incentives, balanced evidence with sources, measured versus extrapolated separated, and a stated probability."
+      4: "Level 3, plus base rates or a track record considered, the strongest opposing case stated fairly, and specific, dated evidence that would move your probability up or down."
+  - id: communication
+    criterion: Communication and reproducibility
+    levels:
+      1: "Files missing, or results that cannot be traced to code and data."
+      2: "Results present, but a reader could not rerun the eval or tell which numbers came from where."
+      3: "One command reruns the eval (with a cost estimate first), the write-up leads with decisions, and every number traces to a logged run."
+      4: "Level 3, and a colleague outside engineering could read the playbook summary and the claim brief and explain your recommendations and their main uncertainty."
+milestones:
+  - { id: m1, title: "Tasks, rubrics, and inputs", week: 1, deliverables: ["Three task descriptions", "Rubrics committed before any outputs", "At least 15 inputs per task, cleaned of sensitive data"] }
+  - { id: m2, title: "Eval runs and claim selection", week: 2, deliverables: ["Runs for at least three models with logged settings, cost, and latency", "Labels and grading", "Chosen claim with its primary source"] }
+  - { id: m3, title: "Playbook, brief, and write-up", week: 3, deliverables: ["PLAYBOOK.md", "CLAIM_BRIEF.md", "WRITEUP.md and the self-assessment against the rubric"] }
+sources:
+  - { id: claude-choosing-model-docs, use: linked }
+  - { id: openai-models-docs, use: linked }
+  - { id: gemini-models-docs, use: linked }
+  - { id: xai-models-docs, use: linked }
+  - { id: openai-your-data, use: linked }
+  - { id: gemini-api-terms, use: linked }
+  - { id: xai-security-faq, use: linked }
+  - { id: claude-data-retention-docs, use: linked }
+  - { id: panickssery-2024-self-preference, use: linked }
+  - { id: ioannidis-2005, use: linked }
+  - { id: intl-ai-safety-report-2026, use: linked }
+  - { id: hamel-llm-judge, use: linked }
+---
+
+## The brief
+
+This elective asked two questions. Which model should you use for which job, and how do you know? And how should you weigh the big public claims about AI? This project answers both for you personally, with evidence you gathered yourself.
+
+**Part 1, the playbook.** Pick three task types from your actual work. Write down what a good output looks like before you see any model output. Run at least three models on the same inputs: a Claude model, at least one of GPT, Gemini, or Grok, and at least one cheaper tier or open-weight model. Grade fairly, report results with intervals, cost, and latency, and turn them into a playbook: for each task, which model you start with, which is the fallback, what check you apply to the output, and what would make you re-run the eval. Extend it with rows for common task types from lesson 3, clearly labeled as based on documented claims rather than your own measurements.
+
+**Part 2, the claim brief.** Pick one public claim about AI made in 2026 by a named person or organization: a lab leader's timeline, a critic's prediction, a productivity figure, a safety or policy claim. Write a two-page, evidence-weighted brief that someone outside engineering could act on.
+
+Build it in its own repository (`ai-playbook`). Keep it small and honest. Forty-five well-chosen inputs graded carefully are worth more than five hundred graded carelessly.
+
+## What you get
+
+- **Lesson 3** gives you the providers' documented strengths, the independent evidence and its caveats, the playbook table to extend, and the Wilson lower-bound selection rule.
+- **Lessons 4 to 6** give you worked claim boxes to model your brief on, and lesson 9 gives you the six-part checklist and a full worked example.
+- **Studio 3** gives you the eval machinery (judge calibration, paired comparisons, intervals); reuse it if you have it, but nothing here requires it.
+
+## Suggested structure
+
+<Mermaid
+  alt="Project structure. Three task types each have a rubric and inputs. A runner sends the same inputs to three or more models with fixed settings and logs outputs, cost, and latency. Grading uses code checks, your labels, and optionally a judge from a non-compared family calibrated against your labels. Results with intervals feed the playbook. Separately, a public claim goes through the six-part checklist into the claim brief. Both feed the write-up."
+  caption="Two strands that share one discipline: decide what counts as evidence before you look."
+  chart={`flowchart TD
+  T["3 task types: rubric + inputs (committed first)"] --> R["runner: same inputs, fixed settings, 3+ models"]
+  R --> L[("logged outputs, cost, latency")]
+  L --> G["grading: code checks + your labels (+ calibrated judge)"]
+  G --> S["results: pass rate with interval, cost, latency, failures"]
+  S --> P["PLAYBOOK.md"]
+  C["one 2026 public claim"] --> K["six-part checklist"]
+  K --> B["CLAIM_BRIEF.md"]
+  P --> W["WRITEUP.md"]
+  B --> W`}
+/>
+
+<Callout type="tip" title="Write the rubric before you see an output">
+The single most common way to spoil a model comparison is to look at a few outputs, decide which model you like, and then write criteria that favor it. Commit the rubric first; the git history is your proof. If you later realize the rubric missed something, revise it, say why in the write-up, and regrade every model with the new version.
+</Callout>
+
+## Pitfalls
+
+<Callout type="pitfall" title="Comparing models under different conditions">
+Different prompts, different effort settings, different dates, or a retry policy applied to one model and not another all invalidate a comparison. Fix the prompt, record the exact model id and reasoning or effort setting for each provider, run everything in the same window, and log it all. If a provider requires a different prompt format, note the difference and keep the content the same.
+</Callout>
+
+<Callout type="pitfall" title="A judge that grades its own family">
+If an LLM grades the outputs, it must not be from a family you are comparing, and you must report how often it agrees with your own labels on at least 20 items, broken down into how often it catches failures and how often it passes good outputs. Self-preference is documented (Panickssery and colleagues, 2024). When in doubt, grade with code and by hand.
+</Callout>
+
+<Callout type="pitfall" title="Sending data you should not">
+Before you put work data into any provider's API, read its data terms for the surface you are using and your employer's policy. Free tiers and consumer apps often have different terms from paid API access. If in doubt, build realistic synthetic inputs that preserve the difficulty of the real ones, and say so in the write-up.
+</Callout>
+
+<Callout type="pitfall" title="A brief that argues with a headline">
+Find the primary source and quote the claim with its hedges. If the only source is secondhand, say so and lower your confidence. Then rewrite the claim so it could clearly fail before you weigh any evidence.
+</Callout>
+
+## Constraints
+
+- Use each provider's official SDK or documented HTTP API, with keys in environment variables, never in the repository.
+- Keep the total model spend under about 20 dollars at current prices; the runner should print an estimated cost and ask for confirmation before a full run.
+- Every number in the playbook must trace to a logged run (model id, settings, date, inputs version) or be labeled as a documented claim with a link.
+
+## Claim brief template
+
+Put this in `CLAIM_BRIEF.md`. Two pages at most.
+
+```markdown
+# Claim brief: <short name of the claim>
+
+## The claim
+Full quotation (including hedges), speaker, role, date, and link to the primary source.
+
+## The claim, rewritten so it can fail
+One sentence with a date or a measurable outcome.
+
+## Who is saying it, and why
+Access to evidence; incentives; track record on similar, scored claims if any.
+
+## Evidence for
+Three to five points, each with a source and date. Say for each whether it is measured or extrapolated.
+
+## Evidence against, or important nuance
+Three to five points, each with a source and date. State the strongest opposing case fairly.
+
+## Base rates
+How have similar claims fared? How often do results of this kind replicate?
+
+## Verdict
+One paragraph. Your probability that the rewritten claim resolves true, and why.
+
+## What would change my mind
+Specific, dated evidence that would move the probability up, and evidence that would move it down.
+
+## What a decision-maker should do now
+Low-regret actions, and the signals that would justify larger ones.
+```
+
+## Write-up template
+
+Put this in `WRITEUP.md` and fill it in.
+
+```markdown
+# AI playbook: write-up
+
+## Summary (read this first)
+Three to five sentences: which model you will use for each of your three tasks, how sure you are,
+what it costs, and the one result that surprised you.
+
+## Tasks and rubrics
+Each task in two or three sentences, its rubric, and a link to the commit where the rubric was added.
+
+## The eval
+- Inputs: count per task, how you sourced them, how you removed sensitive data, the awkward cases
+- Models: exact ids, effort or reasoning settings, dates run
+- Grading: code checks, your labels, any judge (family, agreement with your labels)
+
+## Results
+| Task | Model | Pass rate (95% interval, n) | Cost per task | Median latency |
+|---|---|---|---|---|
+
+Read failures: at least three examples with your categorization.
+
+## Decisions
+For each task: first choice, fallback, the output check, and the re-evaluation trigger. Which close calls
+would need more data, and roughly how much.
+
+## Data and terms
+For each provider used: retention, training on your data, zero data retention availability, date checked.
+
+## The claim brief in one paragraph
+The claim, your probability, and the evidence that would change it.
+
+## Limitations
+What this eval cannot detect, what you would measure next, and when you will rerun it.
+
+## How I used AI assistants
+Which tools, for what, and what you had to check or correct.
+```
+
+When you finish, score yourself with the rubric below (ideally a day later), paste your repo link, and mark the project submitted. Then put a reminder in your calendar for three months from now to rerun the eval on whatever has been released since.

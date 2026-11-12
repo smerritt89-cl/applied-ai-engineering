@@ -1,0 +1,268 @@
+---
+id: e1-w2-l4
+studio: e1
+week: 2
+order: 4
+title: "makemore, part 2: embeddings and an MLP language model"
+summary: Bengio et al. (2003) at character level. Why counting fails for longer contexts, how learned embeddings share statistical strength, the network from embedding lookup to logits, a numerically stable cross-entropy and its gradient, minibatch training, finding a learning rate, and why the train, dev, and test splits exist.
+estMinutes: 115
+reviewed: 2026-11-11
+objectives:
+  - Explain why count tables blow up with context length, and how embeddings avoid it
+  - Trace the shapes through an MLP language model from integer contexts to logits, and count its parameters
+  - Implement cross-entropy with the log-sum-exp trick and verify that its gradient is softmax minus one-hot
+  - Explain minibatch gradient descent as an unbiased but noisy estimate of the full gradient
+  - Use train, dev, and test splits correctly, and read underfitting and overfitting from the two loss curves
+sources:
+  - { id: yt-karpathy-makemore-mlp, use: embedded }
+  - { id: karpathy-zero-to-hero, use: adapted, where: "makemore part 2 (MLP) and its exercises" }
+  - { id: bengio-2003-nplm, use: summarized }
+  - { id: pytorch-cross-entropy, use: summarized }
+  - { id: goodfellow-2016-dlbook, use: linked, where: "Chapter 5.3 (hyperparameters and validation sets) and 8.1.3 (minibatch algorithms)" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: "An MLP language model uses a 27-token vocabulary, context length 3, embedding size 10, and a hidden layer of 200 tanh units. How many inputs does the hidden layer receive per example?"
+    options:
+      - id: a
+        text: "30"
+        correct: true
+        rationale: "The three 10-dimensional embeddings are concatenated into one 30-dimensional vector."
+      - id: b
+        text: "10"
+        rationale: That's one character's embedding. The context has three.
+      - id: c
+        text: "81"
+        rationale: That would be three one-hot vectors of size 27, which the embedding replaces.
+    explanation: >-
+      The embedding table C has shape 27 x 10. Indexing it with a batch of contexts of shape (N, 3) gives (N, 3, 10),
+      which is viewed as (N, 30) and multiplied by W1 of shape (30, 200). Tracking shapes like this is most of the
+      practical skill in building models.
+  - id: kc2
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      import math
+      def ce_naive(z, y):
+          e = [math.exp(v) for v in z]
+          return -math.log(e[y] / sum(e))
+      try:
+          print(round(ce_naive([800.0, 0.0], 0), 3))
+      except OverflowError:
+          print("overflow")
+    options:
+      - id: a
+        text: "`0.0`"
+        rationale: That's the mathematically correct answer, which a stable implementation returns.
+      - id: b
+        text: "`nan`"
+        rationale: Python's math.exp raises rather than returning inf; with NumPy or PyTorch you'd get inf and then nan.
+      - id: c
+        text: "`overflow`"
+        correct: true
+        rationale: "math.exp(800) exceeds the largest double (about 1.8e308), so Python raises OverflowError."
+    explanation: >-
+      Subtract the maximum logit first: log-sum-exp(z) = m + log(sum of exp(z_k - m)). The result is identical
+      mathematically and every exponent is at most 0. Fused functions such as PyTorch's cross_entropy do this for you,
+      which is one of the reasons the lecture switches to them.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      After an afternoon of trying hyperparameters, your best configuration scores 2.11 on the dev set and 2.09 on the
+      training set. You'd like to report the result. What's the right next step?
+    options:
+      - id: a
+        text: Report 2.11, since the dev set is held out.
+        rationale: You selected this configuration because it did well on the dev set, so the dev score is optimistically biased.
+      - id: b
+        text: Evaluate the chosen configuration once on the untouched test set and report that number, alongside the dev score.
+        correct: true
+        rationale: The test set is the only data that played no part in any decision, so it gives the unbiased estimate.
+      - id: c
+        text: Train on dev plus test for a better model and report its training loss.
+        rationale: Training loss is the most optimistic number of all.
+    explanation: >-
+      Train fits parameters, dev chooses hyperparameters, test is touched once at the end. Train and dev being close
+      (2.09 versus 2.11) says the model is not overfitting much, so the next gains likely come from a bigger model, not
+      more regularization. This discipline is identical to the eval hygiene in Studio 3.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Why counting runs out of road
+
+The bigram model sees one character. To see more, you could count longer contexts: a table indexed by the previous three characters has 27 cubed, or 19,683, rows of 27 entries each. Most of those contexts never occur in 32,033 names, so most rows would be empty or nearly so, and the estimates in the rest would be noisy. Every extra character of context multiplies the table by 27. This is the curse of dimensionality for discrete models, and it's the problem Bengio and colleagues set out to fix in "A Neural Probabilistic Language Model" (2003).
+
+Their idea, which the lecture walks through at 01:48, is to map each token to a learned vector in a low-dimensional space, an **embedding**, and to predict the next token with a neural network that reads the concatenated embeddings of the context. Similar tokens can end up with similar vectors, so evidence about one context transfers to contexts the model has never seen. The paper did this for words; the lecture does it for characters, with a context of three.
+
+This is the conceptual ancestor of every embedding you met in Studio 2, and of the token embedding table at the bottom of GPT.
+</Listen>
+
+<Video id="TCH_1BHY58I" title="Building makemore Part 2: MLP" channel="Andrej Karpathy" minutes={76} source="https://karpathy.ai/zero-to-hero.html">
+The whole video. Things to watch for:
+
+- **12:19 and 18:35:** the embedding lookup `C[X]`, and how `.view` reshapes (N, 3, d) into (N, 3d) without copying, by reinterpreting the same storage.
+- **32:49:** why `F.cross_entropy` replaces the hand-written softmax and log: efficiency, a simpler backward pass, and numerical stability.
+- **37:56:** overfitting a single batch as a sanity check.
+- **45:40:** finding a learning rate by sweeping it exponentially during one run.
+- **53:20:** the train, dev, and test split, and what each is for.
+- **01:05:27:** a two-dimensional embedding space plotted. Look for which characters cluster.
+</Video>
+
+<Listen>
+## The network, shape by shape
+
+Build the dataset first. Every name becomes several examples: for "emma" with context length 3, the examples are "..." predicts e, "..e" predicts m, ".em" predicts m, "emm" predicts a, and "mma" predicts ".". Contexts are padded with the "." token at the start. That's X, an integer array of shape (N, 3), and Y, the targets, shape (N).
+
+Then the forward pass:
+
+1. **Embed:** C is a 27 by d matrix of trainable numbers. C[X] has shape (N, 3, d).
+2. **Concatenate:** view it as (N, 3d).
+3. **Hidden layer:** h = tanh(emb W1 + b1), with W1 of shape (3d, H).
+4. **Output layer:** logits = h W2 + b2, with W2 of shape (H, 27).
+5. **Loss:** cross-entropy between softmax(logits) and Y.
+
+Count the parameters for d = 10 and H = 200: C has 270, W1 and b1 have 30 x 200 + 200 = 6,200, W2 and b2 have 200 x 27 + 27 = 5,427, for 11,897 in total. Compare 531,441 cells in a three-character count table. Most of the model's capacity is in the layers, not the embeddings, and the embedding size controls how much information each character can carry into them. The lecture's experiments at 01:00:49 and 01:07:16 probe exactly which of those is the bottleneck.
+</Listen>
+
+```text
+X      (N, 3)          integer contexts
+C[X]   (N, 3, d)       embedding lookup (a one-hot times C, without the one-hot)
+emb    (N, 3d)         view, no copy
+h      (N, H)          tanh(emb @ W1 + b1)       W1: (3d, H)
+logits (N, 27)         h @ W2 + b2               W2: (H, 27)
+loss   scalar          mean over N of  -log softmax(logits)[y]
+```
+
+<Listen>
+## Cross-entropy, done properly
+
+The lecture first writes the loss out (exponentiate logits, normalize, pick the correct probability, take minus the log, average) and then replaces it with `F.cross_entropy`. The fused version is better in three ways the video names. It doesn't materialize the intermediate tensors, so it's faster and uses less memory. Its backward pass is the simple closed form you derived last lesson, softmax minus one-hot, instead of a chain through every intermediate. And it's numerically stable.
+
+Stability comes from the log-sum-exp identity. The loss for one example is log(sum over k of exp(z_k)) minus z_y. Let m be the maximum logit. Then log-sum-exp(z) = m + log(sum over k of exp(z_k minus m)), exactly. Every exponent is now at most 0, so nothing overflows, and the largest term is exactly 1, so the sum is at least 1 and the log is safe. A naive implementation overflows as soon as one logit passes about 709, the point where exp exceeds the largest double. In real training, large logits happen, especially early or after a bad step.
+
+A useful sanity property: a confidently wrong answer costs about the logit gap. If the correct class has logit 0 and another has logit 1000, the loss is about 1000. The loss is unbounded, which is exactly why one confidently wrong prediction can dominate a batch.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e1-w2-mlp-pieces"
+  title="Context windows, stable cross-entropy, and its gradient"
+  starter={`import math
+
+def build_dataset(words, stoi, block_size=3):
+    """TODO: for each word, slide a context window over word + '.'.
+    Start with context [0] * block_size ('.' padding). For each character ch in list(word) + ['.']:
+    append a copy of the context to X, append stoi[ch] to Y, then shift: context = context[1:] + [stoi[ch]].
+    Return (X, Y)."""
+    pass
+
+def log_softmax(logits):
+    """TODO: return [z - logsumexp(logits) for z in logits], computing logsumexp stably
+    (subtract the max before exponentiating)."""
+    pass
+
+def cross_entropy(logits, target):
+    """TODO: -log_softmax(logits)[target]"""
+    pass
+
+def grad_logits(logits, target):
+    """TODO: d(cross_entropy)/d(logits) = softmax(logits) - one_hot(target)."""
+    pass
+
+stoi = {ch: i for i, ch in enumerate(".abcdefghijklmnopqrstuvwxyz")}
+itos = {i: ch for ch, i in stoi.items()}
+X, Y = build_dataset(["emma"], stoi) or ([], [])
+for x, y in zip(X, Y):
+    print("".join(itos[i] for i in x), "->", itos[y])
+print(cross_entropy([2.0, 1.0, 0.1], 0))
+`}
+  tests={`stoi = {ch: i for i, ch in enumerate(".abcdefghijklmnopqrstuvwxyz")}
+res = build_dataset(["emma", "ava"], stoi, block_size=3)
+assert res is not None, "build_dataset returned None"
+X, Y = res
+assert len(X) == len(Y) == 9, "'emma' gives 5 examples and 'ava' gives 4 (one per character plus the end token)"
+assert X[0] == [0, 0, 0] and Y[0] == stoi["e"], "the first context is all '.' padding and predicts the first letter"
+assert X[4] == [stoi["m"], stoi["m"], stoi["a"]] and Y[4] == 0, "the last example for 'emma' is 'mma' -> '.'"
+assert X[5] == [0, 0, 0], "the context resets to padding at the start of each word"
+X2, _ = build_dataset(["emma"], stoi, block_size=5)
+assert all(len(x) == 5 for x in X2), "every context has block_size entries"
+assert abs(cross_entropy([0.0] * 27, 3) - math.log(27)) < 1e-12, "equal logits over 27 classes give loss log(27)"
+assert abs(cross_entropy([2.0, 1.0, 0.1], 0) - 0.4170300162778335) < 1e-9, "cross_entropy([2, 1, 0.1], 0) should be about 0.4170"
+big = cross_entropy([1000.0, 0.0, -1000.0], 0)
+assert big == big and big < 1e-6, "use log-sum-exp with the max subtracted so huge logits don't overflow"
+assert abs(cross_entropy([1000.0, 0.0], 1) - 1000.0) < 1e-6, "a confidently wrong answer costs about the logit gap"
+z, t, h = [0.3, -1.2, 2.0, 0.5], 1, 1e-6
+g = grad_logits(z, t)
+assert g is not None and abs(sum(g)) < 1e-12, "softmax minus one-hot sums to zero"
+for i in range(len(z)):
+    up = list(z); up[i] += h
+    dn = list(z); dn[i] -= h
+    num = (cross_entropy(up, t) - cross_entropy(dn, t)) / (2 * h)
+    assert abs(g[i] - num) < 1e-6, f"grad_logits[{i}] disagrees with the central-difference estimate"`}
+  solution={`def build_dataset(words, stoi, block_size=3):
+    X, Y = [], []
+    for w in words:
+        context = [0] * block_size
+        for ch in list(w) + ["."]:
+            ix = stoi[ch]
+            X.append(list(context))
+            Y.append(ix)
+            context = context[1:] + [ix]
+    return X, Y
+
+def log_softmax(logits):
+    m = max(logits)
+    lse = m + math.log(sum(math.exp(z - m) for z in logits))
+    return [z - lse for z in logits]
+
+def cross_entropy(logits, target):
+    return -log_softmax(logits)[target]
+
+def grad_logits(logits, target):
+    probs = [math.exp(lp) for lp in log_softmax(logits)]
+    probs[target] -= 1.0
+    return probs`}
+>
+Implement the four functions and **Check my answer**. The last test is a gradient check: it compares your closed-form gradient with central differences of your own loss, exactly as you did for micrograd. If both pass, you've built and verified the two pieces that sit at the top of every language model, including GPT.
+</PyRunner>
+
+<Listen>
+## Minibatches and the learning rate
+
+Computing the loss over every example for every step is wasteful (the full names dataset yields 228,146 of them, about 80 percent of which go into the training split). The lecture (41:25) instead samples a random minibatch, 32 examples at first, and computes the gradient on that. Mathematically, the minibatch gradient is an **unbiased estimator** of the full-data gradient (its expectation over random batches is the true gradient), with variance that falls like 1 over the batch size. You trade a noisier direction for many more steps per second, which nearly always wins. The cost is that the minibatch loss you print is noisy too, so judge progress by evaluating on whole splits, not by the last batch.
+
+How big a step? At 45:40 the video sweeps the learning rate exponentially, from 0.001 to 1 over a thousand steps, and plots the loss against the exponent. The loss falls, flattens, then blows up; a good learning rate sits in the flat, low valley before the blow-up. It's a quick, empirical answer to a question the Taylor-expansion argument from lesson 2 can only frame. Later in training the video decays the rate by a factor of 10, a simple schedule that lets the parameters settle.
+</Listen>
+
+<Listen>
+## Train, dev, test, and what the gap tells you
+
+At 53:20 the lecture splits the names 80/10/10. The split is a contract. The **training** set fits parameters. The **dev** (validation) set chooses hyperparameters: hidden size, embedding size, learning rate, steps. The **test** set is evaluated once, at the end, to report a number no decision depended on. Use the test set to choose anything and it becomes a second dev set, and your reported score is optimistic.
+
+The two curves you track tell you what to do next. If training and dev loss are close and both high, the model is **underfitting**: it lacks capacity, so make it bigger (the video grows the hidden layer at 01:00:49, then the embeddings at 01:07:16). If training loss keeps falling while dev loss stalls or rises, it is **overfitting**: it is memorizing, so get more data, regularize, or stop earlier. The video's exercise E01 asks you to beat its best validation loss of 2.2 by tuning; when you do, you'll be making exactly these calls.
+
+If this feels familiar, it should. Studio 3's evaluation discipline (a held-out set, decisions on dev, a final untouched test) is the same contract, applied to prompts and models instead of weights.
+</Listen>
+
+<Callout type="pitfall" title="The quietly leaked test set">
+Leaks rarely look like "I trained on the test set." They look like re-running the test evaluation after each idea "just to see," or shuffling and splitting with a different random seed each run, so names migrate between splits. Fix the split once (seeded, saved to disk), log which split every number came from, and evaluate on test only when you're done. The same holds when you compare LLM prompts: a prompt tuned while watching the test set will disappoint in production.
+</Callout>
+
+<Listen>
+## Reading the embedding plot
+
+With embedding size 2, the lecture plots each character as a point (01:05:27). The network was never told anything about letters, yet the vowels drift into a cluster, and rare characters such as "q" sit apart. This is a small, honest example of representation learning: the embedding geometry reflects how characters behave in context, because that's what reduces the loss.
+
+Be careful about over-reading such plots. A 2D embedding is a severe bottleneck (the video shows a larger embedding helps the loss), and in higher dimensions you need a projection such as PCA or t-SNE to look at anything, which distorts distances. Treat embedding plots as a sanity check and a source of hypotheses, not as evidence on their own. That's the same caution Studio 2 gave about reading meaning into embedding similarity scores.
+</Listen>
+
+<GoDeeper title="Why a minibatch gradient is unbiased, and what that buys you">
+Let the training loss be the average of per-example losses, L(theta) = (1/N) times the sum over i of l_i(theta). Draw a batch B of size b uniformly at random. The batch gradient (1/b) times the sum over i in B of the gradient of l_i has expectation equal to the gradient of L, because each example is equally likely to appear. Its covariance scales like Sigma divided by b, where Sigma is the covariance of per-example gradients (exactly so for sampling with replacement, approximately without). So quadrupling the batch only halves the noise's standard deviation, while costing four times the compute per step. That diminishing return is the reason minibatches are small relative to datasets, and why the noise itself is often argued to help generalization. Section 8.1.3 of Goodfellow, Bengio, and Courville's *Deep Learning* discusses these trade-offs.
+</GoDeeper>
+
+<Listen>
+## Review sheet
+
+Counting tables grow as V to the power of the context length; embeddings and a neural network share statistical strength across contexts (Bengio et al., 2003). Shapes: (N, 3) integers, (N, 3, d) embeddings, (N, 3d) concatenated, (N, H) hidden, (N, V) logits. Cross-entropy should be computed with log-sum-exp, and its gradient is softmax minus one-hot. Minibatch gradients are unbiased and noisy; sweep learning rates exponentially to find a good one. Train fits, dev chooses, test reports, once. Close train and dev losses mean underfitting; a widening gap means overfitting. Next week: what goes wrong inside deeper networks, and how to fix it.
+</Listen>

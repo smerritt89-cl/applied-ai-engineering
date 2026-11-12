@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.475
+Agents: end state versus trajectory.
+
+2
+00:00:02.755 --> 00:00:08.195
+An agent takes many steps: it reads, calls tools, changes things, and talks to the user.
+
+3
+00:00:08.475 --> 00:00:09.968
+You can grade two things.
+
+4
+00:00:10.248 --> 00:00:20.147
+The end state (outcome) is what the world looks like afterward: is there a reservation in the database, did the tests pass, was the ticket closed with the right code?
+
+5
+00:00:20.427 --> 00:00:28.384
+The trajectory (transcript or trace) is the path: which tools it called, in what order, with what arguments, and what it said along the way.
+
+6
+00:00:28.664 --> 00:00:33.827
+Anthropic’s guide to agent evals recommends grading outcomes in most cases.
+
+7
+00:00:34.107 --> 00:00:45.712
+An outcome check is closer to what users care about, and checking for a rigid sequence of tool calls is brittle, because agents often find valid approaches the designer didn’t anticipate.
+
+8
+00:00:45.992 --> 00:00:53.565
+Its example: a booking agent’s outcome is whether the reservation actually exists, not whether the agent said it booked one.
+
+9
+00:00:53.845 --> 00:01:05.941
+tau-bench (Yao and colleagues, 2024) grades this way: it compares the final database to an annotated goal state, and checks that the agent told the user the required information.
+
+10
+00:01:06.221 --> 00:01:10.360
+But the end state is not always enough, and tau-bench’s authors say so.
+
+11
+00:01:10.640 --> 00:01:23.056
+A correct final database is necessary but not sufficient: an agent might process a return without the user’s explicit confirmation, which violates policy even though the database looks right.
+
+12
+00:01:23.336 --> 00:01:29.565
+That is the job of trajectory checks: targeted rules about the path that matter regardless of outcome.
+
+13
+00:01:29.845 --> 00:01:32.405
+Never call a write tool before confirmation.
+
+14
+00:01:32.685 --> 00:01:35.736
+Always verify identity before touching an account.
+
+15
+00:01:36.016 --> 00:01:38.085
+Don’t read another customer’s records.
+
+16
+00:01:38.365 --> 00:01:40.392
+Stay within a step and cost budget.
+
+17
+00:01:40.672 --> 00:01:42.613
+So the practical design is both.
+
+18
+00:01:42.893 --> 00:01:44.728
+Grade the end state for success.
+
+19
+00:01:45.008 --> 00:01:48.997
+Add a small number of trajectory assertions for policy and safety.
+
+20
+00:01:49.277 --> 00:01:59.027
+Use the full transcript for diagnosis: when a task fails, read it, because, as the guide puts it, you need to know whether the agent or the eval is at fault.
+
+21
+00:01:59.307 --> 00:02:10.123
+The guide reports a case where fixing grading bugs on a public benchmark moved a model’s score from 42% to 95%, which is what an unread eval can hide.

@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.901
+Metadata filters, and the order of operations.
+
+2
+00:00:03.181 --> 00:00:14.232
+Real queries carry constraints that no embedding can express: only documents from this product line, only policies effective this year, only content this user is allowed to see.
+
+3
+00:00:14.512 --> 00:00:22.576
+Qdrant’s documentation states the point plainly: filters exist because you can’t put every property of an object into a vector.
+
+4
+00:00:22.856 --> 00:00:33.971
+Vector databases and search engines let you attach structured fields (often called payload or metadata) and filter on them, and they recommend indexing the fields you filter on.
+
+5
+00:00:34.251 --> 00:00:35.936
+Where the filter runs matters.
+
+6
+00:00:36.216 --> 00:00:42.061
+Post-filtering retrieves the top k by similarity and then drops the ones that fail the filter.
+
+7
+00:00:42.341 --> 00:00:50.661
+If the filter is selective, you may be left with two results out of ten, or none, even though plenty of matching documents exist further down.
+
+8
+00:00:50.941 --> 00:01:02.760
+Filtering inside the search (restricting the candidates as the index is searched) avoids that, but approximate nearest neighbor indexes can lose recall when a filter removes most of the graph.
+
+9
+00:01:03.040 --> 00:01:19.488
+Qdrant’s 2019 engineering article on filterable HNSW describes this failure and its fixes; modern engines handle it in various ways, so read your engine’s docs on filtered search and test recall with your most selective filters.
+
+10
+00:01:19.768 --> 00:01:24.227
+In hybrid search, apply the same filters to both retrievers before fusion.
+
+11
+00:01:24.507 --> 00:01:33.701
+If only the vector side is filtered, the BM25 side can bring back documents the filter was meant to exclude, and fusion will happily rank them.
+
+12
+00:01:33.981 --> 00:01:39.784
+That leads to the most important rule in this section: permissions are filters, enforced in code.
+
+13
+00:01:40.064 --> 00:01:45.269
+Never retrieve everything and ask the model to ignore documents the user may not see.
+
+14
+00:01:45.549 --> 00:01:51.373
+The model reads whatever is in its context, and anything in its context can end up in its answer.
+
+15
+00:01:51.653 --> 00:02:02.469
+OWASP’s Top 10 for LLM applications lists sensitive information disclosure among its main risks, and retrieval without access control is a direct path to it.
+
+16
+00:02:02.749 --> 00:02:13.992
+Test this explicitly: a user without access runs a query whose best answer is in a restricted document, and the test asserts that document never appears in the retrieved set.

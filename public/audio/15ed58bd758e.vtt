@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.240
+Answer metrics: what RAGAS measures.
+
+2
+00:00:02.520 --> 00:00:16.131
+The Ragas paper (Es and colleagues, 2023) proposed a suite of reference-free metrics, meaning they score a RAG system without human-written ground-truth answers, using an LLM to do the judging.
+
+3
+00:00:16.411 --> 00:00:20.571
+The Ragas documentation defines the metrics most teams now use.
+
+4
+00:00:20.851 --> 00:00:29.277
+Faithfulness: break the answer into claims, check each claim against the retrieved context, and divide supported claims by total claims.
+
+5
+00:00:29.557 --> 00:00:32.992
+An answer with two claims, one unsupported, scores 0.
+
+6
+00:00:33.272 --> 00:00:34.040
+5.
+
+7
+00:00:34.320 --> 00:00:35.621
+No reference needed.
+
+8
+00:00:35.901 --> 00:00:38.397
+This is the metric you implement in the lab.
+
+9
+00:00:38.677 --> 00:00:52.843
+Response relevancy (also called answer relevance): an LLM generates a few questions the answer would be a good response to, and the score is the average embedding similarity between those questions and the original.
+
+10
+00:00:53.123 --> 00:01:00.099
+The docs are explicit that it measures whether the answer addresses the question’s intent, not whether it is factually right.
+
+11
+00:01:00.379 --> 00:01:03.557
+An on-topic, confidently wrong answer can score well.
+
+12
+00:01:03.837 --> 00:01:16.936
+Context precision: a rank-weighted precision over the retrieved chunks, where the judge decides which chunks are relevant (against a reference answer, or in a reference-free variant, against the generated response).
+
+13
+00:01:17.216 --> 00:01:23.552
+Context recall: break a reference answer into claims and check how many the retrieved context supports.
+
+14
+00:01:23.832 --> 00:01:27.245
+The docs note that context recall always needs a reference.
+
+15
+00:01:27.525 --> 00:01:36.315
+There are also non-LLM variants that compare retrieved ids to labeled ids, which is the deterministic recall you already have.
+
+16
+00:01:36.595 --> 00:01:44.979
+Notice what that means: the “reference-free” convenience applies to faithfulness and relevancy, and both measure consistency, not truth.
+
+17
+00:01:45.259 --> 00:01:51.872
+To measure correctness and retrieval completeness you need references, which means humans writing or approving them.

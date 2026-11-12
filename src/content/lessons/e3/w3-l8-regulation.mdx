@@ -1,0 +1,256 @@
+---
+id: e3-w3-l8
+studio: e3
+week: 3
+order: 8
+title: "Regulation and governance: the EU AI Act, US policy, and what an engineer must do"
+summary: The EU AI Act's obligations and timeline for general-purpose AI as amended by the 2026 Digital Omnibus, US federal and state developments through late 2026 (the December 2025 preemption order, California's SB 53, New York's RAISE Act), and a practical checklist of what an engineering team building on foundation models actually has to do.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - State the EU AI Act's timeline for general-purpose AI models, transparency duties, and high-risk systems as amended by Regulation (EU) 2026/1744
+  - Distinguish a provider of a general-purpose model from a provider or deployer of an AI system built on one, and say which obligations follow
+  - Summarize the US federal position (the 2025 Action Plan and Executive Order 14365) and the state frontier laws in California and New York, with their status in November 2026
+  - Triage a product description into the regimes that plausibly apply, and know when to involve counsel
+  - Turn obligations into engineering artifacts (an AI inventory, disclosures, logs, documentation, and incident processes)
+sources:
+  - { id: eu-ai-act-2024-1689, use: summarized, where: "Articles 4, 5, 50, 51 to 55, 113" }
+  - { id: eu-omnibus-2026-1744, use: summarized }
+  - { id: ai-act-explorer-omnibus, use: summarized }
+  - { id: eu-gpai-guidelines, use: summarized, where: "Timeline; modifications" }
+  - { id: eu-gpai-code-practice, use: summarized }
+  - { id: us-ai-action-plan-2025, use: linked }
+  - { id: us-eo-14365, use: summarized }
+  - { id: ca-sb53-signing, use: summarized }
+  - { id: ny-raise-act-signing, use: summarized }
+  - { id: cooley-2026-raise-amendment, use: summarized }
+  - { id: openai-frontier-governance-2026, use: linked }
+  - { id: nist-ai-rmf, use: linked }
+  - { id: gdpr-regulation, use: linked }
+  - { id: amodei-2026-adolescence, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: Under the EU AI Act as amended in 2026, when did obligations for providers of general-purpose AI models start to apply, and when could the Commission start enforcing them with fines?
+    options:
+      - id: a
+        text: Both on 2 December 2027.
+        rationale: That is the deferred date for many high-risk (Annex III) system obligations, not GPAI.
+      - id: b
+        text: Obligations from 2 August 2025; Commission enforcement powers, including fines, from 2 August 2026.
+        correct: true
+        rationale: Yes. Models already on the market before 2 August 2025 have until 2 August 2027.
+      - id: c
+        text: Obligations were suspended indefinitely by the Digital Omnibus.
+        rationale: The Omnibus deferred high-risk obligations; it did not suspend the GPAI chapter.
+    explanation: >-
+      The Digital Omnibus (Regulation (EU) 2026/1744, in force 27 July 2026) moved high-risk dates to December 2027 and
+      August 2028 and adjusted transparency transitions, but the general-purpose AI obligations stayed on their 2025
+      schedule, with the AI Office's enforcement powers from August 2026.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your company, based in Germany, builds a customer-service chatbot on a US provider's API and deploys it to EU
+      consumers. You do not train or fine-tune the model. Which obligations are most directly yours?
+    options:
+      - id: a
+        text: The general-purpose AI model obligations (training-data summary, model documentation), because your product uses a GPAI model.
+        rationale: Those fall on the provider of the GPAI model, here the API provider, not on you.
+      - id: b
+        text: The transparency duties for AI systems, starting with telling users they are interacting with an AI, plus checking whether any use case falls into a high-risk category, plus AI literacy measures for your staff.
+        correct: true
+        rationale: Right. You are the provider and deployer of an AI system built on someone else's model.
+      - id: c
+        text: None; the EU AI Act only applies to the companies that train models.
+        rationale: It regulates AI systems placed on the EU market, including ones built on third-party models.
+    explanation: >-
+      The key distinction is model provider versus system provider or deployer. Building on an API usually makes you
+      responsible for the system: disclosures, the risk classification of your use case, and staff literacy. If you
+      significantly modify a general-purpose model (for example, by substantial fine-tuning), the Commission's guidelines
+      say you may become a provider of the modified model. That is the moment to involve counsel.
+  - id: kc3
+    type: multi
+    prompt: Which statements about US AI governance in November 2026 are supported by this lesson's sources? Select all that apply.
+    options:
+      - id: a
+        text: Executive Order 14365 (December 2025) directed the Attorney General to set up a task force to challenge state AI laws inconsistent with federal policy.
+        correct: true
+        rationale: That is one of the order's main provisions.
+      - id: b
+        text: California's SB 53 requires large frontier developers to publish a framework describing how they manage catastrophic risk and provides a channel for reporting critical safety incidents.
+        correct: true
+        rationale: Signed 29 September 2025; in effect since 1 January 2026.
+      - id: c
+        text: New York's RAISE Act, as amended in March 2026, takes effect on 1 January 2027 with a 72-hour window for reporting critical safety incidents.
+        correct: true
+        rationale: Per the amended law as summarized by counsel; the original December 2025 signing announced the 72-hour rule.
+      - id: d
+        text: A federal statute now preempts all state AI laws.
+        rationale: The executive order called for a legislative recommendation; an executive order cannot itself preempt state law.
+    explanation: >-
+      US AI governance in late 2026 is a federal policy of light regulation and preemption pressure, alongside state laws
+      aimed at the largest frontier developers. For most teams building on models, the state frontier laws apply to
+      their vendors, not to them; sector laws (employment, credit, consumer protection, privacy) are what apply to them.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Why an engineer needs this lesson
+
+Regulation is usually someone else's job until a launch is blocked or a customer's procurement questionnaire asks what you have done about the EU AI Act. This lesson gives you enough to have that conversation well: the dates, who is responsible for what, and which artifacts an engineering team should produce so that legal and compliance colleagues have something to work with.
+
+Two cautions. First, this is not legal advice, and the details move: the EU amended its law in 2026 and US policy shifted twice in two years. Every date below was checked on 11 November 2026 against the cited text; check again before relying on it. Second, the frontier-model rules that get headlines mostly bind the handful of companies that train the largest models. What binds most teams is less dramatic: transparency duties, risk classification of specific use cases, data protection, and sector law. Knowing which is which saves a lot of anxiety.
+</Listen>
+
+<Listen>
+## The EU AI Act: structure and the general-purpose AI chapter
+
+The AI Act (Regulation (EU) 2024/1689) entered into force on 1 August 2024. It sorts AI by risk: a short list of **prohibited practices** (Article 5); **high-risk systems** in listed areas such as employment, education, credit, essential services, and law enforcement, which carry the heaviest duties; **transparency duties** for systems that interact with people or generate content (Article 50); and a separate chapter for **general-purpose AI models**.
+
+The general-purpose AI (GPAI) chapter applies to providers of the models themselves. Under Article 53, every GPAI provider must keep technical documentation, give downstream providers enough information to understand the model's capabilities and limits, have a policy to comply with EU copyright law, and publish a summary of the content used for training. Models are presumed to have **systemic risk** when their cumulative training compute exceeds 10 to the 25 floating-point operations (Article 51), and their providers must additionally evaluate and adversarially test them, assess and mitigate systemic risks, report serious incidents to the AI Office, and ensure cybersecurity (Article 55). Open-source models released under qualifying licenses are exempt from some of the documentation duties, but not from the systemic-risk duties.
+
+The European Commission's guidance gives the timeline. GPAI obligations applied from **2 August 2025**. The Commission's enforcement powers, including fines, apply from **2 August 2026**. Providers of models placed on the market before 2 August 2025 have until **2 August 2027**. Alongside the law, the Commission published a voluntary **General-Purpose AI Code of Practice** (July 2025) with chapters on transparency, copyright, and safety and security; providers that sign it can use adherence to demonstrate compliance, and the Commission says it will focus enforcement on monitoring that adherence.
+</Listen>
+
+<Listen>
+## The 2026 Digital Omnibus: what moved and what did not
+
+In 2026 the EU amended the Act through the **Digital Omnibus on AI**, Regulation (EU) 2026/1744, published in the Official Journal in July and in force from **27 July 2026**. The changes that matter for planning:
+
+- **High-risk obligations were deferred**: to **2 December 2027** for standalone systems in the Annex III areas (employment, credit, and so on) and to **2 August 2028** for AI embedded in products covered by existing EU product law (Annex I).
+- **Generative-content marking got a transition**: generative AI systems placed on the market before 2 August 2026 have until **2 December 2026** to meet the machine-readable marking duty in Article 50(2).
+- **AI literacy was reworded**: Article 4 now requires providers and deployers to take measures to support AI literacy among their staff, without prescribing a level for any individual.
+- **The AI Office's role grew**: it gained exclusive competence over AI systems built on a GPAI model by the same provider, with new supervisory and fining powers.
+- **The GPAI chapter's obligations did not move.**
+
+Commentary on the Omnibus disagrees on some details, especially exactly how far transparency duties shifted. When a date matters for your launch, read the consolidated text on EUR-Lex rather than a summary, including this one.
+</Listen>
+
+<Mermaid
+  alt="Timeline of EU AI Act milestones: entry into force on 1 August 2024; prohibitions from 2 February 2025; general-purpose AI model obligations from 2 August 2025; Digital Omnibus in force 27 July 2026; Commission enforcement of GPAI obligations and most Article 50 transparency duties from 2 August 2026; marking transition for older generative systems ends 2 December 2026; legacy GPAI models comply by 2 August 2027; Annex III high-risk obligations from 2 December 2027; Annex I product-embedded high-risk obligations from 2 August 2028."
+  caption="Key EU AI Act dates after the 2026 Digital Omnibus. Verify against the consolidated text before relying on any one date."
+  chart={`flowchart TD
+  A["1 Aug 2024: Act in force"] --> B["2 Feb 2025: prohibitions apply"]
+  B --> C["2 Aug 2025: GPAI model obligations apply"]
+  C --> D["27 Jul 2026: Digital Omnibus in force"]
+  D --> E["2 Aug 2026: Commission can enforce GPAI rules; Article 50 transparency"]
+  E --> F["2 Dec 2026: marking deadline for older generative systems"]
+  F --> G["2 Aug 2027: legacy GPAI models must comply"]
+  G --> H["2 Dec 2027: Annex III high-risk obligations"]
+  H --> I["2 Aug 2028: Annex I product-embedded high-risk"]`}
+/>
+
+<Listen>
+## Model provider, system provider, deployer: who you are
+
+Most confusion about the AI Act comes from not knowing which role you play.
+
+- If you **train a general-purpose model** and make it available in the EU, you are a **GPAI model provider** and the Article 53 duties (and Article 55, above the systemic-risk threshold) are yours.
+- If you **build a product on someone else's model** (an API or open weights) and put it on the EU market under your name, you are the **provider of an AI system**. The model duties stay with the model provider; you are responsible for your system's classification (is it high-risk?), its transparency duties, and its documentation.
+- If you **use an AI system in your own operations**, you are a **deployer**, with duties that depend on the risk class (for high-risk uses: human oversight, monitoring, logs).
+- If you **significantly modify a general-purpose model**, for example by substantial fine-tuning, the Commission's guidelines say you may become the provider of the modified model, for the modification. Minor modifications do not trigger this.
+
+For a typical team building on Claude, GPT, Gemini, or Grok through an API, the practical duties are: tell people when they are talking to an AI (Article 50(1)); make sure generated synthetic content is marked where the rules require it; check every use case against the high-risk list (screening job applicants or scoring creditworthiness puts you in a very different regime from summarizing meeting notes); support staff AI literacy; and collect the documentation your model provider must give downstream providers, because you will need it for your own.
+</Listen>
+
+<Listen>
+## United States: federal preemption pressure, state frontier laws
+
+**Federal policy.** The administration's AI Action Plan (July 2025) set a policy of accelerating AI development with minimal regulatory burden. **Executive Order 14365**, "Ensuring a National Policy Framework for Artificial Intelligence" (11 December 2025), went further against state rules. It directed the Attorney General to create an AI Litigation Task Force to challenge state AI laws inconsistent with the federal policy; told the Commerce Department to evaluate state laws and identify "onerous" ones; tied some federal broadband funding to states' AI laws; asked the FTC and FCC for policy actions; and called for a legislative recommendation for a federal framework that would preempt conflicting state laws, while preserving state authority in areas such as child safety. An executive order cannot by itself preempt state law, and as of November 2026 there is no federal AI statute of general application, so the state laws below are in force or scheduled.
+
+**California SB 53**, the Transparency in Frontier Artificial Intelligence Act, signed on 29 September 2025 and in effect from 1 January 2026, applies to large frontier developers. It requires them to publish a framework on their websites describing how they incorporate national and international standards and industry best practices, creates a channel for reporting critical safety incidents to the state's Office of Emergency Services, protects whistleblowers, and is enforced by the Attorney General with civil penalties.
+
+**New York's RAISE Act** was signed on 19 December 2025 and amended on 27 March 2026. As summarized by counsel, the amended law takes effect on **1 January 2027**, covers developers of models trained with more than 10 to the 26 operations that have over 500 million dollars in annual revenue, requires a published frontier AI framework and transparency reports, and requires reporting critical safety incidents within **72 hours** (24 hours when there is imminent risk of death or serious injury), with oversight by a new office in the Department of Financial Services.
+
+The labs' safety frameworks from lesson 7 are, in part, how they comply with these laws; OpenAI's May 2026 Frontier Governance Framework explicitly maps its practices onto them.
+</Listen>
+
+<Callout type="claim" title="Claim: state AI laws create a patchwork that harms innovation and should be preempted (US administration, December 2025)">
+**Who and when:** the White House, in [Executive Order 14365](https://www.whitehouse.gov/wp-content/uploads/2025/12/eo-14365.pdf), 11 December 2025.
+
+**Evidence for:** compliance with many different state regimes is costly, especially for smaller companies; the two leading state frontier laws already differ on reporting windows, penalties, and whistleblower protection (as counsel's comparison shows), which is the kind of divergence the order describes.
+
+**Evidence against, or nuance:** the state frontier laws apply only to the largest developers, which have published frameworks anyway; New York amended its law in 2026 specifically to align it more closely with California's; and without a federal statute, preemption by litigation is slow and uncertain. Lab leaders themselves are divided: Amodei's January 2026 essay cited SB 53 and the RAISE Act as reasonable transparency measures.
+
+**Score (November 2026):** a policy argument rather than a factual claim. The factual part (a patchwork exists) is true; whether it harms innovation more than it protects the public is contested.
+</Callout>
+
+<PyRunner
+  client:visible
+  id="e3-regime-triage"
+  title="Triage which regimes plausibly apply (a conversation starter for counsel)"
+  starter={`HIGH_RISK_AREAS = {"hiring", "credit", "education", "essential_services", "law_enforcement"}
+
+def triage(p):
+    """p is a dict describing a product. Keys:
+      eu_users (bool), trains_gpai (bool), substantially_modifies_gpai (bool),
+      training_flops (float), chats_with_people (bool), generates_media (bool),
+      use_area (str), annual_revenue_usd (float)
+    Return a sorted list of labels for regimes that plausibly apply:
+      "EU GPAI provider"      eu_users and (trains_gpai or substantially_modifies_gpai)
+      "EU systemic risk"      the above, and training_flops > 1e25
+      "EU Art 50 disclosure"  eu_users and (chats_with_people or generates_media)
+      "EU high-risk"          eu_users and use_area in HIGH_RISK_AREAS
+      "US state frontier law" trains_gpai and training_flops > 1e26 and annual_revenue_usd > 5e8
+    """
+    # TODO
+    pass
+
+chatbot = dict(eu_users=True, trains_gpai=False, substantially_modifies_gpai=False,
+               training_flops=0, chats_with_people=True, generates_media=False,
+               use_area="customer_support", annual_revenue_usd=4e7)
+print(triage(chatbot))
+`}
+  tests={`chatbot = dict(eu_users=True, trains_gpai=False, substantially_modifies_gpai=False, training_flops=0, chats_with_people=True, generates_media=False, use_area="customer_support", annual_revenue_usd=4e7)
+assert triage(chatbot) == ["EU Art 50 disclosure"], "an API-based chatbot for EU users mainly owes transparency"
+screener = dict(chatbot, chats_with_people=False, use_area="hiring")
+assert triage(screener) == ["EU high-risk"], "CV screening is a high-risk use even on a third-party model"
+lab = dict(eu_users=True, trains_gpai=True, substantially_modifies_gpai=False, training_flops=3e26, chats_with_people=True, generates_media=True, use_area="general", annual_revenue_usd=2e10)
+assert triage(lab) == ["EU Art 50 disclosure", "EU GPAI provider", "EU systemic risk", "US state frontier law"], "a large frontier lab hits all the model-level regimes"
+us_only = dict(lab, eu_users=False)
+assert triage(us_only) == ["US state frontier law"], "without EU users, only the state frontier law remains in this simplified model"`}
+  solution={`def triage(p):
+    out = []
+    gpai = p["eu_users"] and (p["trains_gpai"] or p["substantially_modifies_gpai"])
+    if gpai:
+        out.append("EU GPAI provider")
+        if p["training_flops"] > 1e25:
+            out.append("EU systemic risk")
+    if p["eu_users"] and (p["chats_with_people"] or p["generates_media"]):
+        out.append("EU Art 50 disclosure")
+    if p["eu_users"] and p["use_area"] in HIGH_RISK_AREAS:
+        out.append("EU high-risk")
+    if p["trains_gpai"] and p["training_flops"] > 1e26 and p["annual_revenue_usd"] > 5e8:
+        out.append("US state frontier law")
+    return sorted(out)`}
+>
+Implement `triage`, then press **Check my answer**. This is deliberately simplified (the real tests have many more conditions, exemptions, and definitions), and its value is not the answer. It is that writing the rules down forces you to ask the right questions about your product, and gives counsel a precise starting point instead of "does the AI Act apply to us?"
+</PyRunner>
+
+<Callout type="pitfall" title="Assuming the headline law is the one that applies to you">
+Teams often spend weeks on frontier-model rules that bind only their vendor, while missing the ones that bind them: data protection law (GDPR, when personal data is in prompts, logs, or eval sets), sector rules for employment, credit, health, and consumer protection, the high-risk categories of the AI Act, and their own customers' contractual requirements. Start from your use case and your data, not from the news.
+</Callout>
+
+<Listen>
+## What an engineering team should actually produce
+
+Compliance work goes faster, and is more honest, when engineering supplies concrete artifacts. Five that serve almost every regime:
+
+1. **An AI inventory.** Every feature that calls a model: purpose, users, model and version, provider, data sent, outputs, who reviews them. This is the input to every risk classification.
+2. **Disclosures and marking.** User-facing notice that people are interacting with AI, and machine-readable marking of generated media where required, implemented and tested like any other feature.
+3. **Logs and retention.** What you log, for how long, who can see it, and how it is deleted (Studio 6 covers the privacy side). High-risk regimes require logs; data protection limits them; design for both.
+4. **Documentation from and for others.** The model provider's documentation and usage policies, filed with your system's own documentation: intended use, known limitations, eval results, and the model selection record from lesson 3.
+5. **An incident process.** How a harmful output or misuse is detected, triaged, fixed, and, where the law requires, reported, with named owners. The labs now report incidents to regulators within days; your process should at least reach your own leadership within hours.
+
+The NIST AI Risk Management Framework is a useful voluntary structure for organizing these (govern, map, measure, manage), and procurement teams increasingly ask for it by name.
+</Listen>
+
+<GoDeeper title="Reading the law yourself">
+EUR-Lex publishes the AI Act and the Omnibus, and a consolidated version that includes the 2026 amendments. The Future of Life Institute's AI Act Explorer presents the text article by article, including the Omnibus, and is a convenient way to navigate, but cite the Official Journal text for anything that matters. For the US, read Executive Order 14365 itself (it is short) and the state governors' announcements, then a law firm's comparison for the details, noting the date of each. The habit is the same as with any claim in this elective: primary source first, dated, then commentary.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+In the EU, general-purpose model duties have applied since August 2025 and became enforceable in August 2026; high-risk duties were pushed to late 2027 and 2028 by the 2026 Digital Omnibus; transparency duties apply now. Know whether you are a model provider, a system provider, or a deployer, because the duties follow the role. In the US, federal policy pushes toward preemption without a statute, while California's SB 53 is in force and New York's amended RAISE Act starts in January 2027, both aimed at the largest developers. For your team, the work is an inventory, disclosures, logs, documentation, and an incident process, built as engineering artifacts and checked like code.
+</Listen>

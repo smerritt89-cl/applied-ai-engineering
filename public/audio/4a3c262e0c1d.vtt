@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.731
+Measuring retrieval: the four metrics you’ll use.
+
+2
+00:00:03.011 --> 00:00:08.195
+Fix a query, a ranked list of retrieved items, and a set of items labeled relevant.
+
+3
+00:00:08.475 --> 00:00:16.283
+Let rel_i be the relevance of the item at rank i (1 or 0 for binary labels, or a grade such as 0 to 3).
+
+4
+00:00:16.563 --> 00:00:24.307
+Precision@k is the fraction of the top k that is relevant: the number of relevant items in the top k, divided by k.
+
+5
+00:00:24.587 --> 00:00:27.787
+It answers “how much of what I pass to the model is useful?
+
+6
+00:00:28.067 --> 00:00:33.187
+”, which matters because irrelevant context costs tokens and can mislead the generator.
+
+7
+00:00:33.467 --> 00:00:43.515
+Recall@k is the fraction of all relevant items that appear in the top k: relevant items in the top k, divided by the total number of relevant items.
+
+8
+00:00:43.795 --> 00:00:46.717
+It answers “did the evidence make it into the prompt?
+
+9
+00:00:46.997 --> 00:00:52.971
+” For RAG this is usually the metric to watch first, because a generator can’t use what it never saw.
+
+10
+00:00:53.251 --> 00:00:59.779
+Anthropic’s contextual retrieval experiments report 1 minus recall@20 as their failure rate.
+
+11
+00:01:00.059 --> 00:01:10.789
+MRR (mean reciprocal rank) averages, over queries, 1 divided by the rank of the first relevant item, counting 0 when none is retrieved within the cutoff.
+
+12
+00:01:11.069 --> 00:01:15.592
+It rewards getting one right answer near the top, and ignores everything after it.
+
+13
+00:01:15.872 --> 00:01:20.245
+nDCG@k handles graded relevance and position together.
+
+14
+00:01:20.525 --> 00:01:35.459
+Discounted cumulative gain is DCG@k = sum for i from 1 to k of rel_i / log2(i + 1), so a highly relevant item at rank 1 counts fully and the same item at rank 3 counts half.
+
+15
+00:01:35.739 --> 00:01:44.101
+Divide by IDCG@k, the DCG of the ideal ordering of the labeled items, so the result lies between 0 and 1.
+
+16
+00:01:44.381 --> 00:01:49.693
+Järvelin and Kekäläinen introduced cumulated-gain measures in 2002.
+
+17
+00:01:49.973 --> 00:02:02.261
+A common variant uses 2 to the power rel_i, minus 1, as the gain, which rewards highly relevant items more steeply; scikit-learn’s ndcg_score uses the linear gain above.
+
+18
+00:02:02.541 --> 00:02:04.013
+Say which one you report.
+
+19
+00:02:04.293 --> 00:02:07.664
+Average each metric over the query set, and report k.
+
+20
+00:02:07.944 --> 00:02:09.075
+“Recall 0.
+
+21
+00:02:09.355 --> 00:02:11.253
+9” means nothing without the k.

@@ -1,0 +1,277 @@
+---
+id: e2-w1-l1
+studio: e2
+week: 1
+order: 1
+title: Inside a coding agent
+summary: The agent loop of gather, act, and verify; the file, search, edit, and shell tools; what fills the context window and what survives compaction; checkpoints and permissions; and how Claude Code, Codex, Gemini CLI, Copilot, and Cursor share one anatomy.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Describe a coding agent as a model plus a harness, and trace the gather, act, verify loop for a real task
+  - List what occupies an agent's context window and predict which instructions survive compaction
+  - Explain what checkpoints and permission modes do and do not protect, and which controls are enforced by the harness rather than the model
+  - Map the same anatomy (instruction file, tools, approvals, sandbox, undo) onto Codex, Gemini CLI or Antigravity CLI, Copilot, and Cursor using their official docs
+sources:
+  - { id: e2-cc-how-it-works, use: summarized, where: "The agentic loop, tools, sessions, context window, checkpoints and permissions" }
+  - { id: e2-cc-best-practices, use: summarized, where: "Deterministic and non-deterministic instructions" }
+  - { id: claude-agent-sdk-loop, use: summarized }
+  - { id: e2-cc-checkpointing, use: summarized }
+  - { id: cc-permission-modes-docs, use: summarized }
+  - { id: anthropic-context-engineering, use: summarized, where: "Compaction and context rot" }
+  - { id: e2-codex-approvals, use: summarized, where: "Sandbox modes and approval policies" }
+  - { id: e2-codex-agents-md, use: summarized }
+  - { id: e2-gemini-cli-tools, use: summarized }
+  - { id: e2-gemini-cli-context, use: summarized }
+  - { id: e2-antigravity-migration, use: summarized }
+  - { id: e2-copilot-on-github, use: summarized }
+  - { id: e2-vscode-agents, use: summarized }
+  - { id: e2-cursor-agent, use: summarized }
+  - { id: e2-yt-cc-best-practices, use: embedded }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Early in a long session you told Claude Code "never use the legacy `requests_v1` client in new code." Two hours
+      later, after the conversation was compacted, it uses `requests_v1` in a new module. What is the best fix?
+    options:
+      - id: a
+        text: Repeat the instruction in chat, in capital letters, every time you start a new task.
+        rationale: Conversation-only instructions are exactly what compaction can drop, and emphasis doesn't change that.
+      - id: b
+        text: Put the rule in the project CLAUDE.md, which Claude Code re-reads from disk after compaction, and add a check (a lint rule or hook) if it truly has no exceptions.
+        correct: true
+        rationale: The memory docs say the project-root CLAUDE.md survives compaction; enforcement for zero-exception rules belongs in deterministic tooling.
+      - id: c
+        text: Turn off auto-compaction so nothing is ever summarized.
+        rationale: That trades one failure for another (running out of context or paying for a bloated one). The durable fix is to store standing rules outside the conversation.
+    explanation: >-
+      The conversation is working memory; compaction summarizes it and can lose detail from early turns. Standing
+      instructions belong in files the harness reloads (CLAUDE.md), and rules that must always hold belong in checks the
+      harness runs.
+  - id: kc2
+    type: multi
+    prompt: Which of these does a Claude Code checkpoint let you undo? Select all that apply.
+    options:
+      - id: a
+        text: An edit Claude made to `app.py` with its Edit tool
+        correct: true
+        rationale: Checkpoints snapshot files before Claude's file tools change them.
+      - id: b
+        text: A database row deleted by a migration script Claude ran
+        rationale: Remote and external side effects can't be checkpointed. Permissions are the control for those.
+      - id: c
+        text: A file rewritten by a `sed -i` command Claude ran in the shell
+        rationale: The docs say files changed only by Bash commands aren't restored. Git is your safety net there.
+      - id: d
+        text: A file Claude created with its Write tool in the main conversation
+        correct: true
+        rationale: Writes through Claude's own file tools in the main conversation are tracked.
+    explanation: >-
+      Checkpoints are a local undo for file-tool edits, not a time machine. Commit before risky work, and treat anything
+      that leaves your machine (pushes, deploys, API calls, database changes) as irreversible unless proven otherwise.
+  - id: kc3
+    type: mcq
+    prompt: Which statement best describes how OpenAI Codex separates "what the agent can do" from "when it asks"?
+    options:
+      - id: a
+        text: A single autonomy slider controls both.
+        rationale: Codex documents two separate controls.
+      - id: b
+        text: Sandbox mode (read-only, workspace-write, danger-full-access) sets what is technically possible; the approval policy sets when Codex must ask you.
+        correct: true
+        rationale: That's the split in Codex's agent approvals and security docs.
+      - id: c
+        text: Codex has no sandbox; it relies on AGENTS.md instructions for safety.
+        rationale: AGENTS.md is guidance the model reads. The sandbox is enforced by the tool.
+    explanation: >-
+      Every serious coding agent separates guidance the model reads (instruction files) from controls the harness
+      enforces (sandboxes, permission rules, approval prompts). When you evaluate a tool, ask which of its safety
+      properties are enforced and which are merely requested.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## You've been driving it; now look under the hood
+
+If you've used Claude Code for a year, you know what it feels like: you describe a problem, text scrolls past, files change, tests run, and a summary appears. This lesson slows that down so you can see the parts. Once you can name the parts, you can tell which one failed when a session goes wrong, and you can choose deliberately instead of hoping.
+
+Anthropic's docs describe a coding agent as two components. The **model** reasons: it reads code, decides what to do next, and writes edits. The **harness** is everything around the model: the tools it can call, the permission system that decides which calls run, and the machinery that manages what the model sees. Claude Code is a harness around Claude models. Codex, Gemini CLI, Copilot's agents, and Cursor's Agent are harnesses around their own model choices. Much of what distinguishes these products is harness design, which is why the same model can behave differently in two tools, and why a benchmark score for "model X" depends on which harness ran it (lesson 2).
+
+The loop the docs describe has three phases that blend together: **gather context** (search, read files, run commands to learn the state), **take action** (edit files, run commands), and **verify results** (run the tests, read the output). A question about your codebase might only gather. A bug fix cycles through all three many times. You can interrupt at any point, and that matters: the cheapest moment to correct a misunderstanding is in the first minute, before it has been built on.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of a coding agent's loop: your prompt goes to the model; the model either answers or requests a tool call; the harness checks permissions (deny rules, hooks, mode); an allowed tool runs (read, search, edit, shell, web) and its result goes back into the context; the model then decides the next step; the loop ends when the model stops, a stop condition is reached, or you interrupt."
+  caption="The model proposes, the harness disposes. Every tool result goes back into the context for the next decision."
+  chart={`flowchart TD
+  P["Your prompt + project instructions"] --> M["Model decides next step"]
+  M -- "answer / done" --> E["Summary to you"]
+  M -- "tool call" --> H{"Harness: deny rules, hooks, permission mode"}
+  H -- "blocked" --> M
+  H -- "allowed" --> T["Tool runs: read, search, edit, shell, web"]
+  T --> R["Result added to context"]
+  R --> M
+  U["You interrupt or steer"] -.-> M`}
+/>
+
+<Listen>
+## The tools: five kinds of agency
+
+Claude Code's docs group the built-in tools into five categories: **file operations** (read, edit, create, rename), **search** (find files by pattern, search contents with regular expressions), **execution** (shell commands, servers, tests, git), **web** (search, fetch documentation), and **code intelligence** (type errors after edits, jump to definition, which needs a language-server plugin). There are also orchestration tools for spawning subagents and asking you questions.
+
+Two design choices are worth noticing because they explain everyday behavior.
+
+First, the agent **searches like a developer** rather than querying a pre-built index. When you say "fix the failing tests," a typical sequence is: run the suite, read the error, search for the relevant source, read those files, edit, run the tests again. Each tool result is new evidence for the next decision. This is why agents are good at unfamiliar code (they go and look) and why they can be slow or expensive in a huge repo (looking costs tokens).
+
+Second, **the shell is the universal tool**. Anything you can do from the command line, the agent can do: build, migrate, deploy, delete. That power is why permission design matters so much, and why a task with a runnable check (a test, a build, a linter) suits an agent so well: the shell lets it close the loop itself. Simon Willison's practitioner advice says the same from the other direction: the problems that suit agentic loops have clear success criteria and reward trial and error, such as debugging, performance tuning, and dependency upgrades.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="You type: 'the checkout tests are failing, fix them.' Put a well-run agent's steps in a sensible order."
+  items={[
+    "Run the test suite to see which tests fail and how",
+    "Read the failure output and the traceback",
+    "Search for the code the failing tests exercise",
+    "Read those files to understand the intended behavior",
+    "Edit the code to fix the cause",
+    "Run the tests again and read the result",
+    "Report what changed, with the test output as evidence",
+  ]}
+  explanation="Gather (run, read, search, read), act (edit), verify (rerun), report with evidence. If an agent skips straight to editing, or reports success without rerunning the tests, that's a sign it lacks a check or context, which later lessons fix."
+/>
+
+<Video id="gv0WHhKelSE" title="Claude Code best practices | Code w/ Claude" channel="Anthropic" minutes={26} source="https://code.claude.com/docs/en/best-practices">
+A 2025 talk by Cal Rueb of Anthropic. Watch for how he describes the tools, CLAUDE.md, permissions, and context management. Some specifics have changed since (default permission mode, model names, compaction behavior); where the talk and the current docs disagree, trust the docs this lesson cites.
+</Video>
+
+<Listen>
+## The context window: the agent's working memory
+
+Everything the model knows during a session sits in its context window. The Claude Code docs list what goes in: the conversation history, file contents it has read, command outputs, your CLAUDE.md files, auto memory, loaded skills, system instructions, and the names of available MCP tools (their full schemas load on demand). Claude Code also adds its own context, such as a note when a file it read earlier changed on disk. Running `/context` shows what is using space.
+
+Three facts follow, and each changes how you work.
+
+**Tool output is the big consumer.** A full test log, a wide search, or a large file can cost far more than your prompts. Anthropic's context-engineering post calls the problem context rot: as context grows, the model's ability to use any one piece of it degrades, so more is not free even when it fits.
+
+**Long sessions get compacted.** As the window fills, Claude Code summarizes the conversation. The summary keeps your requests and key code, but the docs warn that detailed instructions from early in the conversation may be lost. The memory docs add the counterpart: the project-root CLAUDE.md is re-read from disk and re-injected after compaction. So a rule you typed in chat at minute five is fragile, and the same rule in CLAUDE.md is durable. You can steer compaction with `/compact` plus a focus, or a "Compact Instructions" section in CLAUDE.md.
+
+**Sessions are independent.** A new session starts with a fresh context. Continuity comes from files (CLAUDE.md, auto memory, your git history, a spec), not from the model remembering yesterday. That is a feature: `/clear` between unrelated tasks is free, gives better answers, and costs less, because every request resends the whole conversation.
+</Listen>
+
+<Callout type="note" title="How big is the window?">
+At the time of writing (November 2026), Claude Code's docs say most current models have a 1M-token window and compaction runs automatically, so running out is rare. Paying for context you don't need, and the model losing track of early details, are the practical problems. Window sizes change with models; check the model configuration page rather than memorizing a number.
+</Callout>
+
+<PyRunner
+  client:visible
+  id="e2-w1-compaction-sim"
+  title="Which instructions survive compaction?"
+  starter={`def simulate(events, window, threshold=0.8, summary_tokens=2000):
+    """Simulate a session's context and return the instructions still in context at the end.
+
+    events: list of dicts, in order. Each has "kind" and "tokens", and some have "rule".
+      kind "memory"  : a CLAUDE.md rule loaded at session start (always the first events)
+      kind "chat"    : a message from you; may carry a "rule"
+      kind "tool"    : tool output (no rule)
+    window: context size in tokens.
+
+    Rules:
+      - Add each event's tokens to the running total, in order.
+      - After adding an event, if total > threshold * window, compact:
+          * all "chat" and "tool" content is replaced by one summary of summary_tokens
+          * a chat rule survives compaction only if it arrived in the LAST 3 events before compacting
+            (summaries keep recent requests; early details get lost)
+          * memory rules are re-read from disk, so they always survive
+          * new total = memory tokens + summary_tokens
+      - Return a sorted list of the rules present at the end.
+    """
+    # TODO
+    pass
+
+
+session = [
+    {"kind": "memory", "tokens": 1500, "rule": "run pytest -q before saying done"},
+    {"kind": "chat", "tokens": 200, "rule": "never use requests_v1"},
+    {"kind": "tool", "tokens": 40000},
+    {"kind": "tool", "tokens": 90000},
+    {"kind": "chat", "tokens": 150, "rule": "keep the public API unchanged"},
+    {"kind": "tool", "tokens": 30000},
+    {"kind": "tool", "tokens": 25000},
+    {"kind": "chat", "tokens": 100, "rule": "prefer small commits"},
+]
+print(simulate(session, window=200000))
+`}
+  tests={`out = simulate(session, window=200000)
+assert out is not None, "simulate returned None"
+assert "run pytest -q before saying done" in out, "CLAUDE.md rules are re-read after compaction"
+assert "never use requests_v1" not in out, "an early chat-only rule should be lost when the session compacts"
+assert "prefer small commits" in out, "a rule given after the last compaction is still in context"
+assert out == sorted(out), "return the rules sorted"
+assert simulate([{"kind": "memory", "tokens": 10, "rule": "m"}, {"kind": "chat", "tokens": 10, "rule": "c"}], window=1000) == ["c", "m"], "no compaction, so everything survives"
+recent = [{"kind": "memory", "tokens": 10, "rule": "m"}, {"kind": "tool", "tokens": 10}, {"kind": "chat", "tokens": 10, "rule": "late"}, {"kind": "tool", "tokens": 900}]
+assert simulate(recent, window=1000) == ["late", "m"], "a rule in the last 3 events before compaction survives in the summary"`}
+  solution={`def simulate(events, window, threshold=0.8, summary_tokens=2000):
+    memory_rules = [e["rule"] for e in events if e["kind"] == "memory" and "rule" in e]
+    memory_tokens = sum(e["tokens"] for e in events if e["kind"] == "memory")
+    total = 0
+    live_chat_rules = []          # (index, rule) for chat rules currently in context
+    for i, e in enumerate(events):
+        total += e["tokens"]
+        if e["kind"] == "chat" and "rule" in e:
+            live_chat_rules.append((i, e["rule"]))
+        if total > threshold * window:
+            live_chat_rules = [(j, r) for j, r in live_chat_rules if j > i - 3]
+            total = memory_tokens + summary_tokens
+    return sorted(memory_rules + [r for _, r in live_chat_rules])`}
+>
+This is a toy model, not Claude Code's real algorithm (which summarizes with a model and isn't a fixed rule). It captures the documented behavior that matters: CLAUDE.md is reloaded from disk, while instructions that lived only in the conversation can be lost. Write `simulate`, then press **Check my answer**. Notice which rule from the sample session disappears, and imagine it was a security constraint.
+</PyRunner>
+
+<Listen>
+## Undo and permission: what is actually protected
+
+Claude Code has two safety mechanisms with very different scopes.
+
+**Checkpoints** snapshot a file before Claude's file tools edit it, so pressing Escape twice (or `/rewind`) can roll back code, conversation, or both. The checkpointing docs are explicit about the edges: files changed only by a Bash command aren't restored, and actions on remote systems (databases, APIs, deployments) can't be checkpointed at all. Checkpoints work alongside git; they don't replace it.
+
+**Permissions** decide what runs without asking. At the time of writing, the modes are Manual (Claude asks before edits and non-read-only commands), Accept edits (file edits and common filesystem commands run freely), Plan (explore and propose, no source edits), Auto (a separate classifier model reviews actions and blocks risky ones), `dontAsk` (only pre-approved tools, for locked-down scripts), and `bypassPermissions` (everything, for isolated containers only). Recent versions start interactive sessions in Auto mode.
+
+The most useful idea in the best-practices doc is the split between **non-deterministic** and **deterministic** instructions. Your prompt, CLAUDE.md, and skills are read by the model, which usually follows them but isn't guaranteed to. Hooks, deny rules, the sandbox, and managed settings are executed by the harness every time, whatever the model decides. Auto mode sits in between: it's a model making a judgment, which the docs caution can be wrong, so "never" rules belong in deny rules or hooks. Keep this split in mind for the whole elective. Every time you want something to always (or never) happen, ask which side of the line your control is on.
+</Listen>
+
+<Callout type="pitfall" title="Treating checkpoints as a safety net for everything">
+A common year-one habit: let the agent run, and if it goes wrong, "just rewind." That works for edits made with the file tools in your main conversation. It does nothing for a `git push`, a migration against a shared database, a deleted cloud bucket, or a file a shell script rewrote. Before any session that can touch remote systems, commit your work, decide what the agent may run (permission rules, a sandbox, scoped credentials), and keep irreversible steps for a person to approve.
+</Callout>
+
+<Listen>
+## Same anatomy, different products
+
+Every mainstream coding agent has the same five parts: an instruction file the model reads, a tool set, an approval system, some form of sandbox, and an undo story. Here is how the official docs describe each product at the time of writing. Treat the details as fast-moving; the anatomy is the stable part.
+
+**OpenAI Codex** reads `AGENTS.md` files, walking from the project root down to the current directory (with an `AGENTS.override.md` option and a default 32 KiB cap on combined instructions). Its security docs separate two controls: a **sandbox mode** (`read-only`, `workspace-write`, `danger-full-access`) that sets what is technically possible, and an **approval policy** that sets when it must ask. Network access is off by default, and web search defaults to a cached index, with the docs telling you to treat web results as untrusted.
+
+**Gemini CLI** reads `GEMINI.md` files (global, workspace, and subdirectory files loaded just in time) and can be told to read `AGENTS.md` too. Its tools include `read_file`, `write_file`, `replace`, `glob`, `grep_search`, `run_shell_command`, and `web_fetch`, and the shell and write tools require confirmation. Note the status change: the Gemini CLI docs carry a banner saying that for unpaid-tier and Google One users, Gemini CLI was replaced by **Antigravity CLI** on June 18, 2026. Antigravity's migration guide says it keeps Gemini CLI's core constructs and reads both `GEMINI.md` and `AGENTS.md`.
+
+**GitHub Copilot** has two shapes. In VS Code, agents run locally with tools, approvals you configure, and diffs to review; the docs note that stopping a request doesn't undo completed actions. On GitHub, the cloud agent works in a GitHub Actions environment or a cloud sandbox, on one branch at a time, opening one pull request per task, with Actions sessions capped at 59 minutes. Copilot reads `.github/copilot-instructions.md`, path-specific instruction files, and the nearest `AGENTS.md`.
+
+**Cursor's Agent** combines search, edit, and terminal tools, lets you choose the model per task, and saves local checkpoints before significant changes, separate from git.
+</Listen>
+
+| Part | Claude Code | Codex | Gemini CLI / Antigravity | Copilot | Cursor |
+|---|---|---|---|---|---|
+| Instruction file | `CLAUDE.md` (reads `AGENTS.md` if no CLAUDE.md) | `AGENTS.md` | `GEMINI.md`, optionally `AGENTS.md` | `copilot-instructions.md`, `AGENTS.md` | Rules |
+| Enforced controls | Permission rules, hooks, sandbox, managed settings | Sandbox modes, approval policy | Confirmations, sandbox, trusted folders | Tool approvals (IDE); branch rules and firewall (cloud) | See Cursor's docs for current approval settings |
+| Undo | Checkpoints (file tools only) plus git | Git | Checkpointing | Review the diff; git | Local checkpoints plus git |
+
+<GoDeeper title="The same loop, as a library">
+Claude Code's loop is also available as the Claude Agent SDK, and its docs describe the loop in programmer's terms: each turn the model either answers or requests tools; read-only tools can run in parallel; you can cap turns and spend (`max_turns`, `max_budget_usd`); and automatic compaction kicks in near the limit. Studio 4 builds this loop yourself. Reading those docs once makes the interactive tool less mysterious: the "agent" is a while-loop over model calls, tool executions, and a context that you (or the harness) manage. The intelligence is in the model; the reliability is mostly in the harness and in the checks you give it.
+</GoDeeper>
+
+<Listen>
+## What to take into the rest of the elective
+
+When a session disappoints you, locate the failure. Missing context (the agent couldn't see a decision or convention) is fixed with better prompts and project memory, week 2. No way to check its work (it stopped when the code looked done) is fixed with tests and hooks, week 3. A rule broken that must never break is fixed by moving it from text the model reads to a control the harness enforces. And too much time or money for the task is fixed by changing the model, effort, or tool, which is lesson 3. Before that, lesson 2 asks how anyone knows which agents are good in the first place.
+</Listen>

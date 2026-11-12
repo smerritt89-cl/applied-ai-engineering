@@ -1,0 +1,245 @@
+---
+id: e2-w1-l3
+studio: e2
+week: 1
+order: 3
+title: Choosing the agent and the model
+summary: Three dials (tool, model, effort) and a budget. What vendors' own guidance and the public evidence say about which settings suit refactors, greenfield work, debugging, review, and data work, what drives cost, and how to run a small, fair comparison on your own repo.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Separate the choice of tool (harness), model, and effort level, and explain what each changes
+  - Match task types (large refactors, greenfield prototypes, debugging, code review, data work) to starting settings using vendor guidance and public evidence, stated with appropriate uncertainty
+  - Explain what drives an agent session's cost and how to observe and cap it
+  - Design and score a small comparison on your own repository, with repeated runs and cost per successful task
+sources:
+  - { id: e2-cc-model-config, use: summarized, where: "Model aliases, defaults, effort levels" }
+  - { id: e2-cc-best-practices, use: summarized, where: "Change the model and effort; know what subagents cost; keep cost and context down" }
+  - { id: claude-effort-docs, use: summarized }
+  - { id: e2-cc-costs, use: summarized }
+  - { id: e2-cc-headless, use: summarized, where: "--output-format json, total_cost_usd" }
+  - { id: e2-codex-models, use: summarized }
+  - { id: e2-xai-models, use: summarized }
+  - { id: e2-merrill-2026-terminal-bench, use: linked }
+  - { id: e2-swebench-pro-2025, use: linked }
+  - { id: e2-willison-agentic-loops, use: summarized }
+  - { id: kwa-2025-metr-horizon, use: summarized }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      A flaky integration test fails about one run in ten in code nobody on your team wrote. You're about to hand it to
+      Claude Code. Which settings change is best supported by the Claude Code docs?
+    options:
+      - id: a
+        text: Keep the default effort and add "think very hard" to the prompt.
+        rationale: The docs say phrases like that are ordinary prompt text that nudge within the effort setting; they don't raise it.
+      - id: b
+        text: Raise effort to high or xhigh for this task, because the docs single out bugs in unfamiliar code and flaky tests as cases where easily overlooked details matter.
+        correct: true
+        rationale: That's the docs' own example of when to raise effort. Give it a check too, such as a loop that reruns the test many times.
+      - id: c
+        text: Set effort to max for all work from now on.
+        rationale: The docs warn that max tends to overthink ordinary tasks and costs more for answers no better than high.
+    explanation: >-
+      Effort is the main control for how long the model deliberates. Raise it per task when correctness hinges on
+      subtle cases; lower it when you're iterating quickly and reviewing each step anyway. And give the agent a way to
+      check itself: for a flaky test, a command that runs it 50 times and counts failures.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      In your comparison, setup A succeeds on 4 of 5 tasks at 0.60 dollars per run; setup B succeeds on 5 of 5 at 1.10
+      dollars per run. What is the cost per successful task for each?
+    options:
+      - id: a
+        text: A 0.75, B 1.10
+        correct: true
+        rationale: A spends 3.00 dollars for 4 successes; B spends 5.50 dollars for 5.
+      - id: b
+        text: A 0.60, B 1.10
+        rationale: That's cost per run. Failed runs still cost money, and they also cost your time.
+      - id: c
+        text: A 0.48, B 1.10
+        rationale: That multiplies by the success rate instead of dividing by it.
+    explanation: >-
+      Cost per successful task (total spend divided by successes) is the fairer money metric, and it still understates
+      the cheaper setup's true cost, because each failure also costs you review and rework time. Five tasks is also far
+      too few to separate 80% from 100%; repeat runs before deciding.
+  - id: kc3
+    type: multi
+    prompt: Which of these belong in a fair comparison of two agent setups on your repo? Select all that apply.
+    options:
+      - id: a
+        text: The same tasks and the same prompt text for both setups
+        correct: true
+      - id: b
+        text: A fresh session (or fresh workspace) for every run
+        correct: true
+        rationale: Leftover context or edits from an earlier run contaminate the next.
+      - id: c
+        text: Several runs per task per setup
+        correct: true
+        rationale: Agent runs vary; one run per setup is an anecdote.
+      - id: d
+        text: Choosing tasks after seeing which ones the new setup handles well
+        rationale: That's selection bias, the same problem METR ran into. Pick tasks before you run anything.
+    explanation: >-
+      Fix the tasks and prompts in advance, isolate each run, repeat, and record success, rework, time, and cost. The
+      lab gives you a ready-made version of this design.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Three dials and a budget
+
+When a session is too slow, too expensive, or not good enough, there are three things you can change, and they are easy to conflate.
+
+The **tool** is the harness: Claude Code, Codex, Copilot, Cursor, Gemini CLI or its successor Antigravity CLI. It decides what tools the model has, how context is managed, what is enforced, and where the work runs (your machine, a cloud sandbox, a CI runner). Switching tools changes the loop, not just the model.
+
+The **model** is the reasoner. Each vendor offers tiers: a most-capable model, a cheaper near-peer for everyday work, and small fast models for simple, high-volume jobs.
+
+The **effort level** controls how much the model deliberates before acting. In Claude Code it runs from `low` to `max`, set with `/effort` or per skill or subagent.
+
+Then there's the **budget**: money, your time, and your attention. A cheaper setup that needs twice the review is not cheaper. This lesson gives you starting points for each dial, honest about how thin the public evidence is, and then the method that actually settles it: a small comparison on your own work.
+</Listen>
+
+<Listen>
+## What the vendors say, at the time of writing
+
+These are fast-moving facts, checked on November 11, 2026. Recheck the linked pages before relying on them.
+
+**Claude Code.** The model configuration docs say the default on most plans and on the Anthropic API is Opus 5.5, at medium effort. The best-practices page says the default Opus handles most coding well, Sonnet costs less on routine work, and Haiku is a good fit for subagents doing simple jobs such as collecting the files that import a module. The `fable` alias selects the Fable model, described as being for the hardest, longest-running tasks; it is never the default and can bill to usage credits. There's also `opusplan`, which uses Opus while planning and Sonnet while executing.
+
+**Effort, per the same docs.** `low` for quick exchanges you review closely (brainstorming, a small rename). `medium` for day-to-day work with a clear scope. `high` or `xhigh` where getting it right depends on cases that are easy to overlook: a bug in code you didn't write, a flaky test, a schema change that must find every reader of the old shape. `max` for hard problems you want worked through without you, with a warning that it tends to overthink ordinary tasks. The docs also say phrases like "think hard" are ordinary text, not switches; `ultrathink` requests deeper reasoning for one turn.
+
+**OpenAI Codex.** The Codex models page lists a most-capable model, a lower-cost model with near-top performance aimed at repeated, long-running work, and efficient models for focused, high-volume tasks, plus reasoning-effort settings from light to max (and an "ultra" level that splits work across subagents).
+
+**xAI.** The xAI models page, at the time of writing, recommends its flagship Grok model for code.
+
+Notice the pattern: every vendor recommends its strongest model as the default for coding and a smaller one for narrow, repetitive subtasks. That's a reasonable prior. It is not evidence about your tasks.
+</Listen>
+
+<Listen>
+## Matching settings to task types
+
+No public benchmark cleanly ranks today's models by task type, and claims that "model X is best at refactoring" are mostly anecdote. What you can do is reason from what each task demands, then test. Here are defensible starting points.
+
+**Large refactors and migrations.** The risk is missing a caller or breaking a contract across many files. Start with the strongest model at high effort, plan first (lesson 6), and insist on a check that covers the whole surface (the full test suite, a typecheck, a grep that must come back empty). For many mechanical, independent edits, fan-out beats one long session: Claude Code's `/batch` splits a change into units in separate worktrees. Per-unit work is often fine on a cheaper model; review sampling matters more than model choice there.
+
+**Greenfield prototypes.** The risk is building the wrong thing, not subtle bugs. Lower effort and fast iteration are fine while you steer. The Claude Code docs note that Claude tends to build the smallest thing that satisfies a request, and that saying "be ambitious" tells it about scope you want.Prototypes are also where you can let an agent run most freely, because the code is meant to be thrown away; the danger is a prototype quietly becoming production code without the review it never got.
+
+**Debugging.** Agents are strong here when the bug is reproducible, because the loop has a check: reproduce, hypothesize, change, rerun. Simon Willison lists debugging among the problems that suit agentic loops for exactly this reason, alongside performance tuning and dependency upgrades: clear success criteria plus trial and error. Raise effort for unfamiliar or intermittent bugs. If you can't reproduce the bug, the agent can't either; spend your effort on a reproduction first.
+
+**Code review.** The model matters less than independence: a reviewer that didn't write the code and didn't see the reasoning that produced it (lesson 8). A different model family can add independence, at the cost of more noise.
+
+**Data work and analysis.** Correctness is hard to see, because a wrong join still produces a plausible table. Prefer settings that make the agent show its work (queries, row counts, sanity checks), and verify the numbers against something you trust. Effort helps less than checks.
+
+Across all of them, METR's time-horizon research is the best general guide to scope: success falls as tasks get longer, so a task you can break into checkable pieces is a task you can delegate more safely, whatever the model.
+</Listen>
+
+<Callout type="pitfall" title="Max everything">
+After a bad session it's tempting to switch to the biggest model at maximum effort and leave it there. You'll pay more and wait longer on every routine edit, and the docs warn that `max` can overthink ordinary tasks without doing better than `high`. Raise the dials per task when the task calls for it, and fix the real cause of most bad sessions, missing context or a missing check, with the setup work in weeks 2 and 3.
+</Callout>
+
+<Listen>
+## Where the money goes
+
+On API pricing, an agent session costs input tokens plus output tokens on every turn, and every turn resends the conversation so far. Four things drive the bill. **Session length**: a long session that has accumulated three unrelated tasks re-reads all of them on each turn of the fourth (prompt caching discounts this while the cache is warm, and the docs say the cache lasts about five minutes on API keys and about an hour on subscriptions). **Tool output**: large files and full test logs. **Effort**: thinking tokens are billed even when hidden. **Subagents**: the docs say every subagent sends its own requests against the same usage, and a fresh one first has to rebuild context the main session already had.
+
+Three habits keep it visible and bounded. Run `/usage` to see where usage went, broken down by skill, subagent, and MCP server on subscription plans. In scripts, `claude -p ... --output-format json` returns a `total_cost_usd` estimate per run, and `--max-turns` and `--max-budget-usd` cap a run. And use `/clear` between unrelated tasks; it costs nothing.
+</Listen>
+
+<Listen>
+## Run your own comparison
+
+Here is a design you can run in an afternoon, and that the lab and the project formalize.
+
+1. **Pick five to ten tasks before you run anything.** Use real, recent work from your repo with a known good outcome: closed bugs with a fixing commit, small features with tests. Mix types. Write each as the prompt you'd actually give.
+2. **Fix everything except the variable.** Same tasks, same prompt text, same starting commit. Change one thing: the model, the effort, the tool, or the repo setup.
+3. **Isolate each run.** A fresh session in a fresh worktree or clone, so no run sees another's context or edits.
+4. **Repeat.** At least three runs per task per setup. Agent runs vary, and lesson 2 showed how wide the uncertainty is on small samples.
+5. **Record outcomes, not feelings.** For each run: did it succeed by your check (tests, plus your review), how much rework you needed, wall time, and cost.
+6. **Decide on cost per successful task and rework,** not on the best single run.
+
+The exercise below computes the summary you'd look at. Keep the conclusion modest: with ten tasks you can detect a large difference, not a small one.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e2-w1-compare-setups"
+  title="Summarize a setup comparison"
+  starter={`def summarize(runs):
+    """runs: list of dicts with keys setup, task, success (bool), cost (dollars), rework_min, minutes.
+    Return {setup: {"runs": n, "success_rate": s, "cost_per_success": c, "mean_rework_min": r}}
+    where cost_per_success is total cost / number of successes (float('inf') if none),
+    success_rate and the others are floats rounded to 2 decimals (leave inf as inf)."""
+    # TODO
+    pass
+
+def choose(summary, min_success=0.8, max_rework=10):
+    """Return the setup with the lowest cost_per_success among those with
+    success_rate >= min_success and mean_rework_min <= max_rework, or None if none qualify."""
+    # TODO
+    pass
+
+RUNS = [
+    {"setup": "sonnet-medium", "task": t, "success": s, "cost": c, "rework_min": r, "minutes": m}
+    for t, s, c, r, m in [("bug-1", True, 0.42, 2, 6), ("bug-2", False, 0.55, 25, 9), ("feat-1", True, 0.61, 5, 11),
+                          ("bug-1", True, 0.38, 0, 5), ("bug-2", True, 0.70, 8, 12), ("feat-1", True, 0.59, 6, 10)]
+] + [
+    {"setup": "opus-high", "task": t, "success": s, "cost": c, "rework_min": r, "minutes": m}
+    for t, s, c, r, m in [("bug-1", True, 1.10, 0, 7), ("bug-2", True, 1.45, 3, 14), ("feat-1", True, 1.30, 4, 13),
+                          ("bug-1", True, 0.95, 0, 6), ("bug-2", True, 1.60, 2, 15), ("feat-1", True, 1.25, 3, 12)]
+]
+s = summarize(RUNS)
+for k, v in (s or {}).items():
+    print(k, v)
+print("choose:", choose(s) if s else None)
+`}
+  tests={`s = summarize(RUNS)
+assert s is not None, "summarize returned None"
+assert s["sonnet-medium"]["runs"] == 6
+assert s["sonnet-medium"]["success_rate"] == 0.83
+assert s["sonnet-medium"]["cost_per_success"] == 0.65, "3.25 dollars over 5 successes"
+assert s["opus-high"]["cost_per_success"] == 1.28
+assert s["sonnet-medium"]["mean_rework_min"] == 7.67
+assert choose(s) == "sonnet-medium", "cheapest qualifying setup"
+assert choose(s, max_rework=5) == "opus-high", "a tighter rework budget changes the answer"
+assert choose(s, min_success=1.01) is None
+none = summarize([{"setup": "x", "task": "t", "success": False, "cost": 1.0, "rework_min": 30, "minutes": 5}])
+assert none["x"]["cost_per_success"] == float("inf")`}
+  solution={`def summarize(runs):
+    out = {}
+    for setup in sorted({r["setup"] for r in runs}):
+        rs = [r for r in runs if r["setup"] == setup]
+        wins = sum(1 for r in rs if r["success"])
+        cost = sum(r["cost"] for r in rs)
+        out[setup] = {
+            "runs": len(rs),
+            "success_rate": round(wins / len(rs), 2),
+            "cost_per_success": round(cost / wins, 2) if wins else float("inf"),
+            "mean_rework_min": round(sum(r["rework_min"] for r in rs) / len(rs), 2),
+        }
+    return out
+
+def choose(summary, min_success=0.8, max_rework=10):
+    ok = [(v["cost_per_success"], k) for k, v in summary.items()
+          if v["success_rate"] >= min_success and v["mean_rework_min"] <= max_rework]
+    return min(ok)[1] if ok else None`}
+>
+Write `summarize` and `choose`, then press **Check my answer**. The data is invented but typical: the cheaper setup is cheaper per success, while the stronger one needs less rework. Which you should pick depends on what your time is worth, which is why `choose` takes the rework budget as a parameter. Put a price on your rework minutes and see whether the answer flips.
+</PyRunner>
+
+<LabLink path="labs/electives/e2-agent-ready-repo" title="Lab: an agent-ready repo, measured" needs={["A coding agent (Claude Code recommended)", "Python 3.10+"]} minutes={90}>
+A small Python repo with seeded bugs, failing tests, hidden holdout tests, and three setups (bare, project memory only, and memory plus hooks plus a reviewer subagent). You run the same ticket under each setup, score every run for visible tests, holdout tests, test tampering, and cost, and compare. Step 2 of the lab is this lesson's comparison method; stretch exercise 1 varies the model and effort.
+</LabLink>
+
+<GoDeeper title="Why one good run proves little">
+If a setup succeeds on a task with probability p per run, the chance it succeeds on all of k independent runs is p to the power k. A setup with p = 0.8 passes a single trial 80% of the time but passes three in a row only about half the time (0.512). That's the pass-at-k versus pass-to-the-k distinction from Studio 3, and it's why your comparison needs repeats: you're estimating p, and the setup you can trust unattended is the one whose p is high enough that repeated success is likely. It also explains a common experience: a new tool "worked great" in a demo and then disappointed in daily use. The demo was one draw.
+</GoDeeper>
+
+<Listen>
+## A default policy you can start with
+
+Until your own measurements say otherwise: use the tool your team already has, configured well (weeks 2 and 3 matter more than switching). Leave the model and effort at their defaults for everyday work. Raise effort for bugs in unfamiliar code, intermittent failures, and changes that must find every usage. Lower it for fast, closely watched iteration. Route simple, repetitive subagent work to a small model. Watch `/usage` weekly. And whenever someone proposes a switch, ask for five tasks, three runs each, and cost per success.
+</Listen>

@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.733
+Tool calls, steps, cost, and reliability across trials.
+
+2
+00:00:04.013 --> 00:00:19.459
+Within a trajectory, check tool calls as four separate things, as the evals FAQ recommends: the name (right tool), the arguments (right values, which you can often check with code), the result (did the call succeed, and did the agent handle an error),
+
+3
+00:00:19.739 --> 00:00:23.344
+and the resulting state (did it change what it should, and nothing else).
+
+4
+00:00:23.624 --> 00:00:25.843
+Separate checks tell you where a failure starts.
+
+5
+00:00:26.123 --> 00:00:39.136
+The FAQ’s transition failure matrix turns this into a diagnostic: rows are the last step that succeeded, columns are the step where things first went wrong, and the cell counts show where failures cluster.
+
+6
+00:00:39.416 --> 00:00:45.005
+Early-stage failures cascade, so the hottest early cell is usually the best place to start.
+
+7
+00:00:45.285 --> 00:00:48.336
+Track cost and steps per task alongside success.
+
+8
+00:00:48.616 --> 00:00:55.699
+Two agents with the same success rate are not equivalent if one takes 40 tool calls and three times the tokens.
+
+9
+00:00:55.979 --> 00:01:03.573
+Report median and a high percentile, because agent costs have long tails: a few runaway loops can dominate the bill.
+
+10
+00:01:03.853 --> 00:01:07.416
+A step budget that ends the run is also a safety control.
+
+11
+00:01:07.696 --> 00:01:08.955
+Then reliability.
+
+12
+00:01:09.235 --> 00:01:14.973
+Agents are non-deterministic, so one trial per task overstates what users experience.
+
+13
+00:01:15.253 --> 00:01:17.088
+Run several trials per task.
+
+14
+00:01:17.368 --> 00:01:24.365
+pass@k is the chance at least one of k tries succeeds, which suits tools where a person can pick the best attempt.
+
+15
+00:01:24.645 --> 00:01:33.776
+pass^k (read “pass hat k”) is the chance that all k tries succeed, which suits customer-facing agents, because every user is a new try.
+
+16
+00:01:34.056 --> 00:01:49.928
+tau-bench introduced pass^k and estimates it per task from n trials with c successes as the number of ways to choose k successes divided by the number of ways to choose k trials, C(c, k) over C(n, k), averaged over tasks.
+
+17
+00:01:50.208 --> 00:02:00.917
+Anthropic’s guide gives the intuition: an agent that succeeds 75% of the time succeeds three times in a row only about 42% of the time.

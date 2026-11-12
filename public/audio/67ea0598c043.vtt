@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.157
+How embedding models are trained: contrastive learning.
+
+2
+00:00:03.437 --> 00:00:07.896
+Most modern text embedding models are trained with a contrastive objective.
+
+3
+00:00:08.176 --> 00:00:15.515
+You need pairs that should be close: a question and the passage that answers it, a title and its article, two paraphrases.
+
+4
+00:00:15.795 --> 00:00:20.872
+The model is rewarded for putting each pair close together and pushing everything else apart.
+
+5
+00:00:21.152 --> 00:00:27.509
+The standard loss is InfoNCE, introduced by van den Oord and colleagues (2018).
+
+6
+00:00:27.789 --> 00:00:38.627
+For a query q with its positive passage p, and a set of other passages that serve as negatives, let s be the similarity score (usually cosine) and tau a temperature.
+
+7
+00:00:38.907 --> 00:00:50.149
+The loss for one query is the negative log of exp(s(q, p) / tau) divided by the sum of exp(s(q, d) / tau) over the positive and all the negatives.
+
+8
+00:00:50.429 --> 00:01:00.904
+If that looks familiar, it is: it’s cross-entropy for a softmax classifier whose “classes” are the candidate passages, with the same temperature you met in Studio 1.
+
+9
+00:01:01.184 --> 00:01:04.341
+Minimizing it makes the correct passage win the softmax.
+
+10
+00:01:04.621 --> 00:01:06.157
+Where do negatives come from?
+
+11
+00:01:06.437 --> 00:01:19.963
+A cheap and effective trick is in-batch negatives: in a batch of B question and passage pairs, each question’s positive is every other question’s negative, which gives B minus 1 negatives per question for free.
+
+12
+00:01:20.243 --> 00:01:37.395
+Karpukhin and colleagues used this in Dense Passage Retrieval (2020), whose dual encoder beat a strong BM25 keyword baseline by 9 to 19 points on top-20 passage retrieval accuracy across open-domain QA datasets.
+
+13
+00:01:37.675 --> 00:01:42.624
+Hard negatives, passages that look relevant but aren’t, teach finer distinctions.
+
+14
+00:01:42.904 --> 00:01:59.843
+SimCSE (Gao and colleagues, 2021) used contradiction pairs from natural language inference data as hard negatives, and showed that the contrastive objective spreads embeddings more uniformly through the space while pulling positive pairs together.
+
+15
+00:02:00.123 --> 00:02:02.576
+Scale of data matters as much as the loss.
+
+16
+00:02:02.856 --> 00:02:20.307
+Microsoft’s E5 models (Wang and colleagues, 2022) were trained contrastively on a large curated set of naturally occurring text pairs, and were reported as the first model to beat BM25 on the BEIR retrieval benchmark without labeled data.
+
+17
+00:02:20.587 --> 00:02:26.923
+The practical takeaway for you: a model’s notion of “similar” is whatever its training pairs said was similar.
+
+18
+00:02:27.203 --> 00:02:35.501
+If your domain’s idea of relevance differs (legal citations, part numbers, internal jargon), expect weaker results, and measure.

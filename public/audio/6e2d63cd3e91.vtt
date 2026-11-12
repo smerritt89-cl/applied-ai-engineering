@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.771
+Why you can’t just add the scores.
+
+2
+00:00:02.051 --> 00:00:08.813
+The tempting first version is alpha * vector_score + (1 - alpha) * bm25_score.
+
+3
+00:00:09.093 --> 00:00:14.320
+With raw scores this is almost always wrong, because the two numbers live on different scales.
+
+4
+00:00:14.600 --> 00:00:24.627
+A BM25 score is a sum of positive terms, one per matching query word, each bounded by roughly (k1 + 1) times that word’s idf.
+
+5
+00:00:24.907 --> 00:00:32.139
+So it grows with the length of the query and the rarity of its words, and it changes when the corpus changes, because idf does.
+
+6
+00:00:32.419 --> 00:00:35.576
+Scores of 5 or 25 are both ordinary.
+
+7
+00:00:35.856 --> 00:00:45.221
+A cosine similarity is bounded between minus 1 and 1, and for many embedding models the scores of plausible candidates sit in a narrow band.
+
+8
+00:00:45.501 --> 00:00:49.320
+Add a number that varies by 10 to a number that varies by 0.
+
+9
+00:00:49.600 --> 00:00:52.395
+05, and the first decides the ranking.
+
+10
+00:00:52.675 --> 00:00:53.997
+Your alpha of 0.
+
+11
+00:00:54.277 --> 00:00:56.347
+5 is not the weight you think it is.
+
+12
+00:00:56.627 --> 00:01:06.931
+The standard repair is to normalize per query, most often with min-max scaling: within each retriever’s result list, map the best score to 1 and the worst to 0.
+
+13
+00:01:07.211 --> 00:01:11.136
+Weaviate’s relativeScoreFusion, its default since version 1.
+
+14
+00:01:11.416 --> 00:01:14.296
+24, does this and then takes a weighted sum.
+
+15
+00:01:14.576 --> 00:01:20.869
+Its documentation makes a fair case for score fusion: scores carry information that ranks throw away.
+
+16
+00:01:21.149 --> 00:01:29.000
+If one keyword result is far ahead of the rest, a score-based method can keep that gap; a rank-based method sees only “first”.
+
+17
+00:01:29.280 --> 00:01:33.419
+Min-max has its own failure modes, and you should know them before trusting it.
+
+18
+00:01:33.699 --> 00:01:43.363
+The best result in each list always becomes 1, even when every result is poor, so a retriever that found nothing relevant still contributes full-strength votes.
+
+19
+00:01:43.643 --> 00:01:47.077
+The worst result always becomes 0, however good it was.
+
+20
+00:01:47.357 --> 00:01:50.493
+A single outlier squeezes everyone else toward 0.
+
+21
+00:01:50.773 --> 00:01:56.768
+And with one result, or tied results, the formula divides by zero, so you need a rule for that case.

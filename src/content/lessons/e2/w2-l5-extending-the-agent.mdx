@@ -1,0 +1,287 @@
+---
+id: e2-w2-l5
+studio: e2
+week: 2
+order: 5
+title: Extending the agent
+summary: Skills, custom subagents, slash commands, hooks, and MCP servers in Claude Code, when each is the right tool, what each costs in context, and how to use hooks as automated checks and balances that run tests and block unsafe edits.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Choose between CLAUDE.md, rules, skills, subagents, hooks, MCP servers, and plugins for a given need, using the documented triggers and context costs
+  - Write a skill with a description that triggers correctly, and know when to stop the model invoking it
+  - Define a custom subagent whose tool limits are enforced by the harness
+  - Configure hooks in settings.json and predict what exit code 2 does on PreToolUse, PostToolUse, and Stop
+  - Write and test hook logic that blocks edits to protected paths
+sources:
+  - { id: e2-cc-features-overview, use: summarized, where: "Match features to your goal; context cost by feature; compare similar features" }
+  - { id: e2-cc-skills, use: summarized }
+  - { id: claude-code-subagents-docs, use: summarized }
+  - { id: e2-cc-hooks-guide, use: summarized }
+  - { id: cc-hooks-docs, use: summarized, where: "Exit code 2 behavior per event; handler fields" }
+  - { id: claude-code-mcp-docs, use: summarized }
+  - { id: e2-cc-best-practices, use: summarized, where: "Enforce the rules that can't have exceptions; know what subagents cost" }
+  - { id: cc-permissions-docs, use: summarized, where: "Read and Edit rules; what runs before you trust a folder" }
+  - { id: e2-antigravity-migration, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: A `PostToolUse` hook on `Edit|Write` runs the tests and exits with code 2 when they fail. Claude has just edited `pricing.py` and a test now fails. What happens?
+    code: |
+      # .claude/settings.json (excerpt)
+      "PostToolUse": [{ "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "python3 .claude/hooks/run_tests.py" }] }]
+    language: json
+    options:
+      - id: a
+        text: The edit is rolled back.
+        rationale: PostToolUse runs after the tool; it can't undo the call.
+      - id: b
+        text: The edit stays; the hook's stderr (the failing test output) is shown to Claude, which can then fix the code.
+        correct: true
+        rationale: The hooks reference says exit 2 on PostToolUse shows stderr to Claude because the tool already ran.
+      - id: c
+        text: The session ends with an error.
+        rationale: Exit 2 is a structured signal, not a crash.
+    explanation: >-
+      The same exit code means different things on different events: on PreToolUse it blocks the call, on PostToolUse
+      it feeds back information, and on Stop it prevents Claude from finishing. Know which event you're on before you
+      choose a hook.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      You paste the same twelve-step release checklist into Claude Code every two weeks. The release includes pushing a
+      tag that triggers a production publish. Which extension fits best?
+    options:
+      - id: a
+        text: Add the checklist to CLAUDE.md so it's always available.
+        rationale: It would cost context on every unrelated task, and CLAUDE.md is for facts every session needs.
+      - id: b
+        text: A skill at `.claude/skills/release/SKILL.md` with `disable-model-invocation` set to true, so it runs only when you type `/release`.
+        correct: true
+        rationale: A repeated procedure is a skill; a workflow with side effects should only start when a person invokes it.
+      - id: c
+        text: A PostToolUse hook that runs the release after every edit.
+        rationale: Hooks fire on lifecycle events; you don't want a release on every edit.
+    explanation: >-
+      The features overview's triggers: a playbook pasted for the third time becomes a skill; a must-happen-every-time
+      action becomes a hook; an always-relevant fact goes in CLAUDE.md. Side-effect workflows should be user-invoked only.
+  - id: kc3
+    type: mcq
+    prompt: You create a reviewer subagent with `tools Read, Grep, Glob`. Which statement is true?
+    options:
+      - id: a
+        text: The limit is a suggestion in the subagent's prompt; it may still edit files.
+        rationale: The tools field is an allowlist enforced by Claude Code.
+      - id: b
+        text: Claude Code enforces the allowlist, so the reviewer can read and search but can't edit, and it sees only the context passed to it plus its own reads.
+        correct: true
+        rationale: That's what makes it useful as an independent reviewer.
+      - id: c
+        text: It will produce better answers than the main session because it is a separate agent.
+        rationale: The docs say delegation alone doesn't make answers smarter; the value is isolation and a fresh view.
+    explanation: >-
+      Subagents give you isolation (a separate context), restriction (enforced tool limits), parallelism, and a reviewer
+      that didn't see how the code was written. They cost extra tokens, and a fresh one has to rebuild context.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## One question to start: decide, or enforce?
+
+Lesson 1 introduced the split that organizes this whole lesson. Some extensions add things the **model** reads and decides what to do with: CLAUDE.md, rules, skills, output styles. Others are things the **harness** does regardless of what the model decides: hooks, permission rules, the sandbox, managed settings. Subagents and MCP servers sit to one side: they change who does the work and what tools exist.
+
+Claude Code's features overview gives a trigger for each feature, and most teams add them in roughly this order as needs appear:
+
+- Claude gets a convention or command wrong twice: add it to **CLAUDE.md**.
+- You keep typing the same prompt to start a task: save it as a user-invocable **skill**.
+- You paste the same playbook for the third time: capture it as a **skill**.
+- You keep copying data from a system Claude can't see: connect an **MCP server** (or give it the system's CLI).
+- A side task floods the conversation with output you won't need again: route it through a **subagent**.
+- You want something to happen every time without asking: write a **hook**.
+- A second repository needs the same setup: package it as a **plugin**.
+
+Notice what isn't on the list: setting everything up on day one. Each extension costs context, attention, or maintenance, and the best-practices doc warns that if you find yourself at forty hooks and deny rules, most are probably preferences the model could have weighed itself.
+</Listen>
+
+| Feature | Loads | Context cost | Best for |
+|---|---|---|---|
+| CLAUDE.md | Every session | Every request | Facts every task needs |
+| Skill | Description at start; body when used | Low until used | Procedures, reference material, `/commands` |
+| Subagent | When spawned | Separate window | Isolation, parallel work, fresh-eyes review |
+| MCP server | Tool names at start; schemas on demand | Low until used | External systems without a good CLI |
+| Hook | On its event | Zero unless it returns output | Must-happen checks and blocks |
+
+<Listen>
+## Skills: procedures that load on demand
+
+A skill is a folder with a `SKILL.md` file: YAML frontmatter, then instructions, optionally with supporting files and scripts beside it. Project skills live in `.claude/skills/<name>/`, personal ones in `~/.claude/skills/`. You invoke one by typing `/name`, or Claude loads it automatically when your request matches its `description`. Custom slash commands have been folded into skills: a file in `.claude/commands/deploy.md` still works, but `.claude/skills/deploy/SKILL.md` adds supporting files, invocation control, and automatic loading, and wins if both exist.
+
+The **description** is the most important line you write, because it's all Claude sees until the skill is used. Say what the skill does and when to use it, in the words a user would type. Vague or overlapping descriptions mean the wrong skill loads, or none does.
+
+Two frontmatter fields matter most for safety and cost. `disable-model-invocation: true` means only you can start the skill, and its description stays out of context until you do: use it for anything with side effects, like cutting a release. `allowed-tools` pre-approves specific tools while the skill runs. Others let a skill run in a forked subagent (`context: fork`), pick a model or effort, or limit automatic activation to certain paths. Claude Code also ships bundled skills such as `/code-review`, `/simplify`, `/debug`, `/batch`, and `/verify`.
+
+Keep `SKILL.md` under about 500 lines and move detail into sibling files it points to; the same "only write what it can't figure out" rule from CLAUDE.md applies.
+</Listen>
+
+```markdown
+---
+name: fix-ticket
+description: Fix a bug from a ticket using our test-first procedure. Use when asked to fix a bug, a failing test, or a support ticket.
+---
+1. Restate the bug in one sentence and name the observable symptom.
+2. Write a failing test that reproduces it. Run it and show that it fails.
+3. Make the smallest change that fixes the cause. Don't touch unrelated code.
+4. Run the full suite with `python3 -m pytest -q` and show the last lines of output.
+5. Ask the reviewer subagent to check the diff, then summarize: cause, fix, evidence.
+```
+
+<Listen>
+## Subagents: isolation, restriction, and a fresh pair of eyes
+
+A subagent runs its own loop in its own context window and returns a summary. Custom subagents are Markdown files in `.claude/agents/` (project) or `~/.claude/agents/` (personal), with frontmatter that requires a `name` and a `description` (which tells Claude when to delegate) and optionally sets `tools`, `disallowedTools`, `model`, `permissionMode`, `skills` to preload, `isolation: worktree` to work in a temporary git worktree, `maxTurns`, and more. Built-in subagents include a read-only Explore agent and a Plan agent.
+
+The best-practices doc is unusually candid about what subagents are for. They pay off for running independent work at the same time, keeping noisy output (a full test run, a wide search) out of your main conversation, getting a reviewer that hasn't seen how the code was written, and giving a task fewer tools than the main session. They don't make answers smarter: by default it's the same model (or a smaller one) on the same task. They cost tokens, since each sends its own requests, and a fresh one may be slower because it must rebuild context.
+
+The restriction is real. A subagent with `tools: Read, Grep, Glob` can't edit anything, and Claude Code enforces that rather than asking nicely. Pair it with `model: haiku` for simple jobs to cut cost. This makes the classic pattern cheap to set up: an implementer in the main session and a read-only reviewer with a short, specific brief.
+</Listen>
+
+```markdown
+---
+name: reviewer
+description: Reviews changed files against the spec they were built from. Use after implementing a change, before summarizing it.
+tools: Read, Grep, Glob
+model: haiku
+---
+You're reviewing code you didn't write. Compare the changed files with the spec you're given.
+Report only gaps that affect correctness: missing requirements, untested edge cases, removed safeguards,
+edited tests, new dependencies. Skip style.
+```
+
+<Listen>
+## Hooks: the checks and balances that always run
+
+Hooks run your command (or an HTTP call, an MCP tool, or a model prompt) at fixed points in Claude Code's lifecycle. They live in a `hooks` block in a settings file: `~/.claude/settings.json` for you on every project, `.claude/settings.json` for the repository (committed and shared), `.claude/settings.local.json` for you on this project, or managed settings for an organization. Skills and subagents can also carry hooks in their frontmatter.
+
+The configuration has three levels: an **event** such as `PreToolUse`, a list of **matcher groups** that filter when it fires (for tool events, a pattern on the tool name like `Edit|Write` or `Bash`), and **handlers** to run, usually `{"type": "command", "command": "..."}` with an optional timeout in seconds. Your command receives the event as JSON on stdin (including `tool_name` and `tool_input` for tool events) and replies with its exit code: 0 for no objection, 2 to block or push back with a message on stderr. For richer control it can print JSON instead.
+
+What exit code 2 does depends on the event, and getting this right is the whole game. From the hooks reference:
+
+- **PreToolUse**: blocks the tool call. Use it to protect paths or refuse dangerous commands.
+- **PostToolUse**: can't block, because the tool already ran; it shows your stderr to Claude. Use it to feed back lint or test failures right after an edit.
+- **Stop**: prevents Claude from stopping and continues the conversation. Use it as a gate: "you're not done until the tests pass."
+- **UserPromptSubmit**: blocks the prompt before Claude sees it.
+
+The best-practices doc's guidance on which hooks to write is short: a hook is for a rule with zero exceptions. "Never edit the generated client" is a hook. "Prefer named exports" has plenty of exceptions and stays in CLAUDE.md. For real enforcement use `command` or `http` handlers; `prompt` and `agent` hooks ask a model to decide, so they aren't deterministic.
+</Listen>
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect_tests.py", "timeout": 10 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/run_tests.py", "timeout": 120 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/run_tests.py", "timeout": 120 }] }
+    ]
+  }
+}
+```
+
+<Callout type="pitfall" title="Hooks that loop, crawl, or leak">
+Three failure modes to design against. **Loops:** a Stop hook that always exits 2 keeps sending Claude back; the docs say Claude Code overrides it after eight consecutive blocks, and recommend checking the `stop_hook_active` field and exiting 0 when it's true. **Slowness:** a PostToolUse hook that runs a ten-minute suite after every edit makes every step slow; run a fast subset there and the full suite on Stop or in CI. **Gaps:** an `Edit|Write` matcher doesn't see a file changed by a shell command such as `sed -i` or a Python script. Deny rules cover the file commands Claude Code recognizes in Bash, but not arbitrary scripts; the sandbox or a CI check covers the rest (lesson 7).
+</Callout>
+
+<PyRunner
+  client:visible
+  id="e2-w2-pretooluse-guard"
+  title="Write a PreToolUse guard"
+  starter={`import json
+
+PROTECTED_DIRS = ("tests", "migrations")
+PROTECTED_FILES = (".env",)
+DANGEROUS = ("rm -rf", "git push --force", "git reset --hard")
+
+def decide(event_json, project_dir="/repo"):
+    """Decide whether to allow a tool call. event_json is the JSON string a PreToolUse hook gets on stdin.
+
+    Return (exit_code, message):
+      - Edit or Write whose tool_input.file_path is inside a PROTECTED_DIRS folder (relative to project_dir)
+        or whose file name is in PROTECTED_FILES -> (2, a message that names the path)
+      - Bash whose tool_input.command contains any DANGEROUS string -> (2, a message that names it)
+      - anything else, including malformed JSON -> (0, "")
+    Paths may be absolute or relative to project_dir. Treat "/repo/tests2/x.py" as NOT protected."""
+    # TODO
+    pass
+
+def event(tool, **tool_input):
+    return json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input})
+
+print(decide(event("Edit", file_path="/repo/tests/test_pricing.py")))
+print(decide(event("Write", file_path="/repo/pricing.py")))
+print(decide(event("Bash", command="git push --force origin main")))
+`}
+  tests={`r = decide(event("Edit", file_path="/repo/tests/test_pricing.py"))
+assert r is not None, "decide returned None"
+assert r[0] == 2 and "tests/test_pricing.py" in r[1], "block edits under tests/ and name the path"
+assert decide(event("Write", file_path="migrations/0042_add_col.py"))[0] == 2, "relative paths count too"
+assert decide(event("Edit", file_path="/repo/config/.env"))[0] == 2, ".env anywhere is protected"
+assert decide(event("Write", file_path="/repo/pricing.py")) == (0, ""), "app code is allowed"
+assert decide(event("Edit", file_path="/repo/tests2/x.py")) == (0, ""), "tests2/ is not tests/"
+b = decide(event("Bash", command="cd build && rm -rf ./out"))
+assert b[0] == 2 and "rm -rf" in b[1]
+assert decide(event("Bash", command="python3 -m pytest -q")) == (0, "")
+assert decide("not json") == (0, ""), "never crash on bad input: exit 0 and let the normal permission flow decide"
+assert decide(event("Read", file_path="/repo/tests/test_x.py")) == (0, ""), "reads are not this hook's business"`}
+  solution={`import posixpath
+
+def decide(event_json, project_dir="/repo"):
+    try:
+        e = json.loads(event_json)
+    except (ValueError, TypeError):
+        return (0, "")
+    tool = e.get("tool_name", "")
+    ti = e.get("tool_input") or {}
+    if tool in ("Edit", "Write"):
+        path = str(ti.get("file_path", ""))
+        full = path if path.startswith("/") else posixpath.join(project_dir, path)
+        rel = posixpath.relpath(posixpath.normpath(full), project_dir)
+        parts = rel.split("/")
+        if parts[0] in PROTECTED_DIRS or parts[-1] in PROTECTED_FILES:
+            return (2, f"Blocked: {rel} is protected. Explain to the user why it needs to change instead.")
+    if tool == "Bash":
+        cmd = str(ti.get("command", ""))
+        for bad in DANGEROUS:
+            if bad in cmd:
+                return (2, f"Blocked: '{bad}' needs a person's approval.")
+    return (0, "")`}
+>
+This is the decision logic of the lab's `protect_tests.py`, made testable. Write `decide`, then press **Check my answer**. Two design choices are deliberate. A hook that crashes or can't parse its input should fail open (exit 0) for a convenience check, so the normal permission system still applies; for a security check you'd rather fail closed, which Claude Code supports with `onFailure` set to block. And a substring match on commands is easy to evade (`rm -r -f`), which is why a hook complements deny rules and the sandbox rather than replacing them.
+</PyRunner>
+
+<Listen>
+## MCP servers: when the agent needs another system
+
+The Model Context Protocol connects an agent to external tools and data: an issue tracker, a database, a browser, your company's internal APIs. Studio 4 covered the protocol in depth; here the question is only when to add one. The best-practices doc's advice is to reach for a CLI first, because if a system has one (`gh`, `kubectl`, `aws`), the agent already knows how to use it and you can point it at `--help`. MCP is for systems without a good CLI. Connected servers add their tool names and instructions to context even when idle, though full schemas load only on demand, so disable servers you aren't using.
+
+Two cautions carry over from Studio 4. A server is code you run with your credentials, so the Claude Code security docs encourage writing your own or using providers you trust, and note that Anthropic does not security-audit MCP servers. And any server that returns text from outside (issues, web pages, messages) is a channel for prompt injection into an agent that also has your shell, a risk lesson 8 takes up. A skill pairs well with MCP: the server provides the connection, the skill teaches your conventions for using it.
+</Listen>
+
+<Callout type="note" title="Repository configuration is code that runs">
+A repository's `.claude/settings.json` can define hooks, and the permissions docs say that in a `claude -p` or SDK run, a folder's hooks are used even if you've never trusted that folder. Interactive sessions show a workspace trust dialog first. Treat a cloned repo's `.claude/` directory the way you'd treat its `Makefile` or `package.json` scripts: read it before running an agent there unattended.
+</Callout>
+
+<GoDeeper title="Plugins, and the equivalents in other tools">
+A **plugin** bundles skills, subagents, hooks, and MCP servers into one installable unit, with namespaced commands (`/my-plugin:review`) so several can coexist; marketplaces distribute them. It's the right step when a second repository needs the same setup. Other agents have converged on similar ideas with different file layouts. Gemini CLI documents hooks and subagents, and Antigravity CLI's migration guide moves workspace skills to `.agents/skills/` and imports Gemini extensions as plugins. Codex reads `AGENTS.md` and enforces behavior through its sandbox modes and approval policy rather than Claude-style hooks. When you move a setup between tools, port the intent (what must always happen, what must never happen) and look up each tool's enforcement mechanism; the instruction file usually ports directly, the enforcement rarely does.
+</GoDeeper>
+
+<Listen>
+## A minimal setup that earns its keep
+
+For most repositories, five pieces cover the checks and balances that matter: a short CLAUDE.md with the test command; a PostToolUse hook that runs fast checks (formatter, linter, quick tests) after edits; a Stop hook that runs the suite before Claude can finish; a deny rule plus a PreToolUse hook protecting the few paths that must never change without a person; and a read-only reviewer subagent. Add skills as procedures repeat and MCP servers as systems are needed. The lab's `setups/full/` is this setup for a tiny repo. Run it, read every file, and then measure whether it changes outcomes compared with a bare repo. That measurement, not the setup itself, is the point of the elective project.
+</Listen>

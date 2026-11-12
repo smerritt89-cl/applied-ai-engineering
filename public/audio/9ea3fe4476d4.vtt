@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.091
+How a working team uses code graders.
+
+2
+00:00:02.371 --> 00:00:11.203
+In a real team, code graders live in the repository next to the feature, run in CI on every change, and are reviewed like any other code.
+
+3
+00:00:11.483 --> 00:00:14.981
+A few practices separate useful suites from noisy ones.
+
+4
+00:00:15.261 --> 00:00:17.757
+Start from failure modes, not from metrics.
+
+5
+00:00:18.037 --> 00:00:29.088
+Each grader should map to a failure you found in error analysis (“replies promise exceptions the policy doesn’t allow”), so a failing check points at a known problem with a known owner.
+
+6
+00:00:29.368 --> 00:00:37.560
+Hamel Husain describes this layer as the unit tests of an LLM product: scoped, fast assertions that run constantly.
+
+7
+00:00:37.840 --> 00:00:39.739
+Decompose before you delegate.
+
+8
+00:00:40.019 --> 00:00:41.363
+“Is this reply good?
+
+9
+00:00:41.643 --> 00:00:43.861
+” sounds like a job for a model judge.
+
+10
+00:00:44.141 --> 00:00:45.187
+Much of it isn’t.
+
+11
+00:00:45.467 --> 00:00:47.643
+Does the reply mention the order ID?
+
+12
+00:00:47.923 --> 00:00:49.885
+Is it under 120 words?
+
+13
+00:00:50.165 --> 00:00:52.235
+Does it avoid the forbidden promise list?
+
+14
+00:00:52.515 --> 00:00:54.755
+Does every number in it appear in the policy?
+
+15
+00:00:55.035 --> 00:00:56.400
+Each of those is code.
+
+16
+00:00:56.680 --> 00:00:59.389
+What remains (does it actually answer the question?)
+
+17
+00:00:59.669 --> 00:01:05.536
+is a much narrower judgment, which makes the judge in the next lesson cheaper and easier to calibrate.
+
+18
+00:01:05.816 --> 00:01:07.096
+Watch for brittleness.
+
+19
+00:01:07.376 --> 00:01:18.043
+When a code grader starts failing outputs that a person would accept, that’s a grader bug, and you fix it with a new test case, not by loosening the check until the dashboard turns green.
+
+20
+00:01:18.323 --> 00:01:26.131
+On model selection: deterministic graders are model-agnostic, which is what makes them valuable when you compare providers.
+
+21
+00:01:26.411 --> 00:01:37.184
+Swap in a cheaper model or another provider’s model, rerun the same checks, and the difference you see comes from the model, not from a judge that might prefer its own family’s style.

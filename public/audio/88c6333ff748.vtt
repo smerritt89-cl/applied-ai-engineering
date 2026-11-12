@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.368
+Regular expressions and fuzzy matching.
+
+2
+00:00:02.648 --> 00:00:14.403
+When the answer has a format rather than a fixed value, use a regular expression: order IDs like TP- followed by six digits, ISO dates, currency amounts, a citation marker.
+
+3
+00:00:14.683 --> 00:00:20.571
+Python’s re module offers three ways to apply a pattern, and graders get them wrong constantly.
+
+4
+00:00:20.851 --> 00:00:27.763
+search finds the pattern anywhere in the string, match only at the start, and fullmatch requires the whole string to match.
+
+5
+00:00:28.043 --> 00:00:31.264
+For validating a field, you almost always want fullmatch.
+
+6
+00:00:31.544 --> 00:00:40.739
+With search, “TP-4829137” (seven digits) passes, because six of its digits match.
+
+7
+00:00:41.019 --> 00:00:43.813
+Patterns fail in both directions, so test both.
+
+8
+00:00:44.093 --> 00:01:03.187
+A pattern that is too strict rejects valid outputs (a date written “2026-11-04” when you expected “11/04/2026”); one that is too lenient accepts junk (a pattern where everything is optional matches the empty string).
+
+9
+00:01:03.467 --> 00:01:07.541
+Write the cases first: three strings that must match, three that must not.
+
+10
+00:01:07.821 --> 00:01:11.000
+Fuzzy matching scores similarity instead of equality.
+
+11
+00:01:11.280 --> 00:01:12.453
+Python’s difflib.
+
+12
+00:01:12.733 --> 00:01:21.011
+SequenceMatcher gives a ratio between 0 and 1 based on matching subsequences; edit-distance libraries do similar work.
+
+13
+00:01:21.291 --> 00:01:31.573
+Fuzzy matching helps when the expected answer is a name or short phrase that can be spelled or formatted slightly differently (“Tallow and Pine” versus “Tallow & Pine”).
+
+14
+00:01:31.853 --> 00:01:39.661
+It’s risky anywhere a small character change is a big meaning change: “5 days” and “15 days” are very similar strings.
+
+15
+00:01:39.941 --> 00:01:42.288
+If you use a threshold, pick it from data.
+
+16
+00:01:42.568 --> 00:01:50.205
+Score a handful of pairs you’ve labeled as same and different, and choose the cutoff that separates them, instead of guessing 0.
+
+17
+00:01:50.485 --> 00:01:51.147
+8.

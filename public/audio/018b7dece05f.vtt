@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.301
+Two kinds of encoder.
+
+2
+00:00:01.581 --> 00:00:14.531
+Everything you’ve built so far in this studio ranks with a bi-encoder: a model encodes the query into a vector, a model encodes each document into a vector, independently, and similarity is a dot product.
+
+3
+00:00:14.811 --> 00:00:16.859
+The independence is the whole point.
+
+4
+00:00:17.139 --> 00:00:23.667
+Documents can be embedded once, ahead of time, and a query costs one encoding plus a nearest-neighbor search.
+
+5
+00:00:23.947 --> 00:00:30.325
+A cross-encoder reads the query and the document together, as one input, and outputs a relevance score.
+
+6
+00:00:30.605 --> 00:00:39.651
+Because every layer can attend across both texts, it can notice that the document answers this particular question, not just that it is about the same topic.
+
+7
+00:00:39.931 --> 00:00:56.528
+Voyage’s reranker docs describe their rerankers in exactly these terms, and BAAI’s model card for its open reranker says the same thing in different words: the reranker takes question and document as input and outputs a similarity directly, instead of an embedding.
+
+8
+00:00:56.808 --> 00:00:59.837
+The price is that nothing can be computed in advance.
+
+9
+00:01:00.117 --> 00:01:19.851
+Reimers and Gurevych put a number on the gap in the Sentence-BERT paper (2019): finding the most similar pair among 10,000 sentences took about 65 hours with BERT used as a cross-encoder, and about 5 seconds with their bi-encoder, at similar accuracy on their benchmarks.
+
+10
+00:01:20.131 --> 00:01:24.909
+Scoring a whole corpus with a cross-encoder for every query is out of the question.
+
+11
+00:01:25.189 --> 00:01:44.773
+Hence the standard two-stage design, the “retrieve and re-rank” pipeline in the Sentence Transformers docs: a fast first stage (BM25, vectors, or the hybrid from lesson 8) retrieves maybe 50 to 100 candidates for recall, and a cross-encoder reorders just those for precision.
+
+12
+00:01:45.053 --> 00:02:00.712
+Nogueira and Cho (2019) showed how strong the second stage can be: a BERT reranker took the top spot on the MS MARCO passage ranking leaderboard, improving MRR@10 by 27 percent relative to the previous best.

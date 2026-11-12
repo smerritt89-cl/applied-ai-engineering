@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.411
+From word vectors to sentence embeddings.
+
+2
+00:00:02.691 --> 00:00:07.768
+The idea that meaning can live in vector geometry predates large language models.
+
+3
+00:00:08.048 --> 00:00:25.819
+Mikolov and colleagues at Google (2013) introduced efficient ways to learn a vector per word from large text corpora and showed that the vectors captured syntactic and semantic similarity, including analogies that show up as roughly constant offsets between word vectors.
+
+4
+00:00:26.099 --> 00:00:29.469
+Retrieval needs vectors for whole passages, not words.
+
+5
+00:00:29.749 --> 00:00:49.995
+A transformer like BERT can judge whether two sentences match if you feed it both at once, but that doesn’t scale: Reimers and Gurevych (2019) estimated that finding the most similar pair among 10,000 sentences that way takes about 50 million model calls, roughly 65 hours.
+
+6
+00:00:50.275 --> 00:01:00.792
+Their Sentence-BERT model instead encodes each sentence separately into a vector that can be compared with cosine similarity, which cut the same job to about 5 seconds.
+
+7
+00:01:01.072 --> 00:01:04.592
+That separation is the architecture you will use all studio.
+
+8
+00:01:04.872 --> 00:01:12.488
+A bi-encoder (or dual encoder) embeds query and document independently, so documents can be embedded ahead of time.
+
+9
+00:01:12.768 --> 00:01:22.133
+A cross-encoder reads the query and document together and outputs a relevance score; it is more accurate but must run once per candidate at query time.
+
+10
+00:01:22.413 --> 00:01:29.197
+In week 3 you will combine them: a bi-encoder retrieves a shortlist cheaply, then a cross-encoder reranks it.

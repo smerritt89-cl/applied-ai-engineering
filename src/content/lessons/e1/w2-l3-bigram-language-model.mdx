@@ -1,0 +1,302 @@
+---
+id: e1-w2-l3
+studio: e1
+week: 2
+order: 3
+title: "makemore, part 1: a bigram language model, counted and learned"
+summary: Language modeling from first principles. Factor a word's probability with the chain rule, approximate it with bigrams, fit by counting (the maximum likelihood estimate), score with average negative log-likelihood, smooth with pseudo-counts, sample, and then get the same model by gradient descent on a one-layer network with a softmax.
+estMinutes: 155
+reviewed: 2026-11-11
+objectives:
+  - Write the probability of a sequence with the chain rule of probability and state the bigram (Markov) approximation
+  - Derive that normalized counts are the maximum likelihood estimate of a categorical distribution
+  - Compute average negative log-likelihood, compare it with the uniform baseline log V, and relate it to perplexity
+  - Explain smoothing as pseudo-counts (a Dirichlet prior) and its neural-network counterpart, weight regularization
+  - Show that a one-hot input times a weight matrix selects a row, and explain why softmax of learned logits recovers the counting model
+sources:
+  - { id: yt-karpathy-makemore, use: embedded }
+  - { id: karpathy-zero-to-hero, use: adapted, where: "makemore part 1 (bigrams) and its exercises E01 to E05" }
+  - { id: karpathy-makemore-repo, use: summarized, where: "names.txt (32,033 names) used for the statistics computed in this lesson" }
+  - { id: goodfellow-2016-dlbook, use: linked, where: "Chapter 5.5, maximum likelihood estimation" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: "A character-level model has a vocabulary of 27 tokens (26 letters plus '.'). What average negative log-likelihood does a model that assigns uniform probability to every token achieve?"
+    options:
+      - id: a
+        text: "1/27, about 0.037"
+        rationale: That's the probability, not the negative log of it.
+      - id: b
+        text: "0"
+        rationale: Zero NLL means probability 1 on every correct token, a perfect model.
+      - id: c
+        text: "log 27, about 3.30"
+        correct: true
+        rationale: "Every token gets probability 1/27, so each term is -log(1/27) = log 27."
+    explanation: >-
+      log V is the baseline every language model on this vocabulary must beat, and the loss you should expect at
+      initialization if the network starts out roughly uniform (lesson 5). On the 32,033-name dataset, the counted
+      bigram model reaches about 2.45, so it captures real structure, but far from all of it.
+  - id: kc2
+    type: predict-output
+    prompt: "What does this print? (`P` is a 2 x 2 count matrix normalized the wrong way.)"
+    code: |
+      N = [[1, 3],
+           [2, 2]]
+      col_sums = [sum(N[i][j] for i in range(2)) for j in range(2)]
+      P = [[N[i][j] / col_sums[j] for j in range(2)] for i in range(2)]
+      print([round(sum(row), 3) for row in P])
+    options:
+      - id: a
+        text: "`[0.933, 1.067]`"
+        correct: true
+        rationale: "Row 0 is 1/3 + 3/5, row 1 is 2/3 + 2/5. Columns sum to 1, rows don't."
+      - id: b
+        text: "`[1.0, 1.0]`"
+        rationale: That's what row normalization gives. This code divides by column sums.
+      - id: c
+        text: "`[0.5, 0.5]`"
+        rationale: No row is divided evenly here.
+    explanation: >-
+      Each row of a bigram matrix is a conditional distribution P(next | current), so rows must sum to 1. Dividing
+      by the wrong axis produces a matrix that looks plausible and still samples text. The lecture hits a version of
+      this through tensor broadcasting (around 36:17): always assert that the rows sum to 1.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      Your unsmoothed bigram model reports an average NLL of infinity on a new list of names. What happened, and what
+      is the principled fix?
+    options:
+      - id: a
+        text: A bug in the log function; switch to log base 2.
+        rationale: Changing the base rescales a finite loss; it can't make an infinite one finite.
+      - id: b
+        text: A test name contains a bigram never seen in training, which the MLE gives probability 0; add pseudo-counts (smoothing) so no probability is exactly zero.
+        correct: true
+        rationale: "One zero-probability event makes the product of probabilities zero and the NLL infinite. Smoothing is a prior that reserves some mass for unseen events."
+      - id: c
+        text: Remove the offending names from the test set.
+        rationale: That hides the problem and makes the evaluation dishonest.
+    explanation: >-
+      In the names data, 102 of the 729 possible bigrams never occur (for example "jq"). The MLE assigns them
+      probability 0. Adding a small count to every cell is MAP estimation under a symmetric Dirichlet prior; in the
+      neural version, a penalty pulling the weights toward zero does the same job.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## What a language model is
+
+A language model assigns a probability to a sequence of tokens. By the chain rule of probability, any distribution over sequences factors exactly as a product of next-token conditionals: P(c1, ..., cT) = P(c1) times P(c2 given c1) times ... times P(cT given c1 through cT minus 1). This is not an approximation; it's an identity. An autoregressive model, which GPT is, learns those conditionals directly, and generating text means sampling from them one token at a time.
+
+The approximation comes from what you allow each conditional to see. A **bigram** model assumes the next character depends only on the current one: P(ct given everything before) is replaced by P(ct given ct minus 1). That's a first-order Markov chain over characters. It is a terrible model of language and a perfect place to learn the whole framework, because you can fit it by counting, check it by hand, and then rebuild it as a neural network and watch both agree.
+
+The dataset is makemore's `names.txt`: 32,033 names, one per line. Each name becomes a short sequence wrapped in a special token, written ".", that marks both the start and the end. With 26 letters plus ".", the vocabulary has 27 tokens.
+</Listen>
+
+<Video id="PaCmpygFfXo" title="The spelled-out intro to language modeling: building makemore" channel="Andrej Karpathy" minutes={117} source="https://karpathy.ai/zero-to-hero.html">
+The whole video. Things to watch for:
+
+- **09:24 to 20:54:** counting bigrams, first in a dictionary, then in a 27 by 27 tensor, then replacing separate start and end tokens with a single ".".
+- **24:02:** sampling one character at a time with `torch.multinomial` and a seeded generator.
+- **36:17:** normalizing rows with broadcasting. Pay attention to `keepdim` and what goes wrong without it.
+- **50:14 and 01:00:50:** the loss (average negative log-likelihood) and smoothing with fake counts.
+- **01:02:57 onward:** the neural network version. Watch the logits become "log counts," and at 01:47:49 and 01:50:18 the two notes that connect the neural version back to counting.
+</Video>
+
+<Listen>
+## Counting is maximum likelihood
+
+Write n_ij for the number of times token j follows token i in the training data. The model's parameters are the conditional probabilities p_ij, one distribution per row i, with each row summing to 1. The log-likelihood of the data is the sum over all pairs of n_ij log p_ij.
+
+Maximize it row by row, subject to the row constraint. With a Lagrange multiplier lambda for row i, setting the derivative of (sum over j of n_ij log p_ij, minus lambda times (sum over j of p_ij minus 1)) to zero gives n_ij / p_ij = lambda, so p_ij is proportional to n_ij, and normalizing gives p_ij = n_ij divided by the row total n_i. The maximum likelihood estimate is just the row-normalized count matrix.
+
+That's what the video calls "training the model" at 12:45: counting is the closed-form solution of the same optimization problem that gradient descent solves approximately in the second half. Having a closed form is rare, and it gives you a precious thing for the rest of the lecture: a known right answer to check the neural network against.
+</Listen>
+
+```text
+maximize    sum_j n_ij log p_ij      subject to   sum_j p_ij = 1
+
+Lagrangian  sum_j n_ij log p_ij - lambda (sum_j p_ij - 1)
+d/dp_ij:    n_ij / p_ij - lambda = 0   =>   p_ij = n_ij / lambda = n_ij / n_i
+```
+
+<Listen>
+## Scoring a model: negative log-likelihood
+
+The likelihood of the dataset is the product of the probabilities the model assigns to every bigram that actually occurs. That product is a tiny number (thousands of factors below 1), so you work with its logarithm, which turns the product into a sum. Flip the sign so that lower is better, and divide by the number of bigrams so the loss doesn't depend on dataset size. That's the **average negative log-likelihood** (NLL), which for classification is the same quantity as **cross-entropy** between the data and the model.
+
+Anchor it with two reference points. A model that assigns every token probability 1/27 scores log 27, about 3.296, on any data. A perfect model scores 0. For this lesson, the counting model was fit to all of `names.txt` with the method in the video, and its average NLL on that same data comes out at about 2.454. So the bigram structure is real (it beats uniform comfortably), and there's lots left to learn.
+
+Exponentiate the NLL and you get **perplexity**, the effective number of equally likely choices the model is torn between at each step: about 27 for the uniform model, about 11.6 for the bigram model. You'll see perplexity in older papers and NLL (often called "loss") in nearly everything recent.
+</Listen>
+
+<Callout type="pitfall" title="Measuring on the data you trained on">
+The 2.454 above is a **training** loss: the model was fit to those exact names. For a counting model with 729 parameters and 228,146 bigrams that's nearly the same as a held-out loss, but the gap grows with model size, and by lesson 4 it's the whole story. The video's exercise E02 asks you to split the names 80/10/10 into train, dev, and test sets. Get in the habit now: a loss number means nothing until you know which data it was measured on.
+</Callout>
+
+<Listen>
+## Smoothing: when the data says "never"
+
+Of the 729 possible bigrams, 102 never occur in `names.txt`; "jq" is one. The maximum likelihood estimate gives them probability exactly 0. Evaluate on any name containing one, and a single factor of 0 makes the likelihood 0 and the NLL infinite.
+
+The fix at 01:00:50 is to add a fake count, say 1, to every cell before normalizing. In Bayesian terms, that's the posterior mean under a symmetric Dirichlet prior on each row (adding 1 everywhere is Laplace smoothing). The pseudo-count is a knob: 0 is the pure MLE; a huge value drags every row toward uniform. Its right value is an empirical question you answer on a dev set, which is exactly exercise E03 in the video description.
+
+Notice the trade-off in miniature, because it recurs in every model you'll train: smoothing slightly raises the training loss (the MLE is, by definition, optimal on training data) in exchange for robustness on data the model hasn't seen.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e1-w2-bigram-model"
+  title="Count, normalize, score, and sample"
+  starter={`import math
+import random
+
+WORDS = ["emma", "olivia", "ava", "isabella", "sophia", "mia", "amelia", "harper", "evelyn", "abigail",
+         "ella", "anna", "nora", "liam", "noah", "oliver", "elijah", "lucas", "mason", "logan"]
+
+def build_vocab(words):
+    """Return (stoi, itos): itos[0] is '.', followed by the sorted unique characters."""
+    chars = sorted(set("".join(words)))
+    itos = ["."] + chars
+    stoi = {ch: i for i, ch in enumerate(itos)}
+    return stoi, itos
+
+def count_bigrams(words, stoi):
+    """TODO: return a V x V list of lists N where N[i][j] counts token j following token i.
+    Wrap each word as ['.'] + list(word) + ['.']."""
+    pass
+
+def to_probs(N, alpha=1.0):
+    """TODO: add alpha to every count, then normalize each ROW to sum to 1."""
+    pass
+
+def avg_nll(words, P, stoi):
+    """TODO: average of -log P[i][j] over every bigram in every (wrapped) word."""
+    pass
+
+def sample(P, itos, rng):
+    """TODO: start at index 0 ('.'), repeatedly draw the next index from row P[i]
+    with rng.choices(..., weights=P[i], k=1)[0], stop when you draw 0 again,
+    and return the characters drawn (without the '.')."""
+    pass
+
+stoi, itos = build_vocab(WORDS)
+N = count_bigrams(WORDS, stoi)
+if N:
+    P = to_probs(N, alpha=1.0)
+    print("vocab size", len(itos))
+    print("avg NLL", round(avg_nll(WORDS, P, stoi), 4), "uniform", round(math.log(len(itos)), 4))
+    rng = random.Random(42)
+    print([sample(P, itos, rng) for _ in range(8)])
+`}
+  tests={`stoi, itos = build_vocab(WORDS)
+N = count_bigrams(WORDS, stoi)
+assert N is not None, "count_bigrams returned None"
+assert N[stoi["."]][stoi["a"]] == sum(1 for w in WORDS if w[0] == "a"), "count '.' -> first letter once per word"
+assert sum(N[i][stoi["."]] for i in range(len(N))) == len(WORDS), "every word ends with exactly one transition into '.'"
+assert sum(map(sum, N)) == sum(len(w) + 1 for w in WORDS), "a word of length L contributes L + 1 bigrams"
+P = to_probs(N, alpha=1.0)
+assert P is not None, "to_probs returned None"
+assert all(abs(sum(row) - 1) < 1e-9 for row in P), "each ROW of P must sum to 1 (did you normalize columns?)"
+assert all(p > 0 for row in P for p in row), "with alpha > 0 no probability is zero"
+P0 = to_probs(N, alpha=0.0)
+i, j = stoi["a"], stoi["n"]
+assert abs(P0[i][j] - N[i][j] / sum(N[i])) < 1e-12, "with alpha = 0, P is the row-normalized counts (the MLE)"
+uniform = [[1 / len(stoi)] * len(stoi) for _ in stoi]
+assert abs(avg_nll(WORDS, uniform, stoi) - math.log(len(stoi))) < 1e-9, "a uniform model's average NLL is log(V)"
+nll = avg_nll(WORDS, P, stoi)
+assert nll < math.log(len(stoi)), "the bigram model must beat the uniform baseline on its training data"
+assert avg_nll(WORDS, P0, stoi) <= nll + 1e-12, "the unsmoothed MLE has the lowest possible training NLL"
+s1 = sample(P, itos, random.Random(7))
+s2 = sample(P, itos, random.Random(7))
+assert isinstance(s1, str) and s1 == s2, "sampling with the same seed must be reproducible"
+rng = random.Random(0)
+names = [sample(P0, itos, rng) for _ in range(50)]
+assert all(set(n) <= set(itos[1:]) for n in names), "samples contain only real characters (no '.')"`}
+  solution={`def count_bigrams(words, stoi):
+    V = len(stoi)
+    N = [[0] * V for _ in range(V)]
+    for w in words:
+        seq = ["."] + list(w) + ["."]
+        for a, b in zip(seq, seq[1:]):
+            N[stoi[a]][stoi[b]] += 1
+    return N
+
+def to_probs(N, alpha=1.0):
+    P = []
+    for row in N:
+        total = sum(row) + alpha * len(row)
+        P.append([(c + alpha) / total for c in row])
+    return P
+
+def avg_nll(words, P, stoi):
+    total, n = 0.0, 0
+    for w in words:
+        seq = ["."] + list(w) + ["."]
+        for a, b in zip(seq, seq[1:]):
+            total -= math.log(P[stoi[a]][stoi[b]])
+            n += 1
+    return total / n
+
+def sample(P, itos, rng):
+    out, i = [], 0
+    while True:
+        i = rng.choices(range(len(P[i])), weights=P[i], k=1)[0]
+        if i == 0:
+            return "".join(out)
+        out.append(itos[i])`}
+>
+Implement the four TODOs, then **Check my answer**. With only 20 names the samples will be strange. That's the point: the bigram model sees one character of context, so it produces name-shaped noise. The tests include the two checks that catch the lecture's classic bugs: rows (not columns) sum to 1, and the unsmoothed MLE is never beaten on its own training data.
+</PyRunner>
+
+<Listen>
+## The same model as a neural network
+
+The second half of the video rebuilds the bigram model with gradient descent, and this is where it starts looking like deep learning. Encode the current character as a **one-hot** vector x in R^27 (all zeros except a 1 at its index). Multiply by a 27 by 27 weight matrix W to get 27 numbers called **logits**. Exponentiate and normalize (the **softmax**) to get a probability distribution over the next character. The loss is the same average NLL. Backpropagate and step W.
+
+Two notes in the video tie this back to counting. First (01:47:49), x times W with a one-hot x just **selects row i of W**. So the network is a lookup table of logits, one row per current character, and an embedding layer in a transformer is the same idea: indexing a matrix instead of multiplying by a one-hot vector. Second, the softmax of row i is the model's P(next given i). The NLL is minimized when that softmax equals the empirical row distribution, which happens when the logits equal log counts plus any per-row constant. So gradient descent converges toward the counting model: exp of the logits plays the role of the counts.
+
+The second note (01:50:18) maps smoothing onto the network: adding a penalty proportional to the mean of W squared pulls all logits toward 0, which pushes every row toward uniform, exactly what pseudo-counts do. Regularization in neural networks is, very often, a prior in disguise.
+</Listen>
+
+```text
+logits      z = x W                  (x one-hot  =>  z = W[i, :])
+softmax     p_j = exp(z_j) / sum_k exp(z_k)
+loss        L = -log p_y
+
+Jacobian    dp_i/dz_j = p_i (delta_ij - p_j)
+gradient    dL/dz_j  = p_j - [j == y]          (softmax minus one-hot)
+```
+
+<Listen>
+## Softmax, worked out
+
+Softmax maps any real vector z to a probability vector: p_j = exp(z_j) divided by the sum of exp(z_k). Three properties matter constantly. It is invariant to adding a constant to every logit (the constant cancels), which is why implementations subtract the maximum logit before exponentiating to avoid overflow. It preserves order (bigger logit, bigger probability). And its Jacobian is dp_i/dz_j = p_i times (delta_ij minus p_j), a symmetric matrix equal to diag(p) minus p p transpose.
+
+Compose that Jacobian with the loss L = minus log p_y and the chain rule collapses beautifully: the gradient with respect to the logits is p minus the one-hot vector for the target y. Read it as a force: push up the logit of the correct character by (1 minus its probability), push down every other logit by its probability. When the model is confident and right, the gradient vanishes; when it is confident and wrong, the push is nearly 1. You'll implement and gradient-check this in the next lesson, and derive it again for whole batches in lesson 6.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order one training step of the neural bigram model"
+  items={[
+    "Look up the current characters' indices in a batch of bigrams",
+    "Select the matching rows of W to get logits (the one-hot multiply)",
+    "Apply softmax to turn each row of logits into probabilities",
+    "Average -log(probability of the actual next character) to get the loss",
+    "Zero the gradient, backpropagate, and step W against its gradient",
+  ]}
+  explanation="This is the same five-beat loop as micrograd: forward, loss, zero, backward, update. Only the model (a table of logits) and the loss (NLL) changed."
+/>
+
+<GoDeeper title="Why NLL is the loss, from three directions">
+**Statistics:** minimizing average NLL is maximizing likelihood, the standard estimator for a parametric model (chapter 5.5 of Goodfellow, Bengio, and Courville). **Information theory:** the average NLL of the data under the model is the cross-entropy H(data, model), which equals the entropy of the data plus the KL divergence from the data distribution to the model. The entropy is fixed, so minimizing NLL minimizes KL divergence, and the loss can never go below the data's own entropy. **Compression:** an NLL of 2.454 nats per character is 2.454 / ln 2, about 3.54 bits, the code length an arithmetic coder driven by this model would need per character. A better language model is literally a better compressor, which is a useful intuition for what pretraining optimizes.
+</GoDeeper>
+
+<Listen>
+## Review sheet
+
+A language model factors a sequence probability into next-token conditionals (exact), then limits what each conditional sees (the approximation). Counting and normalizing rows is the maximum likelihood estimate. Average NLL is the loss; log V is the uniform baseline (3.296 for 27 tokens), and the counted bigram reaches about 2.454 on the names. Smoothing adds pseudo-counts to avoid infinite loss on unseen events, at a small cost in training loss. A one-hot times a matrix selects a row; softmax of learned logits recovers the counts; the gradient of NLL with respect to logits is softmax minus one-hot. Always check rows sum to 1, and always say which data a loss was measured on.
+</Listen>

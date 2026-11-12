@@ -1,0 +1,299 @@
+{
+  "id": "e1-w4",
+  "studio": "e1",
+  "week": 4,
+  "title": "Week 4 quiz: GPT and the tokenizer",
+  "questions": [
+    {
+      "id": "e1w4-q1",
+      "type": "predict-output",
+      "prompt": "A training chunk is split into inputs and shifted targets. What does this print?",
+      "code": "data = [5, 6, 7, 8, 9]\nblock_size = 4\nx = data[:block_size]\ny = data[1:block_size + 1]\nt = 2\nprint(x[:t + 1], \"->\", y[t])",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[5, 6, 7] -> 7`",
+          "rationale": "The target is shifted by one; y[2] is data[3]."
+        },
+        {
+          "id": "b",
+          "text": "`[7] -> 8`",
+          "rationale": "The model sees the whole prefix, not just the current token."
+        },
+        {
+          "id": "c",
+          "text": "`[5, 6, 7] -> 8`",
+          "correct": true,
+          "rationale": "Position t = 2 sees x[0..2] and predicts y[2], the next token."
+        },
+        {
+          "id": "d",
+          "text": "`[5, 6, 7, 8] -> 9`",
+          "rationale": "That's position t = 3."
+        }
+      ],
+      "explanation": "A chunk of block_size + 1 tokens gives block_size training examples, one per prefix length. The causal mask guarantees each position only uses its own prefix.",
+      "week": 4,
+      "tags": [
+        "gpt",
+        "data"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w4-q2",
+      "type": "code-reading",
+      "prompt": "This mask is meant to make attention causal. What does it actually do?",
+      "code": "masked = [[scores[t][s] if s >= t else float(\"-inf\") for s in range(T)]\n          for t in range(T)]\nweights = [softmax(row) for row in masked]",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "Each position attends to itself and *later* positions, so the model can read the token it is supposed to predict.",
+          "correct": true,
+          "rationale": "Keeping s >= t lets position t see the future. Training loss collapses, and generation fails because the future isn't there at sampling time."
+        },
+        {
+          "id": "b",
+          "text": "It's correct: each position attends to itself and earlier positions.",
+          "rationale": "The comparison is reversed."
+        },
+        {
+          "id": "c",
+          "text": "Each position attends only to itself.",
+          "rationale": "s >= t keeps every later position too."
+        },
+        {
+          "id": "d",
+          "text": "It raises an error because -inf can't be passed to softmax.",
+          "rationale": "exp(-inf) is 0, which is the point of using -inf."
+        }
+      ],
+      "explanation": "A reversed mask is a classic transformer bug because training looks great. The test from the lesson catches it: change tokens after position t and check that output t doesn't change.",
+      "week": 4,
+      "tags": [
+        "attention",
+        "debugging"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w4-q3",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "print(len(\"€\"), len(\"€\".encode(\"utf-8\")), len(\"e\".encode(\"utf-8\")))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`1 1 1`",
+          "rationale": "Only ASCII characters are one byte in UTF-8."
+        },
+        {
+          "id": "b",
+          "text": "`3 3 1`",
+          "rationale": "Python's len on a str counts code points, not bytes."
+        },
+        {
+          "id": "c",
+          "text": "`1 2 1`",
+          "rationale": "Code points from U+0800 to U+FFFF, which include the euro sign (U+20AC), take three bytes."
+        },
+        {
+          "id": "d",
+          "text": "`1 3 1`",
+          "correct": true,
+          "rationale": "The euro sign is one code point and three UTF-8 bytes; ASCII 'e' is one of each."
+        }
+      ],
+      "explanation": "A byte-level tokenizer starts from the bytes, so the euro sign begins as three base tokens until a merge combines them. This is part of why text outside a tokenizer's well-covered scripts costs more tokens.",
+      "week": 4,
+      "tags": [
+        "tokenization",
+        "utf-8"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w4-q4",
+      "type": "mcq",
+      "prompt": "What is the main job of the residual connections (x + f(x)) in a transformer block?",
+      "options": [
+        {
+          "id": "a",
+          "text": "They let tokens attend to future positions.",
+          "rationale": "Masking controls that; residuals are per position."
+        },
+        {
+          "id": "b",
+          "text": "They give gradients an identity path from the loss to early layers, so deep stacks stay trainable.",
+          "correct": true,
+          "rationale": "The derivative of x + f(x) with respect to x includes the identity, so gradient flows even if f's path is weak."
+        },
+        {
+          "id": "c",
+          "text": "They normalize activations to unit variance.",
+          "rationale": "That's LayerNorm's role."
+        },
+        {
+          "id": "d",
+          "text": "They reduce the parameter count.",
+          "rationale": "They add no parameters at all."
+        }
+      ],
+      "explanation": "Residual connections came from ResNets (He et al., 2015). In the lecture, adding them is what lets the model scale to more layers without training stalling.",
+      "week": 4,
+      "tags": [
+        "transformer",
+        "residual"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w4-q5",
+      "type": "multi",
+      "prompt": "Which statements about LayerNorm, as used in the lecture's GPT, are true? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "It behaves the same in training and inference.",
+          "correct": true,
+          "rationale": "There are no batch statistics, so there are no running estimates and no mode switch."
+        },
+        {
+          "id": "b",
+          "text": "In the lecture's pre-norm arrangement it is applied before attention and before the feed-forward layer in each block.",
+          "correct": true,
+          "rationale": "That follows GPT-2, whose paper moved layer norm to the input of each sub-block."
+        },
+        {
+          "id": "c",
+          "text": "It requires a batch size larger than 1.",
+          "rationale": "It works on a single token vector."
+        },
+        {
+          "id": "d",
+          "text": "It normalizes each token's vector across its features, independently of other examples in the batch.",
+          "correct": true,
+          "rationale": "That's the difference from BatchNorm, which normalizes each feature across the batch."
+        }
+      ],
+      "explanation": "Removing batch dependence is one reason transformers use LayerNorm: generation often runs one sequence at a time, and examples shouldn't influence each other.",
+      "week": 4,
+      "tags": [
+        "layernorm",
+        "transformer"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w4-q6",
+      "type": "scenario",
+      "prompt": "You train a character-level GPT on CPU with nanoGPT-like small settings (4 layers, 4 heads, 128-dim embeddings, context 64). After a few minutes your validation loss is 0.9, far better than the roughly 1.88 nanoGPT's README reports for a similar CPU config on Shakespeare. Samples look poor. What do you suspect first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Your implementation is simply better; write it up.",
+          "rationale": "A result this far from a published baseline on similar settings is more likely a bug than a breakthrough."
+        },
+        {
+          "id": "b",
+          "text": "The learning rate is too low.",
+          "rationale": "A low learning rate would make the loss worse, not better."
+        },
+        {
+          "id": "c",
+          "text": "Leakage: a broken causal mask letting positions see their targets, or validation text overlapping the training text.",
+          "correct": true,
+          "rationale": "Both make validation loss look excellent while generation, which has no future tokens to peek at, stays poor."
+        },
+        {
+          "id": "d",
+          "text": "The tokenizer is too small.",
+          "rationale": "A character vocabulary is standard for this setup."
+        }
+      ],
+      "explanation": "Calibrate against a known baseline before trusting a surprising number. Check the mask with a test (changing future tokens must not change earlier outputs) and check that the validation split is a separate, contiguous region of text. Different corpora also have different achievable losses, so compare like with like.",
+      "week": 4,
+      "tags": [
+        "evaluation",
+        "debugging"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w4-q7",
+      "type": "code-reading",
+      "prompt": "This BPE `encode` sometimes produces token sequences that the trained model has never seen, even for text from the training corpus. Why?",
+      "code": "def encode(text, merges):\n    ids = list(text.encode(\"utf-8\"))\n    while len(ids) >= 2:\n        counts = get_counts(ids)\n        pair = max(counts, key=counts.get)      # most frequent pair\n        if pair not in merges:\n            break\n        ids = merge(ids, pair, merges[pair])\n    return ids",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "It should start from code points, not bytes.",
+          "rationale": "Byte-level BPE correctly starts from UTF-8 bytes."
+        },
+        {
+          "id": "b",
+          "text": "`merge` should be applied right to left.",
+          "rationale": "Direction isn't the issue; the choice of which pair to merge is."
+        },
+        {
+          "id": "c",
+          "text": "It never terminates.",
+          "rationale": "It stops when the most frequent pair isn't in merges, or when one token is left."
+        },
+        {
+          "id": "d",
+          "text": "It merges the most frequent pair in the *input*, instead of the pair with the lowest merge rank, so merges can be applied in a different order than training learned them.",
+          "correct": true,
+          "rationale": "Later merges are built from earlier ones; applying them out of order can produce different (still decodable) tokenizations."
+        }
+      ],
+      "explanation": "Encoding must replay training: repeatedly apply the learned merge with the lowest id that appears in the sequence. Out-of-order encoding still round-trips through decode, which is why a round-trip test alone doesn't catch it; also test that encoding matches a reference implementation.",
+      "week": 4,
+      "tags": [
+        "tokenization",
+        "bpe"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "e1w4-q8",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "def merge(ids, pair, new_id):\n    out, i = [], 0\n    while i < len(ids):\n        if i < len(ids) - 1 and (ids[i], ids[i + 1]) == pair:\n            out.append(new_id)\n            i += 2\n        else:\n            out.append(ids[i])\n            i += 1\n    return out\n\nprint(merge([1, 2, 1, 2, 1, 1, 2], (1, 2), 9))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[9, 9, 9]`",
+          "rationale": "The 1 at index 4 is followed by another 1, not a 2."
+        },
+        {
+          "id": "b",
+          "text": "`[9, 9, 1, 9]`",
+          "correct": true,
+          "rationale": "Scanning left to right: (1,2) merges, (1,2) merges, the lone 1 stays, then (1,2) merges."
+        },
+        {
+          "id": "c",
+          "text": "`[9, 9, 1, 1, 2]`",
+          "rationale": "The final 1, 2 pair is merged too."
+        },
+        {
+          "id": "d",
+          "text": "`[1, 9, 9, 1, 9]`",
+          "rationale": "The sequence starts with the pair 1, 2."
+        }
+      ],
+      "explanation": "Merging scans once, left to right, without overlaps. Getting this function exactly right matters because training, encoding, and every round-trip test depend on it.",
+      "week": 4,
+      "tags": [
+        "bpe"
+      ],
+      "difficulty": 1
+    }
+  ]
+}

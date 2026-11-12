@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.307
+Reference-based metrics: BLEU, ROUGE, and their limits.
+
+2
+00:00:03.587 --> 00:00:10.115
+Before LLMs, text generation was mostly scored by comparing outputs with human-written references.
+
+3
+00:00:10.395 --> 00:00:22.747
+BLEU (Papineni and colleagues, 2002) was built for machine translation: it measures modified n-gram precision (how many of the candidate’s word sequences appear in the references,
+
+4
+00:00:23.027 --> 00:00:30.749
+with clipping so repeats don’t count twice) and multiplies by a brevity penalty so very short outputs can’t game precision.
+
+5
+00:00:31.029 --> 00:00:44.747
+ROUGE (Lin, 2004) was built for summarization and is recall-oriented: ROUGE-N counts how many of the reference’s n-grams the candidate recovers, and ROUGE-L uses the longest common subsequence.
+
+6
+00:00:45.027 --> 00:00:51.747
+Both were real advances, because they made frequent, cheap evaluation possible where human review took weeks.
+
+7
+00:00:52.027 --> 00:00:56.571
+Both measure surface overlap, and the evidence on what that tells you is sobering.
+
+8
+00:00:56.851 --> 00:01:15.923
+Reiter’s 2018 structured review of 284 correlations from 34 papers found support for BLEU as a diagnostic for machine translation systems, but not for other generation tasks, not for evaluating individual texts, and not for scientific hypothesis testing.
+
+9
+00:01:16.203 --> 00:01:27.979
+For code, the HumanEval paper computed BLEU for correct and incorrect solutions and found the distributions overlapped heavily: functionally wrong programs often scored higher than correct ones.
+
+10
+00:01:28.259 --> 00:01:29.923
+The failure is easy to see.
+
+11
+00:01:30.203 --> 00:01:39.781
+A correct answer in different words (“you’ll see the money in about a week”) shares almost nothing with the reference “refunds arrive within 5 to 7 business days.
+
+12
+00:01:40.061 --> 00:01:48.339
+” A wrong answer that copies the reference’s words (“refunds never arrive within 5 to 7 business days”) scores almost perfectly.
+
+13
+00:01:48.619 --> 00:01:58.155
+So treat overlap metrics as, at most, a cheap trend line across many outputs, never as a per-output grader or a release gate for open-ended text.

@@ -1,0 +1,388 @@
+---
+id: e1-w1-l2
+studio: e1
+week: 1
+order: 2
+title: "micrograd, part 2: neurons, a loss, and gradient descent"
+summary: The second half of the micrograd lecture. Any decomposition of a function backpropagates correctly if the local derivatives are right; neurons, layers, and an MLP are just more graph; a loss turns "good predictions" into one number; and gradient descent, with gradients zeroed every step, trains it.
+estMinutes: 100
+reviewed: 2026-11-11
+objectives:
+  - Explain why breaking tanh into exp, add, and divide gives the same gradient as the fused version
+  - Build a neuron, a layer, and a multilayer perceptron from scalar Values and count their parameters
+  - Derive the gradient of a squared-error loss and explain what the loss rewards
+  - Justify the gradient descent update with a first-order Taylor expansion, and explain the role of the learning rate
+  - Write a training loop that zeroes gradients, and diagnose what happens when it doesn't
+sources:
+  - { id: yt-karpathy-micrograd, use: embedded, where: "01:27:05 to the end" }
+  - { id: karpathy-zero-to-hero, use: adapted, where: "Lecture 1, the MLP, tiny dataset, and training loop" }
+  - { id: karpathy-micrograd-repo, use: adapted, where: "nn.py (Neuron, Layer, MLP)" }
+  - { id: goodfellow-2016-dlbook, use: summarized, where: "Chapter 4.3 (gradient-based optimization) and chapter 8" }
+  - { id: kingma-2014-adam, use: linked }
+  - { id: karpathy-ng-video-lecture, use: linked, where: "gpt.py uses torch.optim.AdamW" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: "How many parameters does `MLP(3, [4, 4, 1])` have, where each neuron has one weight per input plus a bias?"
+    options:
+      - id: a
+        text: "36"
+        rationale: That counts only the weights (12 + 16 + 4). Each of the 9 neurons also has a bias.
+      - id: b
+        text: "48"
+        rationale: That would be a bias per weight, which no standard layer uses.
+      - id: c
+        text: "41"
+        correct: true
+        rationale: "4 neurons x (3 + 1) + 4 x (4 + 1) + 1 x (4 + 1) = 16 + 20 + 5 = 41."
+    explanation: >-
+      A layer with n_in inputs and n_out neurons has n_out x (n_in + 1) parameters. Counting parameters by hand is a
+      useful sanity check against framework summaries, and the same arithmetic tells you the size of every linear layer
+      in a transformer.
+  - id: kc2
+    type: predict-output
+    prompt: "A training loop forgets to zero gradients. With the learning rate set to 0 (so parameters never change), what is the ratio of a parameter's `.grad` after the second backward pass to its value after the first?"
+    code: |
+      for step in range(2):
+          loss = compute_loss(model)   # same loss each time, since lr = 0
+          loss.backward()              # no zeroing of p.grad
+          for p in model.parameters():
+              p.data -= 0.0 * p.grad
+    options:
+      - id: a
+        text: "1 (unchanged)"
+        rationale: That's what happens with zeroing. Without it, the second pass adds to the first.
+      - id: b
+        text: "2"
+        correct: true
+        rationale: Gradients accumulate with +=, so the second backward pass adds the same gradient again.
+      - id: c
+        text: "0"
+        rationale: Nothing resets the gradient to zero in this loop.
+    explanation: >-
+      Accumulation is correct within one backward pass (the sum over paths) and wrong across passes. With a nonzero
+      learning rate the effect is subtler: each step uses a running sum of stale gradients, which behaves like an
+      exploding effective learning rate. Zero gradients right before each backward pass.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      You implement a new layer and its backward pass. Training runs, and the loss goes down slowly. A colleague says
+      "it's learning, so the gradients must be right." What do you do?
+    options:
+      - id: a
+        text: Run a gradient check on a tiny random input, comparing your backward pass against central differences with a relative error.
+        correct: true
+        rationale: Yes. This tests the math directly, in seconds, independent of optimization noise.
+      - id: b
+        text: Agree; a decreasing loss proves the backward pass is correct.
+        rationale: A wrong gradient that still has a positive inner product with the true one also decreases the loss, just worse.
+      - id: c
+        text: Increase the learning rate until the loss drops faster.
+        rationale: That tunes around a possible bug instead of finding it.
+    explanation: >-
+      Gradient descent is forgiving: any direction within 90 degrees of the true gradient reduces the loss for small
+      enough steps. That's exactly why "it trains" is weak evidence that your gradient is correct. A gradient check is
+      cheap, decisive, and belongs in the test suite.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## From an engine to a learner
+
+Last lesson you built the engine: a `Value` that records operations and backpropagates. This lesson, covering the second half of the lecture, turns it into something that learns. The steps are few. A neuron is a weighted sum plus a bias, passed through a nonlinearity. A layer is a list of neurons; a multilayer perceptron (MLP) is a list of layers. A loss function measures how wrong the network's predictions are, as one number. Backpropagation gives the gradient of that number with respect to every weight. Gradient descent nudges every weight a little against its gradient. Repeat.
+
+Nothing in that list needs new calculus. A neural network, for this lecture's purposes, is just a big expression, and you already know how to differentiate big expressions. The new ideas are about what you differentiate (the loss), and what you do with the gradient (the update).
+</Listen>
+
+<Video id="VMj-3S1tku0" title="The spelled-out intro to neural networks and backpropagation: building micrograd" channel="Andrej Karpathy" minutes={58} start={5225} source="https://karpathy.ai/zero-to-hero.html">
+Watch from 01:27:05 to the end. Things to watch for:
+
+- **01:27:05:** tanh broken into exp, addition, and division. The gradients match the fused version.
+- **01:39:31:** the same computation in PyTorch. Same numbers; tensors instead of scalars.
+- **01:43:55 to 01:57:56:** `Neuron`, `Layer`, `MLP`, a four-example dataset, and a loss.
+- **02:01:12:** the manual training loop. Watch for the bug he finds in it, and why the loss still went down before he fixed it.
+- **02:21:10:** PyTorch's own backward for tanh, deep in its source. It is the same formula you wrote.
+</Video>
+
+<Listen>
+## Granularity doesn't matter, correctness does
+
+At 01:27:05 the video replaces the single tanh node with its definition, tanh(x) = (e to the 2x, minus 1) divided by (e to the 2x, plus 1), built from exp, addition, power, and multiplication nodes. The gradient comes out identical. This is the chain rule doing its job: the derivative of a composition doesn't depend on how you group the pieces.
+
+This has two practical consequences. First, you're free to choose the granularity of your operations. Frameworks fuse common compositions (tanh, softmax plus cross-entropy, layer norm) into single operations with hand-derived backward passes, because the fused version is faster and often more numerically stable. Second, any operation you can write as a composition of differentiable primitives gets a correct backward pass automatically. You only need to hand-derive a backward pass when you want a fused, faster, or more stable version, and then you owe it a gradient check.
+
+Division is a nice example. micrograd implements a divided by b as a times b to the power minus 1, so the only new local derivative is the power rule: d(x to the k)/dx = k x to the (k minus 1).
+</Listen>
+
+<Listen>
+## Neurons, layers, and parameters
+
+A neuron with inputs x1 through xn computes tanh(w1 x1 + ... + wn xn + b). Its weights and bias are its **parameters**, the numbers training adjusts. A layer of m such neurons maps a vector in R^n to a vector in R^m. Stack layers and you have an MLP: `MLP(3, [4, 4, 1])` maps 3 inputs through two hidden layers of 4 neurons to a single output.
+
+Mathematically, a layer is x maps to tanh(W x + b), with W an m-by-n matrix applied elementwise through tanh. The scalar version in micrograd builds that matrix product out of individual multiply and add nodes, which is why it is slow and why it is so good for learning: you can inspect every single number.
+
+Why the nonlinearity? Without it, a stack of layers collapses to a single affine map (a product of matrices is a matrix), so depth would add nothing. With it, the MLP can approximate a much richer family of functions. And tanh in particular squashes outputs into the interval from minus 1 to 1, which matches the targets of plus or minus 1 in the video's tiny dataset.
+</Listen>
+
+<Listen>
+## A loss turns "good" into a number
+
+Training needs a single scalar to minimize. The video uses the sum of squared errors over the dataset: L = sum over examples of (prediction minus target) squared. Its derivative with respect to a prediction is 2 (prediction minus target), so each example pushes its own prediction toward its target with a force proportional to the error. Big mistakes get big gradients.
+
+The choice of loss is a modeling decision, not a detail. Squared error is the natural loss for regression with Gaussian noise (minimizing it is maximum likelihood under that assumption). From the next lesson on, the series switches to **negative log-likelihood** (cross-entropy), the natural loss for predicting a category such as the next character. The training machinery doesn't change at all: one scalar, one backward pass, one update.
+</Listen>
+
+```text
+L(theta)        = sum_i (yhat_i(theta) - y_i)^2
+dL/dyhat_i      = 2 (yhat_i - y_i)
+
+update:         theta  <-  theta - eta * grad L(theta)
+
+why it works:   L(theta - eta g) = L(theta) - eta ||g||^2 + O(eta^2)
+                so for small enough eta > 0 the loss decreases whenever g != 0
+```
+
+<Listen>
+## Gradient descent, and why the step size matters
+
+The gradient points in the direction of steepest increase. A first-order Taylor expansion makes the update rule precise: moving the parameters by minus eta times the gradient g changes the loss by about minus eta times the squared norm of g, which is negative whenever g isn't zero. So small steps against the gradient always help, at least locally.
+
+"Small enough" is doing real work in that sentence. The second-order term grows with eta squared and with the curvature of the loss. Too small a learning rate and training crawls; too large and the quadratic term dominates, so steps overshoot and the loss oscillates or diverges. Lesson 4 shows a practical way to find a good learning rate. Optimizers such as Adam (Kingma and Ba, 2014), whose AdamW variant the "Let's build GPT" lecture code uses, adapt the step size per parameter, but they are still built on the same gradient.
+
+Notice also how forgiving this is. Any direction with a positive inner product with the true gradient decreases the loss for small steps. A buggy gradient that is merely "roughly right" will still train, just badly. That's why a falling loss is weak evidence that your backward pass is correct, and why the gradient check from lesson 1 stays in your toolkit.
+</Listen>
+
+<Predict
+  title="Forgetting to zero the gradients"
+  code={`grads = []
+g_true = 0.25     # the true gradient, the same every step (learning rate 0)
+p_grad = 0.0
+for step in range(3):
+    # backward() adds into p_grad, and nothing resets it
+    p_grad += g_true
+    grads.append(p_grad)
+print(grads)`}
+  options={["[0.25, 0.25, 0.25]", "[0.25, 0.5, 0.75]", "[0.25, 0.5, 1.0]"]}
+  answer={1}
+>
+Each backward pass adds the current gradient onto whatever was there, so after k steps the stored gradient is k times the true one. With a real learning rate the stale sum also points in slightly wrong directions. The lecture's training loop has exactly this bug at first, and it still makes progress on such an easy problem, which is the lesson: a loss going down doesn't certify the loop. Zero every gradient right before each `backward()`.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="e1-w1-mlp-training"
+  title="Build an MLP and train it"
+  starter={`import math
+import random
+
+class Value:
+    """A complete scalar autograd Value (your lesson 1 engine plus a few more operations)."""
+    def __init__(self, data, _children=()):
+        self.data = data
+        self.grad = 0.0
+        self._backward = lambda: None
+        self._prev = set(_children)
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other))
+        def _backward():
+            self.grad += out.grad
+            other.grad += out.grad
+        out._backward = _backward
+        return out
+
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data * other.data, (self, other))
+        def _backward():
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
+        out._backward = _backward
+        return out
+
+    def __pow__(self, k):
+        out = Value(self.data ** k, (self,))
+        def _backward():
+            self.grad += k * self.data ** (k - 1) * out.grad
+        out._backward = _backward
+        return out
+
+    def tanh(self):
+        t = math.tanh(self.data)
+        out = Value(t, (self,))
+        def _backward():
+            self.grad += (1 - t * t) * out.grad
+        out._backward = _backward
+        return out
+
+    def __neg__(self): return self * -1
+    def __sub__(self, other): return self + (-other)
+    def __radd__(self, other): return self + other
+    def __rmul__(self, other): return self * other
+    def __rsub__(self, other): return (-self) + other
+
+    def backward(self):
+        topo, seen = [], set()
+        def build(v):
+            if v not in seen:
+                seen.add(v)
+                for c in v._prev:
+                    build(c)
+                topo.append(v)
+        build(self)
+        self.grad = 1.0
+        for v in reversed(topo):
+            v._backward()
+
+
+class Neuron:
+    def __init__(self, n_in, rng):
+        self.w = [Value(rng.uniform(-1, 1)) for _ in range(n_in)]
+        self.b = Value(rng.uniform(-1, 1))
+
+    def __call__(self, x):
+        """TODO: return tanh(sum of w_i * x_i, plus b) as a Value."""
+        pass
+
+    def parameters(self):
+        return self.w + [self.b]
+
+
+class Layer:
+    def __init__(self, n_in, n_out, rng):
+        self.neurons = [Neuron(n_in, rng) for _ in range(n_out)]
+
+    def __call__(self, x):
+        outs = [n(x) for n in self.neurons]
+        return outs[0] if len(outs) == 1 else outs
+
+    def parameters(self):
+        return [p for n in self.neurons for p in n.parameters()]
+
+
+class MLP:
+    def __init__(self, n_in, sizes, seed=0):
+        rng = random.Random(seed)
+        dims = [n_in] + sizes
+        self.layers = [Layer(dims[i], dims[i + 1], rng) for i in range(len(sizes))]
+
+    def __call__(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+    def parameters(self):
+        """TODO: return a flat list of every parameter in every layer."""
+        pass
+
+
+def mse_loss(model, xs, ys):
+    """TODO: sum of (prediction - target) ** 2 over the dataset, as a Value."""
+    pass
+
+
+def train(model, xs, ys, steps=100, lr=0.05):
+    """TODO: for each step: compute the loss, ZERO every parameter's grad, call backward(),
+    then update each parameter with p.data -= lr * p.grad. Return the list of loss values (floats)."""
+    pass
+
+
+# The tiny dataset from the lecture: four inputs, targets of +1 or -1.
+xs = [[2.0, 3.0, -1.0], [3.0, -1.0, 0.5], [0.5, 1.0, 1.0], [1.0, 1.0, -1.0]]
+ys = [1.0, -1.0, -1.0, 1.0]
+model = MLP(3, [4, 4, 1], seed=1)
+losses = train(model, xs, ys, steps=150, lr=0.05)
+if losses:
+    print("first loss", round(losses[0], 4), "last loss", round(losses[-1], 4))
+    print("predictions", [round(model(x).data, 3) for x in xs])
+`}
+  tests={`xs = [[2.0, 3.0, -1.0], [3.0, -1.0, 0.5], [0.5, 1.0, 1.0], [1.0, 1.0, -1.0]]
+ys = [1.0, -1.0, -1.0, 1.0]
+m = MLP(3, [4, 4, 1], seed=1)
+params = m.parameters()
+assert params is not None, "MLP.parameters returned None"
+assert len(params) == 41, "MLP(3, [4, 4, 1]) has 4*(3+1) + 4*(4+1) + 1*(4+1) = 41 parameters"
+out = m([1.0, 2.0, 3.0])
+assert isinstance(out, Value), "a final layer with one neuron should return a single Value"
+assert -1 < out.data < 1, "the output passes through tanh"
+loss0 = mse_loss(m, xs, ys)
+assert isinstance(loss0, Value), "mse_loss must return a Value so you can call backward() on it"
+for seed in (1, 2, 3):
+    model = MLP(3, [4, 4, 1], seed=seed)
+    losses = train(model, xs, ys, steps=150, lr=0.05)
+    assert losses is not None and len(losses) == 150, "train should return one loss per step"
+    assert losses[-1] < losses[0], "loss should go down"
+    assert losses[-1] < 0.05, f"seed {seed}: final loss {losses[-1]:.4f} is too high; are you zeroing gradients before backward()?"
+probe = MLP(3, [4, 4, 1], seed=4)
+train(probe, xs, ys, steps=1, lr=0.0)
+g1 = [p.grad for p in probe.parameters()]
+train(probe, xs, ys, steps=1, lr=0.0)
+g2 = [p.grad for p in probe.parameters()]
+assert all(abs(a - b) < 1e-9 for a, b in zip(g1, g2)), "with lr=0, two runs must see identical gradients: zero p.grad before each backward()"`}
+  solution={`class Neuron:
+    def __init__(self, n_in, rng):
+        self.w = [Value(rng.uniform(-1, 1)) for _ in range(n_in)]
+        self.b = Value(rng.uniform(-1, 1))
+
+    def __call__(self, x):
+        act = sum((wi * xi for wi, xi in zip(self.w, x)), self.b)
+        return act.tanh()
+
+    def parameters(self):
+        return self.w + [self.b]
+
+class MLP:
+    def __init__(self, n_in, sizes, seed=0):
+        rng = random.Random(seed)
+        dims = [n_in] + sizes
+        self.layers = [Layer(dims[i], dims[i + 1], rng) for i in range(len(sizes))]
+
+    def __call__(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+    def parameters(self):
+        return [p for layer in self.layers for p in layer.parameters()]
+
+def mse_loss(model, xs, ys):
+    preds = [model(x) for x in xs]
+    return sum(((p - y) ** 2 for p, y in zip(preds, ys)), Value(0.0))
+
+def train(model, xs, ys, steps=100, lr=0.05):
+    losses = []
+    for _ in range(steps):
+        loss = mse_loss(model, xs, ys)
+        for p in model.parameters():
+            p.grad = 0.0
+        loss.backward()
+        for p in model.parameters():
+            p.data -= lr * p.grad
+        losses.append(loss.data)
+    return losses`}
+>
+Fill in `Neuron.__call__`, `MLP.parameters`, `mse_loss`, and `train`, then press **Check my answer**. The tests train from three different random initializations, and finally check that two training calls with learning rate 0 see identical gradients, which only happens if you zero them. The dataset and class layout follow the lecture and micrograd's `nn.py` (MIT license).
+</PyRunner>
+
+<Callout type="pitfall" title="Sanity checks before you trust a training run">
+Three cheap checks catch most training bugs, and you'll reuse them all elective. **Overfit something tiny first**: four examples and 41 parameters should reach nearly zero loss; if it can't, the bug is in your code, not your data. **Know the starting loss you expect** (lesson 5 makes this precise for classification). **Gradient-check new operations.** The common failure the lecture demonstrates, a missing zero-grad, passes the "loss went down" test, which is why none of these checks is "watch the loss go down."
+</Callout>
+
+<Listen>
+## How this scales to real networks
+
+The lecture's summary at 02:14:03 makes the point that everything you just did is what large networks do, with three differences of scale rather than kind. Values become tensors, so one node is a whole matrix multiply with a hand-written, vectorized backward. The dataset is too large to use in every step, so each step estimates the gradient from a random minibatch (lesson 4). And the loss is cross-entropy over a vocabulary rather than squared error on one output.
+
+This is a useful lens for reading about large models as an applied engineer. When a model card describes pretraining, fine-tuning, or preference tuning, each one is "pick a loss, compute its gradient on batches of data, step the parameters." What changes between them is the data and the loss. If you took Studio 5, you saw supervised fine-tuning and LoRA from the outside; this is the inside.
+</Listen>
+
+<GoDeeper title="When does gradient descent provably decrease the loss?">
+If the gradient of L is Lipschitz with constant K (L is "K-smooth"), then for any step size eta at most 1/K, the descent lemma gives L(theta minus eta g) at most L(theta) minus (eta/2) times the squared norm of g. So each step decreases the loss by an amount proportional to the squared gradient norm, and the gradient norm must go to zero over many steps. For convex L you also get convergence to the minimum; neural network losses aren't convex, so the guarantee is only to a stationary point. In practice, the curvature constant isn't known, which is why learning rates are found empirically and why schedules (warmup, decay) exist. Chapter 4.3 and chapter 8 of Goodfellow, Bengio, and Courville's *Deep Learning* cover gradient-based optimization and the specific difficulties of training deep networks: ill-conditioning, saddle points, and cliffs.
+</GoDeeper>
+
+<Listen>
+## Review sheet
+
+Any decomposition of a function backpropagates correctly if each local derivative is right; frameworks fuse operations for speed and stability, not correctness. A neuron is tanh of an affine map, a layer is many neurons, an MLP is layers in sequence; a layer with n inputs and m outputs has m(n + 1) parameters. A loss reduces "how wrong" to one number; squared error's gradient is twice the error. Gradient descent steps against the gradient; the Taylor expansion says small steps help, and the learning rate decides how small. Zero the gradients before every backward pass. Next week: the same machinery, applied to predicting the next character.
+</Listen>

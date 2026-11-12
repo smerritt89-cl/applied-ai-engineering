@@ -1,0 +1,153 @@
+{
+  "id": "e3-w3",
+  "studio": "e3",
+  "week": 3,
+  "title": "Week 3 quiz: Safety, governance, and judgment",
+  "questions": [
+    {
+      "id": "e3w3-q1",
+      "type": "mcq",
+      "prompt": "Which pairing of framework and current version (as of November 2026) is correct?",
+      "options": [
+        { "id": "a", "text": "Anthropic Responsible Scaling Policy 3.4 (July 2026); OpenAI Preparedness Framework version 2 (April 2025); Google DeepMind Frontier Safety Framework 3.1 (April 2026)", "correct": true, "rationale": "Yes, per each company's page and METR's index of frontier safety policies." },
+        { "id": "b", "text": "Anthropic RSP 2.2; OpenAI Preparedness Framework version 3; DeepMind FSF 1.0", "rationale": "These are older or nonexistent versions." },
+        { "id": "c", "text": "All three were replaced by the EU Code of Practice in 2026.", "rationale": "The Code of Practice is a voluntary EU compliance tool; the company frameworks continue." }
+      ],
+      "explanation": "Frameworks are revised often; Anthropic issued five versions in 2026 alone. Always cite the version and its date, and check METR's index for the current list.",
+      "week": 3,
+      "tags": ["safety-frameworks"],
+      "difficulty": 1
+    },
+    {
+      "id": "e3w3-q2",
+      "type": "multi",
+      "prompt": "Which findings about reward hacking come from this week's primary sources? Select all that apply.",
+      "options": [
+        { "id": "a", "text": "METR (June 2025) observed o3 patching evaluators and copying grader results, and instructions not to cheat had little effect.", "correct": true, "rationale": "Documented in METR's report." },
+        { "id": "b", "text": "Anthropic (November 2025) found broader misaligned behavior emerging at the point in training where a model learned to reward hack on coding environments.", "correct": true, "rationale": "The emergent misalignment paper by MacDiarmid and colleagues." },
+        { "id": "c", "text": "OpenAI researchers (March 2025) found that penalizing bad reasoning in the chain of thought taught models to hide their intent while still hacking.", "correct": true, "rationale": "Baker and colleagues called this obfuscated reward hacking." },
+        { "id": "d", "text": "Reward hacking only occurs in models smaller than 10 billion parameters.", "rationale": "The documented cases involve frontier models." }
+      ],
+      "explanation": "Reward hacking is the lab-scale version of an agent gaming your test suite. The defenses transfer: protected graders, transcript review, and not training against your only monitor.",
+      "week": 3,
+      "tags": ["reward-hacking", "alignment"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w3-q3",
+      "type": "scenario",
+      "prompt": "Your team is about to launch 5,000 parallel agent runs of an internal benchmark overnight. To save time, an engineer proposes sharing one writable package cache across all sandboxes and turning off transcript logging. What should you do, given the July 2026 incident?",
+      "options": [
+        { "id": "a", "text": "Approve; benchmarks are internal and low risk.", "rationale": "The OpenAI and Hugging Face incident happened during an internal benchmark run with relaxed controls." },
+        { "id": "b", "text": "Refuse both changes, verify that every task is solvable before launch, keep graders outside agents' reach, and sample transcripts of passes the next morning.", "correct": true, "rationale": "Yes. Shared writable resources let isolated agents find each other; impossible tasks push toward cheating; missing logs remove your evidence." },
+        { "id": "c", "text": "Approve, but add an instruction to the prompt telling agents not to communicate.", "rationale": "Instructions are not controls; METR found telling models not to cheat had little effect." }
+      ],
+      "explanation": "Treat eval environments as security boundaries. The incident's contributing factors (shared resources, impossible tasks, monitoring off) are all cheap to prevent.",
+      "week": 3,
+      "tags": ["incidents", "agents", "sandboxing"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w3-q4",
+      "type": "code-reading",
+      "prompt": "This check is meant to flag agent runs that tampered with tests. What does it miss?",
+      "code": "def tampered(actions):\n    return any(a[\"tool\"] == \"write\" and a[\"path\"].startswith(\"tests/\")\n               for a in actions)\n\nrun = [{\"tool\": \"write\", \"path\": \"src/conftest.py\"},\n       {\"tool\": \"run_tests\", \"path\": \"\"}]\nprint(tampered(run))",
+      "options": [
+        { "id": "a", "text": "It prints False, missing a `conftest.py` outside `tests/`, which pytest loads and which can change how tests run.", "correct": true, "rationale": "Yes. Path-prefix rules are easy to sidestep; protect graders structurally too." },
+        { "id": "b", "text": "It prints True because `run_tests` counts as a write.", "rationale": "Only writes under `tests/` are checked." },
+        { "id": "c", "text": "It raises a KeyError.", "rationale": "Both keys exist in every action." }
+      ],
+      "explanation": "Rule-based tamper detection is a first filter. The stronger defense is to run graders from a clean checkout the agent cannot modify, then read a sample of passes.",
+      "week": 3,
+      "tags": ["evals", "reward-hacking"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w3-q5",
+      "type": "mcq",
+      "prompt": "What did the Digital Omnibus on AI (Regulation (EU) 2026/1744) change about high-risk AI obligations?",
+      "options": [
+        { "id": "a", "text": "It repealed them.", "rationale": "They were deferred, not repealed." },
+        { "id": "b", "text": "It deferred them to 2 December 2027 for Annex III standalone systems and 2 August 2028 for AI embedded in products under Annex I.", "correct": true, "rationale": "Yes, with the Omnibus in force from 27 July 2026." },
+        { "id": "c", "text": "It moved them earlier, to 2 August 2026.", "rationale": "The direction was the reverse." },
+        { "id": "d", "text": "It applied them only to US companies.", "rationale": "The Act applies to systems placed on the EU market regardless of where the provider is based." }
+      ],
+      "explanation": "The general-purpose AI model obligations were not deferred. Know which part of the Act a date refers to.",
+      "week": 3,
+      "tags": ["eu-ai-act", "regulation"],
+      "difficulty": 1
+    },
+    {
+      "id": "e3w3-q6",
+      "type": "scenario",
+      "prompt": "Your US company plans to fine-tune an open-weight model substantially for a CV-screening product sold to EU employers. Which statement best describes your position?",
+      "options": [
+        { "id": "a", "text": "Only US law applies because you are a US company.", "rationale": "Placing a system on the EU market brings it under the AI Act." },
+        { "id": "b", "text": "Screening job applicants is a high-risk use under the AI Act, so your system faces the high-risk regime (from December 2027 after the Omnibus), and a substantial modification of the model may make you a provider of the modified general-purpose model; involve counsel early.", "correct": true, "rationale": "Yes. Both the use case and the modification create obligations." },
+        { "id": "c", "text": "Nothing applies because the model is open-weight.", "rationale": "Open-weight licenses do not exempt high-risk systems, and the open-source exemption covers only some model-documentation duties." }
+      ],
+      "explanation": "The duties follow the role and the use case. Employment is one of the clearest high-risk areas, and the deferral changes the date, not the obligation.",
+      "week": 3,
+      "tags": ["eu-ai-act", "high-risk"],
+      "difficulty": 3
+    },
+    {
+      "id": "e3w3-q7",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "def brier(f):\n    return sum((p - o) ** 2 for p, o in f) / len(f)\nconfident = [(0.95, 1), (0.95, 0), (0.95, 1), (0.95, 0)]\nunsure = [(0.5, 1), (0.5, 0), (0.5, 1), (0.5, 0)]\nprint(round(brier(confident), 3), brier(unsure))",
+      "options": [
+        { "id": "a", "text": "`0.453 0.25`", "correct": true, "rationale": "Two hits at 0.0025 and two misses at 0.9025 average 0.4525; always 0.5 gives 0.25." },
+        { "id": "b", "text": "`0.25 0.25`", "rationale": "Both were right half the time, but confidence on the misses is penalized heavily." },
+        { "id": "c", "text": "`0.05 0.25`", "rationale": "That counts only the hits." }
+      ],
+      "explanation": "Overconfidence is costly under a proper scoring rule. A forecaster who is right half the time while claiming 95% does far worse than one who says 'I don't know'.",
+      "week": 3,
+      "tags": ["forecasting", "calibration"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w3-q8",
+      "type": "mcq",
+      "prompt": "Using Ioannidis's model, which change most increases the chance that a reported positive finding about an AI technique is true?",
+      "options": [
+        { "id": "a", "text": "Trying more prompt variants and reporting the best one.", "rationale": "That is bias in his sense; it raises false positives." },
+        { "id": "b", "text": "Testing a hypothesis with higher prior plausibility, with a larger pre-registered eval and an independent replication.", "correct": true, "rationale": "Yes. Prior odds, power, and lower bias all raise the positive predictive value." },
+        { "id": "c", "text": "Lowering the number of eval items so results come back faster.", "rationale": "Lower power reduces the chance a positive is real." }
+      ],
+      "explanation": "Most of the fixes are process: decide the comparison in advance, use enough items, disclose how many variants you tried, and get someone else to rerun it.",
+      "week": 3,
+      "tags": ["base-rates", "evaluation"],
+      "difficulty": 2
+    },
+    {
+      "id": "e3w3-q9",
+      "type": "multi",
+      "prompt": "Which practices apply the principle of independent checks? Select all that apply.",
+      "options": [
+        { "id": "a", "text": "Verifying model-quoted evidence with an exact substring check in code", "correct": true, "rationale": "Deterministic code fails differently from a fluent model." },
+        { "id": "b", "text": "Using a judge from a different model family than the candidates, calibrated against human labels", "correct": true, "rationale": "Reduces self-preference and shared-training errors, and the calibration checks the judge." },
+        { "id": "c", "text": "Asking the same model to double-check its own answer and accepting its verdict", "rationale": "Its errors are correlated with the original; it is a weak check on its own." },
+        { "id": "d", "text": "Embedding external evaluators with access to a lab's training and safety processes", "correct": true, "rationale": "An organization with different incentives checks the lab's own assessments." }
+      ],
+      "explanation": "Every check in this program, from validators to judges to external evaluators, is worth what its independence is worth. Stack checks that fail in different ways.",
+      "week": 3,
+      "tags": ["checks-and-balances"],
+      "difficulty": 1
+    },
+    {
+      "id": "e3w3-q10",
+      "type": "mcq",
+      "prompt": "Which statement about US AI governance in November 2026 is accurate?",
+      "options": [
+        { "id": "a", "text": "Executive Order 14365 preempted California's SB 53, so it no longer applies.", "rationale": "An executive order cannot by itself preempt state law; SB 53 has applied since 1 January 2026." },
+        { "id": "b", "text": "Federal policy favors preemption of state AI laws, but without a federal statute; California's SB 53 is in force, and New York's amended RAISE Act takes effect on 1 January 2027.", "correct": true, "rationale": "Yes." },
+        { "id": "c", "text": "Congress passed a comprehensive AI statute modeled on the EU AI Act in 2026.", "rationale": "No federal AI statute of general application exists as of this review." }
+      ],
+      "explanation": "For most teams, the state frontier laws bind their model vendors. What binds the teams themselves is sector and privacy law, plus their customers' contracts.",
+      "week": 3,
+      "tags": ["us-policy", "regulation"],
+      "difficulty": 2
+    }
+  ]
+}

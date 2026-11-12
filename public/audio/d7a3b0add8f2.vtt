@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.648
+Two systems in one: why RAG evaluation splits in half.
+
+2
+00:00:03.928 --> 00:00:07.619
+A RAG system is a retriever and a generator glued together.
+
+3
+00:00:07.899 --> 00:00:11.867
+The retriever picks some passages; the generator writes an answer from them.
+
+4
+00:00:12.147 --> 00:00:20.659
+When the answer is wrong, the cause lives in one of two places: the right passages never came back, or they came back and the model misused them.
+
+5
+00:00:20.939 --> 00:00:25.824
+A single end-to-end score can’t tell you which, and the fixes are completely different.
+
+6
+00:00:26.104 --> 00:00:34.616
+Better chunking, hybrid search, or a reranker fix the first; prompt changes, citation requirements, or a stronger model fix the second.
+
+7
+00:00:34.896 --> 00:00:45.499
+So the standard advice, stated plainly in Husain and Shankar’s evals FAQ, is to evaluate retrieval and generation separately and to debug retrieval first.
+
+8
+00:00:45.779 --> 00:01:05.043
+Barnett and colleagues’ experience report on engineering RAG systems (“Seven Failure Points,” 2024) catalogs failures on both sides, from content missing in the corpus and relevant documents ranked too low, to answers that extract the wrong detail or ignore the requested format.
+
+9
+00:01:05.323 --> 00:01:17.696
+Their broader lesson for a team is sobering: much of a RAG system’s validation is only possible once it runs on real questions, so evaluation is ongoing, not a launch gate you pass once.
+
+10
+00:01:17.976 --> 00:01:28.941
+A useful way to hold the whole picture is three relationships between the question Q, the retrieved context C, and the answer A, which the FAQ attributes to Jason Liu.
+
+11
+00:01:29.221 --> 00:01:32.613
+C given Q: did retrieval find relevant context?
+
+12
+00:01:32.893 --> 00:01:37.117
+A given C: is the answer supported by that context (faithfulness)?
+
+13
+00:01:37.397 --> 00:01:41.259
+A given Q: does the answer address the question (answer relevance)?
+
+14
+00:01:41.539 --> 00:01:46.275
+Add a fourth when you have reference answers: A against the truth, which is correctness.
+
+15
+00:01:46.555 --> 00:01:51.269
+The lab and project measure all four, because each catches failures the others miss.

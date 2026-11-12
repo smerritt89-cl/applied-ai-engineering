@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+Schema checks: valid, then correct.
+
+2
+00:00:02.456 --> 00:00:10.712
+Many LLM features return structured data, and Studio 1 built extraction with schemas, validation, and evidence checks.
+
+3
+00:00:10.992 --> 00:00:13.637
+In an eval, the same tools become graders.
+
+4
+00:00:13.917 --> 00:00:20.915
+A schema check parses the output and validates it against a model of what it must look like (with Pydantic, Model.
+
+5
+00:00:21.195 --> 00:00:25.632
+model_validate_json(text) ), then you check field values separately.
+
+6
+00:00:25.912 --> 00:00:34.829
+Keep three outcomes apart, because they have different causes and fixes: Unparseable: not JSON at all, or wrapped in prose or code fences.
+
+7
+00:00:35.109 --> 00:00:42.832
+With structured outputs this should be rare, so a jump in it usually means truncation, a refusal, or a broken configuration.
+
+8
+00:00:43.112 --> 00:00:52.435
+Schema-invalid: parses, but a required field is missing, an extra field appears, or a value has the wrong type or falls outside an allowed set.
+
+9
+00:00:52.715 --> 00:00:57.707
+Schema-valid but wrong: the shape is perfect and the category or date is incorrect.
+
+10
+00:00:57.987 --> 00:01:02.189
+Only comparison with the expected answer (or a judge) catches this.
+
+11
+00:01:02.469 --> 00:01:17.723
+Reporting these as three numbers instead of one “correct” rate is the difference between a dashboard that says “quality dropped 4 points” and one that says “4 points of outputs stopped parsing after the model change,” which tells you exactly where to look.
+
+12
+00:01:18.003 --> 00:01:32.381
+The exercise below puts these pieces together for a support-ticket triage feature: the model must return a category, the order ID mentioned in the ticket (or null), and a short reply that makes no promises the policy doesn’t allow.

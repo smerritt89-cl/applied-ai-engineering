@@ -1,0 +1,300 @@
+{
+  "id": "e1-w2",
+  "studio": "e1",
+  "week": 2,
+  "title": "Week 2 quiz: language modeling with makemore",
+  "questions": [
+    {
+      "id": "e1w2-q1",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "words = [\"ab\", \"b\"]\nitos = [\".\", \"a\", \"b\"]\nstoi = {c: i for i, c in enumerate(itos)}\nN = [[0] * 3 for _ in range(3)]\nfor w in words:\n    seq = [\".\"] + list(w) + [\".\"]\n    for x, y in zip(seq, seq[1:]):\n        N[stoi[x]][stoi[y]] += 1\nrow = N[stoi[\"b\"]]\nprint(row, [c / sum(row) for c in row])",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[2, 0, 0] [1.0, 0.0, 0.0]`",
+          "correct": true,
+          "rationale": "Both words end in b, so 'b' is followed by the end token twice and by nothing else."
+        },
+        {
+          "id": "b",
+          "text": "`[0, 1, 1] [0.0, 0.5, 0.5]`",
+          "rationale": "That's the row for '.', the start token."
+        },
+        {
+          "id": "c",
+          "text": "`[1, 0, 0] [1.0, 0.0, 0.0]`",
+          "rationale": "'b' ends both words, so the count is 2."
+        },
+        {
+          "id": "d",
+          "text": "`[2, 0, 0] [0.67, 0.0, 0.0]`",
+          "rationale": "The row is divided by its own sum, 2."
+        }
+      ],
+      "explanation": "Wrapping every word with '.' at both ends makes one token serve as start and end, as the lecture does at 20:54. Each row is the conditional distribution of the next token given the current one.",
+      "week": 2,
+      "tags": [
+        "bigram",
+        "counting"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w2-q2",
+      "type": "code-reading",
+      "prompt": "This function is meant to return the average negative log-likelihood. What's wrong with it?",
+      "code": "def avg_nll(pairs, P):\n    total = 0.0\n    for i, j in pairs:\n        total += math.log(P[i][j])\n    return total / len(pairs)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "It should use log base 2.",
+          "rationale": "The base only rescales the loss; it doesn't change which model is better."
+        },
+        {
+          "id": "b",
+          "text": "It should multiply the probabilities instead of summing logs.",
+          "rationale": "The product underflows; summing logs is the right way to compute it."
+        },
+        {
+          "id": "c",
+          "text": "It's missing the minus sign, so it returns the average log-likelihood, a negative number that gets larger as the model improves.",
+          "correct": true,
+          "rationale": "Minimizing this would make the model worse. NLL is the negative of the log-probability."
+        },
+        {
+          "id": "d",
+          "text": "It should divide by the vocabulary size instead of n.",
+          "rationale": "The average is over the bigrams scored."
+        }
+      ],
+      "explanation": "Loss functions are minimized, so the sign matters. A quick check catches this kind of bug: a uniform model over V tokens must score exactly log V, a positive number.",
+      "week": 2,
+      "tags": [
+        "nll",
+        "debugging"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w2-q3",
+      "type": "mcq",
+      "prompt": "A character model has an average NLL of 2.0 nats per character on held-out text. What is its perplexity?",
+      "options": [
+        {
+          "id": "a",
+          "text": "4",
+          "rationale": "That would be 2 to the power of an NLL measured in bits."
+        },
+        {
+          "id": "b",
+          "text": "About 7.39",
+          "correct": true,
+          "rationale": "Perplexity is exp(NLL) = e squared."
+        },
+        {
+          "id": "c",
+          "text": "2.0",
+          "rationale": "That's the NLL itself."
+        },
+        {
+          "id": "d",
+          "text": "About 0.135",
+          "rationale": "That's exp(-2), the geometric-mean probability per character."
+        }
+      ],
+      "explanation": "Perplexity is the effective number of equally likely choices per step. The geometric mean of the probabilities assigned to the correct characters is exp(-NLL), about 0.135 here, and perplexity is its reciprocal.",
+      "week": 2,
+      "tags": [
+        "nll",
+        "perplexity"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w2-q4",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "x = [0, 1, 0]\nW = [[1.0, 2.0],\n     [3.0, 4.0],\n     [5.0, 6.0]]\nprint([sum(x[i] * W[i][j] for i in range(3)) for j in range(2)])",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[1.0, 2.0]`",
+          "rationale": "That's row 0. The one-hot has its 1 at index 1."
+        },
+        {
+          "id": "b",
+          "text": "`[9.0, 12.0]`",
+          "rationale": "That's the sum of all rows, what a vector of ones would select."
+        },
+        {
+          "id": "c",
+          "text": "`[2.0, 4.0, 6.0]`",
+          "rationale": "The output has one entry per column of W, two here."
+        },
+        {
+          "id": "d",
+          "text": "`[3.0, 4.0]`",
+          "correct": true,
+          "rationale": "A one-hot vector with a 1 in position 1 selects row 1 of W."
+        }
+      ],
+      "explanation": "This is the lecture's note at 01:47:49: multiplying a one-hot vector by a matrix just picks out a row. Embedding layers skip the multiplication and index the row directly, which is the same computation, faster.",
+      "week": 2,
+      "tags": [
+        "embeddings",
+        "one-hot"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "e1w2-q5",
+      "type": "multi",
+      "prompt": "Which practices keep train, dev, and test splits honest? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Re-run the test evaluation after each idea to see whether it helped.",
+          "rationale": "That turns the test set into a second dev set, and the final number becomes optimistic."
+        },
+        {
+          "id": "b",
+          "text": "Fix the split once with a seed and save it, so examples don't move between splits across runs.",
+          "correct": true,
+          "rationale": "Re-splitting each run leaks dev and test examples into training over time."
+        },
+        {
+          "id": "c",
+          "text": "Choose hyperparameters by dev loss, not test loss.",
+          "correct": true,
+          "rationale": "The dev set exists to absorb the optimism of model selection."
+        },
+        {
+          "id": "d",
+          "text": "Report the test loss after evaluating it once for the final configuration.",
+          "correct": true,
+          "rationale": "A single evaluation keeps the test estimate unbiased."
+        }
+      ],
+      "explanation": "Train fits parameters, dev chooses among models, and test is touched once. The same contract applies to evaluating prompts and model choices in Studio 3.",
+      "week": 2,
+      "tags": [
+        "evaluation",
+        "splits"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w2-q6",
+      "type": "scenario",
+      "prompt": "You run the lecture's learning-rate sweep (exponentially from 0.001 to 1). Loss falls steadily, is lowest and flattest for rates around 0.05 to 0.2, and blows up above about 0.4. What do you use?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Something in the flat, low region, such as 0.1, and decay it later in training.",
+          "correct": true,
+          "rationale": "That's the lecture's choice and reasoning: a rate in the stable valley, with a step decay near the end."
+        },
+        {
+          "id": "b",
+          "text": "1.0, to train fastest.",
+          "rationale": "The sweep shows that region diverges."
+        },
+        {
+          "id": "c",
+          "text": "0.001, to be safe.",
+          "rationale": "Stable, but it wastes most of the training budget."
+        },
+        {
+          "id": "d",
+          "text": "Whatever rate gave the lowest single minibatch loss during the sweep.",
+          "rationale": "Minibatch losses are noisy; read the trend, not one point."
+        }
+      ],
+      "explanation": "The sweep is a quick empirical answer to \"how small is small enough.\" Pick from the stable valley before the blow-up, then decay. Re-run the sweep when you change model size or batch size, since the good range moves.",
+      "week": 2,
+      "tags": [
+        "learning-rate",
+        "training"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w2-q7",
+      "type": "code-reading",
+      "prompt": "This dataset builder for the MLP model produces contexts that are subtly wrong. What is the bug?",
+      "code": "def build_dataset(words, stoi, block_size=3):\n    X, Y = [], []\n    context = [0] * block_size\n    for w in words:\n        for ch in list(w) + [\".\"]:\n            ix = stoi[ch]\n            X.append(context)\n            Y.append(ix)\n            context = context[1:] + [ix]\n    return X, Y",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "Y should hold characters, not indices.",
+          "rationale": "The loss needs integer targets."
+        },
+        {
+          "id": "b",
+          "text": "The context should be initialized inside the loop over words, so each word starts from padding.",
+          "correct": true,
+          "rationale": "As written, the first context of each word contains the end of the previous word."
+        },
+        {
+          "id": "c",
+          "text": "The end token '.' should not be a target.",
+          "rationale": "Predicting the end token is how the model learns to stop."
+        },
+        {
+          "id": "d",
+          "text": "`X.append(context)` should be `X.append(context[:])`.",
+          "rationale": "Reassigning `context` creates a new list each time, so aliasing isn't the problem here."
+        }
+      ],
+      "explanation": "Leaking context across example boundaries teaches the model correlations that don't exist (the end of one name predicting the start of the next). The same class of bug appears with document boundaries in LLM pretraining, which is what special end-of-text tokens and attention masks are for.",
+      "week": 2,
+      "tags": [
+        "datasets",
+        "debugging"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "e1w2-q8",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "import math\ndef cross_entropy(z, y):\n    m = max(z)\n    lse = m + math.log(sum(math.exp(v - m) for v in z))\n    return lse - z[y]\nprint(round(cross_entropy([5.0, 5.0, 5.0], 0), 4))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.3333`",
+          "rationale": "That's the probability, not the loss."
+        },
+        {
+          "id": "b",
+          "text": "`5.0`",
+          "rationale": "Adding the same constant to every logit doesn't change the softmax."
+        },
+        {
+          "id": "c",
+          "text": "`0.0`",
+          "rationale": "That would need probability 1 on the target."
+        },
+        {
+          "id": "d",
+          "text": "`1.0986`",
+          "correct": true,
+          "rationale": "Equal logits mean a uniform distribution over 3 classes, so the loss is log 3."
+        }
+      ],
+      "explanation": "Softmax is invariant to shifting all logits, which is why the stable implementation can subtract the maximum. Here the result is log 3, about 1.0986, regardless of the shared value 5.",
+      "week": 2,
+      "tags": [
+        "cross-entropy",
+        "softmax"
+      ],
+      "difficulty": 1
+    }
+  ]
+}

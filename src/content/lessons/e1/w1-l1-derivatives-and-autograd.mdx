@@ -1,0 +1,394 @@
+---
+id: e1-w1-l1
+studio: e1
+week: 1
+order: 1
+title: "micrograd, part 1: derivatives, the chain rule, and a tiny autograd engine"
+summary: The first half of Karpathy's micrograd lecture, with the calculus written out. Computation graphs, local derivatives, the multivariable chain rule as a sum over paths, reverse-mode differentiation, and a Value class you build and check against finite differences.
+estMinutes: 130
+reviewed: 2026-11-11
+objectives:
+  - Estimate a derivative numerically and explain why the central difference is more accurate than the one-sided one
+  - Represent an expression as a directed acyclic graph and compute every partial derivative of the output by hand
+  - State the multivariable chain rule as a sum over paths and explain why gradients must accumulate
+  - Explain why reverse mode (backpropagation) is the right choice for a function from many parameters to one loss
+  - Implement a scalar autograd Value with addition, multiplication, tanh, and backward(), and verify it with a gradient check
+sources:
+  - { id: yt-karpathy-micrograd, use: embedded, where: "00:00:00 to 01:27:05 (through 'fixing a backprop bug when one node is used multiple times')" }
+  - { id: karpathy-zero-to-hero, use: adapted, where: "Lecture 1 structure and exercise ideas" }
+  - { id: karpathy-micrograd-repo, use: adapted, where: "engine.py design (Value, _backward closures, topological sort)" }
+  - { id: baydin-2018-autodiff, use: summarized, where: "Forward and reverse mode; cost of reverse mode" }
+  - { id: rumelhart-1986, use: summarized }
+  - { id: goodfellow-2016-dlbook, use: linked, where: "Chapter 6.5, back-propagation" }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: "Using a correct `Value` class (gradients accumulate with `+=`), what does this print?"
+    code: |
+      a = Value(3.0)
+      b = a * a + a
+      b.backward()
+      print(a.grad)
+    options:
+      - id: a
+        text: "`7.0`"
+        correct: true
+        rationale: "b = a squared plus a, so db/da = 2a + 1 = 7. The two factors of the product contribute 3 each and the addition contributes 1."
+      - id: b
+        text: "`3.0`"
+        rationale: That is only the gradient through one use of `a`. The graph uses `a` three times.
+      - id: c
+        text: "`1.0`"
+        rationale: That is what an engine that overwrites gradients (`=` instead of `+=`) might leave behind from the last visit.
+    explanation: >-
+      Each use of a variable is a separate path from that variable to the output, and the multivariable chain rule sums
+      over paths. In code that sum is the `+=` in every `_backward`. Overwriting instead of accumulating is the bug the
+      lecture fixes at 01:22:28.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      A loss depends on one million parameters. Why do deep learning frameworks use reverse mode (backpropagation)
+      rather than forward mode to get its gradient?
+    options:
+      - id: a
+        text: Reverse mode is exact while forward mode is an approximation.
+        rationale: Both are exact up to floating point. Neither is a finite-difference estimate.
+      - id: b
+        text: Forward mode cannot handle nonlinear functions such as tanh.
+        rationale: Forward mode handles any differentiable elementary operation.
+      - id: c
+        text: One reverse pass yields the derivative with respect to every input, while forward mode needs one pass per input.
+        correct: true
+        rationale: "For f from R^n to R, reverse mode costs a small constant multiple of one forward evaluation, independent of n."
+    explanation: >-
+      Forward mode pushes a derivative with respect to one input through the graph; reverse mode pulls the derivative of
+      one output back to all inputs. Training has one scalar loss and many parameters, so reverse mode wins by a factor of
+      roughly n. The cost is memory: reverse mode must keep the forward pass's intermediate values.
+  - id: kc3
+    type: code-reading
+    prompt: This `backward` visits nodes in the wrong order for some graphs. What goes wrong?
+    code: |
+      def backward(self):
+          self.grad = 1.0
+          stack = [self]
+          while stack:
+              v = stack.pop()
+              v._backward()
+              stack.extend(v._prev)
+    options:
+      - id: a
+        text: Nothing; any order works because addition is commutative.
+        rationale: Order matters. A node must have received all of its gradient before it passes gradient on.
+      - id: b
+        text: A node used twice can run its `_backward` before all of its downstream gradient has arrived, and it may run more than once.
+        correct: true
+        rationale: Yes. Without a topological order, a shared node propagates a partial gradient, and revisiting it propagates again, double counting.
+      - id: c
+        text: It never terminates on a DAG.
+        rationale: It terminates (the graph has no cycles), but it gives wrong gradients on graphs with shared nodes.
+    explanation: >-
+      Reverse mode needs each node processed after every node that consumes it. A reversed topological sort guarantees
+      this, and the visited set guarantees each node runs once. On a pure tree the naive version happens to work, which
+      is why the bug hides until a variable is reused.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## How to use this elective
+
+This elective walks you through Andrej Karpathy's "Neural Networks: Zero to Hero" lectures. Each lesson is a companion to one video (or, this week, half of one). The pattern is the same every time: watch the video with a few things to look for, read the math written out properly, rebuild one piece in pure Python right here in the browser, and check yourself. You can return to the lessons later as a review sheet without rewatching.
+
+Karpathy's lectures assume "a vague recollection of calculus from high school," in his words on the syllabus page. You have much more than that, so these notes lean into the math: they state the chain rule precisely, derive the gradients the video computes by hand, and explain why the engineering choices follow from the calculus.
+
+Why should someone building on Claude or GPT spend 30 hours on this? Because nearly every behavior you deal with as an applied engineer (tokens, context windows, sampling, why fine-tuning shifts behavior, why a loss curve is or is not good news) traces back to what you will build here. You won't train production models. You will be the person on the team who can read a model card, a fine-tuning report, or a paper and tell what it actually claims.
+</Listen>
+
+<Listen>
+## What the first half of the lecture builds
+
+micrograd is a tiny autograd engine: a library that records the arithmetic you do on numbers and can then compute the derivative of the final result with respect to every input. The repository's README describes it as roughly 100 lines for the engine plus 50 for a small neural network library on top. It works on scalars only, which makes it slow and perfectly transparent.
+
+The first 87 minutes of the video, which this lesson covers, go from "what is a derivative" to a working `backward()` on arbitrary expressions. The second half (next lesson) builds neurons, a multilayer perceptron, a loss, and a training loop on top of it.
+</Listen>
+
+<Video id="VMj-3S1tku0" title="The spelled-out intro to neural networks and backpropagation: building micrograd" channel="Andrej Karpathy" minutes={87} start={0} end={5225} source="https://karpathy.ai/zero-to-hero.html">
+Watch from the start to 01:27:05 (the chapter "fixing a backprop bug when one node is used multiple times"). Things to watch for:
+
+- **08:08 and 14:12:** numerical derivatives by nudging an input with a small h. Note that this estimate is what you'll later use to *check* the engine.
+- **19:09:** the `Value` object. Each one stores its data, its gradient, its children, and the operation that made it.
+- **32:10 to 52:52:** manual backpropagation on a small expression and on a single neuron. Pause and do these by hand before he does.
+- **01:09:02 and 01:17:32:** each operation gets its own `_backward` closure, and a topological sort orders the whole pass.
+- **01:22:28:** the bug when a node is used twice. Predict it before he shows it.
+</Video>
+
+<Listen>
+## Derivatives, numerically
+
+For a function f of one variable, the derivative at x is the limit of (f(x + h) minus f(x)) divided by h as h goes to zero. The video estimates it by just picking a small h. That one-sided estimate has error of order h: by Taylor's theorem, f(x + h) = f(x) + h f'(x) + (h squared over 2) f''(x) + ..., so the quotient equals f'(x) + (h/2) f''(x) + higher terms.
+
+The **central difference**, (f(x + h) minus f(x minus h)) over 2h, cancels the second-order term, leaving error of order h squared. With h around 1e-5 or 1e-6 in double precision you get about ten correct digits for well-behaved functions. Push h much smaller and floating-point cancellation takes over: you subtract two nearly equal numbers and lose the digits you wanted.
+
+Numerical derivatives cost one or two extra function evaluations per input. For a network with a million parameters, that's two million forward passes per gradient, which is why nobody trains this way. But they are the perfect **independent check**. Every gradient you compute analytically in this elective, you'll test against a central difference. In ML engineering this is called a gradient check, and it's the first test to write for any hand-written backward pass.
+</Listen>
+
+```text
+one-sided:  (f(x+h) - f(x)) / h          = f'(x) + (h/2) f''(x) + O(h^2)
+central:    (f(x+h) - f(x-h)) / (2h)     = f'(x) + (h^2/6) f'''(x) + O(h^4)
+```
+
+<Listen>
+## Expressions as graphs, and local derivatives
+
+Write a computation as a directed acyclic graph: leaves are inputs and parameters, interior nodes are elementary operations, and one node is the output, usually called L for loss. The video's neuron is a good running example: n = x1 w1 + x2 w2 + b, and o = tanh(n).
+
+Each operation knows its **local derivatives**, the partial derivatives of its output with respect to its own inputs, and nothing else:
+
+- Addition c = a + b: the partial of c with respect to a is 1, and with respect to b is 1. Addition routes gradient unchanged to both inputs.
+- Multiplication c = a times b: the partial with respect to a is b, and with respect to b is a. Multiplication swaps.
+- tanh: if t = tanh(n), then dt/dn = 1 minus t squared. Conveniently, this uses the output t, which the forward pass already computed.
+
+The **chain rule** composes them. If L depends on c and c depends on a, then dL/da = (dL/dc)(dc/da). Backpropagation is that rule applied node by node from the output back to the leaves: each node receives dL/d(itself) from downstream, multiplies by its local derivative, and passes the result to its inputs.
+</Listen>
+
+<Mermaid
+  alt="Computation graph of a single neuron. Inputs x1 and w1 feed a multiply node; inputs x2 and w2 feed another multiply node; both products and the bias b feed an add node producing n; n feeds a tanh node producing the output o. Gradients flow backward along the same edges."
+  caption="The video's neuron as a graph. The forward pass runs left to right; the backward pass sends dL/d(node) right to left along the same edges."
+  chart={`flowchart LR
+  x1["x1"] --> m1["*"]
+  w1["w1"] --> m1
+  x2["x2"] --> m2["*"]
+  w2["w2"] --> m2
+  m1 --> s["+ (n)"]
+  m2 --> s
+  b["b"] --> s
+  s --> t["tanh (o)"]`}
+/>
+
+<Listen>
+## The chain rule is a sum over paths
+
+The single most important detail in this lecture is what happens when a value is used more than once. Suppose L depends on a through two intermediate nodes, c and d. The multivariable chain rule says the partial of L with respect to a is the sum: (partial L over partial c)(partial c over partial a) plus (partial L over partial d)(partial d over partial a). In general, the derivative of the output with respect to any node is the sum, over every path from that node to the output, of the product of local derivatives along the path.
+
+In code, that sum becomes accumulation. Each node's gradient starts at zero, and every consumer adds its contribution: `self.grad += ...`, never `self.grad = ...`. The video discovers the overwrite version at 01:22:28 with b = a + a, whose gradient should be 2 and comes out as 1.
+
+Two consequences follow. First, a node can only pass gradient on once every consumer has added its share. That's why the backward pass visits nodes in **reverse topological order** (every node after all nodes that depend on it). Second, gradients must be reset to zero before each new backward pass, or the next pass adds on top of the old one. You'll meet that second bug in the training loop next lesson.
+</Listen>
+
+```text
+L = f(c, d),  c = g(a),  d = h(a)
+
+dL/da = (dL/dc)(dc/da) + (dL/dd)(dd/da)          <- one term per path from a to L
+
+example: b = a*a + a
+db/da  = a + a + 1 = 2a + 1     (the product contributes a twice, the sum contributes 1)
+```
+
+<Predict
+  title="The overwrite bug"
+  code={`# A buggy engine: every _backward uses "=" instead of "+=".
+# For c = a + a, the add node runs:
+#     self.grad = out.grad      (self is a)
+#     other.grad = out.grad     (other is also a)
+a_grad = 0.0
+out_grad = 1.0
+a_grad = out_grad   # first input slot
+a_grad = out_grad   # second input slot, same object
+print(a_grad)`}
+  options={["2.0", "1.0", "0.0"]}
+  answer={1}
+>
+1.0. Both input slots point at the same object, so the second assignment overwrites the first. The correct derivative of a + a is 2, which you only get by accumulating. The bug is invisible on any expression where each value is used once, which is why tests need shared nodes.
+</Predict>
+
+<Listen>
+## Why reverse mode, and what it costs
+
+There are two ways to apply the chain rule mechanically. **Forward mode** picks one input and pushes "derivative with respect to this input" forward through the graph alongside the values. **Reverse mode** picks one output and pulls "derivative of this output" backward to all inputs. Baydin and colleagues' survey of automatic differentiation lays out the trade-off: for a function from R^n to R^m, forward mode needs about n passes to get the full Jacobian and reverse mode needs about m.
+
+Training a network means differentiating a single scalar loss with respect to every parameter, so m = 1 and n can be billions. One reverse pass gives the whole gradient for a small constant multiple of the cost of the forward pass. That asymmetry is the entire reason backpropagation, popularized for neural networks by Rumelhart, Hinton, and Williams in 1986, is the workhorse of deep learning.
+
+The price is memory. Reverse mode needs the forward pass's intermediate values (here, `t` inside tanh's backward, and both operands inside multiply's), so it keeps them until the backward pass consumes them. Baydin and colleagues name this storage requirement as the main drawback of reverse mode. Scaled up to large networks, it is why training needs far more memory than running the same model, a point you'll hear again whenever people discuss fine-tuning budgets.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put the steps of one backward() call in order"
+  items={[
+    "Run the forward pass, building the graph and storing each node's value",
+    "Topologically sort the nodes reachable from the output",
+    "Set the output's gradient to 1.0",
+    "Visit nodes in reverse topological order",
+    "At each node, add (its gradient times each local derivative) into its inputs' gradients",
+    "Read the gradients off the leaves",
+  ]}
+  explanation="The seed of 1.0 is dL/dL. Reverse topological order guarantees every node has its full gradient (the sum over all paths) before it passes anything on."
+/>
+
+<PyRunner
+  client:visible
+  id="e1-w1-value-engine"
+  title="Build the Value engine"
+  starter={`import math
+
+class Value:
+    """A scalar that remembers how it was computed, so it can backpropagate."""
+
+    def __init__(self, data, _children=(), _op=""):
+        self.data = data
+        self.grad = 0.0
+        self._backward = lambda: None   # set by the operation that creates this node
+        self._prev = set(_children)
+        self._op = _op
+
+    def __repr__(self):
+        return f"Value(data={self.data:.4f}, grad={self.grad:.4f})"
+
+    # Worked example: addition. Note the += (gradients accumulate).
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+        def _backward():
+            self.grad += out.grad
+            other.grad += out.grad
+        out._backward = _backward
+        return out
+
+    def __mul__(self, other):
+        """TODO: product node. Local derivatives: d(out)/d(self) = other.data, d(out)/d(other) = self.data."""
+        pass
+
+    def tanh(self):
+        """TODO: tanh node. Local derivative: 1 - t*t, where t = tanh(self.data)."""
+        pass
+
+    def backward(self):
+        """TODO: topologically sort the graph, seed self.grad = 1.0,
+        then call _backward() on every node in reverse topological order."""
+        pass
+
+
+# The neuron from the video: o = tanh(x1*w1 + x2*w2 + b)
+try:
+    x1, x2 = Value(2.0), Value(0.0)
+    w1, w2 = Value(-3.0), Value(1.0)
+    b = Value(6.8813735870195432)
+    o = (x1 * w1 + x2 * w2 + b).tanh()
+    o.backward()
+    print(o)
+    print("x1", x1.grad, "w1", w1.grad, "x2", x2.grad, "w2", w2.grad)
+except (TypeError, AttributeError):
+    print("Implement __mul__, tanh, and backward, then run again.")
+`}
+  tests={`assert (Value(2.0) * Value(3.0)) is not None, "__mul__ returned None"
+assert Value(0.5).tanh() is not None, "tanh returned None"
+def _neuron(x1v, x2v, w1v, w2v, bv):
+    x1, x2, w1, w2, b = Value(x1v), Value(x2v), Value(w1v), Value(w2v), Value(bv)
+    o = (x1 * w1 + x2 * w2 + b).tanh()
+    return o, (x1, x2, w1, w2, b)
+
+o, (x1, x2, w1, w2, b) = _neuron(2.0, 0.0, -3.0, 1.0, 6.8813735870195432)
+assert o is not None and abs(o.data - 0.7071067811865476) < 1e-9, "forward pass: tanh(x1*w1 + x2*w2 + b) should be about 0.7071"
+o.backward()
+assert abs(o.grad - 1.0) < 1e-12, "backward() must seed the output gradient with 1.0"
+h = 1e-6
+def numeric(i):
+    args = [2.0, 0.0, -3.0, 1.0, 6.8813735870195432]
+    up = list(args); up[i] += h
+    dn = list(args); dn[i] -= h
+    return (_neuron(*up)[0].data - _neuron(*dn)[0].data) / (2 * h)
+for i, (name, v) in enumerate(zip(["x1", "x2", "w1", "w2", "b"], [x1, x2, w1, w2, b])):
+    assert abs(v.grad - numeric(i)) < 1e-5, f"gradient for {name} disagrees with a central-difference estimate"
+a = Value(3.0)
+s = a + a
+s.backward()
+assert abs(a.grad - 2.0) < 1e-12, "a + a should give a.grad == 2"
+p = Value(3.0)
+q = p * p
+q.backward()
+assert abs(p.grad - 6.0) < 1e-12, "p * p should give p.grad == 2p == 6: both factors are the same node"
+c = Value(-2.0)
+d = c * 4 + 1
+d.backward()
+assert abs(c.grad - 4.0) < 1e-12, "multiplying by a plain number must work (wrap it in a Value)"
+r = Value(0.5)
+z = r * r * r + r.tanh() * r
+z.backward()
+expected = 3 * 0.25 + (1 - math.tanh(0.5) ** 2) * 0.5 + math.tanh(0.5)
+assert abs(r.grad - expected) < 1e-9, "a node used in several places must be processed once, after all its consumers (use a topological sort)"`}
+  solution={`class Value:
+    def __init__(self, data, _children=(), _op=""):
+        self.data = data
+        self.grad = 0.0
+        self._backward = lambda: None
+        self._prev = set(_children)
+        self._op = _op
+
+    def __repr__(self):
+        return f"Value(data={self.data:.4f}, grad={self.grad:.4f})"
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+        def _backward():
+            self.grad += out.grad
+            other.grad += out.grad
+        out._backward = _backward
+        return out
+
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data * other.data, (self, other), "*")
+        def _backward():
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
+        out._backward = _backward
+        return out
+
+    def tanh(self):
+        t = math.tanh(self.data)
+        out = Value(t, (self,), "tanh")
+        def _backward():
+            self.grad += (1 - t * t) * out.grad
+        out._backward = _backward
+        return out
+
+    def backward(self):
+        topo, visited = [], set()
+        def build(v):
+            if v not in visited:
+                visited.add(v)
+                for child in v._prev:
+                    build(child)
+                topo.append(v)
+        build(self)
+        self.grad = 1.0
+        for v in reversed(topo):
+            v._backward()`}
+>
+Fill in `__mul__`, `tanh`, and `backward`, then press **Check my answer**. The checks compare your gradients with central differences (the gradient check from earlier), and include graphs where one node is reused, which only a topologically ordered, accumulating backward pass gets right. The structure follows micrograd's `engine.py` (MIT license), rewritten here for the exercise.
+</PyRunner>
+
+<Callout type="pitfall" title="Three bugs that pass a casual test">
+**Overwriting instead of accumulating** gives correct gradients on every expression where each value is used once, then silently wrong ones as soon as a weight is shared. **Visiting nodes in the wrong order** has the same property: trees work, DAGs don't. **Forgetting to wrap constants** (`c * 4`) crashes rather than misleads, which is the friendly kind of bug. The defense for the first two is the same: always include a reused node in your tests, and always compare against a numerical gradient rather than against what you expect.
+</Callout>
+
+<Listen>
+## Checks and balances, from the first lesson
+
+You just wrote a test that compares an analytic gradient against a finite-difference estimate. Hold onto that habit; it is the most transferable thing in this lesson. When you later write a custom loss, a custom layer, or a fine-tuning script that does anything nonstandard, a gradient check on a tiny input is the fastest way to know whether the math in your code is the math in your head.
+
+Two practical notes on doing it well. Use the central difference with h around 1e-5 to 1e-6 in double precision, and compare with a **relative** error (the absolute difference divided by the sum of magnitudes), because gradients span many orders of magnitude. And check on small, random, non-symmetric inputs. Symmetric inputs such as all-ones can hide a swapped index, because the wrong entry happens to have the right value.
+
+The same idea, testing a component against an independent method rather than against your expectations, is what Studio 3 calls evaluation. Here the independent method is calculus; there it is labeled data or a second grader.
+</Listen>
+
+<GoDeeper title="Jacobians, and what PyTorch calls a vector-Jacobian product">
+In vector form, a node computes y = f(x) with x in R^n and y in R^m, and its local derivative is the m-by-n Jacobian J. Reverse mode never forms J. It receives the row vector g = dL/dy and computes g J, a **vector-Jacobian product**, which is all the inputs need. For elementwise operations like tanh, J is diagonal, so g J is just g times the local derivative elementwise; for a matrix multiply it becomes another matrix multiply. That's exactly what micrograd's per-operation `_backward` closures do at the scalar level, and what frameworks do at the tensor level. Baydin and colleagues' survey covers forward mode (Jacobian-vector products, computed with dual numbers) and reverse mode in detail, and chapter 6.5 of Goodfellow, Bengio, and Courville's *Deep Learning* gives the textbook treatment of back-propagation as dynamic programming over the graph. In lesson 6 you'll derive the tensor-level versions by hand.
+</GoDeeper>
+
+<Listen>
+## Review sheet
+
+A derivative can be estimated by nudging; the central difference is accurate to order h squared and is your independent check. A computation is a DAG of elementary operations, each knowing only its local derivatives: add routes, multiply swaps, tanh uses 1 minus t squared. The chain rule sums over paths, so gradients accumulate, and nodes must be processed in reverse topological order. Reverse mode gets the gradient of one output with respect to all inputs in one pass, at the cost of storing the forward pass. Next lesson: build neurons and a network on top of your engine, and train it.
+</Listen>

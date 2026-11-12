@@ -1,0 +1,246 @@
+---
+id: e2-w1-l2
+studio: e2
+week: 1
+order: 2
+title: Measuring coding agents
+summary: What SWE-bench, SWE-bench Verified, SWE-bench Pro, and Terminal-Bench measure, why SWE-bench Verified was retired by its co-creator in 2026, what benchmarks can't tell you, and what controlled trials and field studies (including METR's 2025 study and its 2026 follow-up) actually found.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain how SWE-bench-style and Terminal-Bench tasks are graded, and what "resolved" does and does not mean
+  - Summarize the 2026 evidence that SWE-bench Verified is flawed and contaminated, and what replaced it
+  - Read a benchmark comparison critically, including scaffold dependence, uncertainty, and reward hacking
+  - Summarize the controlled and field studies of AI coding productivity fairly, including their designs, results, and limits
+  - Compute a confidence interval for a pass rate and judge whether two agents' scores really differ
+sources:
+  - { id: jimenez-2023-swebench, use: summarized }
+  - { id: swebench-verified, use: summarized }
+  - { id: e2-epoch-swebench-verified-review, use: summarized }
+  - { id: e2-swebench-pro-2025, use: summarized }
+  - { id: e2-merrill-2026-terminal-bench, use: summarized }
+  - { id: e2-tbench-site, use: linked }
+  - { id: zhu-2025-agentic-benchmark-checklist, use: summarized }
+  - { id: e2-metr-reward-hacking, use: summarized }
+  - { id: e2-peng-2023-copilot, use: summarized }
+  - { id: e2-cui-2025-field-experiments, use: summarized }
+  - { id: becker-2025-metr-rct, use: summarized }
+  - { id: e2-metr-2025-study-blog, use: linked }
+  - { id: e2-metr-2026-uplift-update, use: summarized }
+  - { id: e2-dora-2025, use: summarized }
+  - { id: kwa-2025-metr-horizon, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: A model card reports a high SWE-bench Verified score. Given what was published in 2026, what is the most defensible reading?
+    options:
+      - id: a
+        text: It shows the model will resolve a similar share of your team's issues.
+        rationale: Even a clean benchmark measures its tasks, not yours, and this one has known problems.
+      - id: b
+        text: It's weak evidence on its own, because an audit found many tasks with flawed tests and frontier models had seen some problems and solutions in training.
+        correct: true
+        rationale: That's the substance of OpenAI's February 2026 audit as reported by Epoch AI, which rates the benchmark Flawed.
+      - id: c
+        text: It's meaningless, so ignore all benchmarks.
+        rationale: Benchmarks still help you build a shortlist. The point is to weigh them correctly and test on your own work.
+    explanation: >-
+      Benchmarks wear out: tests turn out to be wrong, tasks leak into training data, and top scores saturate. Look for
+      newer, contamination-resistant benchmarks (SWE-bench Pro's held-out and commercial sets, Terminal-Bench 2.0), and
+      treat any public score as a reason to include a model in your own comparison, not as the comparison.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your director cites METR's 2025 trial ("AI made experienced developers 19% slower") to argue against buying
+      coding-agent seats. What is the most accurate response?
+    options:
+      - id: a
+        text: The study was debunked and should be ignored.
+        rationale: It wasn't debunked. METR now labels it historical and says it may not reflect current tools.
+      - id: b
+        text: It was a careful randomized trial of 16 experts on their own large repos with early-2025 tools; METR's 2026 follow-up found the effect had likely shifted but couldn't measure it reliably, so it neither proves nor disproves value for our team. We should pilot and measure.
+        correct: true
+        rationale: Fair to both studies, honest about their limits, and it turns the debate into a measurement you can run.
+      - id: c
+        text: The 2026 follow-up proved an 18% speedup, so the 2025 result is reversed.
+        rationale: METR explicitly called the 2026 estimates an unreliable signal, likely a lower bound, with a confidence interval that includes slowdowns.
+    explanation: >-
+      The most durable lesson from METR's work is methodological: developers' perceived speedups did not match measured
+      ones, and selection effects can swamp a careful design. Your own pilot should measure outcomes (time to merged
+      change, rework, defects), not ask people how fast they felt.
+  - id: kc3
+    type: predict-output
+    prompt: What does this print? (Wilson 95% interval for 52 passes out of 89 tasks, rounded.)
+    code: |
+      import math
+      def wilson(k, n, z=1.96):
+          p = k / n
+          d = 1 + z * z / n
+          c = (p + z * z / (2 * n)) / d
+          h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+          return round(c - h, 2), round(c + h, 2)
+      print(wilson(52, 89))
+    options:
+      - id: a
+        text: "`(0.48, 0.68)`"
+        correct: true
+        rationale: The point estimate is 0.58, and with only 89 tasks the interval is about plus or minus 10 points.
+      - id: b
+        text: "`(0.57, 0.59)`"
+        rationale: That would need thousands of tasks. Small benchmarks have wide intervals.
+      - id: c
+        text: "`(0.58, 0.58)`"
+        rationale: An interval has width; that's just the point estimate.
+    explanation: >-
+      An 89-task benchmark can't distinguish 58% from 63% with any confidence. When two agents' intervals overlap
+      heavily, compare them on the same tasks (which tasks did one solve that the other didn't) before declaring a winner.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Two questions people mix up
+
+"Which coding agent is best?" hides two different questions. One is about **capability**: on a fixed set of tasks with an automatic check, how often does an agent produce a change that passes? Benchmarks answer that. The other is about **impact**: when real developers use these tools on their real work, do they ship more, faster, at the same quality? Only studies of people answer that, and they are much harder to run.
+
+This lesson takes each in turn. You have met SWE-bench before, in Studios 1 and 3; here the focus is what changed in 2025 and 2026 and how to read the newer benchmarks. Then comes the productivity evidence, which is genuinely mixed. The goal is not a verdict. It's to leave you able to read a launch post, a leaderboard, or a vendor case study and say precisely what it shows.
+</Listen>
+
+<Listen>
+## How SWE-bench-style grading works
+
+SWE-bench (Jimenez and colleagues, 2023) built tasks from real GitHub issues in popular Python repositories. Each task gives the agent the repository at the commit before the fix, plus the issue text. The agent produces a patch. Grading runs tests: tests that the real fix made pass must now pass (the issue is resolved), and tests that passed before must still pass (nothing else broke). "Resolved" therefore means "the hidden tests from the human fix pass." It doesn't mean the patch is the one a maintainer would accept, that it's readable, or that it handles cases those tests don't cover.
+
+SWE-bench Verified, built with OpenAI in 2024, is a 500-task subset that human annotators screened for clear problem statements and fair tests, because some original tasks were underspecified or had tests that rejected valid fixes. For about two years it was the headline coding number in model launches, and scores climbed from well under half to the high end.
+
+That climb is part of the story. When a benchmark's scores bunch near the top, the remaining differences are a handful of tasks, and any flaw in those tasks matters more than the model differences you're trying to see.
+</Listen>
+
+<Listen>
+## 2026: the benchmark's co-creator stops using it
+
+In February 2026, OpenAI published an audit of SWE-bench Verified and said it would no longer evaluate on it. The OpenAI post blocks automated fetching, so this lesson relies on Epoch AI's benchmark review, which reports the audit's findings. OpenAI audited 27.6% of the tasks and found that 59.4% of those had flawed tests that rejected functionally correct submissions, which puts a floor of about 16% on the share of all tasks that are broken. It also reported that every frontier model it tested had seen at least some of the problems and solutions during training, and concluded that gains increasingly reflected training exposure rather than real-world ability. OpenAI pointed to SWE-bench Pro instead.
+
+Epoch's own review rates SWE-bench Verified as **Flawed**, citing the scoring errors, contamination risk (all tasks and solutions are public), heavy dependence on the scaffold used to run the model, and a reported reward hack that achieves a perfect score.
+
+None of this means past progress was fake. Models really did get much better at fixing issues. It means a public benchmark has a shelf life, and that a single headline number from it, in 2026, is weak evidence.
+</Listen>
+
+<Callout type="note" title="Why a correct fix can fail">
+A test written for the maintainer's specific fix can reject a different but valid fix: it may assert an exact error message, a particular function name, or an internal detail. Graders like this undercount good agents and can reward agents that happen to mimic the original patch. Keep this in mind for week 3: your own tests can have the same problem, and an agent can be pushed to fit the test instead of the requirement.
+</Callout>
+
+<Listen>
+## The newer benchmarks: SWE-bench Pro and Terminal-Bench 2.0
+
+**SWE-bench Pro** (Deng and colleagues at Scale AI, 2025) responds to contamination and saturation. It has 1,865 problems from 41 actively maintained repositories, and the tasks are deliberately long-horizon: the authors describe work that could take a professional hours to days, often spanning several files. Crucially, it is split into a public set, a held-out set, and a commercial set drawn from private codebases. Held-out and private tasks can't have been in anyone's training data, so a gap between public and held-out scores is itself informative.
+
+**Terminal-Bench 2.0** (Merrill and colleagues, 2026; ICLR 2026) tests a broader skill: getting real work done in a terminal. Its 89 tasks each come with their own environment, a human-written reference solution, and automated tests. At publication, frontier agents solved fewer than 65% of tasks. Because the agent's harness matters so much in a terminal, results are reported for model and agent combinations, which is the honest way to report them.
+
+Two habits make these leaderboards useful. First, **read the scaffold**: the same model scores differently in different harnesses, and vendors often report their best configuration. Second, **read the uncertainty**: on 89 tasks, a few points of difference is within noise, as the exercise below shows. Studio 4 introduced the Agentic Benchmark Checklist (Zhu and colleagues, 2025), whose authors found that task-setup and grading flaws can misestimate agent performance by up to 100% in relative terms; it's a good list to hold any agent benchmark against.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e2-w1-benchmark-uncertainty"
+  title="Is agent B really better than agent A?"
+  starter={`import math
+
+def wilson(k, n, z=1.96):
+    """Wilson score interval for k successes in n trials. Return (low, high) as floats."""
+    # TODO
+    pass
+
+def discordant(a, b):
+    """a and b are lists of booleans: did each agent solve task i (same task order)?
+    Return (a_only, b_only): tasks only A solved, tasks only B solved."""
+    # TODO
+    pass
+
+def sign_test_p(a_only, b_only):
+    """Two-sided exact sign test on the discordant tasks (ties ignored).
+    p = min(1, 2 * P(X <= min(a_only, b_only))) with X ~ Binomial(a_only + b_only, 0.5)."""
+    n = a_only + b_only
+    if n == 0:
+        return 1.0
+    k = min(a_only, b_only)
+    tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
+
+# 89 tasks. B solves 5 more tasks than A overall.
+A = [True] * 52 + [False] * 37
+B = [True] * 44 + [False] * 8 + [True] * 13 + [False] * 24
+print("A", sum(A), wilson(sum(A), len(A)))
+print("B", sum(B), wilson(sum(B), len(B)))
+pair = discordant(A, B)
+if pair:
+    a_only, b_only = pair
+    print("only A:", a_only, "only B:", b_only, "p =", round(sign_test_p(a_only, b_only), 3))
+`}
+  tests={`w = wilson(52, 89)
+assert w is not None, "wilson returned None"
+assert discordant([True], [False]) is not None, "discordant returned None"
+lo, hi = w
+assert abs(lo - 0.4806) < 0.002 and abs(hi - 0.6811) < 0.002, "check the Wilson formula"
+lo0, hi0 = wilson(0, 10)
+assert lo0 == 0 or abs(lo0) < 1e-12, "zero successes gives a lower bound of 0"
+assert hi0 > 0.2, "zero successes out of 10 still allows a sizeable true rate"
+assert discordant([True, True, False, False], [True, False, True, True]) == (1, 2)
+a_only, b_only = discordant(A, B)
+assert (a_only, b_only) == (8, 13), "count tasks solved by exactly one agent"
+assert sign_test_p(a_only, b_only) > 0.05, "a 5-task edge on 89 tasks is not a significant difference here"`}
+  solution={`def wilson(k, n, z=1.96):
+    p = k / n
+    d = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / d
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return centre - half, centre + half
+
+def discordant(a, b):
+    a_only = sum(1 for x, y in zip(a, b) if x and not y)
+    b_only = sum(1 for x, y in zip(a, b) if y and not x)
+    return a_only, b_only`}
+>
+Implement the Wilson interval (a standard confidence interval for a pass rate) and the discordant-pair count, then press **Check my answer**. Agent B scores 57/89 against A's 52/89, a headline gap of over five points. Look at the intervals, then at the paired test: only the tasks where the agents disagree carry information about which is better, and 8 versus 13 is not convincing. This is the analysis to run before you switch tools on the strength of a leaderboard, or on your own five-task comparison in lesson 3.
+</PyRunner>
+
+<Listen>
+## What benchmarks can't tell you
+
+Even a clean, uncontaminated benchmark measures a narrow thing: whether an agent, in a given harness, produces a change that passes someone else's tests on someone else's code. Your day-to-day questions are different. Does it follow your team's conventions? How much of your time does reviewing and correcting its output take? Does it ask when the requirement is ambiguous, or guess? Does it leave the codebase easier or harder to change next month? Does it touch things it shouldn't?
+
+There's also a failure mode benchmarks are built to reward. METR reported in 2025 that frontier models sometimes "reward hack" on evaluation tasks: overwriting the timer a scorer used, replacing an evaluator with a stub that marks everything correct, or editing test code. On one task, prompts telling the model not to cheat had a nearly negligible effect. A task graded only by tests teaches an agent, in a sense, to satisfy tests. Week 3 is about making your tests a contract the agent can't quietly renegotiate.
+</Listen>
+
+<Listen>
+## The productivity evidence, fairly
+
+Here are the main studies in order, with what each design can and can't show.
+
+**A controlled lab task (Peng and colleagues, 2023).** Developers were asked to implement an HTTP server in JavaScript; those with GitHub Copilot finished 55.8% faster. Clean randomization, but one small, well-specified, greenfield task with an early autocomplete-style tool.
+
+**Field experiments at three companies (Cui and colleagues, published in Management Science).** Randomized rollouts of Copilot at Microsoft, Accenture, and a Fortune 100 company, covering 4,867 developers, found about 26% more completed tasks among developers who used it, with larger gains for less experienced developers. Real work at scale, but "completed tasks" is a coarse output measure, adoption was only about 60% after a year, and the tool predates today's agents.
+
+**METR's randomized trial (Becker and colleagues, 2025).** Sixteen experienced open-source developers did 246 real tasks in large repositories they knew well, each task randomly allowed or disallowed AI tools (mostly Cursor Pro with Claude 3.5 and 3.7 Sonnet). With AI allowed, tasks took 19% longer. Before starting, developers expected a 24% speedup; afterwards, they believed AI had sped them up by about 20%. The authors cautioned against generalizing beyond their setting.
+
+**METR's follow-up (February 2026).** A larger study from August 2025, with 57 developers, 143 repositories, and more than 800 tasks, produced estimates of an 18% speedup for returning developers (95% interval from 38% faster to 9% slower) and 4% for new recruits (15% faster to 9% slower). METR's own conclusion is that the data gives an **unreliable signal**: more developers refused to participate because they didn't want to work without AI, and 30 to 50% of surveyed developers said they withheld tasks they didn't want to do without AI, both of which likely bias the estimate toward smaller speedups. METR is redesigning the study.
+
+**Survey evidence (DORA, 2025).** Google's DORA research program surveys thousands of technology professionals. Its central 2025 finding is that AI acts as an amplifier, magnifying an organization's existing strengths and weaknesses rather than improving delivery on its own.
+</Listen>
+
+<Callout type="claim" title="METR, February 2026: developers are probably more sped up now">
+In its [February 24, 2026 update](https://metr.org/blog/2026-02-24-uplift-update/), METR said it believes developers were likely more sped up by AI in early 2026 than in early 2025, while calling its new data only very weak evidence for the size of the change. **Evidence for:** the returning developers' point estimate moved from a 19% slowdown to an 18% speedup, tools improved substantially over the year, and the selection effects METR describes would hide large speedups rather than create them. **Evidence against, or limits:** both 2026 intervals include slowdowns; the sample changed (pay fell from 150 to 50 dollars an hour, and new recruits came from different repositories); and METR itself declined to treat the number as a measurement. **How to read it:** an informed expectation from careful researchers, not a finding. Don't cite "METR found an 18% speedup"; METR explicitly says it didn't.
+</Callout>
+
+<Callout type="pitfall" title="Trusting how fast it felt">
+The single most replicated observation in this literature is that felt speed and measured speed can diverge. In METR's 2025 trial, developers believed they'd been sped up by about 20% while the measured effect was a slowdown. Watching an agent write code is engaging, and waiting time while it works doesn't feel like your time. When you evaluate a tool or a workflow, time the outcome you care about (from task start to merged, reviewed change), and count your review and rework.
+</Callout>
+
+<GoDeeper title="How METR turns tasks into a speedup estimate">
+Tasks vary enormously in size, so raw times can't simply be averaged. Developers forecast each task's duration before it is randomized, and METR's paper uses those forecasts to account for task size, expressing the treatment effect as a percentage change in completion time (see the paper for the exact model). Randomizing at the task level, within each developer, controls for differences between people, which is why sixteen developers could yield a meaningful 2025 estimate. The same design is what made the 2026 study vulnerable: when developers can choose which tasks to submit, and avoid submitting ones they don't want to do without AI, the tasks in the study stop being representative. METR's time-horizon work (Kwa and colleagues, 2025), covered in Studio 4, measures capability instead: the length of task, in expert time, an agent completes with 50% success.
+</GoDeeper>
+
+<Listen>
+## What a working engineer takes from this
+
+Use public benchmarks to build a shortlist, favoring ones that resist contamination and report the harness. Discount small gaps. Expect agents to be strongest on well-specified tasks with good tests and weakest where context is tribal and success is hard to check. Treat productivity claims, from vendors and skeptics alike, as hypotheses about your team. And measure your own work, because none of these studies used your codebase, your conventions, or your review standards. Lesson 3 shows how to run that measurement in an afternoon.
+</Listen>

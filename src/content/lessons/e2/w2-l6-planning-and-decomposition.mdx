@@ -1,0 +1,259 @@
+---
+id: e2-w2-l6
+studio: e2
+week: 2
+order: 6
+title: Planning and decomposition
+summary: Plan mode and the explore, plan, implement rhythm; writing a spec with testable acceptance criteria before any code; breaking work into small, reviewable steps; running parallel sessions in git worktrees; and the project-management skills that transfer directly to directing agents.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Use plan mode (or an interview-then-spec step) to surface misunderstandings before code is written
+  - Write a task spec with a goal, testable acceptance criteria, explicit non-goals, and a definition of done
+  - Decompose a feature into small, independently verifiable steps and order them by dependency
+  - Run parallel agent sessions safely with git worktrees, and recognize when parallelism stops paying off
+  - Map PM practices (scoping, acceptance criteria, dependency planning, status with evidence) onto agent work
+sources:
+  - { id: cc-permission-modes-docs, use: summarized, where: "Plan mode" }
+  - { id: e2-cc-best-practices, use: summarized, where: "Brainstorm with Claude first; review against your spec; run sessions in parallel; let Claude run without you" }
+  - { id: e2-cc-worktrees, use: summarized }
+  - { id: e2-git-worktree, use: summarized }
+  - { id: e2-google-small-cls, use: summarized }
+  - { id: anthropic-long-running-harnesses, use: summarized }
+  - { id: e2-willison-vibe-engineering, use: summarized }
+  - { id: e2-cc-model-config, use: linked, where: "opusplan" }
+knowledgeCheck:
+  - id: kc1
+    type: multi
+    prompt: Which of these are testable acceptance criteria for "add rate limiting to the public API"? Select all that apply.
+    options:
+      - id: a
+        text: "A client that sends 101 requests in 60 seconds with one API key gets HTTP 429 on the 101st, with a Retry-After header."
+        correct: true
+        rationale: Specific input, specific observable output. You can write the test before the code.
+      - id: b
+        text: "Rate limiting should be robust and performant."
+        rationale: Unverifiable. What would make this false?
+      - id: c
+        text: "Requests from the internal health checker (user agent `hc/1`) are never limited."
+        correct: true
+        rationale: An edge case stated as a checkable rule; the kind of thing an agent can't guess.
+      - id: d
+        text: "`pytest tests/test_rate_limit.py` passes and the existing suite still passes."
+        correct: true
+        rationale: A definition of done the agent can run itself.
+    explanation: >-
+      Each criterion should be something you or the agent can check with a test or a command. Vague quality words belong
+      in a conversation about design, not in the definition of done.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      You want three features built at once by three agent sessions. Two of them modify the same module,
+      `billing/invoice.py`. What's the best plan?
+    options:
+      - id: a
+        text: Run all three in the same checkout so they can see each other's changes.
+        rationale: Concurrent edits in one working tree collide and make every diff unreviewable.
+      - id: b
+        text: Give each its own git worktree, but sequence the two that touch `invoice.py` (or split out the shared change first), and run the independent one in parallel.
+        correct: true
+        rationale: Worktrees isolate edits; dependency planning avoids a merge conflict you'd have to resolve by hand.
+      - id: c
+        text: Run all three in worktrees in parallel and let the last one to finish resolve the conflicts.
+        rationale: That hands a semantic merge to whichever agent finishes last, with no one checking it against both specs.
+    explanation: >-
+      Parallel sessions multiply output, not review capacity. Isolate them with worktrees, sequence the ones that share
+      code, and keep the number of streams at what you can actually review.
+  - id: kc3
+    type: mcq
+    prompt: In Claude Code's plan mode, what does Claude do?
+    options:
+      - id: a
+        text: Writes code in a scratch branch so you can preview it.
+        rationale: Plan mode doesn't edit your source files.
+      - id: b
+        text: Reads files and explores with shell commands, then presents a plan; it edits source only after you approve and choose a mode.
+        correct: true
+        rationale: That's the documented flow, with the choice of auto mode or manually approved edits on approval.
+      - id: c
+        text: Generates a plan with no access to the codebase, to avoid bias.
+        rationale: The value of plan mode is that the plan is grounded in reading the actual code.
+    explanation: >-
+      Plan mode separates understanding from changing. Read the plan like a design doc: does it name the right files,
+      the risky parts, and how it will verify the change? Edit it (Ctrl+G opens it in your editor) before approving.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The agent reads your request conservatively
+
+The Claude Code best-practices page names a pattern you've probably seen: Claude tends to read a request conservatively and build the smallest thing that satisfies it, because it can't see how much you were hoping for. Its other failure is the opposite: confidently building the wrong thing, because the request was ambiguous and it picked an interpretation without asking. Both come from the same gap. The request didn't contain the information the agent needed, and the agent filled it in.
+
+Planning closes that gap before code exists, when changes are cheap. You already have the skills for this. A PM who writes a crisp ticket, with a goal, acceptance criteria, and what's out of scope, gets better work from engineers; the same ticket gets better work from an agent, for the same reasons. Simon Willison makes the point directly in his list of practices that make coding agents effective: planning, clear instructions, good tests, and review are management skills, and people with them get more out of agents.
+</Listen>
+
+<Listen>
+## Plan mode and the explore, plan, implement rhythm
+
+Claude Code's **plan mode** makes the separation explicit. You enter it with Shift+Tab, `/plan`, or `--permission-mode plan`. In it, Claude reads files and runs shell commands to explore, then writes a plan, but doesn't edit your source. When the plan is ready, you choose: approve and continue in auto mode, approve and approve each edit manually, or keep planning. Ctrl+G opens the plan in your editor so you can change it before approving. There's also an `opusplan` model alias that uses Opus while planning and Sonnet while executing.
+
+Read a plan the way you'd read a design doc from a new hire. Does it name the right files? Does it identify the risky part (a migration, a public API, concurrency)? Does it say how the change will be verified? Does it propose anything you didn't ask for? The plan is also where you notice the agent misunderstood the problem, which is far cheaper to fix than a 400-line diff built on the misunderstanding.
+
+When you don't know exactly what you want yet, the best-practices page suggests flipping the roles: ask Claude to interview you until it could write the spec, then write it to `SPEC.md`. It will ask about the parts you haven't pinned down. Then start a fresh session to build from the spec, so the build begins with clean context and a written definition of done, and point a reviewer at the same spec afterwards.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the steps of a well-run feature with a coding agent."
+  items={[
+    "Have the agent interview you, or write the goal and constraints yourself",
+    "Write SPEC.md: goal, acceptance criteria, non-goals, definition of done",
+    "In plan mode, have the agent read the code and propose a plan against the spec",
+    "Edit and approve the plan, splitting it into small steps",
+    "Implement one step, with its tests, in a fresh session",
+    "Run the checks and commit the step",
+    "Have a fresh reviewer compare the diff against SPEC.md",
+  ]}
+  explanation="Specify, plan, then build in small verified steps, and review against the same written spec. Each step leaves evidence (a passing check and a commit) that the next step builds on."
+/>
+
+<Listen>
+## Specs and acceptance criteria that an agent can check
+
+A spec for an agent is a short document, not a requirements tome. Four parts do most of the work.
+
+**Goal.** One or two sentences on the outcome and who it's for. "Customers with expired cards can update their card at checkout without losing their cart."
+
+**Acceptance criteria.** Specific, observable, checkable. Each should translate directly into a test or a command. Good criteria name inputs and outputs ("a 101st request within 60 seconds gets HTTP 429 with a Retry-After header"), edge cases the agent can't guess ("the health checker is never limited"), and the check that defines done ("the new test file and the existing suite pass").
+
+**Non-goals.** What not to do: no new dependencies, no change to the public API, no refactor of the payments module. Non-goals prevent the scope creep that shows up later as an unreviewable diff. They're also how you tell the agent where your ambition ends, the counterpart to the docs' "be ambitious" phrase.
+
+**Constraints and context.** The things it can't see: a decision from a meeting, a performance budget, a file that must not be touched, where similar code lives ("follow the pattern in `HotDogWidget.php`", in the docs' example).
+
+The spec does double duty. It guides the build, and it's the yardstick for review. The best-practices page's suggested review prompt has a subagent check the diff against the spec, confirm every requirement is implemented and the listed edge cases have tests, and report only gaps that affect correctness, explicitly skipping style, because a reviewer asked to find problems will always find something.
+</Listen>
+
+```markdown
+# SPEC: per-key rate limiting for the public API
+
+## Goal
+Protect the public API from a single noisy client without affecting normal use.
+
+## Acceptance criteria
+- 100 requests per rolling 60 seconds per API key; the 101st gets HTTP 429 with a Retry-After header (seconds).
+- Limits are per key, not per IP. Requests without a key are rejected before limiting (existing behavior).
+- Health checks (user agent `hc/1`) are never limited.
+- Limit state survives a single app restart (use the existing Redis connection in src/infra/redis.py).
+- Done: tests/test_rate_limit.py covers every bullet above; `uv run pytest -q` passes.
+
+## Non-goals
+- No new dependencies. No changes to the response format of existing endpoints. No admin UI.
+
+## Context
+- Middleware pattern to follow: src/middleware/request_id.py.
+- Ops decided (2026-11-03 meeting) that limits are per key because enterprise customers share IPs.
+```
+
+<Listen>
+## Decompose into steps a person can review
+
+Google's engineering practices guide on small changes argues for keeping each change to one self-contained idea: small changes are reviewed faster and more thoroughly, are less likely to introduce bugs, are easier to roll back, and are less wasted work if rejected. It also suggests separating refactors from behavior changes. Every one of those reasons applies more strongly to agent-written code, because an agent can produce a large diff faster than you can read it.
+
+So break the work into steps where each step has its own check and its own commit. A useful default order: tests or fixtures first, then the core change, then integration and wiring, then cleanup. Keep mechanical changes (renames, moves, formatting) in separate commits from logic changes, so the logic diff is small enough to read.
+
+For long tasks, Anthropic's post on harnesses for long-running agents describes what made multi-session work reliable: an explicit feature list kept in a file (they used JSON) with each item's status, a progress file the agent updates, and git commits as checkpoints, with the agent working on one feature at a time and verifying it before marking it done. Their named failure modes are worth remembering: trying to one-shot the whole thing, and declaring victory before the work is verified. Those are management failures too. The fix in both worlds is the same: a written list of deliverables, one in progress at a time, and status backed by evidence.
+</Listen>
+
+<Callout type="pitfall" title="Approving the plan without reading it">
+Plan mode only helps if you engage with the plan. The common failure is treating approval as a formality: skimming, pressing approve, and then discovering in the diff that the agent planned to restructure a module you never mentioned. Read for the four things above (files, risks, verification, extras), cut anything outside the spec, and split anything you couldn't review in one sitting. If you wouldn't approve a design doc this vague from a colleague, don't approve it from an agent.
+</Callout>
+
+<Listen>
+## Parallel sessions and worktrees
+
+Once work is decomposed, some steps are independent, and you can run them at the same time. Each needs its own checkout, or the sessions' edits collide. Git worktrees give you exactly that: additional working directories attached to one repository, each on its own branch, sharing history. In Claude Code, `claude -w feature-auth` starts a session in a new worktree; subagents can set `isolation: worktree`; and `/batch` splits a large mechanical change into units, each in its own worktree, after showing you the plan.
+
+The best-practices page notes a few practical details. A worktree is a fresh checkout, so gitignored files like `.env` aren't there and dependencies aren't installed; list small files to copy in a `.worktreeinclude`, and keep the install command in CLAUDE.md. Clean-up is mostly automatic for interactive sessions, but `claude -p --worktree` runs are yours to remove with `git worktree remove`.
+
+Then the constraint that actually binds: **your review capacity**. Three parallel sessions produce three diffs that all need a careful read. Parallelism pays off when the streams are truly independent (different modules, no shared interfaces) and each has strong automated checks, so your review is a confirmation rather than an investigation. When two streams touch the same code, sequence them or extract the shared change first; otherwise you inherit a merge that nobody checked against both specs.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e2-w2-parallel-plan"
+  title="Plan parallel waves from a dependency list"
+  starter={`def waves(tasks, depends_on, touches, max_parallel=3):
+    """Group tasks into waves that can run in parallel.
+
+    tasks: list of task names (in priority order)
+    depends_on: dict task -> list of tasks that must finish first
+    touches: dict task -> set of file paths the task will modify
+    Rules:
+      - A task can join a wave only when all its dependencies are in EARLIER waves.
+      - Two tasks in the same wave must not touch any of the same files.
+      - At most max_parallel tasks per wave (your review capacity).
+      - Fill each wave greedily in priority order; a task that can't join waits for a later wave.
+      - Raise ValueError if the dependencies contain a cycle (no progress is possible).
+    Return a list of waves, each a list of task names in priority order."""
+    # TODO
+    pass
+
+TASKS = ["schema", "api", "ui", "docs", "emails", "metrics"]
+DEPS = {"api": ["schema"], "ui": ["api"], "emails": ["schema"], "docs": []}
+TOUCH = {
+    "schema": {"db/models.py", "db/migrations/0042.py"},
+    "api": {"api/rate_limit.py", "api/routes.py"},
+    "ui": {"web/settings.tsx"},
+    "docs": {"docs/api.md"},
+    "emails": {"notify/emails.py", "api/routes.py"},
+    "metrics": {"ops/metrics.py"},
+}
+for i, w in enumerate(waves(TASKS, DEPS, TOUCH) or [], start=1):
+    print("wave", i, w)
+`}
+  tests={`w = waves(TASKS, DEPS, TOUCH)
+assert w is not None, "waves returned None"
+assert w[0] == ["schema", "docs", "metrics"], "wave 1: everything with no unmet dependencies, up to 3"
+assert w[1] == ["api"], "api and emails both touch api/routes.py, so emails waits"
+assert w[2] == ["ui", "emails"], "then ui (needs api) and emails"
+assert sum(len(x) for x in w) == len(TASKS)
+assert waves(["a", "b", "c"], {}, {}, max_parallel=2) == [["a", "b"], ["c"]], "respect review capacity"
+try:
+    waves(["a", "b"], {"a": ["b"], "b": ["a"]}, {})
+    raise AssertionError("a dependency cycle should raise ValueError")
+except ValueError:
+    pass`}
+  solution={`def waves(tasks, depends_on, touches, max_parallel=3):
+    done, remaining, out = set(), list(tasks), []
+    while remaining:
+        wave, files = [], set()
+        for t in remaining:
+            if len(wave) >= max_parallel:
+                break
+            if not set(depends_on.get(t, [])) <= done:
+                continue
+            f = touches.get(t, set())
+            if f & files:
+                continue
+            wave.append(t)
+            files |= f
+        if not wave:
+            raise ValueError("dependency cycle or unsatisfiable dependency among: " + ", ".join(remaining))
+        out.append(wave)
+        done |= set(wave)
+        remaining = [t for t in remaining if t not in done]
+    return out`}
+>
+This is dependency planning, the PM skill, applied to agent sessions. Write `waves`, then press **Check my answer**. Notice the two constraints beyond dependencies: shared files (two sessions editing `api/routes.py` at once means a merge conflict, so one waits) and `max_parallel`, which stands for how many diffs you can review well at once. Try `max_parallel=6` and see how little it changes; dependencies and shared files usually bind first.
+</PyRunner>
+
+<GoDeeper title="Unattended runs: the five questions">
+For work you leave running (a nightly job, a CI task, a long background session), the best-practices page gives five questions to answer for the specific task: Does it know what done looks like (a goal, a spec, a failing test to turn green)? Can it check its own work (tests, a Stop hook, a review step)? What may it touch (permission rules, `dontAsk` mode, the sandbox, a worktree, the one branch it may push to)? What stops it (`--max-turns`, `--max-budget-usd`, a spend limit)? Where does the result go and who signs off (a pull request, then a person approving the merge)? They're the same questions you'd ask before handing a task to a contractor you can't supervise. The docs add a warning for scheduled cloud tasks: protect `main` with a branch rule the task can't bypass, and watch the first few runs before trusting it.
+</GoDeeper>
+
+<Listen>
+## The PM skills that transfer
+
+If you've led product or projects, you already have most of what directing agents needs; it just has to be applied more literally, because an agent won't ask the hallway question a colleague would. **Scoping**: say what's in and out, in writing. **Acceptance criteria**: make done observable and testable. **Dependency planning**: sequence work that shares interfaces, parallelize what doesn't. **Work breakdown**: deliverables small enough to review in one sitting. **Status with evidence**: a step is done when a check passed and the commit exists, not when someone says it's done. **Risk management**: identify the irreversible steps and keep them for a person. The difference from managing people is that agents are tireless, fast, literal, and confidently wrong at times, so the documents you write and the checks you require carry more of the load.
+</Listen>

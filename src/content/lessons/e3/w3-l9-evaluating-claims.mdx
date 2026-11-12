@@ -1,0 +1,253 @@
+---
+id: e3-w3-l9
+studio: e3
+week: 3
+order: 9
+title: How to evaluate any AI claim, and the checks and balances of the whole program
+summary: A six-part checklist for any AI claim (who, incentives, evidence type, measured versus extrapolated, base rates, replication), a worked example on a live 2026 claim, scoring forecasters with the Brier score, and a closing synthesis of the checks and balances you have built across the program.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Apply a six-part checklist to any AI claim and write a one-paragraph verdict with a confidence level
+  - Use base rates (prior odds, power, bias) to estimate how likely a reported finding is to be true
+  - Score probabilistic forecasts with the Brier score and compare them with a no-skill baseline
+  - Work through a complete evaluation of a current public claim, from primary source to verdict
+  - Name the checks and balances from each part of this program and the principle that unites them
+sources:
+  - { id: ioannidis-2005, use: summarized }
+  - { id: metr-time-horizon-1-1, use: summarized }
+  - { id: metr-time-horizons-page, use: summarized }
+  - { id: metr-frontier-risk-report-2026, use: summarized }
+  - { id: metr-2026-hf-incident, use: summarized, where: "Limitations of analysis agents" }
+  - { id: amodei-2026-pace-frontier, use: summarized }
+  - { id: intl-ai-safety-report-2026, use: summarized, where: "Evidence dilemma" }
+  - { id: kwa-2025-metr-horizon, use: linked }
+  - { id: kapoor-2022-leakage, use: linked }
+  - { id: singh-2025-leaderboard-illusion, use: linked }
+  - { id: panickssery-2024-self-preference, use: linked }
+  - { id: zheng-2023-llm-judge, use: linked }
+  - { id: huyen-ai-engineering, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: Using the formula from Ioannidis (2005) for the chance that a reported positive finding is true, what does this print?
+    code: |
+      prior = 0.1   # 1 in 10 claimed effects of this kind is real
+      power = 0.8
+      alpha = 0.05
+      ppv = power * prior / (power * prior + alpha * (1 - prior))
+      print(round(ppv, 2))
+    options:
+      - id: a
+        text: "`0.64`"
+        correct: true
+        rationale: 0.08 divided by (0.08 + 0.045) is 0.64.
+      - id: b
+        text: "`0.95`"
+        rationale: That confuses 1 minus alpha with the probability the finding is true.
+      - id: c
+        text: "`0.8`"
+        rationale: That is the power, the chance of detecting a real effect, not the chance a detected effect is real.
+    explanation: >-
+      Even with a well-powered study and the usual significance threshold, a positive result in a field where most
+      hypotheses are false is true only about two times in three. Add bias (selective reporting, many variants tried) and it
+      drops further. This is why "a study found" is the start of an evaluation, not the end.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      You use one frontier model to summarize and classify 1,000 long agent transcripts for a safety review. A colleague
+      asks how much to trust the summaries. What is the best answer, in light of METR's experience investigating the July
+      2026 incident?
+    options:
+      - id: a
+        text: Fully; the model is more thorough than a person reading 1,000 transcripts.
+        rationale: METR found its analysis agents made errors and poor judgment calls it did not catch for some time.
+      - id: b
+        text: Partially. Spot-check a random sample by hand, use a second model from a different family on a subset, and treat the summaries as leads, especially where the summarizer shares a lineage with the agents being reviewed.
+        correct: true
+        rationale: Yes. METR noted its summarizer could adopt the perspective of the agents it reviewed and might not reveal deception.
+      - id: c
+        text: Not at all; models should never be used for analysis.
+        rationale: METR could not have done the investigation without them. The answer is verification, not abstention.
+    explanation: >-
+      This is the program's central rule in its sharpest form: never let a model be the only check on a model. Mix in
+      checks with independent failure modes (people, code, a different model family) and size them to the stakes.
+  - id: kc3
+    type: multi
+    prompt: Which belong in a first-pass evaluation of a public AI claim? Select all that apply.
+    options:
+      - id: a
+        text: Find the primary source and the date, and quote the claim in full, including its hedges.
+        correct: true
+      - id: b
+        text: Classify the evidence (randomized study, benchmark, usage data, vendor eval, anecdote) and whether the claim is measured or extrapolated.
+        correct: true
+      - id: c
+        text: Note the speaker's incentives and access, and look for independent replication.
+        correct: true
+      - id: d
+        text: Decide based on whether the speaker has been right before about anything.
+        rationale: Track record matters, but on similar, scored claims, not general reputation.
+    explanation: >-
+      The checklist is source, evidence type, measured versus extrapolated, incentives, base rates, and replication.
+      Reputation is a weak proxy for all of them.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## One method for every claim
+
+This elective has examined claims about scaling, benchmarks, model quality, timelines, critics, work, safety, and law. They differ in subject, but you have been applying the same method each time. This lesson makes it explicit, gives you two quantitative tools to support it, works one example end to end, and then steps back to the whole program.
+
+The method has six parts:
+
+1. **Who says it, with what access?** A lab leader sees unreleased models; an academic sees published data; a journalist sees the speaker. Access is a reason to listen, not to believe.
+2. **What are their incentives?** Fundraising, product launches, regulatory positioning, contrarian visibility, a competing approach. Incentives do not make a claim false; they set how much independent evidence you should require.
+3. **What kind of evidence?** Randomized experiment, field study, benchmark, usage data, vendor-run eval, expert opinion, anecdote. Each answers a different question (lesson 6).
+4. **Measured or extrapolated?** Which part was observed, on what population, and which part extends a trend beyond it (lesson 1)?
+5. **What are the base rates?** How often have claims of this kind held up before?
+6. **Has it been replicated, or can you test it yourself?** Independent replication, or a small eval on your own task (lesson 3).
+
+Then write a verdict: one paragraph, ending with a confidence level and the evidence that would change it.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put the steps of evaluating a public AI claim in a sensible order"
+  items={[
+    "Find the primary source, the date, and the full sentence including hedges",
+    "Rewrite the claim so it could clearly fail, with a date or a measurable outcome",
+    "Identify the speaker's access and incentives",
+    "Classify the evidence and separate what was measured from what is extrapolated",
+    "Check base rates and look for independent replication or your own test",
+    "Write a verdict with a confidence level and what would change your mind",
+  ]}
+  explanation="Source first, so you evaluate what was actually said. Rewriting comes before analysis because a claim that cannot fail cannot be evaluated. Incentives, evidence, base rates, and replication follow, and the verdict names its own update conditions."
+/>
+
+<Listen>
+## Base rates: why "a study found" is not the end
+
+In 2005, John Ioannidis argued in PLoS Medicine that most published research findings in many fields are false, and gave a simple model for why. The chance that a reported positive finding is true depends on three things: the **prior odds** that a tested hypothesis is true in that field, the study's **power** to detect a real effect, and **bias** (selective reporting, flexible analysis, many variants tried with one reported). With a prior of 1 in 10, 80% power, and the conventional 5% false-positive rate, a positive finding is true only about 64% of the time, before any bias.
+
+AI is a field with all three risk factors. Many claimed improvements are small, so power is low unless the eval is large. Researchers and vendors try many prompts, scaffolds, and settings and report the best, which is bias in Ioannidis's sense; "The Leaderboard Illusion" (lesson 2) documented exactly this for arena submissions. And benchmarks leak into training, which is a form of leakage that Kapoor and Narayanan documented across hundreds of ML papers in 2022.
+
+The practical consequence: discount single, unreplicated results, especially surprising ones and especially ones with a small effect. Then ask what independent work, or your own eval, would show.
+</Listen>
+
+<Listen>
+## Scoring forecasters: the Brier score
+
+Timeline claims are forecasts, and forecasts can be scored. The standard tool is the **Brier score**: for each forecast, take the stated probability p and the outcome o (1 if it happened, 0 if not), and average the squared error (p minus o) squared. Lower is better. A forecaster who always says 50% scores 0.25 on any set of yes-or-no events, so 0.25 is the no-skill baseline: a forecaster who scores worse than that would have done better by saying "I don't know" every time.
+
+Two lessons follow. First, confidence is costly when wrong: a 90% forecast that fails contributes 0.81. Bold forecasters who are often wrong score badly even if they are spectacularly right sometimes. Second, you can only score forecasters who state probabilities on many checkable events. Most public AI claims are single, unhedged or vaguely hedged statements, which is why the previous lessons rewrote them before scoring. If someone wants to be taken seriously as a forecaster, the best evidence is a public, scored track record.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="e3-brier-score"
+  title="Score two forecasters against a no-skill baseline"
+  starter={`def brier(forecasts):
+    """forecasts: list of (probability, outcome) with outcome 0 or 1.
+    Return the mean squared error."""
+    # TODO
+    pass
+
+def beats_baseline(forecasts):
+    """True if the forecaster's Brier score is lower than always forecasting 0.5."""
+    # TODO
+    pass
+
+# Eight scored yes-or-no AI predictions, as (stated probability, what happened)
+BOLD = [(0.9, 1), (0.8, 1), (0.7, 0), (0.9, 0), (0.6, 1), (0.95, 1), (0.8, 0), (0.9, 1)]
+HEDGED = [(0.6, 1), (0.6, 1), (0.5, 0), (0.6, 0), (0.55, 1), (0.7, 1), (0.6, 0), (0.65, 1)]
+
+for name, f in [("bold", BOLD), ("hedged", HEDGED)]:
+    print(name, brier(f), beats_baseline(f))
+`}
+  tests={`assert brier([(1.0, 1), (0.0, 0)]) == 0, "perfect forecasts score zero"
+assert abs(brier([(0.5, 1), (0.5, 0)]) - 0.25) < 1e-12, "always 0.5 scores 0.25"
+assert abs(brier(BOLD) - 0.2703125) < 1e-9, "check the bold forecaster's score"
+assert abs(brier(HEDGED) - 0.213125) < 1e-9, "check the hedged forecaster's score"
+assert beats_baseline(BOLD) is False, "the bold forecaster does worse than saying 50% every time"
+assert beats_baseline(HEDGED) is True, "the hedged forecaster has some skill"`}
+  solution={`def brier(forecasts):
+    return sum((p - o) ** 2 for p, o in forecasts) / len(forecasts)
+
+def beats_baseline(forecasts):
+    return brier(forecasts) < 0.25`}
+>
+Implement both functions, then press **Check my answer**. Both forecasters were "right" (on the side of 50% that happened) five times out of eight. The bold one stated high confidence on the misses and scores worse than no skill at all; the hedged one, who never went above 70%, beats the baseline. When you weigh a forecaster's next claim, this is the quantity that matters, and it is almost never published.
+</PyRunner>
+
+<Listen>
+## A worked example: "agents will handle month-long projects within about a year"
+
+Here is the method applied to a claim of a kind you will hear often in late 2026: that because AI task horizons double every few months, agents will reliably complete month-long software projects within about a year.
+
+**Source.** The quantitative basis is METR's work: the March 2025 paper, the Time Horizon 1.1 update (29 January 2026), and the Frontier Risk Report (19 May 2026). The strongest lab-leader version is Amodei's September 2026 essay, which argues progress sped up from mid-2026. Note that METR itself does not make the one-year claim; it is an extrapolation others draw from METR's data.
+
+**Rewrite so it can fail.** "By 30 November 2027, an independent evaluator reports a frontier agent with an 80% time horizon of at least 167 hours (one working month) on software tasks."
+
+**Access and incentives.** METR has privileged access to labs and states that it took no payment for its 2026 incident investigation; lab leaders have the most access and strong incentives toward short timelines.
+
+**Evidence type; measured versus extrapolated.** Measured: on METR's suite, 50% horizons doubled about every 131 days since 2023; in early 2026 the public frontier was about 12 hours at 50% and about 1.5 hours at 80%. Extrapolated: everything after that. The 80% figure, not the 50% one, is what "reliably" means.
+</Listen>
+
+<Listen>
+## The worked example, continued
+
+**Base rates and caveats.** The arithmetic from lesson 4: getting from 1.5 hours to 167 hours at 80% is about 6.8 doublings, roughly 2.4 years at a 131-day doubling time or 1.7 years at the faster 89-day estimate, so "about a year" requires faster-than-measured growth at the reliability that matters. METR states its suite is unreliable above about 16 hours and stopped updating its public page in September 2026, so the measurement that would confirm the claim does not currently exist. It also found at least 16% of long-task "successes" were cheating. Software tasks are where models improved fastest, so transfer to other work is a further extrapolation.
+
+**Replication.** METR's May 2026 report found public models above 100 hours on an early version of a narrower benchmark (MirrorCode), which saturated; that supports fast progress, but on cleaner tasks.
+
+**Verdict.** The direction is well supported; the one-year timing at 80% reliability on messy software work is not, and will be hard to check until new long-task benchmarks exist. Confidence that the rewritten claim resolves "yes": low to moderate, perhaps 20 to 35%. Evidence that would raise it: an independent long-task suite with human baselines showing 80% horizons above a week by mid-2027.
+</Listen>
+
+<Callout type="pitfall" title="Evaluating the claim you expected instead of the one that was made">
+The commonest error in claim evaluation is to argue with a paraphrase. Headlines compress "could be as little as one to two years away, though it could take considerably longer" into "AGI in two years," and then both believers and skeptics respond to the headline. Before you analyze anything, quote the primary source and note the hedges. If you cannot find the primary source, say so in your verdict and lower your confidence; secondhand claims are a different, weaker kind of evidence.
+</Callout>
+
+<Listen>
+## The checks and balances of the whole program
+
+Step back from this elective to the whole program. Every studio taught a version of the same idea: model output is a claim, and claims need checks whose failures are independent of the thing being checked.
+
+- **Studio 1** validated structured output in code, required evidence quotes and verified them as exact substrings, and routed doubtful items to people. A schema is not a fact-check.
+- **Studio 2** measured retrieval separately from generation and required citations that point to retrieved text, because a fluent answer can be faithful to the wrong passage.
+- **Studio 3** built evals with held-out splits, intervals, and paired comparisons, and calibrated LLM judges against human labels, because a judge is another model output.
+- **Studio 4** gated agent actions with permissions, sandboxes, and human approval for anything irreversible, and treated tool results as untrusted input.
+- **Studio 5** checked fine-tuning data for contamination and compared against a frontier baseline on held-out data.
+- **Studio 6** made systems observable and planned incident response, because checks that nobody watches are not checks.
+- **This elective** applied the same logic to claims about AI itself: primary sources, dated; measured versus extrapolated; base rates; independent replication; your own small eval.
+
+The unifying principle is **independence of checks**. A model grading its own work, a vendor reporting its own benchmark, a lab grading its own safety framework, an analysis agent summarizing transcripts from its own model family: each is a check whose failures are correlated with the thing it checks. METR's investigators were explicit about this when they relied on GPT-5.6 Sol to analyze agents that included GPT-5.6 Sol. The remedy is always the same: add a check that fails differently (deterministic code, a person, a different model family, an independent organization), sized to the stakes.
+</Listen>
+
+<Mermaid
+  alt="Diagram of independent checks around a model output: the model output is a claim; it passes through deterministic checks in code (schemas, tests, exact-match evidence), then a different-family model or calibrated judge, then human review of a sample sized to the stakes, then monitoring in production with incident response. Each layer is labeled with how its failures differ from the model's own."
+  caption="Layer checks whose failures are independent of the model and of each other."
+  chart={`flowchart TD
+  O["Model output (a claim)"] --> C["Code checks: schemas, tests, exact evidence"]
+  C --> J["Different-family model or calibrated judge"]
+  J --> H["Human review of a sample, sized to stakes"]
+  H --> M["Production monitoring and incident response"]
+  C -.->|"fails differently: no fluency bias"| O
+  J -.->|"fails differently: other training"| O
+  H -.->|"fails differently: context and accountability"| O`}
+/>
+
+<Callout type="note" title="Structured reflection: your personal rules (15 minutes)">
+Write five rules, one sentence each, that you will follow from now on when you use Claude, GPT, Gemini, Grok, or an open model at work. Each rule must name a task type, the model or kind of model you will start with, and the check you will apply to its output. Example: "For extracting fields from contracts, start with a small tier and require evidence quotes verified in code; escalate to a flagship only where the eval shows a gap." These rules are the seed of your project's playbook.
+</Callout>
+
+<GoDeeper title="Becoming a better forecaster yourself">
+If you want to improve your own judgment about AI claims, the most effective practice is to make probabilistic predictions about checkable events, write them down with dates, and score yourself with the Brier score when they resolve. Start with questions close to your work: "Will our eval show model X beating model Y on extraction by more than 5 points?" or "Will provider Z cut prices on its small tier this quarter?" Over a year, you will learn whether your 80% means 80%. Chip Huyen's AI Engineering makes a related point about evaluation in general: the discipline is less about any single metric than about building the habit of checking.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+For any claim: source and date, rewrite it until it can fail, access and incentives, evidence type, measured versus extrapolated, base rates, replication, verdict with a confidence level. For forecasts: ask for probabilities and score them. For your own work: every model output is a claim, and every check should fail differently from what it checks. The project for this elective puts both halves to work: a model selection playbook backed by your own eval, and an evidence-weighted brief on one current public claim.
+</Listen>

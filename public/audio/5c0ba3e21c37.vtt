@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.539
+A grader is a function, so write it like one.
+
+2
+00:00:02.819 --> 00:00:09.453
+Week 1 ended with failure modes: concrete ways your system goes wrong, found by reading real outputs.
+
+3
+00:00:09.733 --> 00:00:20.507
+A grader turns one of those failure modes into a function: it takes an output (and sometimes the input and a reference answer) and returns a score, usually pass or fail.
+
+4
+00:00:20.787 --> 00:00:24.179
+An eval is a set of cases plus the graders that score them.
+
+5
+00:00:24.459 --> 00:00:28.128
+There are three kinds of grader, and the order you reach for them matters.
+
+6
+00:00:28.408 --> 00:00:42.637
+Anthropic’s guide to building evals ranks them plainly: code-based grading is the fastest, most reliable, and most scalable, but lacks nuance; human grading is the most flexible and highest quality, but slow and expensive;
+
+7
+00:00:42.917 --> 00:00:49.189
+LLM-based grading is fast and flexible but has to be tested for reliability before you scale it.
+
+8
+00:00:49.469 --> 00:01:05.853
+Anthropic’s engineering team makes the same trade-off explicit in its write-up on agent evals: code graders are cheap, objective, reproducible, and easy to debug, and their weakness is brittleness when a valid answer looks different from what the code expects.
+
+9
+00:01:06.133 --> 00:01:15.797
+The practical rule follows: make every check you can deterministic, and save model judges (next lesson) for criteria code genuinely can’t decide.
+
+10
+00:01:16.077 --> 00:01:22.392
+A deterministic grader gives the same answer every run, costs nothing, and can itself be unit-tested.
+
+11
+00:01:22.672 --> 00:01:24.592
+That last property is underrated.
+
+12
+00:01:24.872 --> 00:01:30.845
+A grader is code that decides whether you ship, so it deserves tests as much as anything in your product.
+
+13
+00:01:31.125 --> 00:01:46.827
+This lesson works through the toolbox from simplest to most involved: exact and normalized matching, regular expressions, fuzzy matching, schema checks, executing generated code, and reference-overlap metrics, with what each one can and can’t tell you.
