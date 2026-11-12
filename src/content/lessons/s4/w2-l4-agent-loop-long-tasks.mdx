@@ -1,0 +1,300 @@
+---
+id: s4-w2-l4
+studio: s4
+week: 2
+order: 4
+title: The agent loop and tools for long tasks
+summary: >-
+  What actually runs when an agent works for twenty steps instead of two: the plan, act, observe cycle, the
+  conditions that stop it, step and token budgets (including Claude's task budgets), tools designed for long
+  tasks, recovery from three kinds of error, and parallel tool calls.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Describe the agent loop as plan, act, observe, and name what the harness (your code) owns in each step
+  - Design stopping conditions that cover success, failure, and runaway cost, and explain why each one is needed
+  - Distinguish an advisory task budget from enforced limits such as max_tokens, step caps, and dollar caps
+  - Design tools for long tasks that return small, high-signal results and tell the agent what to do next
+  - Separate transport errors, tool errors, and strategy errors, and choose a recovery for each
+  - Run parallel tool calls correctly and decide which tools are safe to run concurrently
+sources:
+  - { id: anthropic-effective-agents, use: summarized, where: "Agents; stopping conditions and ground truth from the environment" }
+  - { id: anthropic-agent-sdk-blog, use: summarized, where: "The agent loop: gather context, take action, verify work" }
+  - { id: yao-2022-react, use: summarized }
+  - { id: huyen-agents-2025, use: summarized, where: "Planning; Agent failure modes and evaluation" }
+  - { id: anthropic-long-running-harnesses, use: summarized, where: "Failure modes and solutions" }
+  - { id: claude-agent-sdk-loop, use: summarized, where: "Turns and budget; Parallel tool execution; Handle the result" }
+  - { id: claude-task-budgets-docs, use: summarized }
+  - { id: claude-tool-runner, use: summarized, where: "max_iterations; error handling" }
+  - { id: openai-agents-running-docs, use: summarized, where: "The agent loop; max_turns" }
+  - { id: smolagents-docs, use: summarized, where: "Guided tour: termination conditions" }
+  - { id: anthropic-writing-tools, use: summarized, where: "Optimizing tool responses for token efficiency" }
+  - { id: claude-handle-tool-calls, use: summarized, where: "Handling errors with is_error" }
+  - { id: claude-parallel-tool-use, use: summarized }
+  - { id: claude-python-sdk, use: summarized, where: "Retries" }
+  - { id: aws-backoff-jitter, use: linked }
+  - { id: claude-effort-docs, use: summarized }
+  - { id: anthropic-multi-agent-research, use: summarized, where: "Parallel tool calling" }
+  - { id: yt-anthropic-tips-agents, use: embedded }
+  - { id: hf-agents-course, use: linked, where: "Unit 1, the Thought-Action-Observation cycle" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your research agent runs on `claude-opus-5-5` with a task budget of 64,000 tokens and `max_tokens` of
+      16,000. On one hard question it keeps searching and spends well past 64,000 tokens across 30 requests.
+      What does that tell you, and what do you add?
+    options:
+      - id: a
+        text: The API is broken; a task budget should have stopped the loop at 64,000 tokens.
+        rationale: The docs say task budgets are advisory. The model paces itself against the countdown, but nothing stops it.
+      - id: b
+        text: The task budget worked as designed (it is advisory); add an enforced limit in your own loop, such as a step cap or a running token total, and stop with a partial result when it trips.
+        correct: true
+        rationale: Yes. A budget is a hint the model sees. Your harness enforces limits by counting and stopping.
+      - id: c
+        text: Lower `max_tokens` to 2,000 so each request is cheap.
+        rationale: max_tokens caps one response, not the loop, and a low value can cut a tool call off mid-input.
+    explanation: >-
+      There are two kinds of limit. Advisory ones (task budgets, instructions in the prompt) shape what the model
+      tries to do. Enforced ones (max_tokens per request, your step cap, a dollar cap in the Agent SDK) are code
+      that stops work. A production loop needs both: the advisory budget so the model wraps up gracefully, and an
+      enforced limit for when it doesn't.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      The model returns one assistant message with three `tool_use` blocks: two `search_docs` calls and one
+      `read_doc` call. All three are read-only. What should your loop do?
+    options:
+      - id: a
+        text: Run the first call only and ask the model to repeat the other two.
+        rationale: That wastes two round trips and discards valid requests.
+      - id: b
+        text: Run all three (concurrently is fine, since they are read-only) and return three tool_result blocks in one user message.
+        correct: true
+        rationale: Right. One message with every result is the documented pattern.
+      - id: c
+        text: Run all three and return each result in its own user message, so the model can read them one at a time.
+        rationale: Splitting results across messages is the pattern the parallel tool use docs warn reduces later parallel calls.
+    explanation: >-
+      Parallel calls save round trips, which is most of an agent's latency. Read-only tools are safe to run at the
+      same time; tools with side effects or ordering constraints are safer in sequence, which is exactly the rule the
+      Claude Agent SDK applies to its built-in tools.
+  - id: kc3
+    type: multi
+    prompt: >-
+      Which of these are **strategy** errors, where the tool works fine but the agent is going the wrong way?
+      Select all that apply.
+    options:
+      - id: a
+        text: The agent calls `search_docs` with the same query for the fourth time in a row.
+        correct: true
+        rationale: Nothing failed technically. The agent is stuck, and a retry will not help.
+      - id: b
+        text: The API returns a 529 overloaded error.
+        rationale: That is a transport error. The SDK retries it with backoff.
+      - id: c
+        text: The agent declares the task done after handling 40 of 50 records.
+        correct: true
+        rationale: False completion, one of the failure modes Chip Huyen lists. Only a check against the goal catches it.
+      - id: d
+        text: "`read_doc` raises because the document id does not exist."
+        rationale: A tool error. Return it as is_error with a hint, and the model usually recovers.
+    explanation: >-
+      Transport errors are retried by code. Tool errors are reported to the model so it can adjust. Strategy errors
+      are the dangerous ones because every individual step looks fine. You catch them with progress checks
+      (repeated identical calls, no new information), with verification against the goal, and with budgets that
+      force a stop.
+---
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## From one tool call to a long task
+
+In Studio 1 you wrote a loop that ran a few tool calls and stopped. Week 1 of this studio gave you the vocabulary: in Anthropic's terms, a workflow follows code paths you wrote, while an agent lets the model direct its own process and tool use. This week is about what that looks like when the task takes twenty or fifty steps.
+
+Every agent framework you will meet runs the same cycle, and the names vary only slightly. The ReAct paper (Yao and colleagues, 2022) interleaved reasoning traces with actions. Anthropic's post on the Claude Agent SDK describes it as gather context, take action, verify work, repeat. This lesson uses three words:
+
+- **Plan.** The model reads the context and decides what to do next: answer, or request one or more tool calls.
+- **Act.** Your code runs the requested tools. The model never runs anything itself.
+- **Observe.** The results go back into the context, and the model decides again.
+
+Anthropic's "Building effective agents" adds two points that matter more as tasks get longer. The agent has to get "ground truth" from the environment at each step, meaning real tool results, test output, or file contents, rather than its own assumptions. And it is common to add stopping conditions, such as a maximum number of iterations, to keep control.
+
+The code around the model is called the **harness**. It owns everything except the decision: what goes into the context, which tools exist, which calls are allowed, what gets logged, and when the loop ends. When an agent misbehaves, the fix is usually in the harness, so this lesson is about the harness.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of a guarded agent loop. Start with the task in context. Before each model call, check the budgets; if any is exhausted, stop with a partial result. Otherwise call the model. If it returns a final answer, verify it against the goal; if verification passes, stop with done, otherwise feed the failure back and loop. If it requests tools, run them, append all results in one message, check progress, trim context if needed, and loop back to the budget check."
+  caption="A guarded agent loop. The model plans; the harness acts, observes, and decides when to stop."
+  chart={`flowchart TD
+  T["Task in context"] --> B{"Budgets left? steps, tokens, time"}
+  B -- "no" --> P["Stop: partial result + reason"]
+  B -- "yes" --> M["Model call: plan"]
+  M --> R{"Final answer or tool calls?"}
+  R -- "final answer" --> V{"Verify against the goal"}
+  V -- "passes" --> D["Stop: done"]
+  V -- "fails" --> F["Append the failure as feedback"] --> B
+  R -- "tool calls" --> A["Act: run tools, collect results and errors"]
+  A --> O["Observe: append all results in one message"]
+  O --> G["Log the step; check progress; trim context if needed"] --> B`}
+/>
+
+<Listen>
+## Why long tasks fail
+
+Chip Huyen's essay on agents (January 2025) gives the arithmetic that should make you cautious: if each step is right 95% of the time and steps fail independently, ten steps succeed together only about 60% of the time, and a hundred steps almost never. Real agents can do better than that because they observe results and correct course, but the direction is right. Errors compound, and long tasks need checkpoints.
+
+Her essay also lists the failure modes worth logging, which you will use in Studio 3 style error analysis of agent traces:
+
+- **Invalid tool**: calling a tool that does not exist.
+- **Invalid parameters**: the right tool with missing or malformed arguments.
+- **Incorrect values**: well-formed arguments that are wrong, such as the wrong customer id.
+- **Goal failure**: ignoring a constraint such as a budget or a deadline.
+- **False completion**: the agent believes it is done when it is not. Her example is assigning 40 of 50 people to rooms and reporting success.
+
+Anthropic's November 2025 post on harnesses for long-running agents reports the same patterns in a coding setting. Agents tried to do too much at once (one-shotting) and ran out of context mid-feature, and later sessions saw partial progress and declared the job finished. Their fixes were structural, not clever prompts: a feature list that defines the full scope, one feature at a time, and a rule that a feature is marked passing only after it is tested end to end.
+
+The lesson for your harness: success has to be checked, not reported. "The model said it's done" is a stop reason, not a verification.
+</Listen>
+
+<Listen>
+## Stopping conditions: you need more than one
+
+A loop that ends only when the model stops calling tools is fine for a demo and dangerous in production. Plan for four kinds of stop.
+
+**Natural stop.** The model returns a response with no tool calls (on the Claude API, `stop_reason` is `end_turn`). Treat this as a claim of completion and verify it where you can: run the tests, check that every record was handled, confirm the answer cites a source.
+
+**Abnormal stop reasons.** `max_tokens` can cut a tool call off mid-input, and `refusal` means the model declined. Neither should run tools. `pause_turn` means a server tool paused and the request should be resent as is.
+
+**Hard limits.** Cap the number of model calls, and cap spend. Every framework has the first: the Claude SDK tool runner takes `max_iterations`, the Claude Agent SDK takes `max_turns` and `max_budget_usd`, the OpenAI Agents SDK takes `max_turns` and raises `MaxTurnsExceeded`, and smolagents runs until a final answer or its maximum number of steps. Defaults differ, and the Agent SDK documents no limit on either by default, so set them yourself. Note how the Agent SDK counts: each turn with tool calls, plus one for the final text answer.
+
+**No-progress stops.** The agent repeats the same call, or several steps add no new information. A budget will eventually catch this, but detecting it earlier saves money and gives a better error message: "stopped after three identical searches" tells the person reading the trace exactly what went wrong.
+
+When a hard limit trips, end gracefully: return what you have, mark it as partial, and record why. The Agent SDK does this with result subtypes such as `error_max_turns` and `error_max_budget_usd`, and its docs warn that spend can pass the dollar cap by up to the cost of the response that crossed it, so leave headroom.
+</Listen>
+
+<Listen>
+## Task budgets: telling the model how much it has
+
+A step cap stops the agent, but the agent does not know it is coming, so it can be cut off in the middle of useful work. Claude's **task budgets** (beta, header `task-budgets-2026-03-13`) address the other half: you tell the model how many tokens it has for the whole agentic turn, and the server injects a countdown the model sees as it works. The docs describe the intended behavior as pacing and finishing gracefully, for example summarizing findings as the budget runs low.
+
+The details matter:
+
+- You set it in `output_config` as `task_budget` with `type: "tokens"` and a `total`. The minimum total is 20,000 tokens. It is supported on current models including `claude-opus-5-5`, `claude-sonnet-5-5`, and `claude-haiku-5-5`, but not every model, so check the support table.
+- It counts what the model sees in the current turn (its thinking, tool calls, tool results, and output), not the history your client resends on each request. A user message with tool results continues the turn; a plain user message starts a new one.
+- It is **advisory**. The docs say Claude might occasionally exceed it, and that `max_tokens` remains the enforced per-request cap. For a hard ceiling, combine the two, and keep your own step or token counter.
+- A budget that is clearly too small can make the model scope the task down, stop early, or decline to start. Size it from measurements: run representative tasks without a budget, record total tokens per task, and start near the high end of that distribution.
+- Leave `remaining` unset in a normal loop. Decrementing it yourself while resending full history under-reports the budget and also changes the prompt, which breaks prompt caching.
+
+Effort is the complementary dial. Effort controls how deeply the model reasons at each step; a task budget controls how much total work it does. For model selection, measure cost per completed task, not per request: a cheaper setting that needs twice as many steps is not cheaper.
+</Listen>
+
+<Predict
+  title="Where does this loop stop?"
+  code={`max_steps = 3
+steps = 0
+status = "running"
+script = ["tool", "tool", "tool", "tool", "answer"]  # what the fake model returns
+
+for reply in script:
+    if steps >= max_steps:
+        status = "budget"
+        break
+    steps += 1
+    if reply == "answer":
+        status = "done"
+        break
+
+print(status, steps)`}
+  options={["done 5", "budget 3", "budget 4", "done 3"]}
+  answer={1}
+>
+The budget check runs before each model call. After three calls (all tool requests) the fourth iteration finds `steps >= max_steps` and stops with `budget 3`, before the model ever gets to answer. That is correct behavior for a hard cap, and it is why a good harness also warns the model when one step remains ("answer now with what you have"), so a capped run still ends with a useful partial answer. You will implement exactly that wrap-up nudge in the lab.
+</Predict>
+
+<Listen>
+## Tools for long tasks: small results, clear next steps
+
+Studio 1 covered tool design for single calls. Long tasks raise the stakes, because every tool result stays in the context for the rest of the run and every token is read again on each later step. Anthropic's "Writing effective tools for AI agents" gives the guidance that matters most here.
+
+**Search, don't list.** A `list_documents` tool that returns 400 entries makes the agent read all of them. A `search_docs(query)` tool that returns the five best matches with short snippets gives it what it needs to choose.
+
+**Return high-signal fields.** Titles, short snippets, and natural identifiers beat raw records full of internal ids. The post reports that resolving cryptic identifiers into meaningful names improved precision in retrieval tasks.
+
+**Paginate and truncate, and say so.** A `read_doc(doc_id, start_line, max_lines)` tool that returns 40 lines plus "more lines follow; call again with start_line=41" lets the agent read only as far as it needs. The post recommends sensible defaults for pagination, filtering, and truncation, and suggests telling the agent how to get more when you truncate. It also describes a `response_format` option that lets the agent choose concise or detailed output.
+
+**Shorten results before you first send them.** It is tempting to send full results and trim them later. On current Claude models that is costly: the next lesson explains why editing an old tool result on the client invalidates later reasoning blocks. Decide the size of a result when you create it.
+
+**Make errors steer.** "Document not found" is a dead end. "No document with id 'risk-log'. Ids look like 'risks-2026q3'; call search_docs to find one" is a next step.
+
+Finally, keep read and write tools separate and make the kind obvious from the name. That separation is what lets you run reads in parallel and gate writes, which week 4 covers in depth.
+</Listen>
+
+<Listen>
+## Three kinds of error, three recoveries
+
+Long runs meet every kind of failure. Sort them by who should handle them.
+
+**Transport errors** are failures to reach the model: rate limits (429), overload (529), server errors, timeouts, dropped connections. These are code's job. The official Anthropic Python SDK retries certain errors automatically (by default twice, with exponential backoff), and you can raise `max_retries`. For your own outer retries, use exponential backoff with jitter, as the AWS architecture post explains, so that many clients do not retry in lockstep. Never let a transport error reach the model as if it were information.
+
+**Tool errors** are failures inside a tool: a missing document, a bad argument, a downstream API that timed out. These are the model's information. Return a `tool_result` with `is_error: true` and a message that says what to try next; the handle-tool-calls docs describe the model incorporating the error and often retrying with corrections. The SDK tool runner does a basic version for you, catching an exception in your tool and returning its message as an error result. Write your own message when you can, because a stack trace is a poor hint.
+
+**Strategy errors** are the ones where every step works and the run still fails: the agent searches the same thing repeatedly, chases an irrelevant document, or declares victory early. Retrying cannot help. Your options are a nudge (append a short text block after the tool results saying, for example, "you have searched this query three times; try a different term or answer with what you have"), a verification step that rejects a premature answer, or a stop with a clear reason. Studio 3's lesson on evaluating agents showed why you should count these: the rate of no-progress stops is a metric you can track across versions.
+
+Two habits make recovery cheap. Make write tools idempotent, so a retried call cannot act twice. And persist progress outside the context (a log, a checklist, commits), so a crashed or capped run can resume instead of starting over.
+</Listen>
+
+<Listen>
+## Parallel tool calls
+
+When the next steps don't depend on each other, the model can request several tools in one turn: one assistant message with several `tool_use` blocks. Claude does this by default, and it is one of the cheapest speedups available. Anthropic's multi-agent research post reports that having subagents call tools in parallel, together with running subagents in parallel, cut research time by up to 90% for complex queries.
+
+Your loop has two jobs. First, run every requested call, and send **all** the results back in **one** user message, each `tool_result` matched to its `tool_use_id`. The parallel tool use docs warn that splitting results across several messages teaches the model to stop making parallel calls. A failed call still gets its result, with `is_error: true`; never drop one, because a `tool_use` without a matching result is an invalid conversation.
+
+Second, decide what may actually run at the same time. Read-only tools are safe to run concurrently. Tools with side effects, or that depend on order, are safer in sequence. The Claude Agent SDK encodes exactly this rule: its read-only tools (`Read`, `Glob`, `Grep`, and MCP tools marked read-only) can run concurrently, while `Edit`, `Write`, and `Bash` run one at a time, and custom tools run sequentially unless you mark them read-only. If a task must not fan out at all, `disable_parallel_tool_use` with `tool_choice` of `auto` limits the model to at most one call per turn.
+
+For your trace, log each call in a parallel batch separately but with the same step number. When you analyze runs, "how many calls per step" is a quick read on whether the agent is planning or fumbling.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put one iteration of a guarded agent loop in order"
+  items={[
+    "Check the step and token budgets; if exhausted, stop with a partial result",
+    "Call the model with the current context",
+    "Check the stop reason; if it is a final answer, verify it and stop",
+    "Run every requested tool, turning failures into is_error results",
+    "Append all tool results in one user message",
+    "Log the step, check for repeated calls, and trim context if over budget",
+  ]}
+  explanation="Budgets are checked before spending money, not after. Tools run only when the stop reason says tools were requested. All results go back together. Logging and progress checks close the iteration, so the next budget check sees an accurate picture."
+/>
+
+<Callout type="pitfall" title="A loop that stops silently">
+The most common production failure is not a crash. It is a loop that hits its cap, returns an empty string, and reports success. Every stop should carry a reason (done, budget:steps, budget:tokens, no_progress, stopped:max_tokens, stopped:refusal) and whatever partial result exists, and the caller should branch on that reason. If your dashboard cannot tell you how many runs ended on a budget last week, you are not yet ready to raise the budget, because you do not know whether the agent needs more steps or is wasting them.
+</Callout>
+
+<Video id="LP5OCa20Zpg" title="Tips for building AI agents" channel="Anthropic" minutes={18} source="https://www.youtube.com/watch?v=LP5OCa20Zpg">
+Barry Zhang, Erik Schluntz, and Alex Albert discuss when to use agents, what goes into an agent prompt, and common pitfalls. Watch for how often the advice comes back to seeing the task from the model's point of view: what it can see in its context and its tool results at each step.
+</Video>
+
+<GoDeeper title="Planning, reflection, and what to put in a trace">
+Huyen's essay separates **planning** from **execution**: generate a plan, validate it (reject plans that use unavailable tools or exceed a step limit, or use a judge), and only then execute. She also describes **reflection** after a step or after the whole plan, which often improves results at the cost of latency and tokens. The ReAct paper is the origin of interleaving reasoning with actions; reflection-style methods add an evaluator. Week 1 discussed evidence that self-correction without external feedback is unreliable, which is one more reason to prefer reflection grounded in real tool results.
+
+For traces, log one event per model call (step, stop reason, input and output tokens) and one per tool call (step, name, input, error flag, size of the result). That is enough to compute the Studio 3 agent metrics: steps per task, cost per task, tool error rate, and how runs ended. The Hugging Face Agents Course's first unit walks through the same Thought, Action, Observation cycle with smolagents if you want a second explanation.
+</GoDeeper>
+
+<LabLink path="labs/studio-4/02-research-agent" title="Lab 02: a budgeted research agent with a trace log" needs={["Python 3.10+", "Anthropic API key (live tests only)"]} minutes={75}>
+Build a small research agent over a fictional project's documents, with two read-only tools (`search_docs`, `read_doc`), a step and token budget with a wrap-up nudge, a JSONL trace of every model and tool call, and context trimming. Offline tests use a fake client to check budget enforcement, trace logging, parallel results, and trimming. The trimming part goes with lesson 5.
+</LabLink>
+
+<Listen>
+## What a working engineer sets before the first real run
+
+Before an agent touches real work, a careful engineer writes down five numbers and three rules. The numbers: maximum model calls, maximum tokens (or dollars) per task, maximum wall-clock time, maximum size of any single tool result, and the retry count for transport errors. The rules: what counts as done and how it is verified, what counts as no progress, and what the agent returns when it is stopped early.
+
+Then they run a small batch of representative tasks with generous limits, look at the traces, and set the limits from the distribution they observe, with headroom. That is the same evidence-first habit as Studio 3, applied to the loop itself.
+
+They also decide who reads the stop reasons. A weekly look at how runs ended (done, capped, stuck, refused) is the cheapest early warning you will get: a rising share of capped or stuck runs usually means a tool, a prompt, or a model version changed underneath you.
+</Listen>

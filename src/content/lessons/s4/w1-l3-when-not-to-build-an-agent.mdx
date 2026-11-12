@@ -1,0 +1,280 @@
+---
+id: s4-w1-l3
+studio: s4
+week: 1
+order: 3
+title: When not to build an agent
+summary: The case against reaching for an agent by default. Per-step reliability compounds, loops cost far more than single calls, failures are hard to debug, and published measurements show where current agents still struggle. Plus the alternatives that usually win.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Compute end-to-end success from per-step reliability, and the per-step reliability a target requires
+  - Explain why heterogeneity across tasks and error recovery change the simple compounding model, in both directions
+  - Estimate the token cost and latency of an agent loop versus a single call, including how resent context grows
+  - Summarize what METR's time-horizon research and agent benchmarks show, and the limits of extrapolating from them
+  - Choose an alternative (deterministic code, a single call with better context, a workflow) and justify it with the four questions
+sources:
+  - { id: anthropic-effective-agents, use: summarized, where: "When (and when not) to use agents; Agents: compounding errors" }
+  - { id: yt-zhang-effective-agents, use: embedded }
+  - { id: kwa-2025-metr-horizon, use: summarized }
+  - { id: metr-horizon-blog, use: summarized }
+  - { id: ord-2025-half-life, use: summarized }
+  - { id: yao-2024-taubench, use: summarized, where: "pass^k results at publication" }
+  - { id: becker-2025-metr-rct, use: summarized }
+  - { id: kapoor-2024-agents-matter, use: summarized }
+  - { id: anthropic-multi-agent-research, use: summarized, where: "Token usage; production reliability and engineering challenges" }
+  - { id: anthropic-demystifying-evals, use: linked, where: "pass@k versus pass^k" }
+  - { id: claude-pricing-docs, use: summarized, where: "Model pricing table, checked 2026-11-11" }
+  - { id: altman-2025-reflections, use: summarized }
+  - { id: hf-smolagents-intro-agents, use: summarized, where: "When to avoid agents" }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: An agent needs 20 steps and each step succeeds independently with probability 0.97. Roughly what does this print?
+    code: |
+      p, n = 0.97, 20
+      print(round(p ** n, 2), round(0.9 ** (1 / n), 4))
+    options:
+      - id: a
+        text: "`0.54 0.9947`"
+        correct: true
+        rationale: 0.97 to the 20th is about 0.54, and hitting 90% end to end needs about 99.47% per step.
+      - id: b
+        text: "`0.97 0.9`"
+        rationale: Success does not stay at the per-step rate; independent steps multiply.
+      - id: c
+        text: "`0.4 0.995`"
+        rationale: "Close on the second number, but 0.97^20 is about 0.54, not 0.4."
+    explanation: >-
+      Under independence, end-to-end success is p to the n. Inverting, a target T over n steps needs p equal to T to the
+      1/n. Steps that look reliable in isolation (97%) produce a coin flip over twenty steps, and the bar for a 90%
+      result is above 99% per step.
+  - id: kc2
+    type: mcq
+    prompt: METR reported Claude 3.7 Sonnet's 50% time horizon at around 50 minutes on its task suite. Which conclusion is best supported?
+    options:
+      - id: a
+        text: The model can do any 50-minute job in your company half the time.
+        rationale: The suite is mostly software and research tasks, and METR flags external validity as a main limitation.
+      - id: b
+        text: On tasks like METR's, success fell sharply with task length, and the length at 80% reliability was much shorter than at 50%.
+        correct: true
+        rationale: Yes. That is what the measurement shows, and it is why the reliability you need matters as much as the headline horizon.
+      - id: c
+        text: Agents will be able to do month-long tasks by a specific date.
+        rationale: METR presents that as an extrapolation conditional on the trend continuing and generalizing, not a finding.
+    explanation: >-
+      The time horizon is the human task length at which the fitted success curve crosses 50%. It is a useful,
+      careful measurement of a trend, on a specific task distribution. Read it as "how long a task, on work like this,
+      before failure becomes likely", and remember that production usually needs far more than 50%.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      A team wants an agent to answer customer questions about invoice status by searching the billing system and
+      composing a reply. In practice, 95% of questions are "what is the status of invoice N", answerable with one
+      lookup. What is the best design?
+    options:
+      - id: a
+        text: A full agent with search, read, and reply tools, since it handles the 5% too.
+        rationale: You pay agent cost, latency, and risk on all traffic to handle the rare case, which you could route.
+      - id: b
+        text: Parse the invoice number in code, look it up, and have a single call write the reply; route everything else to a person or a separate, more capable path.
+        correct: true
+        rationale: Yes. Deterministic code for the known path, a single call for the prose, and routing for the remainder.
+      - id: c
+        text: An agent with a longer system prompt telling it to be efficient on simple questions.
+        rationale: A prompt can reduce wasted steps but cannot give you a workflow's predictability or its cost.
+    explanation: >-
+      The smolagents guide's rule applies: if a predetermined workflow fits most queries, code it. Route the rest.
+      You can always add an agent for the long tail later, with evidence that the tail is worth it.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The default should be "not yet"
+
+Lesson 1 gave you four questions and lesson 2 gave you five workflow patterns. This lesson makes the case for the conservative answer with numbers, because "agents are less reliable" is easy to say and easy to ignore until you see how fast the arithmetic turns against you.
+
+The Anthropic post that framed this week is explicit that agents bring higher costs and the potential for compounding errors, and recommends extensive testing in sandboxed environments with guardrails. Its broader advice is that many applications never need an agentic system at all, and that optimizing a single call with retrieval and in-context examples is usually enough. Barry Zhang's talk, below, puts the same idea as a working rule: build agents for complex, valuable tasks where errors can be caught, and nowhere else.
+
+None of this is an argument that agents don't work. Coding agents are useful today, and the measurements later in this lesson show capability growing fast. It is an argument about **fit**: for a given task, an agent is one option with a particular cost and failure profile, and you should choose it when the numbers favor it.
+</Listen>
+
+<Video id="D7_ipDqhtwk" title="How We Build Effective Agents: Barry Zhang, Anthropic" channel="AI Engineer" minutes={15} source="https://ai.engineer/talks/D7_ipDqhtwk-effective-ai-agents">
+Zhang co-wrote "Building effective agents". Watch for his checklist for when to build an agent (complexity, value, whether the critical capabilities are doable, and the cost of errors and of discovering them) and why coding passes it: the output is verifiable by tests and CI. As you watch, apply the checklist to one workflow from your own job.
+</Video>
+
+<Listen>
+## Reliability compounds: the arithmetic
+
+Suppose an agent completes a task in n steps, each step succeeds with probability p, and steps fail independently. Then the whole task succeeds with probability p to the n. That one formula explains most of the gap between demos and production.
+
+Plug in numbers. At p = 0.95, ten steps succeed about 60% of the time and twenty steps about 36%. At p = 0.99, twenty steps succeed about 82%. Inverting the formula, a target success rate T over n steps requires p = T to the power 1/n per step. To finish a 20-step task 90% of the time, each step must succeed about 99.47% of the time. For 99% end to end, each step needs about 99.95%. Taking logs makes the scaling clear: the log of success is n times the log of p, so the failure budget per step shrinks roughly as one over n. Doubling the length of a task roughly halves the per-step error rate you can tolerate.
+
+A workflow is subject to the same arithmetic, which is why lesson 2 put gates between steps. The difference is what you can do about it. In a workflow you know the steps, so you can measure each one, test it, and add a check where it is weak. In an agent the number of steps varies by run, and the model chooses them, so neither n nor the per-step p is under your control. Every additional step the model decides to take is another factor less than one.
+</Listen>
+
+<Predict
+  title="Long tasks, small error rates"
+  code={`print(round(0.99 ** 50, 2), round(0.95 ** 50, 2))`}
+  options={["0.61 0.08", "0.99 0.95", "0.5 0.05", "0.95 0.6"]}
+  answer={0}
+>
+Fifty steps at 99% succeed about 61% of the time; at 95%, under 8%. A 4-point difference in per-step reliability becomes an 8-fold difference end to end. This is why small per-step improvements in models can produce large jumps in the length of tasks agents can finish, and why the reverse is also true.
+</Predict>
+
+<Listen>
+## Where the simple model breaks, in both directions
+
+The independent-steps model is a baseline, not a law, and as a mathematician you should ask where it fails. Two corrections matter in practice, and they pull in opposite directions.
+
+**Heterogeneity helps the average.** Real tasks are not all equally hard. If per-step reliability varies across tasks, expected success is the average of p to the n over that distribution, and because x to the n is convex on the unit interval, Jensen's inequality says that average is at least (average p) to the n. Concretely: if half your tasks have p = 1.0 and half have p = 0.9, the mean is 0.95, but 20-step success averages 0.5 times 1 plus 0.5 times 0.12, about 56%, not 36%. The flip side is bimodality: the easy half nearly always succeeds and the hard half nearly always fails, which is a strong argument for routing, so that hard cases go somewhere else.
+
+**Recovery helps, if failures are detectable.** Agents can notice errors and try again. If a step fails with probability 1 minus p, and a failure is detected with probability d and then retried once, the effective per-step success is p plus (1 minus p) times d times p. With p = 0.9 and perfect detection, that is 0.99, a tenfold cut in the per-step failure rate. With d = 0, it is still 0.9. Recovery is only as good as detection, which is the checks-and-balances theme in its sharpest form: tests, validators, and verifiable tool results are what make an agent's retries count. METR's paper reports that the growth in agents' time horizons seems driven largely by greater reliability and ability to adapt to mistakes, along with better reasoning and tool use.
+
+The practical reading: the compounding model is pessimistic for agents with good feedback signals (code with tests), and roughly right, or optimistic, for agents whose errors are silent (a plausible but wrong summary of a contract).
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s4-w1-reliability-math"
+  title="Reliability and cost calculators"
+  starter={`import math
+
+def chain_success(p, n):
+    """Probability that n independent steps, each succeeding with p, all succeed."""
+    # TODO
+    pass
+
+def required_step_reliability(target, n):
+    """Per-step reliability needed so that n independent steps succeed with probability target."""
+    # TODO
+    pass
+
+def mixture_success(ps, n):
+    """Expected success over tasks with different per-step reliabilities ps (equally likely)."""
+    # TODO
+    pass
+
+def with_retry(p, detect):
+    """Per-step success if a failure is detected with probability detect and retried once.
+    The retry succeeds with probability p."""
+    # TODO
+    pass
+
+def loop_input_tokens(base, growth, steps):
+    """Total input tokens over an agent loop that resends its whole context every step.
+    Step 1 sends base tokens; each later step sends growth more than the one before."""
+    # TODO
+    pass
+
+def cost_usd(input_tokens, output_tokens, in_price, out_price):
+    """Cost in dollars; prices are per million tokens."""
+    return input_tokens / 1e6 * in_price + output_tokens / 1e6 * out_price
+
+print(chain_success(0.95, 20), required_step_reliability(0.9, 20))
+print(mixture_success([1.0, 0.9], 20), with_retry(0.9, 1.0))
+agent = cost_usd(loop_input_tokens(10_000, 1_500, 20), 20 * 500, 4.00, 20.00)
+single = cost_usd(12_000, 800, 4.00, 20.00)
+print(round(agent, 2), round(single, 3), round(agent / single))`}
+  tests={`assert chain_success(0.95, 20) is not None, "chain_success returned None"
+assert abs(chain_success(0.95, 20) - 0.95 ** 20) < 1e-12
+assert chain_success(1.0, 1000) == 1.0 and chain_success(0.5, 0) == 1.0, "zero steps always succeed"
+r = required_step_reliability(0.9, 20)
+assert abs(chain_success(r, 20) - 0.9) < 1e-9, "required_step_reliability should invert chain_success"
+assert abs(r - 0.994745) < 1e-5
+m = mixture_success([1.0, 0.9], 20)
+assert abs(m - (1 + 0.9 ** 20) / 2) < 1e-12, "average p**n over the tasks, not (average p)**n"
+assert m > chain_success(0.95, 20), "Jensen: the mixture beats the mean"
+assert abs(with_retry(0.9, 1.0) - 0.99) < 1e-12
+assert with_retry(0.9, 0.0) == 0.9, "undetected failures cannot be retried"
+assert loop_input_tokens(10_000, 1_500, 1) == 10_000
+assert loop_input_tokens(10_000, 1_500, 20) == 485_000, "sum of base + growth*i for i in 0..steps-1"
+assert loop_input_tokens(100, 0, 7) == 700`}
+  solution={`def chain_success(p, n):
+    return p ** n
+
+def required_step_reliability(target, n):
+    return target ** (1 / n)
+
+def mixture_success(ps, n):
+    return sum(p ** n for p in ps) / len(ps)
+
+def with_retry(p, detect):
+    return p + (1 - p) * detect * p
+
+def loop_input_tokens(base, growth, steps):
+    return steps * base + growth * steps * (steps - 1) // 2`}
+>
+Implement the five functions, then read the printed numbers. The last line compares a 20-step loop (10,000 tokens of system prompt, tools, and task, growing 1,500 tokens per step, 500 output tokens per step) with one call on 12,000 input tokens and 800 output tokens, both at Claude Opus 5.5's list prices on the review date ($4 and $20 per million input and output tokens). The loop's input grows quadratically in the number of steps because every call resends everything before it.
+</PyRunner>
+
+<Listen>
+## What a loop costs, and how long it takes
+
+Run the calculator and the loop costs about $2.14 against about $0.064 for the single call, roughly 33 times as much, before a single retry. The structure matters more than the exact numbers. A stateless API means each step resends the whole history, so total input tokens are a sum of a growing sequence: n times the base plus the growth rate times n(n minus 1)/2. Doubling the number of steps roughly quadruples the growth term. Prompt caching changes the price of that resent prefix substantially (on Claude Opus 5.5, cache hits are priced at 5% of base input, per Anthropic's pricing page today), and you should always use it in a loop, but it doesn't change the fact that each step adds context the model must read, and long contexts carry their own quality and limit problems (Studio 1, lesson 1).
+
+Anthropic's multi-agent research post gives production figures in the same direction: in their data, agents used about four times as many tokens as chat interactions, and multi-agent systems about fifteen times. They concluded multi-agent systems need tasks valuable enough to pay for that.
+
+Latency compounds too. Model calls in a loop are sequential by nature: step 5 needs step 4's observation. If each call takes several seconds (more when the model thinks hard), twenty steps take minutes. That rules out agents for anything a user waits on synchronously, and it shapes the product: progress updates, background jobs, and notifications instead of a spinner.
+
+Kapoor and colleagues make the evaluation version of this point in "AI Agents That Matter" (2024): agent benchmarks that report accuracy alone have rewarded needlessly complex and costly systems. They argue for evaluating cost and accuracy jointly, and for comparing against simple baselines. For your team, that means every agent proposal should come with the cost per completed task, not per call, and a comparison with the simplest alternative on the same eval.
+</Listen>
+
+<Listen>
+## What the measurements say about current agents
+
+Three lines of published evidence are worth knowing, each with its limits.
+
+**Time horizons.** METR (Kwa and colleagues, 2025) proposed measuring agents by the length of tasks, in human expert time, that they complete with 50% success. They timed skilled people on software and research tasks, then fit each model's success rate against task length. At publication, Claude 3.7 Sonnet's 50% horizon was around 50 minutes, and frontier horizons had been doubling roughly every seven months since 2019, possibly faster in 2024. METR's post adds that models of the time succeeded nearly always on tasks under about four minutes and under 10% of the time on tasks over about four hours. METR has published updated measurements since; check their site for current figures rather than relying on these.
+
+Toby Ord (May 2025) noticed that METR's curves are roughly what a **constant hazard rate** would give: a fixed chance of failure per minute of task, so success decays like a half-life, S(t) = 0.5 to the power t over T50. That is the compounding model in continuous time, and it predicts the horizon at success level q is T50 times ln q over ln 0.5: about a third of T50 at 80%, and about 1/70 at 99%. Ord's own 2026 update notes later analysis suggesting hazard rates decline over the course of a task, so treat the half-life as a first approximation. Either way, the lesson for production is the same: the task length an agent handles at the reliability you need is much shorter than its headline horizon.
+
+**Reliability across trials.** tau-bench (Yao and colleagues, 2024), which you met in Studio 3, simulates customer-service conversations and measures pass^k, the chance that all k attempts at a task succeed. At publication, even strong function-calling agents succeeded on fewer than half the tasks, and pass^8 in the retail domain was below 25%. Every user is a new trial, so pass^k is closer to what customers experience than a single-run score.
+
+**Real work.** METR's randomized trial (Becker and colleagues, 2025) had 16 experienced open-source developers complete 246 real tasks in their own repositories, with AI tools allowed or disallowed at random. With early-2025 tools allowed, tasks took 19% longer, while the developers believed AI had sped them up by about 20%. The authors caution against generalizing: a small sample of experts in large, familiar codebases, one period of tools, and METR has since published an update on later tools. The finding worth keeping is methodological: perceived speedups are not measured ones.
+</Listen>
+
+<Callout type="claim" title="AI agents will join the workforce in 2025 (Sam Altman, January 2025)">
+In his post [Reflections](https://blog.samaltman.com/reflections), written in early January 2025, OpenAI's CEO said that in 2025 we may see the first AI agents "join the workforce" and materially change the output of companies. **Evidence for:** METR's measurements show agents' task horizons growing quickly and steadily on software tasks, and Anthropic's June 2025 research-system post describes agents doing multi-step work in a shipped product, consistent with "join the workforce" in a narrow sense. **Evidence against, or limits:** published measurements of real productivity are mixed, with METR's 2025 trial finding experienced developers slower, not faster, with AI tools; tau-bench shows consistency across repeated trials lagging well behind single-run success; and "materially change the output of companies" is a claim about firm-level output that none of the sources in this lesson measures. **How to read it:** a forecast from someone with a commercial stake, partly borne out for coding, not yet shown for output broadly. For your team, the question is not whether agents are joining the workforce in general, but whether one passes the four questions for a specific task, measured on your eval.
+</Callout>
+
+<Listen>
+## Debugging is the hidden cost
+
+A workflow fails at a step you can name. An agent fails along a trajectory: a sequence of choices, each reasonable-looking, that ends somewhere wrong. Anthropic's multi-agent post describes the problem from production: agents make dynamic decisions and are non-deterministic between runs even with identical prompts, so a user's report that the agent "didn't find obvious information" can't be reproduced by rerunning it. Small changes can cascade into large behavioral changes, and one failed step can send an agent down an entirely different path. Their answer was engineering: full production tracing of agent decisions, the ability to resume from the point of failure rather than restart, and careful rollout of changes so in-flight agents weren't broken.
+
+Count that work in your estimate. An agent you can operate needs trace logging of every model call and tool call, trajectory-level evals with repeated trials (Studio 3, lesson 11), budgets, and someone who reads transcripts. A workflow needs a log line per step and a unit test per branch. If the task doesn't need the agent's flexibility, that operational cost buys nothing.
+</Listen>
+
+<Listen>
+## The alternatives that usually win
+
+When the four questions say no, or say "not yet", pick from these, simplest first.
+
+**Deterministic code.** If part of the task is parsing, lookup, arithmetic, date resolution, or formatting, do it in code. It is free, instant, and right every time. The best agent designs push everything deterministic out of the model, as the invoice example in the knowledge check below shows.
+
+**A single call with better context.** Many "we need an agent" proposals are really "the model lacks information". Supply it: retrieve the relevant documents (Studio 2), include a few worked examples, put the facts in the prompt, and ask for structured output you can validate. Anthropic's post makes this the default starting point.
+
+**A workflow.** If the task has steps, a chain with gates, a router, or an evaluator-optimizer loop gives you most of the benefit with control you can test. The lab this week builds one.
+
+**An agent with a narrow scope.** If the task really is open-ended, shrink it: read-only tools first, a strict step and cost budget, a human approval on every write, and a workflow around it that handles the common cases. Grow its autonomy as evals and transcripts earn it.
+
+Notice what the list has in common. Each option moves a decision from the model to something you can verify. That is the habit this week is meant to build.
+</Listen>
+
+<Callout type="pitfall" title="Reporting cost per call instead of cost per completed task">
+Agent costs look small per call. The number that matters is cost per **successfully completed** task: total spend across all steps, retries, and failed runs, divided by the tasks that actually finished correctly. A loop that costs $2 per attempt and succeeds 50% of the time costs $4 per success, before anyone reviews the failures. Compare that number with the simplest alternative on the same eval, and with the cost of a person doing the task.
+</Callout>
+
+<GoDeeper title="Making the hazard model precise">
+Let the agent's chance of failing in a small interval of task time dt be h dt, with h constant. Then survival S solves S' = minus h S, so S(t) = e to the minus h t, and the 50% horizon is T50 = ln 2 over h. For any success level q, the horizon is T_q = minus ln q over h = T50 times ln q over ln 0.5. That gives T80 at about 0.32 T50 and T99 at about 0.0145 T50. If instead the hazard declines over the task (a Weibull model with shape below 1), long tasks are relatively less hopeless than the exponential predicts, which is the direction of the later analysis Ord cites. A useful exercise: given a model's measured T50 and T80, estimate the Weibull shape parameter k from T80 over T50 equal to (ln 0.8 over ln 0.5) to the power 1/k, and see how sensitive T99 is to k. METR's paper discusses its own curve-fitting choices and robustness checks; the GoDeeper point is that the reliability you need determines which part of the curve you care about, and the tail is where model assumptions matter most.
+</GoDeeper>
+
+<Listen>
+## Bringing it together
+
+The case against agents by default rests on four facts you can now compute or cite. Success compounds across steps, so long tasks need very high per-step reliability, unless errors are detectable and recoverable. Loops cost more than their per-call price suggests, because context is resent and grows. Trajectories are hard to debug and need real operational investment. And published measurements, read carefully, show capability rising fast on software tasks while consistency and real-world gains remain open questions.
+
+None of that says never. It says: start with code and a single call, add workflow structure where measurement shows a gap, and give the model the loop only for tasks that are complex, valuable, viable, and verifiable. The lab puts this into practice with a status-update pipeline built entirely from workflows, with tests for every branch.
+</Listen>

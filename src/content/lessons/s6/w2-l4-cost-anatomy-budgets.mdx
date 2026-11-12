@@ -1,0 +1,410 @@
+---
+id: s6-w2-l4
+studio: s6
+week: 2
+order: 4
+title: Cost anatomy and budgets
+summary: Cost per completed task instead of cost per request, where the tokens in a real system go, how to measure spend from the usage fields, budgets and alerts that catch problems early, and the unit economics a product leader should be able to present.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Define cost per completed task and explain why it differs from cost per request or per token
+  - Break a request's bill into system prompt, tool definitions, history, tool results, thinking, and visible output, and explain why agent loops grow roughly quadratically
+  - Compute the cost of a request from the four usage meters, pricing cache writes and reads correctly
+  - Design layered budgets and alerts (per response, per task, per workspace) and say what each one can and cannot stop
+  - Turn per-task cost into cost per user per month, including the distribution across users, and present it with its assumptions
+sources:
+  - { id: claude-cost-intelligence-docs, use: summarized, where: "Cost per completed task, pricing the tail, max_tokens as a backstop, budgets and spend limits" }
+  - { id: claude-pricing-docs, use: summarized, where: "Model pricing, cache multipliers, tool use system prompt tokens" }
+  - { id: claude-prompt-caching-docs, use: summarized, where: "Usage fields; total input is the sum of the three input meters" }
+  - { id: claude-thinking-docs, use: summarized, where: "Thinking billed as output tokens even when not displayed" }
+  - { id: claude-token-counting-docs, use: summarized }
+  - { id: claude-usage-cost-api-docs, use: summarized, where: "Usage and cost report endpoints, grouping, data freshness" }
+  - { id: claude-task-budgets-docs, use: linked }
+  - { id: claude-cost-cookbook, use: linked }
+  - { id: openai-prompt-caching-guide, use: summarized, where: "cached_tokens usage field" }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 10, AI engineering architecture and user feedback" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Two configurations handle the same 100 support tickets. Config A costs $0.04 per request and averages 3
+      requests per ticket, resolving 90 tickets. Config B costs $0.09 per request and averages 1.5 requests per ticket,
+      resolving 95. Which is cheaper per resolved ticket?
+    options:
+      - id: a
+        text: Config A, because each request costs less than half as much.
+        rationale: Per-request price ignores how many requests a ticket takes and how many tickets end unresolved.
+      - id: b
+        text: Config B, at about $0.142 per resolved ticket versus about $0.133 for A.
+        rationale: Check the arithmetic. A spends 100 x 3 x 0.04 = $12 for 90 resolved, about $0.133. B spends 100 x 1.5 x 0.09 = $13.50 for 95, about $0.142.
+      - id: c
+        text: Config A, at about $0.133 per resolved ticket versus about $0.142 for B, though the gap is small enough that the five extra resolutions B buys may be worth more than the difference.
+        correct: true
+        rationale: Yes. Divide total spend by completed tasks. A is slightly cheaper per completion, and the decision then turns on what an unresolved ticket costs the business.
+    explanation: >-
+      Cost per completed task is total spend (including retries and failures) divided by tasks that succeeded. Here the
+      cheaper request is also slightly cheaper per completion, but not by the factor its sticker price suggests, and B
+      resolves more tickets. Put the cost of a failure (an escalation to a human, say) into the comparison and the
+      answer can flip.
+  - id: kc2
+    type: predict-output
+    prompt: A response comes back with this usage. What does the script print?
+    code: |
+      usage = {"input_tokens": 50, "cache_creation_input_tokens": 0,
+               "cache_read_input_tokens": 12000, "output_tokens": 400}
+      total_input = (usage["input_tokens"] + usage["cache_creation_input_tokens"]
+                     + usage["cache_read_input_tokens"])
+      print(total_input, round(usage["cache_read_input_tokens"] / total_input, 3))
+    options:
+      - id: a
+        text: "`50 0.0`"
+        rationale: "`input_tokens` is only the uncached remainder after the last breakpoint, not the prompt size."
+      - id: b
+        text: "`12050 0.996`"
+        correct: true
+        rationale: The prompt was 12,050 tokens and almost all of it was read from cache.
+      - id: c
+        text: "`12450 0.964`"
+        rationale: Output tokens are not part of the prompt.
+    explanation: >-
+      A common dashboard bug is charting `input_tokens` as "prompt size" and concluding the prompts are tiny. On the
+      Claude API the prompt is the sum of three meters, each priced differently. The fraction read from cache is the
+      number to watch for caching health.
+  - id: kc3
+    type: multi
+    prompt: Which of these are billed as output tokens on the Claude API? Select all that apply.
+    options:
+      - id: a
+        text: The visible text of the answer
+        correct: true
+      - id: b
+        text: Thinking tokens, even when the thinking display is omitted
+        correct: true
+      - id: c
+        text: The arguments the model writes in a tool call
+        correct: true
+      - id: d
+        text: The tool result your code sends back on the next turn
+        rationale: Tool results are content you send, so they are input tokens on the next request (and every request after it).
+    explanation: >-
+      Everything the model generates is output: text, thinking, and tool-call arguments. Everything you send is input,
+      including tool results and all the history you resend. That is why a chatty tool loop is expensive twice: the
+      model writes the call (output) and then every later turn rereads the result (input).
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The unit is a completed task
+
+Week 1 put your service into production. This week is about what it costs to run and how long people wait. Start with the unit of measure, because the wrong unit leads to the wrong decision.
+
+Per-token prices are what the pricing page shows, and per-request cost is what a log line shows. Neither is what the business pays for. The business pays for **completed tasks**: a ticket resolved, a document summarized correctly, a pull request that passes review. Anthropic's cost guidance makes this its organizing idea: optimize cost per completed task, not per token. A model with a higher sticker price can be the cheaper choice if it finishes in fewer turns, and a cheaper model that fails still bills its tokens, then the retry, then whatever the failure costs downstream.
+
+The definition is simple and worth writing down for your team:
+
+> cost per completed task = total spend on all attempts, including retries and failed tasks, divided by the number of tasks that met the quality bar
+
+Two consequences follow. First, you can't compute it without an outcome check. A log of tokens tells you spend; only your eval or a production signal (resolved, accepted, not reopened) tells you completion. Second, cost and quality become one number you can compare across configurations. Anthropic's published runs show why that matters: on one coding benchmark, Claude Sonnet 5.5 at high effort and Claude Opus 5.5 at low effort solved about the same share of tasks, with the Opus configuration costing about 7 percent more per solved task, even though Opus's per-token prices are twice Sonnet's. Per-token prices alone would have predicted a much bigger gap.
+</Listen>
+
+<Listen>
+## Where the tokens go
+
+Open any request your system sends and sort its tokens into six buckets. Each one has a different fix.
+
+1. **System prompt.** Instructions, policies, examples. Stable across requests, so it is the natural thing to cache (lesson 5).
+2. **Tool definitions.** Every schema you attach is input on every call. On top of your schemas, the API adds a tool-use system prompt whenever tools are present; the pricing page lists 286 tokens for the current Opus, Sonnet, and Haiku models with automatic tool choice. Small per request, large across millions.
+3. **History.** The API is stateless, so a multi-turn conversation resends every earlier turn. This is the bucket that surprises people.
+4. **Tool results.** Search hits, file contents, database rows. Sent once, then reread on every later turn of the loop.
+5. **Thinking.** Reasoning tokens are billed as output tokens even when the thinking text isn't returned to you, according to Anthropic's thinking docs. A short visible answer can carry a long, invisible bill.
+6. **Visible output.** The answer, plus any tool-call arguments the model writes.
+
+The history bucket deserves a closer look, because it changes the shape of the cost curve. Suppose an agent's prefix (system prompt plus tools) is P tokens and each turn appends about d tokens (the model's reply and a tool result). Turn k sends P plus k times d. Over n turns the total input is n times P plus d times n(n minus 1)/2, which grows like n squared. Anthropic's cost guide says the same thing in words: a 40-turn task sends its first turn 40 times. Caching doesn't stop the resending, but it reprices the already-seen part at the cache-read rate, which is why caching is the largest single cost lever for agents.
+</Listen>
+
+<Predict
+  title="How much input does a 20-turn loop send?"
+  code={`prefix = 3000      # system prompt + tool definitions
+per_turn = 1500    # each turn appends a reply and a tool result
+turns = 20
+
+total = sum(prefix + per_turn * k for k in range(turns))
+print(total)`}
+  options={["345000", "33000", "60000", "630000"]}
+  answer={0}
+>
+The prefix alone is sent 20 times (60,000 tokens). The growing history adds 1500 times (0 + 1 + ... + 19) = 1500 times 190 = 285,000. Total 345,000 input tokens, more than ten times the 33,000 tokens that were ever new. Without caching, every one of them is billed at the full input rate.
+</Predict>
+
+<Listen>
+## Measure from the usage fields, not from the text
+
+Every Claude response carries a `usage` object, and it is the only ground truth for what a request cost. Four meters matter for pricing:
+
+- `input_tokens`: input processed at the full price. With caching on, this is only the **uncached remainder** after the last cache breakpoint.
+- `cache_creation_input_tokens`: input written to the cache this request, billed at a premium (1.25 times base input for the five-minute lifetime, 2 times for one hour). The `cache_creation` object splits it by lifetime.
+- `cache_read_input_tokens`: input served from the cache, billed at a small fraction of base input (0.05 times on Opus 5.5 and Sonnet 5.5, 0.1 times on most other models, at the time of writing).
+- `output_tokens`: everything the model generated, thinking included.
+
+The prompt-caching docs give the identity to remember: total input equals the three input meters added together. If a dashboard charts `input_tokens` alone, a well-cached agent looks like it sends almost nothing.
+
+Three habits make the numbers trustworthy. **Log every response's usage with a task id**, so you can roll requests up into tasks. **Price from a table with a "checked on" date**, kept in configuration, because prices change. **Reconcile monthly** against the provider's own numbers: Anthropic's Usage and Cost API (which needs an Admin API key) reports usage by model, workspace, API key, and service tier, and costs in USD, typically within about five minutes of a request completing. If your computed total and the provider's total disagree by more than rounding, something in your logging is wrong, and you want to know before finance does.
+
+Other providers expose the same idea with different names. OpenAI reports cached input as `usage.input_tokens_details.cached_tokens`, for example. When you compare providers, normalize every response into one record shape first.
+</Listen>
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+
+def answer(task_id: str, question: str, log: list) -> str:
+    response = client.messages.create(
+        model="claude-sonnet-5-5",
+        max_tokens=16000,
+        system=[{"type": "text", "text": SUPPORT_POLICY, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": question}],
+    )
+    u = response.usage
+    log.append({
+        "task_id": task_id,
+        "model": response.model,
+        "stop_reason": response.stop_reason,
+        "usage": {
+            "input_tokens": u.input_tokens,
+            "cache_creation_input_tokens": u.cache_creation_input_tokens or 0,
+            "cache_read_input_tokens": u.cache_read_input_tokens or 0,
+            "output_tokens": u.output_tokens,
+        },
+    })
+    return next((b.text for b in response.content if b.type == "text"), "")
+```
+
+That record shape is what the next exercise consumes. In production you'd write it to your logging pipeline (week 3) rather than a list, and add the latency timestamps from lesson 6.
+
+<PyRunner
+  client:visible
+  id="s6-w2-cost-per-task"
+  title="Compute cost per completed task from a usage log"
+  starter={`# USD per million tokens, snapshot of the Claude pricing page on 2026-11-11.
+PRICES = {
+    "claude-sonnet-5-5": {"input": 2.00, "cache_write_5m": 2.50, "cache_write_1h": 4.00,
+                          "cache_read": 0.10, "output": 10.00},
+    "claude-haiku-5-5":  {"input": 0.10, "cache_write_5m": 0.125, "cache_write_1h": 0.20,
+                          "cache_read": 0.01, "output": 0.50},  # prompts up to 100K tokens
+}
+
+def request_cost(record, prices=PRICES):
+    """Dollar cost of one logged request.
+
+    record["usage"] has input_tokens, output_tokens, cache_creation_input_tokens,
+    cache_read_input_tokens, and optionally cache_creation =
+    {"ephemeral_5m_input_tokens": ..., "ephemeral_1h_input_tokens": ...}.
+    Price 1h writes at the 1h rate when the breakdown is present; otherwise
+    treat every write as a 5-minute write. Raise KeyError for an unknown model.
+    """
+    # TODO
+    pass
+
+def cost_per_task(records, outcomes, prices=PRICES):
+    """Roll requests up into tasks.
+
+    outcomes maps task_id -> True if the task met the quality bar.
+    Return a dict with:
+      total_cost               every request, including failed tasks
+      completed                number of tasks with outcome True
+      cost_per_request         total_cost / number of requests
+      cost_per_completed_task  total_cost / completed (None if nothing completed)
+      per_task                 {task_id: summed cost}
+    """
+    # TODO
+    pass
+
+LOG = [
+    {"task_id": "t1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 400, "output_tokens": 900,
+        "cache_creation_input_tokens": 6000, "cache_read_input_tokens": 0,
+        "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 6000}}},
+    {"task_id": "t1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 1200, "output_tokens": 650,
+        "cache_creation_input_tokens": 1100, "cache_read_input_tokens": 6000}},
+    {"task_id": "t1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 900, "output_tokens": 1800,
+        "cache_creation_input_tokens": 1850, "cache_read_input_tokens": 7100}},
+    {"task_id": "t2", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 500, "output_tokens": 1200,
+        "cache_creation_input_tokens": 6000, "cache_read_input_tokens": 0}},
+    {"task_id": "t2", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 2500, "output_tokens": 3000,
+        "cache_creation_input_tokens": 1700, "cache_read_input_tokens": 6000}},
+    {"task_id": "t3", "model": "claude-haiku-5-5", "usage": {"input_tokens": 2200, "output_tokens": 300,
+        "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}},
+    {"task_id": "t4", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 300, "output_tokens": 700,
+        "cache_creation_input_tokens": 0, "cache_read_input_tokens": 6000}},
+]
+OUTCOMES = {"t1": True, "t2": False, "t3": True, "t4": True}
+
+report = cost_per_task(LOG, OUTCOMES)
+if report:
+    for key in ("total_cost", "cost_per_request", "cost_per_completed_task"):
+        print(key, round(report[key], 5))
+    print({k: round(v, 5) for k, v in report["per_task"].items()})
+`}
+  tests={`r0 = request_cost(LOG[0])
+assert r0 is not None, "request_cost returned None"
+assert abs(r0 - 0.0338) < 1e-9, f"first record has a 1h write: 400*2 + 6000*4 + 900*10 per million = 0.0338, got {r0}"
+assert abs(request_cost(LOG[1]) - 0.01225) < 1e-9, "no breakdown means every write is a 5-minute write"
+assert abs(request_cost(LOG[5]) - 0.00037) < 1e-9, "Haiku prices come from its own row"
+try:
+    request_cost({"task_id": "x", "model": "gpt-unknown", "usage": LOG[3]["usage"]})
+    raise AssertionError("an unknown model must raise KeyError, never silently cost 0")
+except KeyError:
+    pass
+rep = cost_per_task(LOG, OUTCOMES)
+assert rep is not None, "cost_per_task returned None"
+assert abs(rep["total_cost"] - 0.147605) < 1e-9, "total includes the failed task t2"
+assert rep["completed"] == 3
+assert abs(rep["cost_per_request"] - 0.147605 / 7) < 1e-9
+assert abs(rep["cost_per_completed_task"] - 0.147605 / 3) < 1e-9, "divide all spend by completed tasks"
+assert abs(rep["per_task"]["t2"] - 0.06785) < 1e-9
+none_done = cost_per_task(LOG[:1], {"t1": False})
+assert none_done["cost_per_completed_task"] is None, "no completions: report None, not a division error"`}
+  solution={`def request_cost(record, prices=PRICES):
+    p = prices[record["model"]]
+    u = record["usage"]
+    writes = u.get("cache_creation_input_tokens", 0) or 0
+    breakdown = u.get("cache_creation") or {}
+    w1h = breakdown.get("ephemeral_1h_input_tokens", 0) or 0
+    w5m = writes - w1h
+    total = (u.get("input_tokens", 0) * p["input"]
+             + w5m * p["cache_write_5m"]
+             + w1h * p["cache_write_1h"]
+             + (u.get("cache_read_input_tokens", 0) or 0) * p["cache_read"]
+             + u.get("output_tokens", 0) * p["output"])
+    return total / 1_000_000
+
+def cost_per_task(records, outcomes, prices=PRICES):
+    per_task = {}
+    for rec in records:
+        per_task[rec["task_id"]] = per_task.get(rec["task_id"], 0.0) + request_cost(rec, prices)
+    total = sum(per_task.values())
+    completed = sum(1 for t in per_task if outcomes.get(t))
+    return {
+        "total_cost": total,
+        "completed": completed,
+        "cost_per_request": total / len(records) if records else 0.0,
+        "cost_per_completed_task": total / completed if completed else None,
+        "per_task": per_task,
+    }`}
+>
+Write `request_cost` and `cost_per_task`, then press **Check my answer**. When it passes, compare the two headline numbers: about $0.021 per request, but about $0.049 per completed task. Task t2 burned the most money of any task and produced nothing; a per-request dashboard would never show you that.
+</PyRunner>
+
+<Callout type="pitfall" title="Using max_tokens as a cost control">
+Lowering `max_tokens` feels like a budget, but the model never sees it. When a response hits the cap it is cut off mid-thought with `stop_reason: "max_tokens"`, the truncated tokens are still billed, and the task usually needs a retry. Anthropic's cost guide reports that raising the cap from 16,384 to 64,000 raised one model's solved tasks on an internal benchmark from about 20 percent to about 77 percent without raising cost per solved task. Treat `max_tokens` as a backstop against runaway output, and control length through the prompt (an output shape, an example) and the effort setting instead.
+</Callout>
+
+<Listen>
+## Budgets and alerts, in layers
+
+A budget is only useful if something enforces it and someone hears when it trips. Think in layers, each catching a different failure:
+
+- **Per response: `max_tokens`.** A backstop against a runaway generation, set generously (the cost guide suggests 64,000 for agentic work, with streaming). It caps damage, not spend.
+- **Per task: your own loop guard, plus an advisory budget.** In an agent loop, accumulate the cost of each response as it arrives and stop (or escalate to a person) when a task crosses a dollar limit you chose from the observed distribution, such as a multiple of the 95th percentile. Anthropic also offers task budgets in beta, which show the model a token budget so it can pace itself; the docs describe them as advisory, so keep your hard guard.
+- **Per workspace or key: spend limits.** The Claude Console's workspace spend limit is the final backstop. Separate workspaces or API keys per product or environment are also what make spend attributable, because a shared key blends everyone's traffic.
+- **Alerts on rates, not only totals.** A monthly total alert fires after the damage. Alert on cost per completed task, on the share of tasks hitting your per-task guard, and on the cache read fraction (lesson 5). Each of those moves within hours of a bad deploy.
+
+The checks-and-balances habit applies here too. A budget guard is code that changes what users get, so test it: replay a logged runaway task and confirm the guard stops it, and confirm a normal task doesn't trip it.
+</Listen>
+
+```python
+TASK_BUDGET_USD = 0.50   # chosen from the logged distribution, roughly 3x the p95 task cost
+
+def run_task(task_id, messages, log):
+    spent = 0.0
+    for turn in range(MAX_TURNS):
+        response = call_model(messages)          # your existing loop step
+        record = to_record(task_id, response)    # the log shape from earlier
+        log.append(record)
+        spent += request_cost(record)
+        if spent > TASK_BUDGET_USD:
+            return {"status": "budget_exceeded", "spent": spent}   # escalate, don't silently continue
+        if response.stop_reason != "tool_use":
+            return {"status": "done", "spent": spent}
+        messages = append_tool_results(messages, response)
+    return {"status": "turn_limit", "spent": spent}
+```
+
+<Mermaid
+  alt="Flowchart: each API response's usage object is logged with a task id; logs are priced with a dated price table; requests roll up into tasks joined with outcome checks; the result is cost per completed task and its distribution; that feeds three things: a per-task guard in the loop, alerts on rates such as cost per completed task and cache read fraction, and a monthly reconciliation against the provider's usage and cost reports."
+  caption="From usage fields to decisions. The outcome join is what turns spend into cost per completed task."
+  chart={`flowchart LR
+  U["response.usage + task_id"] --> P["Price with a dated table"]
+  P --> T["Roll up per task"]
+  O["Outcome checks (eval or production signal)"] --> T
+  T --> C["Cost per completed task + distribution"]
+  C --> G["Per-task guard in the loop"]
+  C --> A["Alerts on rates"]
+  C --> R["Monthly reconcile vs provider reports"]`}
+/>
+
+<Listen>
+## Unit economics a product leader can defend
+
+Engineering talks in cost per task. Finance and leadership talk in cost per user per month and gross margin. Your job, as the person who understands both, is to connect them without hiding the assumptions.
+
+The core identity is multiplication: **cost per user per month = tasks per user per month times cost per completed task**, plus the costs that aren't tied to a user action (scheduled batch jobs, evaluation runs, retries of failed background work). Then compare it to what a user pays, or to the cost of the human process it replaces.
+
+Three refinements separate a credible number from a slide that falls apart in the first question.
+
+**Show the distribution, not just the mean.** Usage is usually skewed: a few heavy users run many more tasks than the median user, and some tasks are far more expensive than the median task. Anthropic's cost guide makes the task-level version of this point with a striking example, one research run where two problems out of twenty carried 43 percent of the spend. Price the tail. If your plan has a flat price, the heavy tail decides your margin.
+
+**State the volume and mix assumptions.** Tasks per user, the share that hits the expensive path, cache hit rate, and which model each route uses. Each is a lever you can pull later, and each is a risk if it drifts.
+
+**Attach a date and a sensitivity.** Prices change, and new models change the per-task cost (often downward, sometimes not). Show what happens to margin if cost per task rises 50 percent, or if heavy users double.
+</Listen>
+
+<Predict
+  title="Mean versus median cost per user"
+  code={`cost_per_task = 0.05
+# 90 users run 20 tasks a month; 10 heavy users run 300
+tasks = [20] * 90 + [300] * 10
+
+costs = sorted(t * cost_per_task for t in tasks)
+mean = sum(costs) / len(costs)
+median = (costs[49] + costs[50]) / 2
+print(round(mean, 2), round(median, 2))`}
+  options={["2.4 1.0", "1.0 1.0", "2.4 2.4", "15.0 1.0"]}
+  answer={0}
+>
+Mean tasks per user is (90 times 20 plus 10 times 300) / 100 = 48, so the mean cost is $2.40 a month. The median user costs $1.00. If you price a seat at $3 based on the median, you look safe; your heaviest tenth costs $15 each. Present both numbers, and decide whether heavy usage needs a limit or a higher tier.
+</Predict>
+
+<DragOrder
+  client:visible
+  prompt="Order the steps for producing a cost-per-user figure you can defend in a planning review"
+  items={[
+    "Log usage per request with a task id and price it from a dated table",
+    "Join tasks with an outcome check and compute cost per completed task",
+    "Measure tasks per user per month from product analytics, as a distribution",
+    "Multiply, add non-user costs (batch jobs, evals), and compare to price or to the process replaced",
+    "Reconcile the total against the provider's usage and cost reports",
+    "Present mean, median, and heavy-user cost with a sensitivity table and a date",
+  ]}
+  explanation="Measure before you multiply, and reconcile before you present. Every number on the final slide should trace back to logged usage, an outcome check, and a dated price table."
+/>
+
+<GoDeeper title="Counting before you send, and pulling the provider's numbers">
+**Before the request.** The token counting endpoint returns the input-token count for a request (system prompt, tools, images, PDFs) without running the model. The docs say it is free to use, with its own rate limits, and that the count is an estimate that can differ slightly from billing. Two uses in production: an ingestion gate (count an uploaded document, then truncate, summarize, or reject it before it hits the expensive path) and migration planning (count the same prompt under the old and new model, since the docs note that newer models use a tokenizer that produces roughly 30 percent more tokens for the same text than models before Claude Opus 4.7).
+
+**After the fact.** The Usage and Cost API exposes `/v1/organizations/usage_report/messages` (token counts in 1-minute, 1-hour, or 1-day buckets, groupable by model, workspace, API key, service tier, and more) and `/v1/organizations/cost_report` (USD, daily). It needs an Admin API key, not a regular one. The docs mark these endpoints as legacy but supported and point new integrations to the newer Usage and Cost Analytics API, so check the current page before you build on either.
+
+**Further reading.** Anthropic's cost optimization cookbook walks a full audit on a sample agent, and Chip Huyen's *AI Engineering* covers cost as part of the overall architecture and monitoring picture.
+</GoDeeper>
+
+<LabLink path="labs/studio-6/02-cost-latency" title="Lab: measure a baseline, add caching, compare" needs={["Anthropic API key (optional for offline tests)"]} minutes={75}>
+You'll build the usage-to-dollars pipeline from this lesson into a small harness, run a baseline workload against a shared document, then turn on prompt caching and compare cost and latency. Offline tests use recorded-shape usage fixtures, so you can finish the analysis code without a key.
+</LabLink>
+
+<Listen>
+## What to carry forward
+
+Measure in cost per completed task, with failures and retries in the numerator. Know which of the six buckets your tokens land in, and remember that history grows roughly with the square of the turn count. Price from the usage fields, add the three input meters to get prompt size, and reconcile against the provider. Layer your budgets and alert on rates. When you present the numbers, show the distribution and the assumptions. The next lesson pulls the biggest levers: caching, batching, and routing.
+</Listen>

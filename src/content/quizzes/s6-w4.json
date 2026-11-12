@@ -1,0 +1,346 @@
+{
+  "id": "s6-w4",
+  "studio": "s6",
+  "week": 4,
+  "title": "Week 4 quiz: Guardrails and security",
+  "questions": [
+    {
+      "id": "s6w4-q1",
+      "type": "mcq",
+      "prompt": "OpenAI's moderation endpoint returns `flagged`, per-category booleans, and `category_scores`. What do its docs recommend about using the scores?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Block whenever any score exceeds 0.5, the threshold the model was calibrated for.",
+          "rationale": "The docs don't define a universal threshold; you set one for your policy."
+        },
+        {
+          "id": "b",
+          "text": "Treat the scores as signals for your own policy, not an automatic blocking decision, and recalibrate custom thresholds when the model is upgraded.",
+          "rationale": "Yes. Scores can shift between model versions, so thresholds built on them need periodic recalibration.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Ignore the scores and use only `flagged`, because the scores are not stable.",
+          "rationale": "The docs suggest `flagged` as a first pass and the scores for logging, routing, or review, not ignoring them."
+        },
+        {
+          "id": "d",
+          "text": "Use the scores as calibrated probabilities that the content is harmful.",
+          "rationale": "Nothing in the docs promises calibration on your traffic; measure it on your own labels."
+        }
+      ],
+      "explanation": "Any classifier you don't control is a moving dependency. Pin its version where possible, measure recall and false-positive rate on your labeled set, and rerun that measurement after every upgrade.",
+      "week": 4,
+      "tags": [
+        "guardrails",
+        "moderation"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6w4-q2",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "def luhn_ok(digits):\n    total = 0\n    for i, ch in enumerate(reversed(digits)):\n        d = int(ch)\n        if i % 2 == 1:\n            d *= 2\n            if d > 9:\n                d -= 9\n        total += d\n    return total % 10 == 0\n\nprint(luhn_ok(\"4242424242424242\"), luhn_ok(\"4242424242424241\"))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`False True`",
+          "rationale": "Reversed. Changing the last digit by one breaks the checksum of a valid number."
+        },
+        {
+          "id": "b",
+          "text": "`True True`",
+          "rationale": "A single-digit change always changes the sum mod 10, so both can't pass."
+        },
+        {
+          "id": "c",
+          "text": "`True False`",
+          "rationale": "Yes. The first is a standard test card number that passes Luhn; changing its check digit makes it fail.",
+          "correct": true
+        }
+      ],
+      "explanation": "The Luhn check is why a PII detector can tell a 16-digit card number from a 16-digit order id: requiring a valid checksum cuts false positives on long numbers that aren't cards. It's cheap, deterministic, and exactly the kind of check to run before any model sees the text.",
+      "week": 4,
+      "tags": [
+        "pii",
+        "guardrails"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w4-q3",
+      "type": "code-reading",
+      "prompt": "This output guard is meant to keep only links to the company's help site. Which URL does it wrongly allow?",
+      "code": "ALLOWED = \"help.northwind.example\"\n\ndef link_ok(url):\n    return url.startswith(\"https://\") and ALLOWED in url",
+      "options": [
+        {
+          "id": "a",
+          "text": "`http://help.northwind.example/returns`",
+          "rationale": "It fails the https check, so it's correctly rejected."
+        },
+        {
+          "id": "b",
+          "text": "`https://help.northwind.example.evil.test/login`",
+          "rationale": "Yes. The allowed name appears as a substring of an attacker's hostname, so the substring check passes it.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`https://help.northwind.example/returns`",
+          "rationale": "That's a legitimate link and should be allowed."
+        },
+        {
+          "id": "d",
+          "text": "`javascript:alert(1)`",
+          "rationale": "It fails the https prefix check."
+        }
+      ],
+      "explanation": "Parse the URL and compare the hostname exactly (or as a subdomain with a leading dot). Substring checks also pass `https://evil.test/?q=help.northwind.example`. This is OWASP LLM05 territory: model output is untrusted, including the links it writes.",
+      "week": 4,
+      "tags": [
+        "output-handling",
+        "security"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w4-q4",
+      "type": "scenario",
+      "prompt": "A vendor's prompt-injection classifier blocks 98% of your red-team attacks. On 500 labeled real support messages it also blocks 60 (12%). The launch is next week. What do you do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ship it as a blocking guard; security matters more than convenience.",
+          "rationale": "Blocking one real customer in eight is a serious product failure, and it will push users to rephrase until something gets through anyway."
+        },
+        {
+          "id": "b",
+          "text": "Drop it; a guard with false positives is worse than none.",
+          "rationale": "Too strong. A 98% detector is valuable if you use it where its errors are affordable."
+        },
+        {
+          "id": "c",
+          "text": "Pick a threshold from your labeled data that meets a false-positive budget, run it in annotate-only mode on traffic to confirm, and send borderline scores to review or a softer response instead of a hard block.",
+          "rationale": "Yes. Use the scores, measure both error rates at each threshold, and design what happens to the uncertain middle.",
+          "correct": true
+        }
+      ],
+      "explanation": "A guard is a classifier, so choose its operating point from labeled data and a written false-positive budget. Annotate-only (log, don't block) modes let you measure on real traffic before a guard can hurt anyone, and the remaining protection should come from limiting what an injection could do.",
+      "week": 4,
+      "tags": [
+        "guardrails",
+        "evaluation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w4-q5",
+      "type": "multi",
+      "prompt": "Your team wants to add a public MCP server for the ticketing system. Which controls follow the MCP security guidance and supply chain practice? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Review and pin the server's version, as you would any dependency",
+          "rationale": "Yes. A server is code you run; pin it and review updates.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Run it sandboxed with minimal default file system and network access",
+          "rationale": "Yes. The spec recommends sandboxing with minimal privileges.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Give it a narrowly scoped credential for only the operations the assistant needs",
+          "rationale": "Yes. Scope minimization limits the blast radius of a stolen token or a manipulated model.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Let the server forward the user's existing upstream token to the ticketing API, to avoid a second login",
+          "rationale": "No. That's token passthrough, which the MCP authorization spec forbids."
+        }
+      ],
+      "explanation": "Treat an MCP server like a dependency with shell access: pin it, sandbox it, scope its credentials, and show users the exact command before running a local server. These are OWASP LLM03 (supply chain) and LLM06 (excessive agency) controls at once.",
+      "week": 4,
+      "tags": [
+        "mcp",
+        "supply-chain",
+        "security"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w4-q6",
+      "type": "scenario",
+      "prompt": "Two weeks after launch, the online eval pass rate on sampled traffic falls from 91% to 84% over two days. Error rate and latency are flat, and your team deployed nothing. What is the best first move?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Slice the online eval by the versions recorded on each trace (prompt, model, index) and by traffic segment, find what changed, and roll back that component by flag if it's yours.",
+          "rationale": "Yes. Something changed even if you didn't deploy: an index refresh, the traffic mix, or the provider's model. Traces with versions tell you which.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Wait a week to see if it recovers; the judge is noisy.",
+          "rationale": "Seven points on a few hundred samples is unlikely to be noise, and waiting leaves users with worse answers."
+        },
+        {
+          "id": "c",
+          "text": "Rewrite the prompt to be stricter and redeploy.",
+          "rationale": "Changing something before you know what broke can mask the cause and add a second regression."
+        }
+      ],
+      "explanation": "Silent quality drops are the AI-specific incident that error dashboards miss. The fix starts with knowing what changed, which is why every trace records the active versions, and why rollback must be a config flip.",
+      "week": 4,
+      "tags": [
+        "incident-response",
+        "observability"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w4-q7",
+      "type": "predict-output",
+      "prompt": "A canary gets 10% of traffic and fails 10% of its requests. The control fails 1%. What overall failure rate (in percent) does the whole-service dashboard show?",
+      "code": "share, canary, control = 0.10, 0.10, 0.01\nprint(round((share * canary + (1 - share) * control) * 100, 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`10.0`",
+          "rationale": "That's the canary alone."
+        },
+        {
+          "id": "b",
+          "text": "`5.5`",
+          "rationale": "That's an unweighted average of the two rates."
+        },
+        {
+          "id": "c",
+          "text": "`1.9`",
+          "rationale": "Yes. 0.1 times 0.1 is 0.01, plus 0.9 times 0.01 is 0.009, for 1.9 percent.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "`1.0`",
+          "rationale": "That ignores the canary's extra failures."
+        }
+      ],
+      "explanation": "A canary failing ten times as often as control nearly doubles the blended rate, which on a busy graph can look like ordinary variation. Compare canary and control side by side, as the SRE workbook recommends.",
+      "week": 4,
+      "tags": [
+        "rollout"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6w4-q8",
+      "type": "mcq",
+      "prompt": "You plant a random canary string in your system prompt and block any output that contains it. What does this check catch, and what doesn't it catch?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It catches verbatim leaks of the prompt, but not paraphrased summaries of the instructions.",
+          "rationale": "Yes. That's why the real control is keeping secrets and authorization logic out of the prompt.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "It prevents prompt injection, because the model sees the canary and becomes more careful.",
+          "rationale": "A canary is a detector on output, not a defense against injection."
+        },
+        {
+          "id": "c",
+          "text": "It catches every leak, including paraphrases, because the model must include the canary to describe its instructions.",
+          "rationale": "A model can describe its instructions without repeating any particular string."
+        },
+        {
+          "id": "d",
+          "text": "Nothing useful; Anthropic recommends against output filtering for leaks.",
+          "rationale": "Anthropic's guidance recommends post-processing outputs to catch leaks, and warns against elaborate leak-proofing prompts instead."
+        }
+      ],
+      "explanation": "Canary checks are cheap and exact, so run them on every response. Pair them with the OWASP LLM07 principle: assume the prompt can be read, and put nothing in it you couldn't publish.",
+      "week": 4,
+      "tags": [
+        "prompt-leakage",
+        "guardrails"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w4-q9",
+      "type": "code-reading",
+      "prompt": "What is the most important problem with this input guard?",
+      "code": "def input_guard(text, classifier):\n    label = classifier(text)            # small model from another provider\n    if label in (\"off_topic\", \"unsafe\"):\n        return \"block\", text\n    safe_text = redact(text)\n    if injection_signals(text):\n        return \"block\", safe_text\n    return \"allow\", safe_text",
+      "options": [
+        {
+          "id": "a",
+          "text": "It runs the injection heuristics on the raw text instead of the redacted text.",
+          "rationale": "Running pattern rules on the original text is fine; they're local code."
+        },
+        {
+          "id": "b",
+          "text": "It returns the redacted text to the caller.",
+          "rationale": "Sending redacted text to the main model is the intended behavior."
+        },
+        {
+          "id": "c",
+          "text": "The classifier receives the raw text, so personal data goes to another provider before redaction, and the cheap local checks run after the slower model call.",
+          "rationale": "Yes. Redact first, run free deterministic checks before paid ones, and give the classifier only redacted text.",
+          "correct": true
+        }
+      ],
+      "explanation": "Order matters in a guard pipeline: deterministic, local, free checks first, redaction before anything leaves your service, and model-based checks last. The same order cuts cost, because blocked requests never reach the paid classifier.",
+      "week": 4,
+      "tags": [
+        "guardrails",
+        "pii"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w4-q10",
+      "type": "multi",
+      "prompt": "Google's SRE book recommends agreeing on postmortem triggers in advance. Which of these are among its examples? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Any data loss",
+          "rationale": "Yes, listed as a trigger.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "On-call intervention, such as a rollback or rerouting traffic",
+          "rationale": "Yes, listed as a trigger.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "A monitoring failure that meant the problem was found by hand",
+          "rationale": "Yes, listed as a trigger.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Only incidents whose root cause was a code change by a named engineer",
+          "rationale": "No. Postmortems are blameless and triggered by impact, not by who made a change."
+        }
+      ],
+      "explanation": "For LLM systems, add AI-specific triggers to the list: a harmful output that reached a user, a guard bypass, a refusal-rate spike, or a spend alert. Each postmortem should leave behind a new test, a new signal, and a fixed control.",
+      "week": 4,
+      "tags": [
+        "incident-response",
+        "postmortem"
+      ],
+      "difficulty": 1
+    }
+  ]
+}

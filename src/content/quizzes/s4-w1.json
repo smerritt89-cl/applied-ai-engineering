@@ -1,0 +1,352 @@
+{
+  "id": "s4-w1",
+  "studio": "s4",
+  "week": 1,
+  "title": "Week 1 quiz: Workflows and agents",
+  "questions": [
+    {
+      "id": "s4w1-q1",
+      "type": "mcq",
+      "prompt": "In Anthropic's \"Building effective agents\", what distinguishes an agent from a workflow?",
+      "options": [
+        {
+          "id": "a",
+          "text": "An agent uses tools; a workflow does not.",
+          "rationale": "Workflows can call tools at fixed steps. Tool use is a capability of the augmented model, not the dividing line."
+        },
+        {
+          "id": "b",
+          "text": "An agent uses a larger model than a workflow.",
+          "rationale": "Model size has nothing to do with the definition. A router can use a frontier model; an agent can use a small one."
+        },
+        {
+          "id": "c",
+          "text": "In an agent, the model directs its own process and tool use; in a workflow, models and tools follow predefined code paths.",
+          "correct": true,
+          "rationale": "Yes. The question is who chooses the next step: your code or the model."
+        },
+        {
+          "id": "d",
+          "text": "An agent runs for more than one turn; a workflow runs for exactly one.",
+          "rationale": "Prompt chaining is multi-step and still a workflow, because code fixes the sequence."
+        }
+      ],
+      "explanation": "The control-flow definition is useful because it predicts what you must test. If code chooses the path, unit tests and per-step evals cover it. If the model chooses, you need budgets, trajectory evals, and repeated trials.",
+      "week": 1,
+      "tags": [
+        "definitions",
+        "agents"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s4w1-q2",
+      "type": "multi",
+      "prompt": "Which of these are workflows rather than agents, under Anthropic's definition? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "A classifier picks one of four support queues; fixed code handles each queue.",
+          "correct": true,
+          "rationale": "Routing. The model flips a switch your code defined."
+        },
+        {
+          "id": "b",
+          "text": "Three parallel calls review a spec for security, legal, and accessibility; code merges the reviews.",
+          "correct": true,
+          "rationale": "Sectioning. The parts are predefined."
+        },
+        {
+          "id": "c",
+          "text": "A model keeps calling search and read tools until it decides it has enough to answer.",
+          "rationale": "The model controls whether the loop continues. That is an agent."
+        },
+        {
+          "id": "d",
+          "text": "A draft is checked by code and a rubric, then revised, for at most three rounds.",
+          "correct": true,
+          "rationale": "Evaluator-optimizer. Code owns the loop and its limit."
+        }
+      ],
+      "explanation": "Workflows can contain many model decisions. What keeps them workflows is that the set of possible paths, and when the process ends, are fixed in code.",
+      "week": 1,
+      "tags": [
+        "definitions",
+        "patterns"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w1-q3",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "p = 0.98\nfor n in (5, 35):\n    print(n, round(p ** n, 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`5 0.98` then `35 0.98`",
+          "rationale": "Per-step reliability does not carry through unchanged; independent steps multiply."
+        },
+        {
+          "id": "b",
+          "text": "`5 0.9` then `35 0.49`",
+          "correct": true,
+          "rationale": "0.98^5 is about 0.904 and 0.98^35 is about 0.493."
+        },
+        {
+          "id": "c",
+          "text": "`5 0.9` then `35 0.3`",
+          "rationale": "Close on the first, but 0.98^35 is about 0.49, roughly a coin flip."
+        },
+        {
+          "id": "d",
+          "text": "`5 0.1` then `35 0.7`",
+          "rationale": "These look like failure probabilities, and the second is wrong either way."
+        }
+      ],
+      "explanation": "Under independence, success is p^n. A step that works 98% of the time is excellent in isolation and a coin flip over 35 steps. Inverting gives the per-step bar a target needs: T^(1/n).",
+      "week": 1,
+      "tags": [
+        "reliability",
+        "math"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s4w1-q4",
+      "type": "code-reading",
+      "prompt": "This router sends tickets to handlers. Which input causes the most dangerous behavior?",
+      "code": "HANDLERS = {\"billing\": refund_flow, \"bug\": eng_queue, \"other\": human_queue}\n\ndef route(ticket):\n    raw = classify(ticket).lower()\n    for label in HANDLERS:\n        if label in raw:\n            return HANDLERS[label](ticket)\n    return HANDLERS[\"other\"](ticket)",
+      "options": [
+        {
+          "id": "a",
+          "text": "The classifier replies `\"Bug\"`.",
+          "rationale": "Lowercasing handles this, and it routes correctly."
+        },
+        {
+          "id": "b",
+          "text": "The classifier replies `\"not billing, probably a bug\"`.",
+          "correct": true,
+          "rationale": "Substring matching finds \"billing\" first and sends a bug report into the refund flow."
+        },
+        {
+          "id": "c",
+          "text": "The classifier replies `\"other\"`.",
+          "rationale": "That routes to the human queue, which is the intended fallback."
+        }
+      ],
+      "explanation": "Substring matching treats any mention of a label as the label, so hedges and negations misroute, here into the riskiest handler. Parse strictly (normalize, then require an exact known label, or use structured outputs with an enum) and send everything else to the fallback.",
+      "week": 1,
+      "tags": [
+        "routing",
+        "parsing"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w1-q5",
+      "type": "scenario",
+      "prompt": "Your team wants to automate weekly status updates from meeting notes. The steps are always the same: extract decisions and action items, check them against the notes, then write the update for one of three audiences. A colleague proposes a multi-step agent with tools to read notes, search Slack, and draft. What do you recommend?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Build the agent; it will cope with any future changes to the process.",
+          "rationale": "You pay agent cost, latency, and debugging difficulty now for flexibility nobody has asked for."
+        },
+        {
+          "id": "b",
+          "text": "One long prompt that does all three steps, since fewer calls is always cheaper.",
+          "rationale": "Cheaper per run, but you lose the checkpoint where verification happens and the ability to see which step failed."
+        },
+        {
+          "id": "c",
+          "text": "A router for the audience plus a prompt chain with a code gate between extraction and drafting.",
+          "correct": true,
+          "rationale": "Yes. The steps are known, the categories are distinct, and the gate catches unsupported items before they reach prose."
+        },
+        {
+          "id": "d",
+          "text": "Orchestrator-workers, so a model can plan the subtasks each week.",
+          "rationale": "The subtasks never change, so there is nothing for an orchestrator to plan."
+        }
+      ],
+      "explanation": "Match the pattern to the structure of the task. Fixed steps suggest chaining; distinct categories suggest routing. Reserve agents and orchestrators for tasks whose steps or parts can't be known in advance.",
+      "week": 1,
+      "tags": [
+        "pattern-selection",
+        "chaining",
+        "routing"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w1-q6",
+      "type": "mcq",
+      "prompt": "Why does an agent loop's total input-token count grow faster than linearly with the number of steps?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Each call resends the whole history, which grows by each step's observations, so the total is a sum of a growing sequence.",
+          "correct": true,
+          "rationale": "Yes. With base b and growth g per step, n steps send n*b + g*n*(n-1)/2 input tokens."
+        },
+        {
+          "id": "b",
+          "text": "The model's per-token price rises during long sessions.",
+          "rationale": "List prices don't change within a session (some models have a long-prompt tier, but that is a different effect)."
+        },
+        {
+          "id": "c",
+          "text": "Tool definitions are counted twice after the first step.",
+          "rationale": "Tools are sent once per request, like the rest of the prompt. The growth comes from accumulated history."
+        }
+      ],
+      "explanation": "The API is stateless, so every step pays to reread everything before it. Prompt caching lowers the price of the repeated prefix but not the growth in context length, which also affects latency and quality.",
+      "week": 1,
+      "tags": [
+        "cost",
+        "agent-loop"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w1-q7",
+      "type": "predict-output",
+      "prompt": "Using the retry model from lesson 3, what does this print?",
+      "code": "def with_retry(p, detect):\n    return p + (1 - p) * detect * p\n\nprint(round(with_retry(0.8, 1.0), 2), round(with_retry(0.8, 0.25), 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.96 0.84`",
+          "correct": true,
+          "rationale": "0.8 + 0.2·1·0.8 = 0.96; 0.8 + 0.2·0.25·0.8 = 0.84."
+        },
+        {
+          "id": "b",
+          "text": "`1.0 0.85`",
+          "rationale": "A retry can fail too: it succeeds with probability p, not 1."
+        },
+        {
+          "id": "c",
+          "text": "`0.96 0.96`",
+          "rationale": "Only detected failures get retried, so lower detection gives less benefit."
+        },
+        {
+          "id": "d",
+          "text": "`0.8 0.8`",
+          "rationale": "Retrying detected failures does raise per-step success."
+        }
+      ],
+      "explanation": "Recovery is only as good as detection. With perfect detection, one retry cuts the failure rate from 20% to 4%. With 25% detection, it barely moves. Tests, validators, and checkable tool results are what make an agent's retries count.",
+      "week": 1,
+      "tags": [
+        "reliability",
+        "verification"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w1-q8",
+      "type": "scenario",
+      "prompt": "An evaluator-optimizer loop drafts client updates. The same model, with the same system prompt, critiques its own drafts. In a spot check you find that drafts mentioning an internal codename were approved in every round. What is the best next step?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Raise the round limit from 3 to 8 so the critic has more chances.",
+          "rationale": "A critic that can't see the problem won't see it on round 8 either, and you pay for every round."
+        },
+        {
+          "id": "b",
+          "text": "Ask the generator to promise not to use internal terms.",
+          "rationale": "A prompt instruction may help, but it is a request, not a check."
+        },
+        {
+          "id": "c",
+          "text": "Remove the evaluator entirely, since it doesn't work.",
+          "rationale": "Fix the evaluator rather than drop verification. The loop's value depends on it."
+        },
+        {
+          "id": "d",
+          "text": "Add a deterministic check for internal terms before the model evaluator, and test the evaluator on known-bad drafts before trusting the loop.",
+          "correct": true,
+          "rationale": "Yes. Code catches what code can, and an evaluator that approves your known-bad cases is only adding cost."
+        }
+      ],
+      "explanation": "Research on intrinsic self-correction finds models often fail to fix their own errors without external feedback. Ground the evaluator: code checks first, a specific rubric second, and a test set of drafts that should fail.",
+      "week": 1,
+      "tags": [
+        "evaluator-optimizer",
+        "verification"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w1-q9",
+      "type": "multi",
+      "prompt": "Which statements about METR's time-horizon research (Kwa and colleagues, 2025) are accurate? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The 50% time horizon is the length of tasks, in human expert time, that a model completes with 50% success on METR's suite.",
+          "correct": true,
+          "rationale": "That is the definition, from a fitted success-versus-length curve."
+        },
+        {
+          "id": "b",
+          "text": "Frontier horizons had been doubling roughly every seven months since 2019 on their tasks.",
+          "correct": true,
+          "rationale": "That is the headline trend, with a note it may have accelerated in 2024."
+        },
+        {
+          "id": "c",
+          "text": "The study shows agents can do half of all 50-minute office jobs.",
+          "rationale": "The tasks are mainly software and research, and METR names external validity as a key limitation."
+        },
+        {
+          "id": "d",
+          "text": "At a higher reliability threshold such as 80%, the horizon is substantially shorter than at 50%.",
+          "correct": true,
+          "rationale": "Yes. Under Ord's constant-hazard approximation, T80 is about a third of T50."
+        }
+      ],
+      "explanation": "Read time horizons as a careful measurement of a trend on a specific task distribution. Production needs far more than 50% reliability, and that part of the curve is much shorter.",
+      "week": 1,
+      "tags": [
+        "evidence",
+        "reliability"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w1-q10",
+      "type": "code-reading",
+      "prompt": "This orchestrator-workers sketch has a cost-control bug. What is it?",
+      "code": "def review(material):\n    plan = json.loads(ask(f\"Plan subtasks for:\\n{material}\", output_format=PLAN_SCHEMA))\n    with ThreadPoolExecutor() as pool:\n        results = list(pool.map(run_worker, plan[\"subtasks\"]))\n    return ask(\"Synthesize:\\n\" + \"\\n\".join(results))",
+      "options": [
+        {
+          "id": "a",
+          "text": "It runs workers in parallel, which costs more tokens than running them in sequence.",
+          "rationale": "Parallelism changes wall-clock time, not token cost."
+        },
+        {
+          "id": "b",
+          "text": "The plan is never validated, so the model can request any number of subtasks and your code will pay for all of them.",
+          "correct": true,
+          "rationale": "Yes. Check the plan (count, goals, formats) against a cap before spending on workers."
+        },
+        {
+          "id": "c",
+          "text": "Using structured outputs for the plan prevents the model from choosing subtasks.",
+          "rationale": "The schema shapes the plan; the model still chooses its contents."
+        }
+      ],
+      "explanation": "In orchestrator-workers a model makes a planning decision that drives spend. Treat the plan like any other model output: validate it in code before acting on it, cap the number of workers, and give each a specific objective so they don't duplicate work.",
+      "week": 1,
+      "tags": [
+        "orchestrator-workers",
+        "cost"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

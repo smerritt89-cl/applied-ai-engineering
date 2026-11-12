@@ -1,0 +1,354 @@
+---
+id: s6-w3-l7
+studio: s6
+week: 3
+order: 7
+title: Tracing LLM applications
+summary: Traces and spans for multi-step workflows and agents, what to record on every model call, the OpenTelemetry GenAI semantic conventions and their current status, Claude's built-in tracing, and how to choose a tracing tool.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain traces, spans, span context, attributes, and status, and draw the span tree of a multi-step LLM workflow
+  - List what to record on every model call (model, prompt version, tokens, latency, cost, finish reason, tool calls, errors) and why each field earns its place
+  - Instrument a model call with OpenTelemetry using the GenAI semantic conventions, and explain why their Development status means pinning versions
+  - Avoid the two classic tracing errors in LLM systems, double-counted tokens and accidental content capture
+  - Compare tracing tools (Langfuse, Arize Phoenix, LangSmith, and any OTLP backend) on criteria you can test
+sources:
+  - { id: otel-traces-concepts, use: summarized }
+  - { id: otel-sampling-concepts, use: summarized, where: "Head and tail sampling" }
+  - { id: otel-python-instrumentation, use: summarized, where: "Manual instrumentation" }
+  - { id: otel-genai-semconv, use: summarized, where: "Client inference spans, execute tool spans, capturing content" }
+  - { id: otel-semconv-v1-42-release, use: summarized }
+  - { id: otel-genai-blog-2026, use: summarized }
+  - { id: claude-otel-docs, use: summarized, where: "SDK versus API tracing, content modes, counting tokens" }
+  - { id: claude-otel-spans-ref, use: linked }
+  - { id: langfuse-docs, use: summarized }
+  - { id: arize-phoenix-docs, use: summarized }
+  - { id: langsmith-observability-docs, use: summarized }
+  - { id: claude-prompt-caching-docs, use: summarized, where: "Usage fields" }
+  - { id: hamel-evals-faq, use: linked, where: "Looking at traces" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      A user reports that the support assistant took 40 seconds to answer. Your logs show one line per model call
+      with latency, but no link between lines. What should you add first so that this question takes one minute to
+      answer next time?
+    options:
+      - id: a
+        text: A larger log retention window, so you keep more lines.
+        rationale: More unlinked lines don't tell you which of them belong to this request.
+      - id: b
+        text: A trace per request, with a span per step (retrieval, each model call, each tool call) sharing one trace id.
+        correct: true
+        rationale: Yes. The trace groups every step of the request and the span durations show where the 40 seconds went.
+      - id: c
+        text: An LLM judge that scores every answer.
+        rationale: Useful for quality, but it says nothing about where time was spent.
+    explanation: >-
+      Logs answer "what happened in this call." Traces answer "what happened in this request," which is the question
+      users ask. Start with a root span per request and child spans per step; then the slow step is visible.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      What is the status of the OpenTelemetry GenAI semantic conventions at the time of writing, and what follows
+      for your code?
+    options:
+      - id: a
+        text: Stable since 2024, so attribute names will not change.
+        rationale: They are not stable. The status is Development, and they moved to a new repository in 2026.
+      - id: b
+        text: Development status, so names can change; pin the convention and instrumentation versions and test your dashboards when you upgrade.
+        correct: true
+        rationale: Yes. Development means breaking changes are allowed, so treat the attribute names as a dependency.
+      - id: c
+        text: Deprecated in favor of each vendor's own format.
+        rationale: The conventions moved repositories but are actively developed, and vendors such as Anthropic emit them.
+    explanation: >-
+      In June 2026 (semantic conventions v1.42.0) the `gen_ai.*` conventions moved from the core repository to a
+      dedicated one, where they are marked Development. Metric names already differ between an OpenTelemetry blog post
+      from 2026 and the current spec. Anything keyed on these names (queries, dashboards, alerts) can break on upgrade.
+  - id: kc3
+    type: predict-output
+    prompt: >-
+      A Claude request was traced by both the SDK (a CLIENT span) and the API (a SERVER span), and both carry the same
+      usage attributes. What does this print?
+    code: |
+      spans = [
+          {"name": "anthropic.messages.create", "kind": "CLIENT", "out": 180},
+          {"name": "anthropic.messages.create", "kind": "SERVER", "out": 180},
+      ]
+      print(sum(s["out"] for s in spans if s["name"] == "anthropic.messages.create"))
+    options:
+      - id: a
+        text: "`180`"
+        rationale: That's the right answer to "how many output tokens," but not what this code computes.
+      - id: b
+        text: "`360`"
+        correct: true
+        rationale: The filter matches both spans, so the tokens are counted twice.
+      - id: c
+        text: "`0`"
+        rationale: Both spans match the name filter.
+    explanation: >-
+      Anthropic's docs say to sum one source per request: when both exist, sum the API spans, and tell them apart by
+      span kind. The same trap appears whenever you add your own span around a call that an SDK also traces.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Why logs stop being enough
+
+In Studio 1 a request was one model call, and one log line per call told you most of what you needed. The systems you've built since are not like that. A RAG answer is retrieval, maybe reranking, a model call, and a citation check. An agent is a loop: model call, tool call, model call, tool call, until it stops. A single user request can become a dozen operations across your code, a model provider, and a few tools.
+
+When that request is slow, wrong, or expensive, the question you need answered is about the **request**, not any single call. Which step took the time? Which tool returned the bad data? How many model calls did the agent make, and why so many? Separate log lines can hold all the facts and still make these questions slow to answer, because nothing ties the lines of one request together or says which step caused which.
+
+**Tracing** is the standard answer from distributed systems. Every request gets an identifier, every step records its start, end, and outcome under that identifier, and each step points to the step that called it. The result is a tree you can read like a timeline. For LLM systems tracing has a second payoff: the traces you collect are the raw material for error analysis and evals (Studio 3). Hamel Husain and Shreya Shankar's evals FAQ puts reading real traces at the center of error analysis, and you can only read what you recorded.
+</Listen>
+
+<Listen>
+## Traces and spans, precisely
+
+OpenTelemetry (OTel), the vendor-neutral observability standard that most tools now speak, defines the vocabulary.
+
+A **span** is one unit of work: a model call, a tool call, a database query, a whole request. It has a name, a start and end time, **attributes** (key-value metadata such as the model id or token counts), optional **events** (timestamped notes, such as an exception), a **status** (Unset, Ok, or Error), and a **kind** (Client for an outgoing call, Server for an incoming one, Internal for in-process work, plus Producer and Consumer for queued work).
+
+A **trace** is all the spans that share one **trace id**. Each span also has its own **span id** and the id of its **parent**; the span with no parent is the **root**. Together, the trace id and span id form the **span context**, which is what gets passed along when one service calls another, so that the callee's spans join the caller's trace. Across HTTP this travels in the W3C `traceparent` header.
+
+Two consequences matter in practice. First, durations nest: a parent's duration includes its children, so you find where time went by looking for the child with the largest share, and the parent's **self time** (its duration minus its children) is time spent in your own code. Second, the trace id is a join key. Put it on every log record, every eval result, and every user-feedback event, and you can move from a bad thumbs-down to the exact trace that produced it.
+</Listen>
+
+<Mermaid
+  alt="Span tree of one support-agent request. The root span POST /answer lasts 4.2 seconds. Its children, in time order, are: retrieve help articles (0.3 s), chat claude-opus-5-5 (1.8 s, which asks for a tool), execute_tool search_orders (1.2 s), and a second chat claude-opus-5-5 (0.9 s, final answer). A final validate citations span takes 10 milliseconds. Each chat span lists its model, prompt version, input and output tokens, finish reason, and cost."
+  caption="One request, one trace. The tool call, not the model, is the biggest single chunk of time here, which you only see because each step is its own span."
+  chart={`flowchart TD
+  R["POST /answer (root span) 4.2 s"] --> A["retrieve help articles 0.3 s"]
+  R --> C1["chat claude-opus-5-5 1.8 s: prompt answer-v7, 2,400 in / 180 out, finish tool_use, $0.0132"]
+  R --> T["execute_tool search_orders 1.2 s: status OK"]
+  R --> C2["chat claude-opus-5-5 0.9 s: 2,900 in / 120 out, finish end_turn, $0.0140"]
+  R --> V["validate citations 10 ms"]`}
+/>
+
+<Listen>
+## What to record on every model call
+
+The test for a field is simple: will you filter, group, or alert on it, or will you need it to reproduce a problem? For a model call, these pass the test.
+
+- **Model requested and model returned.** They can differ (aliases, fallbacks, provider routing). When quality shifts, the first question is whether the model changed.
+- **Prompt name and version.** Your prompts are code; a version string on every call is what lets you say "quality dropped when triage-v4 shipped." Without it, a regression is a mystery.
+- **Tokens**, split by kind: uncached input, cache reads, cache writes, and output, plus reasoning tokens where the provider reports them. Claude's usage object reports `input_tokens` separately from `cache_read_input_tokens` and `cache_creation_input_tokens`, and each kind has its own price.
+- **Latency**: total duration, plus time to first token for streamed calls, because that's what a user feels.
+- **Cost**, computed by your code from tokens and a versioned price table. Providers don't put a price on each response, and prices change, so the table belongs in version control.
+- **Finish reason** (`end_turn`, `max_tokens`, `tool_use`, `refusal` on Claude; other providers use other names). Truncations and refusals are failures that return HTTP 200.
+- **Tool calls**: the tool name and outcome on a child span, with arguments only if your privacy rules allow (lesson 8).
+- **Errors**: a low-cardinality error type (such as `rate_limit_error` or a timeout), and Error status on the span.
+- **Context ids**: trace id, a pseudonymous user or session id, the feature or route, and the experiment arm if you're running one.
+
+Notice what's missing: the prompt and response text. That's a deliberate default, and the next section explains it.
+</Listen>
+
+<Listen>
+## The GenAI semantic conventions
+
+If every team invents its own attribute names, every tool has to be told what `llm_model` or `modelName` means. OpenTelemetry's **semantic conventions** fix the names. For generative AI they define, among others:
+
+- An inference span named `{gen_ai.operation.name} {gen_ai.request.model}`, such as `chat claude-opus-5-5`, with kind Client.
+- Required `gen_ai.operation.name` and `gen_ai.provider.name`; `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.response.finish_reasons`, `gen_ai.usage.input_tokens`, and `gen_ai.usage.output_tokens` as recommended attributes; `gen_ai.prompt.name` and `gen_ai.prompt.version` for named templates; `error.type` when the call fails.
+- A tool span named `execute_tool {gen_ai.tool.name}`, with kind Internal, and agent spans such as `invoke_agent`.
+
+One detail bites people. The conventions define `gen_ai.usage.input_tokens` to include cached tokens, and record cache reads and writes in separate attributes as well. Claude's own `usage.input_tokens` counts only uncached input. If you copy the provider's field straight into the convention's attribute, every cache hit makes your input counts look smaller than they are.
+
+**Status, verified for this lesson.** The GenAI conventions are marked **Development**, OpenTelemetry's label for conventions that may still change in breaking ways. In June 2026, release v1.42.0 of the core semantic conventions deprecated all `gen_ai.*` definitions there and moved them to a dedicated repository, `semantic-conventions-genai`; the old pages on opentelemetry.io now point to it. Names are still moving: a 2026 OpenTelemetry blog post charts `gen_ai.client.operation.duration`, while the current spec says inference calls should report `gen_ai.client.inference.duration` instead. Treat the names as a versioned dependency: pin your instrumentation and convention versions, and re-test the dashboards and alerts that query them when you upgrade.
+</Listen>
+
+<Callout type="pitfall" title="Content capture is opt-in for a reason">
+The conventions include attributes for the full conversation (`gen_ai.system_instructions`, `gen_ai.input.messages`, `gen_ai.output.messages`), and the spec warns that they are likely to contain sensitive information including personal data. Instrumentations SHOULD NOT capture them by default. The spec lists three patterns: don't record content (the default); record it on spans (suited to pre-production, or when the telemetry store meets your privacy rules); or store it externally and put only a reference on the span, which it recommends for production because the content store can have its own access controls. Turning on a "capture prompts" flag sends every customer message to your tracing vendor, under that vendor's retention. Decide that on purpose (lesson 8).
+</Callout>
+
+Here is a hand-instrumented Claude call using the OpenTelemetry Python API. With only `opentelemetry-api` installed these calls are no-ops; register a tracer provider from `opentelemetry-sdk` to export the spans.
+
+```python
+from anthropic import Anthropic
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
+tracer = trace.get_tracer("support-desk")
+client = Anthropic()
+PROMPT_VERSION = "reply-v7"
+
+def draft_reply(ticket: str) -> str:
+    model = "claude-opus-5-5"
+    with tracer.start_as_current_span(f"chat {model}") as span:
+        span.set_attribute("gen_ai.operation.name", "chat")
+        span.set_attribute("gen_ai.provider.name", "anthropic")
+        span.set_attribute("gen_ai.request.model", model)
+        span.set_attribute("gen_ai.prompt.name", "reply")
+        span.set_attribute("gen_ai.prompt.version", PROMPT_VERSION)
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system="You draft short, polite replies for a human agent to review.",
+                messages=[{"role": "user", "content": ticket}],
+            )
+        except Exception as exc:
+            span.set_attribute("error.type", type(exc).__name__)
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR))
+            raise
+        u = response.usage
+        cache_read = u.cache_read_input_tokens or 0
+        cache_write = u.cache_creation_input_tokens or 0
+        span.set_attribute("gen_ai.response.model", response.model)
+        span.set_attribute("gen_ai.response.finish_reasons", [response.stop_reason])
+        # The convention counts cached tokens as input; Claude's input_tokens does not.
+        span.set_attribute("gen_ai.usage.input_tokens", u.input_tokens + cache_read + cache_write)
+        span.set_attribute("gen_ai.usage.output_tokens", u.output_tokens)
+        return "".join(b.text for b in response.content if b.type == "text")
+```
+
+<Listen>
+## Claude traces itself, and how not to count twice
+
+You may not need to write that wrapper for every call. Anthropic's SDKs and the Claude API can emit OpenTelemetry spans themselves; the feature is in **beta** at the time of writing, so its span names and options can change. There are two halves. **SDK tracing** runs in your process and exports through your own OpenTelemetry setup: register a tracer provider and the SDK's spans appear, nested under whatever span is current. **API tracing** is emitted by Anthropic's servers and delivered to an OTLP endpoint that an organization admin configures; it can see things your process can't, such as each model request inside one API call and the server tools the API ran. Both use the GenAI attribute names, so backends that understand the conventions read them without mapping.
+
+Two of Anthropic's design choices are worth copying in your own instrumentation. Content is off by default: the default mode is "metadata only" (ids, timing, status, token counts), and "full content" is a deliberate switch whose docs remind you that your backend then stores prompts under its own access and retention settings. And the docs spell out how to **count tokens once**. A request traced by both halves has an SDK span (kind Client) and an API span (kind Server) with the same name and overlapping usage; sum one source per request, not every span that carries a token count. The same trap appears when you wrap an SDK-traced call in your own `chat` span: decide which span is the source of truth for cost, and make your dashboard query only that.
+
+Other providers have their own instrumentation, often as OpenTelemetry instrumentation libraries that patch the provider's SDK. Check each provider's current docs, and check that you don't run a patching library and the SDK's built-in tracing at the same time, or every call appears twice.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s6-w3-span-tree"
+  title="Read a trace: tree, self time, and tokens counted once"
+  starter={`SPANS = [
+    {"id": "a", "parent": None, "name": "POST /answer", "kind": "SERVER", "start": 0, "end": 4200},
+    {"id": "b", "parent": "a", "name": "retrieve help articles", "kind": "INTERNAL", "start": 10, "end": 310},
+    {"id": "c", "parent": "a", "name": "chat claude-opus-5-5", "kind": "CLIENT", "start": 320, "end": 2100,
+     "attrs": {"gen_ai.usage.input_tokens": 2400, "gen_ai.usage.output_tokens": 180}},
+    {"id": "d", "parent": "c", "name": "anthropic.messages.create", "kind": "SERVER", "start": 360, "end": 2080,
+     "attrs": {"gen_ai.usage.input_tokens": 2400, "gen_ai.usage.output_tokens": 180}},
+    {"id": "e", "parent": "a", "name": "execute_tool search_orders", "kind": "INTERNAL", "start": 2110, "end": 3300},
+    {"id": "f", "parent": "a", "name": "chat claude-opus-5-5", "kind": "CLIENT", "start": 3310, "end": 4190,
+     "attrs": {"gen_ai.usage.input_tokens": 2900, "gen_ai.usage.output_tokens": 120}},
+    {"id": "g", "parent": "f", "name": "anthropic.messages.create", "kind": "SERVER", "start": 3330, "end": 4170,
+     "attrs": {"gen_ai.usage.input_tokens": 2900, "gen_ai.usage.output_tokens": 120}},
+]
+
+def children(spans, parent_id):
+    """Spans whose parent is parent_id, sorted by start time."""
+    # TODO
+    return []
+
+def render(spans):
+    """One line per span, depth-first from the root, children in start order.
+    Each line: two spaces per depth level, then "name (N ms)" where N = end - start."""
+    # TODO
+    return []
+
+def self_time(spans, span_id):
+    """Duration of the span minus the durations of its direct children (assume children don't overlap)."""
+    # TODO
+    return 0
+
+def total_tokens(spans):
+    """Total input + output tokens, counting each model request ONCE.
+    Rule: count only CLIENT spans that carry usage attributes (the SERVER spans repeat the same request)."""
+    # TODO
+    return 0
+
+def slowest_child(spans, parent_id):
+    """Name of the direct child with the longest duration (None if there are no children)."""
+    # TODO
+    return None
+
+for line in render(SPANS):
+    print(line)
+print("self time of root:", self_time(SPANS, "a"), "ms")
+print("tokens:", total_tokens(SPANS))
+print("slowest step:", slowest_child(SPANS, "a"))
+`}
+  tests={`lines = render(SPANS)
+assert lines, "render returned no lines"
+assert lines[0] == "POST /answer (4200 ms)", "root first, with its duration"
+assert lines[1] == "  retrieve help articles (300 ms)", "children indented two spaces, in start order"
+assert lines[2] == "  chat claude-opus-5-5 (1780 ms)"
+assert lines[3] == "    anthropic.messages.create (1720 ms)", "grandchildren indented four spaces, right after their parent"
+assert len(lines) == 7, "one line per span"
+assert [s["id"] for s in children(SPANS, "a")] == ["b", "c", "e", "f"]
+assert self_time(SPANS, "a") == 4200 - (300 + 1780 + 1190 + 880), "root self time is time in your own code"
+assert self_time(SPANS, "c") == 1780 - 1720, "client span minus the server span: network and SDK overhead"
+assert total_tokens(SPANS) == 2400 + 180 + 2900 + 120, "count each request once: summing every span doubles it"
+assert slowest_child(SPANS, "a") == "chat claude-opus-5-5"
+assert slowest_child(SPANS, "b") is None`}
+  solution={`def children(spans, parent_id):
+    return sorted((s for s in spans if s["parent"] == parent_id), key=lambda s: s["start"])
+
+def render(spans):
+    lines = []
+    def walk(span, depth):
+        lines.append("  " * depth + f"{span['name']} ({span['end'] - span['start']} ms)")
+        for child in children(spans, span["id"]):
+            walk(child, depth + 1)
+    for root in children(spans, None):
+        walk(root, 0)
+    return lines
+
+def self_time(spans, span_id):
+    span = next(s for s in spans if s["id"] == span_id)
+    kids = children(spans, span_id)
+    return (span["end"] - span["start"]) - sum(k["end"] - k["start"] for k in kids)
+
+def total_tokens(spans):
+    total = 0
+    for s in spans:
+        attrs = s.get("attrs", {})
+        if s["kind"] == "CLIENT" and "gen_ai.usage.input_tokens" in attrs:
+            total += attrs["gen_ai.usage.input_tokens"] + attrs.get("gen_ai.usage.output_tokens", 0)
+    return total
+
+def slowest_child(spans, parent_id):
+    kids = children(spans, parent_id)
+    if not kids:
+        return None
+    return max(kids, key=lambda s: s["end"] - s["start"])["name"]`}
+>
+This is the request from the diagram (without the citation check), as a backend would export it, including the server spans that Claude API tracing adds under each client span. Write the five functions, then press **Check my answer**. Two numbers are worth a second look when it passes: the root's self time (50 ms of your own code, so the time is not in your app), and the token total, which is half of what a naive sum over every span gives.
+</PyRunner>
+
+<Listen>
+## Tracing agents
+
+Agents make tracing essential rather than nice to have. The semantic conventions model an agent run as an `invoke_agent` span whose children are `chat` spans for model calls and `execute_tool` spans for tool calls, and the OpenTelemetry team's 2026 walkthrough shows exactly that tree. Three agent questions become easy once you have it. How many iterations did the loop take, and is that number creeping up release over release? Which tool fails or times out most, and does the agent recover or spiral? Where did the context grow: a trace with per-call input tokens shows the moment a large tool result entered the conversation and every later call paid for it.
+
+Record tool spans even for tools that "can't fail." An agent that called the same search tool eight times with slightly different queries is a prompt or tool-description problem, and it looks like nothing at all in a dashboard of model calls alone.
+</Listen>
+
+<Listen>
+## Choosing a tracing tool
+
+You need somewhere to send spans and a way to read them. The choice is less risky than it used to be, because the major LLM tracing tools accept OpenTelemetry data, so instrumentation you write against the OTel API isn't locked to one of them. A few, described from their own documentation:
+
+- **Langfuse** is an open-source platform you can self-host or use as a cloud service. Its data model is traces made of nested observations, plus scores for quality, and it runs evaluations, including LLM-as-judge, on production traces. It accepts OTLP.
+- **Arize Phoenix** is an open-source observability and evaluation tool built on OpenTelemetry and the OpenInference instrumentation. It covers tracing, evaluations with LLM, code, or human graders, datasets and experiments for comparing versions, and prompt management. Arize also sells a separate managed platform (Arize AX).
+- **LangSmith**, from LangChain, works with many frameworks and providers, not only LangChain. It offers dashboards and alerts, online evaluations, and annotation queues for human feedback, with cloud, hybrid, and self-hosted deployment options.
+- **Your existing backend.** Anthropic's docs list many general observability platforms (Datadog, Grafana Cloud, Honeycomb, New Relic, Sentry, and others) that accept these spans over OTLP. If your company already runs one, LLM spans next to your HTTP and database spans is a real advantage.
+
+Decide the way you'd decide on a model: with your own data. Send a week of real traces (with content policy settled first) to two candidates and check what matters to your team: can a reviewer read a full agent trace comfortably, can you filter by prompt version and join user feedback, where is the data stored and for how long, can you self-host if your privacy rules require it, and what does it cost at your span volume.
+</Listen>
+
+<GoDeeper title="Sampling: you may not keep every trace">
+At high volume, storing every trace is expensive, so tracing systems **sample**. OpenTelemetry distinguishes **head sampling**, decided when the trace starts (for example, keep 5 percent of trace ids), from **tail sampling**, decided after seeing most or all of the trace's spans, which can implement rules like "keep every trace with an error or with latency above two seconds." The OTel docs note that head sampling alone can't guarantee you keep every error trace, and that tail sampling is harder to run: it needs stateful components that buffer large volumes, its rules need maintenance, and good options are often vendor-specific.
+
+For LLM systems, two extra considerations. Traffic is usually lower-volume and higher-value per request than typical web traffic, so keeping everything (metadata only) is often affordable, and it makes cost accounting exact. And your online evals and review queues (lesson 9) need a **random** sample that is independent of errors and latency. If you tail-sample "interesting" traces into storage, keep a separate uniform sample, or your quality estimates will be biased toward failures. Also note what Anthropic's docs say about exported spans: delivery is best effort, so for billing-grade usage numbers use the provider's usage and cost reporting, not a sum over spans.
+</GoDeeper>
+
+<LabLink path="labs/studio-6/03-tracing" title="Lab: trace, log, and chart a two-step workflow" needs={["No API key for the offline tests", "opentelemetry-sdk (optional, for the span tests)", "Anthropic API key (optional live run)"]} minutes={75}>
+Instrument a support-desk workflow (triage on Claude Haiku 5.5, a drafted reply on Claude Opus 5.5) with OpenTelemetry spans that follow the GenAI conventions, write one structured JSONL record per call with redacted, opt-in content and a computed cost, and generate a Markdown cost and latency dashboard from a synthetic week of logs. The offline tests check the span tree and attributes, the record schema, error and refusal paths, redaction, and the aggregation. A live run costs a few cents at time of writing.
+</LabLink>
+
+<Listen>
+## What a working team does
+
+Put a root span on every request at the edge of your service, and pass the trace id into every log record and eval result. Record the fields above on every model and tool call, with prompt versions as a first-class attribute. Keep content off spans by default, and settle your content policy before you turn it on. Pick one span type as the source of truth for tokens and cost. Pin your instrumentation versions, because the conventions are still in development. Then use the traces: the next two lessons turn them into logs you can keep safely, and into dashboards, alerts, and online evals that tell you when the system needs a person.
+</Listen>

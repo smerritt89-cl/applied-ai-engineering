@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.344
+The experiment log.
+
+2
+00:00:01.624 --> 00:00:09.795
+Every run of the harness writes one row to an experiment log, and the log is what makes your results reproducible and your write-up honest.
+
+3
+00:00:10.075 --> 00:00:26.203
+A row holds: a run id and timestamp; the git commit; the dataset name and version, and which split; the system configuration (chunker and its parameters, embedding model, retriever, k, reranker, generator model id, effort setting, prompt version);
+
+4
+00:00:26.483 --> 00:00:44.552
+the judge model id and prompt version, with the TPR and TNR used for correction; every metric with its interval and n; total cost and median latency; and a one-line hypothesis written before the run (“a reranker will raise recall@5 without hurting latency much”),
+
+5
+00:00:44.832 --> 00:00:45.984
+plus the outcome.
+
+6
+00:00:46.264 --> 00:00:52.728
+A JSONL file in the repository is enough, with a short script that prints the last few runs as a table.
+
+7
+00:00:53.008 --> 00:00:58.085
+A spreadsheet works too, as long as rows are written by the harness, not typed by hand.
+
+8
+00:00:58.365 --> 00:01:05.256
+The log also protects you from the most common way eval-driven development goes wrong: overfitting to the eval set.
+
+9
+00:01:05.536 --> 00:01:14.795
+If you try twenty variants and keep the best dev-set score, the winning score is biased upward, because some of its margin is luck on those particular questions.
+
+10
+00:01:15.075 --> 00:01:31.843
+Defenses: the held-out set, run rarely; a log that shows how many variants you tried (so the write-up can say so); refreshing the dev set with new production failures so it keeps resembling reality; and reading a sample of the changed outputs for every claimed improvement,
+
+11
+00:01:32.123 --> 00:01:35.707
+to confirm the gain is real behavior and not a judge quirk.

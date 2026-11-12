@@ -1,0 +1,371 @@
+---
+id: s4-w2-l5
+studio: s4
+week: 2
+order: 5
+title: "Context engineering: memory, compaction, and subagents"
+summary: >-
+  What fills the context window over a long task and why more is not better. Context rot, just-in-time
+  retrieval, tool-result clearing, compaction, memory files, and subagents, with Claude's server-side features,
+  the trap of editing history on the client, and how Claude Code itself uses CLAUDE.md, compaction, and subagents.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - List what occupies an agent's context window over a long task and identify which parts grow
+  - Explain context rot and the attention budget, and what the evidence for them does and does not show
+  - Choose between up-front and just-in-time retrieval for a given task
+  - Compare tool-result clearing, compaction, memory files, and subagents, and pick one or a combination for a scenario
+  - Explain why editing old tool results on the client breaks preserved thinking on current Claude models, and what to do instead
+  - Implement a context budgeter that clears or summarizes old tool results to stay under a token budget
+  - Connect these ideas to how Claude Code uses CLAUDE.md, compaction, and subagents
+sources:
+  - { id: anthropic-context-engineering, use: summarized }
+  - { id: chroma-context-rot, use: summarized }
+  - { id: liu-2023-lost-middle, use: summarized }
+  - { id: claude-agent-sdk-loop, use: summarized, where: "The context window; Automatic compaction; Keep context efficient" }
+  - { id: anthropic-agent-sdk-blog, use: summarized, where: "Gather context: agentic search, subagents, compaction" }
+  - { id: claude-context-editing-docs, use: summarized }
+  - { id: claude-compaction-docs, use: summarized }
+  - { id: claude-preserved-thinking-docs, use: summarized }
+  - { id: claude-memory-tool-docs, use: summarized }
+  - { id: claude-prompt-caching-docs, use: summarized }
+  - { id: anthropic-long-running-harnesses, use: summarized, where: "Artifacts: feature list, progress file, git" }
+  - { id: anthropic-multi-agent-research, use: summarized, where: "Token usage; when multi-agent is a poor fit; subagent outputs to a filesystem" }
+  - { id: claude-code-memory-docs, use: summarized }
+  - { id: claude-code-subagents-docs, use: summarized }
+  - { id: yt-anthropic-future-agents, use: embedded, where: "14:35, managing context and memory" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your agent on `claude-opus-5-5` reads many long documents. To save tokens, your harness replaces old
+      `tool_result` contents with a short placeholder before each request, keeping everything else. On a new
+      organization's account, requests start failing with a 400 about an invalid signature in a thinking block.
+      What is the best fix?
+    options:
+      - id: a
+        text: Stop sending thinking blocks back at all, on every request.
+        rationale: That avoids the error but throws away the model's reasoning on every turn and resets caching. It is a one-time recovery, not a design.
+      - id: b
+        text: Move the clearing to the server with context editing (`clear_tool_uses_20250919`) and keep your own history append-only; shorten results when you first create them.
+        correct: true
+        rationale: Yes. The prefix check compares what you sent, so server-side clearing does not count as an edit.
+      - id: c
+        text: Switch to a smaller model, which has a smaller context window and so needs no trimming.
+        rationale: A smaller window makes the problem worse, and the check is about edits, not size.
+    explanation: >-
+      On models with preserved thinking, each thinking block is bound to everything sent before it. Shortening an
+      earlier tool result on the client changes that prefix and invalidates every later thinking block. Server-side
+      context editing and compaction are designed to avoid this. If you must trim on the client, strip the thinking
+      blocks when you do, and accept the loss of that reasoning.
+  - id: kc2
+    type: mcq
+    prompt: Which statement about subagents matches Anthropic's published guidance?
+    options:
+      - id: a
+        text: Subagents always reduce total token use, because each one has a smaller context.
+        rationale: Anthropic's research system reports multi-agent runs using about 15 times the tokens of a chat. Subagents protect the main context; they don't make the work cheaper.
+      - id: b
+        text: Subagents explore in their own context windows and return a condensed result, which keeps the lead agent's context clean; they fit parallel, separable work best.
+        correct: true
+        rationale: Right. The context engineering post describes summaries of about 1,000 to 2,000 tokens returned to a lead agent.
+      - id: c
+        text: Subagents are best for tightly coupled coding tasks where every agent needs the same context.
+        rationale: The research system post names tasks with shared context and many dependencies, including most coding, as poor fits.
+    explanation: >-
+      A subagent is a context-isolation tool. It can spend tens of thousands of tokens exploring and hand back a
+      short answer. That costs more in total, so use it where the isolation or parallelism is worth paying for.
+  - id: kc3
+    type: multi
+    prompt: Which of these persist across separate sessions (not just within one long conversation)? Select all that apply.
+    options:
+      - id: a
+        text: A CLAUDE.md file in your repository
+        correct: true
+        rationale: Claude Code loads it at the start of every session.
+      - id: b
+        text: Files written through Claude's memory tool to storage you control
+        correct: true
+        rationale: The memory tool is client-side; your handler persists the files.
+      - id: c
+        text: A compaction summary inside one conversation
+        rationale: It replaces older turns within that conversation. A new conversation starts without it unless you save it yourself.
+      - id: d
+        text: Tool results cleared by context editing
+        rationale: Clearing removes content from what the model sees. It stores nothing.
+    explanation: >-
+      Clearing and compaction manage one session's window. Memory files, CLAUDE.md, progress logs, and git history
+      survive between sessions. Long-running agents typically use both kinds.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## What fills the window over a long task
+
+Picture the research agent from the lab, twenty steps into a question about a project's launch risks. Its context window now holds:
+
+- the **system prompt** and **tool definitions**, sent on every request;
+- the **task**, the user's original message;
+- every **assistant turn**: text, thinking blocks, and `tool_use` requests;
+- every **tool result**: search hits, document pages, error messages.
+
+The first two are fixed. The last two grow with every step, and tool results usually grow fastest: one document read can be thousands of tokens, and the model rarely needs it again after it has extracted the fact it wanted. The Claude Agent SDK docs make the same observation about Claude Code's own loop: everything accumulates within a session, and large tool outputs consume significant context.
+
+Growth costs you in three ways. Money and latency, because the whole history is resent on every request (prompt caching softens this, since an unchanged prefix is cheaper to read). Hard limits, because even a 1M-token window ends. And quality, which is the subject of the next section, because a model does not use a long context as well as a short one.
+
+**Context engineering** is Anthropic's name for managing all of this. Their September 2025 post defines it as curating and maintaining the whole set of tokens the model sees at each step (instructions, tools, external data, message history), not just writing the first prompt. The guiding principle they give is to find the smallest set of high-signal tokens that makes the desired outcome likely.
+</Listen>
+
+<Listen>
+## Context rot: why more context is not free
+
+The Anthropic post uses two phrases you will hear often. **Context rot**: as the number of tokens grows, the model's ability to recall information from the context declines. **Attention budget**: every token added draws down a finite amount of attention. Their explanation is architectural (in a transformer, every token attends to every other, so relationships grow with the square of the length) plus a training one (models see fewer very long sequences). They describe the decline as gradual, not a cliff.
+
+The best-known measurement is Chroma's July 2025 report "Context Rot," which tested 18 models from several providers. On deliberately simple tasks, performance fell as input length grew. Distractors (text similar to the answer but wrong) made it worse, and so did lower similarity between the question and the answer text. On a long-conversation memory benchmark, models did much better with a focused prompt of a few hundred relevant tokens than with the full history of about 113,000 tokens. Earlier, the 2023 "Lost in the Middle" paper (Liu and colleagues) found that models used information at the start and end of a long context more reliably than information in the middle.
+
+Read the evidence carefully. Chroma is a vector database company, the report is not peer reviewed, and the tasks are synthetic. Models change, and some newer ones handle long inputs better than the ones tested. But the direction is consistent across independent studies and with Anthropic's own guidance, and it predicts what you will see in agent traces: an agent that has read thirty documents starts missing a fact it read in the fifth. The practical rule is not "keep contexts tiny." It is "keep contexts relevant," and measure on your own tasks.
+</Listen>
+
+<Listen>
+## Up front or just in time
+
+There are two ways to get information into the context. **Up front**: retrieve or paste everything that might be relevant before the model starts, the classic RAG pattern from Studio 2. **Just in time**: give the agent lightweight references (file paths, document ids, queries) and tools to load content when it decides it needs it.
+
+Anthropic's context engineering post argues that agents increasingly benefit from just-in-time retrieval, because the agent can follow the trail, use metadata such as file names and folder structure as clues, and keep only what matters. Their Agent SDK post recommends starting with agentic search (letting the agent use tools like grep over files) and adding semantic search only when you need the speed or the variety of queries it handles. The trade-off is real: runtime exploration is slower, and it only works with good tools. An agent with a bad search tool wastes its budget opening the wrong documents.
+
+Most real systems are **hybrid**. Claude Code is the standard example in the post: it loads `CLAUDE.md` files into context at the start, then uses glob and grep to find everything else as it works. You can apply the same split to your own agents. Put in up front the small, stable, always-relevant material (the task, the rules, a map of what exists). Leave the large, variable material (document bodies, logs, query results) behind tools that return small, paginated results.
+
+The post's general advice fits here too: do the simplest thing that works. If your corpus is twenty pages and fits comfortably, paste it in and skip the tools.
+</Listen>
+
+<Listen>
+## Inside one session: clearing and compaction
+
+When a single long session outgrows its useful window, you have two server-side tools on the Claude API, both in beta.
+
+**Tool-result clearing** (context editing, beta header `context-management-2025-06-27`, strategy `clear_tool_uses_20250919`). Once the input passes a trigger (by default 100,000 input tokens), the API clears the oldest tool results, keeps the most recent few (by default 3 tool uses), and replaces each cleared result with placeholder text so the model knows something was removed. You can exclude tools whose results must stay, optionally clear the tool inputs too, and set `clear_at_least` so that clearing happens only when it frees enough tokens to justify breaking the prompt cache. The response reports what was cleared in `context_management.applied_edits`. Anthropic's context engineering post calls tool-result clearing one of the safest, lightest-touch forms of compaction: once a result is deep in the history, the agent rarely needs to see it raw again.
+
+**Compaction** replaces older turns with a summary that Claude writes on the server. The compaction docs now describe three ways to do it: compaction on demand (you request a summary and swap it in), compaction at a token threshold (the API does it inside an ordinary request), and your own summarizer on the client. Each has its own page and beta header, so read the overview before you choose.
+
+The two are complementary. Clearing is mechanical and loses only content the agent can fetch again. Compaction can preserve decisions and open questions in prose, but a summary can drop the one detail a later step needs. Anthropic's advice for writing a compaction prompt is to maximize recall first, then trim for precision.
+
+Both cost you the prompt cache at the point of the edit, so they are worth doing in large steps, not a few tokens at a time.
+</Listen>
+
+<Callout type="pitfall" title="Editing old tool results on the client breaks preserved thinking">
+On current Claude models (including `claude-opus-5-5`, `claude-sonnet-5-5`, and `claude-haiku-5-5`), each thinking block you send back is bound to everything that came before it: the system prompt, the tool list, and every earlier message. The preserved thinking docs list clearing or shortening an earlier `tool_result` on the client as an edit that invalidates every later thinking block. On accounts created on or after August 31, 2026, that request fails with a 400; on some older accounts the invalid blocks are dropped or passed through, depending on the model.
+
+So the obvious client-side trick, "shrink old tool results before each request," is the wrong default for Claude. Prefer, in order: **shorten results when you first create them** (pagination, snippets, size caps); **server-side context editing or compaction**, which the check treats as no edit because it compares what you sent; and, only if you must trim on the client, **strip the thinking blocks** at the same time, accepting the loss of that reasoning. The exercise below builds the client-side mechanism anyway, because you need to understand it, it is how you manage context with providers and open models that lack these features, and the lab pairs it with thinking-block stripping.
+</Callout>
+
+<Mermaid
+  alt="Decision flowchart for managing context. If the material is small, stable, and always relevant, load it up front. Otherwise put it behind tools that return small results. If a single session grows too long, use server-side tool-result clearing for stale tool outputs and compaction when the conversation itself must be summarized. If state must survive across sessions, write memory files or progress logs. If a subtask needs lots of exploration that the main agent does not need to see, delegate it to a subagent that returns a short summary."
+  caption="Which technique for which problem. Long-running agents usually combine several."
+  chart={`flowchart TD
+  Q["What is the context problem?"] --> A{"Small, stable, always relevant?"}
+  A -- "yes" --> U["Load up front: system prompt, CLAUDE.md"]
+  A -- "no" --> J["Just in time: tools with small, paginated results"]
+  Q --> S{"One session too long?"}
+  S -- "stale tool outputs" --> C["Server-side tool-result clearing"]
+  S -- "whole history" --> K["Compaction (summary)"]
+  Q --> X{"Must survive across sessions?"}
+  X -- "yes" --> M["Memory files, progress log, git"]
+  Q --> D{"Big exploration the lead does not need to see?"}
+  D -- "yes" --> SA["Subagent returns a condensed summary"]`}
+/>
+
+<PyRunner
+  client:visible
+  id="s4-w2-context-budgeter"
+  title="Build a context budgeter"
+  starter={`import copy
+import json
+
+PLACEHOLDER = "[cleared to save context: about {tokens} tokens from {tool} (id {id}). Call the tool again if you need it.]"
+
+
+def estimate_tokens(value):
+    """Rough token count: about 4 characters per token (real code would use the
+    provider's token-counting endpoint). Works on strings, dicts, and lists."""
+    if isinstance(value, str):
+        return (len(value) + 3) // 4
+    return estimate_tokens(json.dumps(value, sort_keys=True))
+
+
+def context_tokens(messages):
+    return sum(estimate_tokens(m["content"]) for m in messages)
+
+
+def tool_names(messages):
+    """Map tool_use id -> tool name, from assistant messages. Given to you."""
+    names = {}
+    for m in messages:
+        if m["role"] == "assistant" and isinstance(m["content"], list):
+            for block in m["content"]:
+                if block.get("type") == "tool_use":
+                    names[block["id"]] = block["name"]
+    return names
+
+
+def trim_context(messages, budget, keep_recent=2, summarize=None):
+    """Return (new_messages, report) with the context at or under budget if possible.
+
+    Rules:
+    - Never mutate the input list or its dicts.
+    - If already within budget, change nothing.
+    - Only tool_result blocks may change. Never drop or reorder messages, and never
+      touch text or tool_use blocks, so every tool_use keeps its matching tool_result.
+    - Never touch the newest keep_recent tool results, or ones already cleared
+      (content that starts with "[cleared").
+    - Clear the oldest eligible results first, and stop as soon as you are within budget.
+    - To clear a result, replace its content with summarize(content) if summarize is
+      given, else with PLACEHOLDER filled in (tokens = estimate of the old content).
+
+    report = {"tokens_before": int, "tokens_after": int, "cleared": [tool_use_ids], "over_budget": bool}
+    """
+    # TODO
+    return copy.deepcopy(messages), {"tokens_before": 0, "tokens_after": 0, "cleared": [], "over_budget": False}`}
+  tests={`def history(n, size=400):
+    msgs = [{"role": "user", "content": "Which launch risks are still open?"}]
+    for i in range(1, n + 1):
+        msgs.append({"role": "assistant", "content": [
+            {"type": "text", "text": f"Reading doc {i}."},
+            {"type": "tool_use", "id": f"t{i}", "name": "read_doc", "input": {"doc_id": f"d{i}"}}]})
+        msgs.append({"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": f"t{i}", "content": str(i) * size}]})
+    return msgs
+
+def result_of(msgs, tid):
+    for m in msgs:
+        if isinstance(m["content"], list):
+            for b in m["content"]:
+                if b.get("type") == "tool_result" and b["tool_use_id"] == tid:
+                    return b["content"]
+
+h = history(5)
+total = context_tokens(h)
+out, rep = trim_context(h, budget=total + 10)
+assert out == h and rep["cleared"] == [] and rep["over_budget"] is False, "within budget: change nothing"
+assert rep["tokens_before"] == total == rep["tokens_after"], "report tokens before and after"
+
+snapshot = copy.deepcopy(h)
+out, rep = trim_context(h, budget=total - 50)
+assert h == snapshot, "do not mutate the input"
+assert rep["cleared"] == ["t1"], f"clear only the oldest result when that is enough, got {rep['cleared']}"
+assert result_of(out, "t1").startswith("[cleared") and "read_doc" in result_of(out, "t1") and "t1" in result_of(out, "t1"), "the placeholder should name the tool and the id"
+assert result_of(out, "t2") == "2" * 400, "stop as soon as you are within budget"
+assert rep["tokens_after"] <= total - 50 and rep["tokens_after"] == context_tokens(out)
+
+out, rep = trim_context(h, budget=10)
+assert rep["cleared"] == ["t1", "t2", "t3"], f"keep the newest keep_recent=2 results, got {rep['cleared']}"
+assert result_of(out, "t5") == "5" * 400 and rep["over_budget"] is True, "report over_budget when protected results still exceed it"
+assert len(out) == len(h) and [m["role"] for m in out] == [m["role"] for m in h], "never drop or reorder messages"
+assert out[1]["content"][1] == h[1]["content"][1], "tool_use blocks are untouched"
+
+out2, rep2 = trim_context(out, budget=10)
+assert rep2["cleared"] == [], "already-cleared results are not cleared again"
+
+out, rep = trim_context(h, budget=total - 50, summarize=lambda text: "summary: " + text[:5])
+assert result_of(out, "t1") == "summary: 11111", "use summarize() when it is given"
+
+out, rep = trim_context(h, budget=10, keep_recent=0)
+assert len(rep["cleared"]) == 5, "keep_recent=0 makes every result eligible"`}
+  solution={`def trim_context(messages, budget, keep_recent=2, summarize=None):
+    out = copy.deepcopy(messages)
+    before = context_tokens(out)
+    report = {"tokens_before": before, "tokens_after": before, "cleared": [], "over_budget": False}
+    if before <= budget:
+        return out, report
+    names = tool_names(out)
+    results = [b for m in out if isinstance(m["content"], list)
+               for b in m["content"] if b.get("type") == "tool_result"]
+    eligible = results[:len(results) - keep_recent] if keep_recent else results
+    total = before
+    for block in eligible:
+        if total <= budget:
+            break
+        old = block["content"]
+        if isinstance(old, str) and old.startswith("[cleared"):
+            continue
+        tid = block["tool_use_id"]
+        if summarize is not None:
+            block["content"] = summarize(old)
+        else:
+            block["content"] = PLACEHOLDER.format(tokens=estimate_tokens(old), tool=names.get(tid, "a tool"), id=tid)
+        report["cleared"].append(tid)
+        total = context_tokens(out)
+    report["tokens_after"] = total
+    report["over_budget"] = total > budget
+    return out, report`}
+>
+Implement `trim_context`. It is a small version of what server-side tool-result clearing does: when the estimated context exceeds the budget, clear the oldest tool results first, keep the newest few untouched, and replace each cleared result with a placeholder that tells the model what was removed and how to get it back (or with a summary, if you pass a `summarize` function). It must never break the conversation's structure: same messages, same order, every `tool_use` still paired with its `tool_result`. In the lab you will use the same function inside a real loop and also strip thinking blocks whenever it clears anything, for the reason in the pitfall above.
+</PyRunner>
+
+<Listen>
+## Across sessions: memory files and notes
+
+Clearing and compaction manage one session. Some agents need state that survives the end of a session, a crash, or a context reset. The general pattern Anthropic calls **structured note-taking**: the agent writes notes to storage outside the context window and reads them back later. The context engineering post gives examples from to-do lists to a `NOTES.md` file, and describes Claude playing Pokémon while keeping notes across thousands of game steps, which let it resume after context resets.
+
+Claude's **memory tool** (`memory_20250818`) packages this pattern. It is client-side: Claude requests file operations (view, create, str_replace, insert, delete, rename) under a `/memories` path, and your code performs them against storage you control. When the tool is present, the API adds an instruction telling Claude to check its memory directory before starting and to record progress as it goes, assuming its context might be reset at any moment. The docs put the security burden on you: validate every path so `/memories/../../secrets.env` cannot escape the directory, cap file sizes, keep secrets out, and expire stale files. Context editing pairs with it: as the context nears the clearing threshold, Claude is warned to save what matters to memory before old results are cleared.
+
+You don't need the memory tool to use the idea. Anthropic's post on harnesses for long-running agents used ordinary files: a JSON feature list (they chose JSON because the model was less likely to rewrite it inappropriately than Markdown), a progress log each session appends to, and git commits that let a later session see what changed and revert bad work. Each new session starts by reading the log and running a basic end-to-end check before touching anything.
+
+The checks-and-balances point: memory is model-written text that a later run will trust. Treat it like any other model output. Keep it small and structured, review it now and then, and never let it become the only record of something that matters.
+</Listen>
+
+<Listen>
+## Subagents: isolation, not savings
+
+A **subagent** is a separate agent loop with its own fresh context window. The lead agent hands it a task ("find every open risk in the vendor documents"), the subagent spends as many tokens as it needs searching and reading, and it returns a condensed result. Anthropic's context engineering post describes subagents that may use tens of thousands of tokens exploring and return summaries of about 1,000 to 2,000 tokens. The lead's context grows by the summary, not by the exploration.
+
+Two cautions from Anthropic's multi-agent research post keep this honest. First, cost: they report agents using about four times the tokens of a chat interaction and multi-agent systems about fifteen times, and they say multi-agent setups pay off mainly on valuable tasks with lots of parallelizable, separable work. Second, fit: tasks where every agent needs shared context, or with many dependencies between subtasks, are poor fits, and they name most coding tasks as examples. The same post suggests that subagents write large outputs to a file system and pass back lightweight references, so the lead does not have to copy them through its context.
+
+For model selection, subagents are where cheaper models and lower effort often fit: reading-heavy, well-scoped subtasks can run on a smaller model while the lead stays on the strongest one. Measure it on your tasks before assuming it helps, and remember that a subagent's summary is model output the lead will trust. If the summary is the evidence for a decision, ask the subagent to include the source ids it relied on, and spot-check them.
+</Listen>
+
+<Listen>
+## How Claude Code does all of this
+
+You have used Claude Code for a year, so here is the same machinery in the tool you know.
+
+**CLAUDE.md is the up-front half.** Claude Code loads `CLAUDE.md` files (project, user, and organization scopes) at the start of every session, in full, on every request, where prompt caching keeps the repeat cost down. The docs suggest keeping each file under 200 lines, because longer files cost context and reduce adherence, and moving instructions that apply to only part of a codebase into path-scoped rules under `.claude/rules/`, which load only when Claude works on matching files. `@path` imports help organize a file but do not reduce its cost, because imported files load with it. **Auto memory** is the note-taking half: Claude writes its own `MEMORY.md`, and the first 200 lines or 25KB load each session.
+
+**Glob, grep, and reads are the just-in-time half.** That is why Claude Code can work in a large repository without loading it.
+
+**Compaction happens automatically** near the limit, and you can trigger it with `/compact`. The Agent SDK docs warn that compaction can lose specific instructions from early in a conversation, and recommend putting persistent rules in CLAUDE.md, which is re-injected, rather than in a first message. You can also add a section to CLAUDE.md telling the compactor what to preserve.
+
+**Subagents are the isolation half.** Built-in ones such as Explore (read-only search) and Plan run in their own context windows and return a summary; you can define your own in `.claude/agents/` with a description, an allowed tool list, and a model. A subagent starts fresh and does not see your conversation, so the task you give it must stand on its own.
+
+Practical habits that follow: keep CLAUDE.md short and about rules, not history; send broad searches to a subagent; and start a fresh session for an unrelated task rather than dragging an old context along.
+</Listen>
+
+<Video id="XuvKFsktX0Q" title="Building the future of agents with Claude" channel="Anthropic" minutes={8} start={875} source="https://www.youtube.com/watch?v=XuvKFsktX0Q">
+Start at 14:35, the chapter on managing context and memory with Claude, and watch to about 19:00. Listen for how the speakers connect context editing, memory, and the model's own ability to decide what to keep, and compare it with the decision chart above.
+</Video>
+
+<Callout type="claim" title="Context engineering as the successor to prompt engineering (Anthropic, September 2025)">
+**Claim.** Anthropic's [context engineering post](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) presents context engineering as the natural progression of prompt engineering: as agents run longer, the job shifts from writing one good prompt to curating the whole, changing context at every step.
+
+**Evidence for.** The mechanisms are concrete and measurable: the context-rot studies above show that irrelevant tokens degrade results, and Anthropic's own products (Claude Code, the Agent SDK, Managed Agents) ship compaction, clearing, memory, and subagents as core features. In your traces you can see the effect directly when an agent misses a fact it read many steps earlier.
+
+**Evidence against, or limits.** The post is guidance from a model vendor, not a controlled study, and it reports few numbers. "Prompt engineering" never meant only the first prompt; much of this is good software practice (caching, pagination, logs) under a new name. And the post itself predicts that smarter models will need less prescriptive engineering, so specific techniques may age quickly. **For you:** treat each technique as a hypothesis and keep the ones your evals show help.
+</Callout>
+
+<GoDeeper title="Choosing between the techniques, and testing that context survives">
+Anthropic's post offers a rough mapping: compaction for tasks with lots of back-and-forth conversation, note-taking for iterative work with clear milestones, and multi-agent setups for complex research where parallel exploration pays off. Long-running agents often use all of them.
+
+Whatever you choose, test it the way Studio 3 taught. Take a few real long transcripts, plant or identify facts that a late step needs (an owner's name from step 3, a constraint from the first message), apply your clearing or compaction, and check whether the agent still gets them right. Run the same check after changing your summarization prompt. This is a needle-in-a-haystack test on your own data, which is far more informative than a published benchmark for your use case. Also log what you cleared and when (the API reports `applied_edits`), so that when an answer goes wrong you can see whether the evidence was still in context.
+</GoDeeper>
+
+<DragOrder
+  client:visible
+  prompt="Order these from the cheapest, safest context fix to the most invasive"
+  items={[
+    "Return smaller tool results in the first place (snippets, pagination, size caps)",
+    "Clear stale tool results on the server with context editing",
+    "Compact the conversation into a summary",
+    "Move a whole exploration into a subagent that returns a short report",
+  ]}
+  explanation="Shrinking results at the source costs nothing and loses nothing the agent can't fetch again. Clearing loses only re-fetchable content. Compaction rewrites history into prose and can drop details. A subagent adds a whole extra loop, with its own cost and its own output to verify."
+/>

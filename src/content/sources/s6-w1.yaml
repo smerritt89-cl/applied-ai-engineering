@@ -1,0 +1,194 @@
+# Studio 6, week 1: deployment, streaming, and resilience.
+# Reused from other files (not redefined here): claude-errors-docs, claude-rate-limits-docs, claude-streaming-docs,
+# claude-python-sdk, claude-batch-processing-w4, claude-stop-reasons, aws-backoff-jitter, stripe-idempotency,
+# huyen-ai-engineering, owasp-llm-top10.
+
+# ---------- Anthropic docs (summarize) ----------
+- id: claude-refusals-fallback
+  title: Refusals and fallback
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11. Refusals arrive as normal responses with stop_reason "refusal" and a stop_details category;
+    server-side fallbacks ("default" or an explicit list) under the server-side-fallback-2026-07-01 beta; not on the
+    Batches API; no server-side fallback for Claude Haiku 5.5; retrying a refused request on the same model usually
+    earns another refusal; refusals count against rate limits.
+
+- id: claude-authentication-docs
+  title: Authentication
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/manage-claude/authentication
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11. Key types (personal, service account), expiration, storing keys in a secrets manager,
+    Workload Identity Federation for production workloads, and "Browser-based applications": call the API from your
+    own back end, because anyone can read a key shipped in page code.
+
+# ---------- Resilience engineering (summarize) ----------
+- id: aws-builders-timeouts-retries
+  title: Timeouts, retries, and backoff with jitter (Amazon Builders' Library)
+  author: Marc Brooker (Amazon)
+  url: https://builder.aws.com/content/3EumjoZascWd1oZiEgL8ORlv3qE/timeouts-retries-and-backoff-with-jitter
+  license: Copyright Amazon.com, Inc.
+  policy: summarize
+  kind: blog
+  notes: >-
+    Published 2019-12-05; moved from aws.amazon.com/builders-library to builder.aws.com (checked 2026-11-11).
+    Timeouts from latency percentiles, retry amplification across layers, local retry token buckets, jitter,
+    idempotency before retrying side effects, and a caution that circuit breakers add hard-to-test modal behavior.
+
+- id: fowler-circuit-breaker
+  title: CircuitBreaker
+  author: Martin Fowler
+  url: https://martinfowler.com/bliki/CircuitBreaker.html
+  license: Copyright Martin Fowler
+  policy: summarize
+  kind: blog
+  notes: March 2014. Closed, open, and half-open states; failure threshold, reset timeout, trial call, and monitoring.
+
+- id: google-sre-cascading-failures
+  title: "Site Reliability Engineering, Chapter 22: Addressing Cascading Failures"
+  author: Mike Ulrich (Google), in Beyer, Jones, Petoff and Murphy (eds.)
+  url: https://sre.google/sre-book/addressing-cascading-failures/
+  license: Copyright Google (free to read online)
+  policy: summarize
+  kind: book
+  notes: >-
+    Retry budgets, retrying at one layer, randomized exponential backoff, deadlines and deadline propagation, load
+    shedding, and graceful degradation (including testing the degraded path).
+
+- id: httpx-timeouts
+  title: HTTPX documentation, Timeouts
+  author: Encode
+  url: https://www.python-httpx.org/advanced/timeouts/
+  license: BSD-3-Clause (docs in the HTTPX repository)
+  policy: summarize
+  kind: docs
+  notes: >-
+    The four timeout types (connect, read, write, pool); a single float sets all four; the read timeout bounds the
+    wait for each chunk, not the whole response. The anthropic 1.x Python SDK uses the httpx2 fork with the same model.
+
+# ---------- Web platform and frameworks (summarize) ----------
+- id: mdn-sse
+  title: Using server-sent events
+  author: MDN Web Docs (Mozilla and contributors)
+  url: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
+  license: CC BY-SA 2.5
+  licenseUrl: https://developer.mozilla.org/en-US/docs/MDN/Writing_guidelines/Attrib_copyright_license
+  policy: summarize
+  kind: docs
+  notes: >-
+    text/event-stream format (event, data, id, retry), comment lines as keep-alives, automatic reconnection, and the
+    per-domain connection limit over HTTP/1.1.
+
+- id: whatwg-sse
+  title: HTML Living Standard, Server-sent events
+  author: WHATWG
+  url: https://html.spec.whatwg.org/multipage/server-sent-events.html
+  license: CC BY 4.0
+  licenseUrl: https://creativecommons.org/licenses/by/4.0/
+  policy: summarize
+  kind: docs
+  notes: The normative EventSource specification, including the Last-Event-ID reconnection header.
+
+- id: fastapi-custom-response
+  title: FastAPI documentation, Custom Response (StreamingResponse)
+  author: Sebastián Ramírez and FastAPI contributors
+  url: https://fastapi.tiangolo.com/advanced/custom-response/
+  license: MIT
+  policy: summarize
+  kind: docs
+  notes: StreamingResponse takes a sync or async generator; cancellation happens at await points.
+
+# ---------- Hosting platforms (summarize; limits checked 2026-11-11) ----------
+- id: vercel-functions-limits
+  title: Vercel Functions limits
+  author: Vercel
+  url: https://vercel.com/docs/functions/limitations
+  license: Copyright Vercel
+  policy: summarize
+  kind: docs
+  notes: >-
+    Page updated 2026-08-24. With Fluid compute: 300 s default and maximum on Hobby; 300 s default and 800 s maximum on
+    Pro and Enterprise (1800 s extended maximum in beta). Max duration includes time spent streaming the response.
+    Edge runtime must start responding within 25 s and can stream for up to 300 s. 4.5 MB body limit, not applied to
+    streamed responses.
+
+- id: vercel-env-vars
+  title: Vercel environment variables
+  author: Vercel
+  url: https://vercel.com/docs/environment-variables
+  license: Copyright Vercel
+  policy: summarize
+  kind: docs
+  notes: >-
+    Production, Preview, Development, and custom environments; Config versus write-only Secret values; changes apply
+    only to new deployments; 64 KB total per deployment.
+
+- id: cloudflare-workers-limits
+  title: Cloudflare Workers limits
+  author: Cloudflare
+  url: https://developers.cloudflare.com/workers/platform/limits/
+  license: CC BY 4.0 (Cloudflare docs)
+  policy: summarize
+  kind: docs
+  notes: >-
+    CPU time per HTTP request: 10 ms on Free; 30 s default, up to 5 min, on Paid. No hard wall-clock limit for
+    HTTP-triggered Workers while the client stays connected; waiting on network I/O does not count as CPU time.
+    Work can be canceled when the client disconnects; waitUntil extends up to 30 s.
+
+- id: cloudflare-workers-secrets
+  title: Cloudflare Workers secrets
+  author: Cloudflare
+  url: https://developers.cloudflare.com/workers/configuration/secrets/
+  license: CC BY 4.0 (Cloudflare docs)
+  policy: summarize
+  kind: docs
+  notes: wrangler secret put, secrets on the env binding, hidden after creation, .dev.vars for local development.
+
+- id: cloud-run-request-timeout
+  title: Cloud Run, Configure request timeout for services
+  author: Google Cloud
+  url: https://docs.cloud.google.com/run/docs/configuring/request-timeout
+  license: CC BY 4.0 (Google Cloud docs)
+  policy: summarize
+  kind: docs
+  notes: Default 300 s, configurable up to 3600 s; a request that exceeds it gets a 504.
+
+- id: cloud-run-secrets
+  title: Cloud Run, Configure secrets for services
+  author: Google Cloud
+  url: https://docs.cloud.google.com/run/docs/configuring/services/secrets
+  license: CC BY 4.0 (Google Cloud docs)
+  policy: summarize
+  kind: docs
+  notes: >-
+    Secret Manager secrets as environment variables (resolved at instance start; pin a version) or mounted volumes
+    (read at access time; work with rotation).
+
+# ---------- Configuration and secrets practice (summarize) ----------
+- id: twelve-factor-config
+  title: "The Twelve-Factor App: III. Config"
+  author: Adam Wiggins
+  url: https://12factor.net/config
+  license: Copyright Adam Wiggins
+  policy: summarize
+  kind: blog
+  notes: Config is what varies between deploys; store it in the environment; the open-source-at-any-moment test.
+
+- id: owasp-secrets-cheatsheet
+  title: OWASP Secrets Management Cheat Sheet
+  author: OWASP Foundation
+  url: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+  license: CC BY-SA 4.0
+  licenseUrl: https://creativecommons.org/licenses/by-sa/4.0/
+  policy: summarize
+  kind: docs
+  notes: >-
+    Centralize, rotate, least privilege, keep secrets out of code, images, and CI logs, scan for leaks, and caution
+    about environment variables being visible to processes and dumps.

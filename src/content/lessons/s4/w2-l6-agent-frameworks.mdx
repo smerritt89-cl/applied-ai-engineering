@@ -1,0 +1,256 @@
+---
+id: s4-w2-l6
+studio: s4
+week: 2
+order: 6
+title: Agent frameworks and when to use them
+summary: >-
+  Plain code, the Claude API tool runner, the Claude Agent SDK, Claude Managed Agents, the OpenAI Agents SDK,
+  LangGraph, and smolagents: what each supplies, what it costs you in control, lock-in, observability, and
+  hosting, and a heuristic for choosing.
+estMinutes: 50
+reviewed: 2026-11-11
+objectives:
+  - Separate what an agent framework supplies (loop, tools, state, tracing, hosting) from what you still own
+  - Distinguish the Claude API tool runner, the Claude Agent SDK, and Claude Managed Agents, and say who supplies the harness and the deployment for each
+  - Describe the core ideas of the OpenAI Agents SDK, LangGraph, and smolagents, and the defaults you must check in each
+  - Compare frameworks on control, lock-in, observability, and hosting, using a table you can defend
+  - Apply a recommendation heuristic to pick an approach for a concrete project
+sources:
+  - { id: anthropic-effective-agents, use: summarized, where: "When and how to use frameworks" }
+  - { id: claude-tool-runner, use: summarized }
+  - { id: claude-agent-sdk-overview, use: summarized, where: "Compare the Agent SDK to other Claude tools; Capabilities" }
+  - { id: claude-agent-sdk-loop, use: summarized, where: "Turns and budget; Permission mode; Handle the result" }
+  - { id: anthropic-agent-sdk-blog, use: summarized }
+  - { id: claude-managed-agents-overview, use: summarized }
+  - { id: openai-agents-sdk-docs, use: summarized }
+  - { id: openai-agents-running-docs, use: summarized }
+  - { id: openai-agents-tracing-docs, use: summarized }
+  - { id: langgraph-overview-docs, use: summarized }
+  - { id: langgraph-persistence-docs, use: summarized }
+  - { id: langgraph-interrupts-docs, use: summarized }
+  - { id: smolagents-docs, use: adapted, where: "Index; Guided tour (CodeAgent versus ToolCallingAgent)" }
+  - { id: hf-smolagents-intro-agents, use: summarized, where: "Code agents" }
+  - { id: wang-2024-codeact, use: summarized }
+  - { id: hf-agents-course, use: linked, where: "Unit 2, frameworks (smolagents, LlamaIndex, LangGraph)" }
+  - { id: ms-ai-agents-beginners, use: linked }
+  - { id: claude-docs, use: summarized, where: "Programmatic tool calling" }
+  - { id: yt-anthropic-future-agents, use: embedded, where: "5:05 to 14:35, agentic frameworks and the Agent SDK" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: Which statement about the Claude API tool runner and the Claude Agent SDK is correct?
+    options:
+      - id: a
+        text: They are the same product; "Agent SDK" is the new name for the tool runner.
+        rationale: The Agent SDK is the renamed Claude Code SDK, not the tool runner. They are separate packages.
+      - id: b
+        text: The tool runner is a helper in the regular `anthropic` SDK that loops over tools you define; the Agent SDK is Claude Code as a library, with built-in file, shell, and search tools, permissions, sessions, and subagents. You host both.
+        correct: true
+        rationale: Right. Both supply a harness only; Managed Agents is the option where Anthropic also hosts it.
+      - id: c
+        text: The tool runner runs on Anthropic's servers; the Agent SDK runs on yours.
+        rationale: The tool runner runs in your process and calls the Messages API. Managed Agents is the hosted option.
+    explanation: >-
+      Two questions separate the Claude options: who supplies the harness (the loop and context management) and who
+      supplies the deployment. Manual loop: you and you. Tool runner: the SDK supplies a thin loop over your tools;
+      you host. Agent SDK: the Claude Code harness with built-in tools; you host. Managed Agents: Anthropic supplies
+      both, with a sandbox per session.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A compliance team wants an internal agent built with the OpenAI Agents SDK, running a mix of OpenAI and
+      Claude models, and their policy says no conversation data may leave approved systems. What should you check
+      first?
+    options:
+      - id: a
+        text: Nothing; the SDK is open source, so it cannot send data anywhere.
+        rationale: Open source code can still export data by default. Read the defaults.
+      - id: b
+        text: The tracing configuration, because tracing is on by default and exports traces to OpenAI's backend; disable it or replace the trace processor.
+        correct: true
+        rationale: Yes. The docs say tracing is enabled by default and offer an environment variable and code settings to turn it off or redirect it.
+      - id: c
+        text: Whether the SDK supports Python 3.12.
+        rationale: Worth knowing, but it is not the data-handling risk.
+    explanation: >-
+      Frameworks come with defaults you did not choose: tracing destinations, unlimited turn counts, permissive
+      permission modes. Before adopting one, list its defaults for data export, limits, and permissions, and set each
+      explicitly. The same review applies to any hosted option: Managed Agents, for example, stores session history
+      server-side and is not eligible for zero data retention at the time of writing.
+  - id: kc3
+    type: multi
+    prompt: Which are good reasons to choose LangGraph over a hand-written loop? Select all that apply.
+    options:
+      - id: a
+        text: The workflow must pause for a human approval that might come hours later, then resume where it stopped.
+        correct: true
+        rationale: Interrupts plus a durable checkpointer are built for this.
+      - id: b
+        text: You need the run to survive a process crash and continue from the last saved step.
+        correct: true
+        rationale: Persistence through checkpointers is a core LangGraph feature.
+      - id: c
+        text: Your agent is a single loop with two read-only tools and no long waits.
+        rationale: A few dozen lines of plain code do this with less to learn and debug.
+      - id: d
+        text: You want to avoid ever thinking about side effects when a step re-runs.
+        rationale: The opposite. On resume, the interrupted node runs again from its start, so side effects before the interrupt must be idempotent.
+    explanation: >-
+      LangGraph earns its keep when you need explicit state, durable execution, and pauses for people. For a short
+      loop, a framework adds concepts without adding capability. And every resume-capable system makes you think
+      harder about idempotency, not less.
+---
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## What a framework actually gives you
+
+You have now written an agent loop by hand twice: in Studio 1 and in this week's lab. It is a few dozen lines: call the model, run the tools, append the results, check the limits, repeat. So what do frameworks add?
+
+Roughly five things, in increasing order of value for long tasks:
+
+1. **Tool plumbing**: generating schemas from functions, parsing calls, wrapping exceptions as error results.
+2. **The loop itself**, with limits and hooks.
+3. **State and persistence**: saving a run so it can pause, crash, and resume.
+4. **Observability**: traces of every model and tool call, often in a hosted viewer.
+5. **Hosting**: a place for the agent and its tools to run, such as a sandbox per session.
+
+What they cost: another abstraction between you and the model, defaults you did not choose, a dependency that changes on its own schedule, and sometimes a tie to one provider. Anthropic's "Building effective agents" puts the risk plainly: frameworks can add layers of abstraction that obscure the underlying prompts and responses and make systems harder to debug, and they can tempt you into complexity you don't need. Their advice is to start with the LLM API directly, since many patterns take only a few lines of code, and if you do adopt a framework, to understand the code underneath it.
+
+This lesson uses only official documentation for each option. Frameworks change quickly, so treat the specifics as true at the time of writing and check the docs before you commit.
+</Listen>
+
+<Listen>
+## Four ways to build an agent with Claude
+
+Anthropic offers four routes, and two of them have confusingly similar names. Two questions separate them: **who supplies the harness** (the loop and context management) and **who supplies the deployment** (where the agent and its tools run).
+
+**Plain code, the manual loop.** You call the Messages API and write the loop yourself, as in the lab. You own the harness and the hosting. Maximum control, no beta dependency.
+
+**The tool runner.** A helper in the regular `anthropic` SDK (`client.beta.messages.tool_runner` in Python, with `@beta_tool` functions). It runs the request, execute, repeat cycle for tools you define, wraps tool exceptions as `is_error` results, and stops at `max_iterations` if you set it. It has no built-in tools, no filesystem, and no sandbox. You host it. The tool runner docs suggest the manual loop when you need human approval, custom logging, or conditional execution, although the SDK also exposes per-iteration hooks for some of this.
+
+**The Claude Agent SDK.** A separate package (`claude-agent-sdk` for Python, `@anthropic-ai/claude-agent-sdk` for TypeScript). It is Claude Code as a library, renamed from the Claude Code SDK in September 2025. You call `query()` with a prompt and options, and it drives the full Claude Code harness: built-in tools for reading, writing, and editing files, running shell commands, and searching, plus hooks, permissions, sessions, subagents, MCP, and automatic compaction. You still host it.
+
+**Claude Managed Agents** (beta, header `managed-agents-2026-04-01`). Anthropic runs the harness **and** the deployment. You create an agent (model, system prompt, tools, MCP servers, skills) once, then start sessions in an environment, either an Anthropic-managed cloud sandbox or a self-hosted sandbox, and exchange events with it. It suits long-running, asynchronous, and scheduled work.
+
+**The tool runner is not the Agent SDK.** One is a thin loop over your tools inside the client SDK; the other is a batteries-included coding and filesystem agent. Both run on your infrastructure. Only Managed Agents is hosted.
+</Listen>
+
+| | Manual loop | Tool runner | Claude Agent SDK | Managed Agents |
+|---|---|---|---|---|
+| Package or surface | `anthropic` Messages API | `anthropic`, `client.beta.messages.tool_runner` | `claude-agent-sdk` / `@anthropic-ai/claude-agent-sdk` | REST API and SDKs, beta |
+| You write | The whole loop | Tool functions | A prompt and options | Agent config, events, your tool results |
+| Harness supplied by | You | The SDK (thin) | The SDK (full Claude Code harness) | Anthropic |
+| Built-in tools | None | None | File, shell, search, web, subagents | Bash, files, web, MCP, in a sandbox |
+| Runs on | Your infrastructure | Your infrastructure | Your infrastructure | Anthropic's sandbox or your self-hosted sandbox |
+| Limits you set | Your own counters | `max_iterations` | `max_turns`, `max_budget_usd` | Session budgets |
+
+<Predict
+  title="How does this Agent SDK run end?"
+  code={`# Task: "Fix the failing tests in auth.ts". The agent needs:
+#   turn 1: Bash (run the tests)
+#   turn 2: Read auth.ts and auth.test.ts
+#   turn 3: Edit auth.ts, then Bash (re-run the tests)
+#   final turn: a text-only summary
+options = ClaudeAgentOptions(max_turns=3)
+# Which ResultMessage.subtype does the run end with?`}
+  options={["success", "error_max_turns", "error_max_budget_usd", "error_during_execution"]}
+  answer={1}
+>
+The Agent SDK counts each turn with tool calls plus one for the final text-only response, so this task needs four turns. With `max_turns=3` the run ends with `error_max_turns`, and the `result` field is absent, so code that reads `result` without checking `subtype` fails. The example comes from the Agent SDK's agent loop docs. The general lesson: learn exactly how your framework counts before you set a limit.
+</Predict>
+
+<Listen>
+## The OpenAI Agents SDK
+
+OpenAI describes its Agents SDK (package `openai-agents`) as a lightweight framework with few abstractions, and a production successor to its earlier experimental Swarm project. Its primitives are **agents** (a model with instructions and tools), **handoffs** and agents-as-tools for delegation, **guardrails** that validate inputs and outputs, **sessions** for conversation memory, and built-in **tracing**.
+
+The `Runner` executes the loop you already know, with one addition: if the model requests a handoff, the runner switches the current agent and continues. Each run is capped by `max_turns`, and exceeding it raises a `MaxTurnsExceeded` exception, so wrap runs that might be long.
+
+Two details matter for real teams. First, models: it uses OpenAI's Responses API by default for OpenAI models, and the docs describe adapters, including LiteLLM, for other providers, so you can run Claude or open models through it. Check what each adapter supports, because provider-specific features (Claude's server-side context editing, for example) may not pass through a generic layer. Second, tracing: the docs say it is **enabled by default** and that traces are exported to OpenAI's backend. You can turn it off with `OPENAI_AGENTS_DISABLE_TRACING=1`, `set_tracing_disabled(True)`, or per run, or replace the processors to send spans elsewhere. The docs also say tracing is unavailable to organizations under OpenAI's zero data retention policy. If your data policy restricts where conversation data goes, this is the first setting to review.
+</Listen>
+
+<Listen>
+## LangGraph
+
+LangGraph, from LangChain, calls itself a low-level orchestration framework and runtime for long-running, stateful agents. You describe the agent as a **graph**: a shared **state** object, **nodes** (plain functions or model calls that read state and return updates), and **edges** that decide which node runs next, including conditional edges. It does not prescribe prompts or an agent architecture, and it does not require LangChain itself.
+
+Its strengths are the things that are tedious to build by hand:
+
+- **Persistence and durable execution.** Compile the graph with a checkpointer and every step is saved under a `thread_id`. A run can recover after a failure and resume. The docs point out that the in-memory checkpointer loses everything on restart, and recommend database-backed ones (Postgres, SQLite) for production.
+- **Human-in-the-loop.** Calling `interrupt()` inside a node pauses the graph, saves state, and surfaces a value to your application. You resume later by invoking the graph with `Command(resume=...)` on the same thread.
+- **Observability and deployment** through LangSmith, a separate product, if you want it.
+
+One documented caveat deserves attention because it is a classic agent bug: on resume, the interrupted node **runs again from its beginning**, so any code before the `interrupt()` call executes twice. The docs advise making side effects before an interrupt idempotent. That is the same idempotency rule from Studio 1, now enforced by the framework's semantics.
+
+The cost is conceptual weight. For a single loop with a few tools, a graph adds vocabulary without adding capability. LangGraph pays off when the control flow is genuinely a graph, when runs must survive restarts, or when people must approve steps that may take hours.
+</Listen>
+
+<Listen>
+## smolagents and code agents
+
+smolagents, from Hugging Face, is deliberately small: its docs say the agent logic fits in about a thousand lines of code. It is model-agnostic (Hugging Face inference providers, LiteLLM for OpenAI, Anthropic, and others, local models through Transformers or Ollama) and can load tools from MCP servers and the Hub.
+
+Its distinctive idea is the **code agent**. A `ToolCallingAgent` works like everything else in this lesson: the model emits JSON tool calls. A `CodeAgent` instead writes its actions as Python code that calls your tools as functions, so one step can loop, filter, and combine results. Hugging Face's conceptual guide cites research for this choice, including "Executable Code Actions Elicit Better LLM Agents" (Wang and colleagues, 2024), and argues that code is more composable and better represented in training data than JSON. The guided tour is candid about the trade-off: code agents are more expressive but less predictable and need a secure execution environment. The local interpreter restricts imports by default, and the docs offer sandboxed executors (E2B, Docker, Modal, Blaxel) for anything beyond experiments.
+
+Runs end when the agent calls `final_answer` or reaches its maximum number of steps, and `final_answer_checks` lets you reject an answer that fails your validation and keep the agent working, a built-in version of "verify before you stop." Step logs record tokens per step, which makes it easy to inspect. You will meet the same code-as-action idea in Claude's programmatic tool calling, where Claude writes code that calls your tools inside a sandbox.
+</Listen>
+
+## Side by side
+
+| | Control | Lock-in (models) | Observability | Hosting | State and resume | Reach for it when |
+|---|---|---|---|---|---|---|
+| **Plain code** | Total | None: any provider SDK | Whatever you log | You | You build it | Short loops, few tools, you want to see every token |
+| **Claude tool runner** | High: per-iteration hooks | Claude models | Your logs plus SDK logging | You | You build it | A custom-tool agent on Claude without writing the loop |
+| **Claude Agent SDK** | Medium: options, hooks, permissions | Claude models | Message stream, hooks, cost per run | You | Sessions you can resume and fork | A coding or file-heavy agent with Claude Code's tools |
+| **Claude Managed Agents** | Lower: configure, don't code the loop | Claude models, Anthropic platforms | Event history kept by the service | Anthropic sandbox or self-hosted sandbox | Stateful sessions, scheduled runs | Long-running or scheduled agents without building infrastructure |
+| **OpenAI Agents SDK** | Medium | OpenAI by default; others via adapters | Built-in tracing, on by default | You | Sessions | Multi-agent handoffs and guardrails, especially on OpenAI models |
+| **LangGraph** | High: you define the graph | Any model you call in a node | LangSmith (optional) | You, or LangSmith Deployment | Checkpointers, interrupts | Explicit graphs, durable runs, human approval mid-run |
+| **smolagents** | Medium | Any, via several model classes | Step logs with tokens | You; sandboxes for code | Memory across runs with `reset=False` | Code agents, open models, research and teaching |
+
+"Lock-in" here means model portability. Every framework also locks you into its own abstractions; the smaller the framework, the cheaper it is to leave.
+
+<Listen>
+## A recommendation heuristic
+
+Start from the work, not the framework. Week 1's first question still applies: if a single call or a fixed workflow solves the task, you don't need an agent framework at all. If you do need an agent, walk down this list and stop at the first match.
+
+1. **Is it a short loop with a handful of your own tools?** Write plain code, or use your provider's tool runner. You will understand every line, and the lab shows it fits in a page.
+2. **Does the agent mainly read and edit files, run commands, and search a codebase or documents on a machine you control?** Use the Claude Agent SDK rather than rebuilding Claude Code's tools and permission system.
+3. **Should it run for minutes or hours, on a schedule, or without you operating servers and sandboxes, and is your data policy compatible with a hosted, stateful service?** Look at Claude Managed Agents.
+4. **Must it pause for people and resume later, survive crashes, or follow an explicit multi-branch graph?** LangGraph's persistence and interrupts are built for that.
+5. **Is it multi-agent with handoffs, or must it run across several providers or open models?** The OpenAI Agents SDK or smolagents give you provider-neutral loops; pick by which primitives (handoffs and guardrails, or code actions) fit the task.
+
+Then apply three checks before you commit, whichever you chose. **Defaults**: write down its limits, permission mode, and where traces go, and set each one explicitly. **Exit cost**: could you move to plain code in a week if the framework stalled? **Evidence**: run your Studio 3 eval suite on a plain-code baseline and on the framework version, and compare success, cost per task, and steps. A framework that does not beat or match the baseline on your own tasks is a dependency, not a tool.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the Claude options from the one where you own the most to the one where Anthropic supplies the most"
+  items={[
+    "Manual loop on the Messages API",
+    "Tool runner in the anthropic SDK",
+    "Claude Agent SDK",
+    "Claude Managed Agents",
+  ]}
+  explanation="The manual loop gives you nothing but the API. The tool runner adds a thin loop over your tools. The Agent SDK adds the full Claude Code harness and built-in tools, but you still host it. Managed Agents adds the deployment: Anthropic runs the loop and the sandbox."
+/>
+
+<Callout type="pitfall" title="Adopting a framework's defaults as your design">
+Each framework encodes choices about limits, permissions, and data. The Agent SDK documents no turn or budget limit by default and offers a `bypassPermissions` mode its docs reserve for isolated environments. The OpenAI Agents SDK traces to OpenAI's backend by default. LangGraph's in-memory checkpointer forgets everything on restart. None of these is wrong, but none was chosen for your project. Treat the first week with a framework as a review: list every default that touches cost, safety, or data, set it explicitly, and add a test that fails if someone changes it.
+</Callout>
+
+<Callout type="claim" title='"Start with the LLM API directly" (Anthropic, Building effective agents)'>
+**Claim.** Anthropic's [Building effective agents](https://www.anthropic.com/engineering/building-effective-agents) recommends starting with LLM APIs directly, because many patterns take a few lines of code, and warns that frameworks can obscure prompts and responses and encourage needless complexity.
+
+**Evidence for.** You have now built the loop twice in a page of Python, and the traces you got were complete because you wrote the logging. Framework defaults (tracing destinations, turn limits, permissions) are a recurring source of surprises, as this lesson shows. **Evidence against, or limits.** Durable execution, human approval across hours, sandboxed code execution, and a production-grade file and shell harness are each weeks of careful work; LangGraph, smolagents' executors, and Anthropic's own Agent SDK and Managed Agents exist because hand-rolling them is error-prone. Note also that the advice comes from a vendor that sells both the API and its own agent products. **For you:** start plain, and adopt a framework when you can name the specific capability you would otherwise have to build.
+</Callout>
+
+<Video id="XuvKFsktX0Q" title="Building the future of agents with Claude" channel="Anthropic" minutes={10} start={305} source="https://www.youtube.com/watch?v=XuvKFsktX0Q">
+Start at 5:05 ("The evolution of agentic frameworks") and watch through the Agent SDK section, to about 14:35. Notice the argument for reducing scaffolding as models improve, and weigh it against the claim callout above: less scaffolding in the prompt is not the same as fewer controls in the harness.
+</Video>
+
+<GoDeeper title="Learning the frameworks hands-on">
+The Hugging Face Agents Course's frameworks unit builds agents in smolagents, LlamaIndex, and LangGraph side by side, which is a fast way to feel the differences in abstraction. Microsoft's AI Agents for Beginners course covers Microsoft's own agent frameworks, if your organization runs on Azure. A useful exercise after this week's lab: port your research agent to one framework, keep the same two tools and the same corpus, and run the lab's offline checks against it. Note how many lines you deleted, how many concepts you added, and whether the budget and trace behavior survived the move.
+</GoDeeper>

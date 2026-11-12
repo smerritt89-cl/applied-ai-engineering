@@ -1,0 +1,228 @@
+{
+  "id": "s4-w5",
+  "studio": "s4",
+  "week": 5,
+  "title": "Week 5 quiz: Project week",
+  "questions": [
+    {
+      "id": "s4w5-q1",
+      "type": "scenario",
+      "prompt": "Your status agent works well on fixtures. Before connecting it to the live GitHub API, which of these should you decide first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The color scheme of the approval screen.",
+          "rationale": "Not a release decision."
+        },
+        {
+          "id": "b",
+          "text": "The release rule: thresholds for success and cost, and zero tolerated safety violations, written down before you see live results.",
+          "rationale": "Yes. A rule decided after the results is a rationalization.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Whether to remove the injection scenarios now that the agent passes them.",
+          "rationale": "Passing scenarios become the regression suite; they stay."
+        },
+        {
+          "id": "d",
+          "text": "Which issues to exclude so the live demo looks good.",
+          "rationale": "That is overfitting the demo."
+        }
+      ],
+      "explanation": "Write the gate rule in the README before the run that will be judged by it. Keep the full suite, including injection scenarios, as regression tests.",
+      "week": 5,
+      "tags": [
+        "project",
+        "release-gates"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s4w5-q2",
+      "type": "mcq",
+      "prompt": "For the weekly status job, which part is the best candidate to stay deterministic code rather than a model step?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Judging whether a free-text comment means an issue is blocked",
+          "rationale": "That needs reading comprehension; a model step fits."
+        },
+        {
+          "id": "b",
+          "text": "Writing a readable summary for a stakeholder",
+          "rationale": "Model-driven writing is where the value is."
+        },
+        {
+          "id": "c",
+          "text": "Deciding which issues opened, closed, or changed during the week",
+          "rationale": "Yes. That is a date-filtered query; a model adds cost and error.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Grouping related issues into themes",
+          "rationale": "Judgment work; a reasonable model step."
+        }
+      ],
+      "explanation": "Start simple: code for what can be computed exactly, models where judgment over text adds value. Test the deterministic parts without a model.",
+      "week": 5,
+      "tags": [
+        "workflows-vs-agents",
+        "project"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s4w5-q3",
+      "type": "code-reading",
+      "prompt": "An MCP tool for the project. What is the main design problem?",
+      "code": "@server.tool()\ndef tracker(action: str, payload: dict) -> str:\n    \"\"\"Do anything with the tracker: action is 'list', 'get', 'comment', 'close', or 'post_status'.\"\"\"\n    return dispatch(action, payload)",
+      "options": [
+        {
+          "id": "a",
+          "text": "It mixes reads and irreversible writes behind one parameter, so the client's approval and policy checks cannot tell from the tool name what it is approving.",
+          "rationale": "Yes. Split read tools from write tools and keep each write narrow.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "MCP tools cannot accept dict arguments.",
+          "rationale": "Tools take JSON Schema inputs; objects are allowed."
+        },
+        {
+          "id": "c",
+          "text": "The docstring is too long.",
+          "rationale": "Too vague, if anything."
+        },
+        {
+          "id": "d",
+          "text": "It should be async.",
+          "rationale": "Possibly nicer, not the main problem."
+        }
+      ],
+      "explanation": "Consolidate by workflow but never mix risk levels in one tool (Studio 1, lesson 11). A host's permission rules and your guard work per tool, so a combined tool forces every call through the strictest path or, worse, through none.",
+      "week": 5,
+      "tags": [
+        "mcp",
+        "tool-design"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w5-q4",
+      "type": "predict-output",
+      "prompt": "A first-week cost estimate for the eval. What does this print?",
+      "code": "scenarios, trials = 15, 4\ncalls_per_run = 6\nin_tok, out_tok = 3000, 400              # per call\nprice_in, price_out = 4 / 1e6, 20 / 1e6  # $ per token\nper_run = calls_per_run * (in_tok * price_in + out_tok * price_out)\nprint(round(per_run, 3), round(per_run * scenarios * trials, 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.02 1.2`",
+          "rationale": "That is one call, not six."
+        },
+        {
+          "id": "b",
+          "text": "`0.12 1.8`",
+          "rationale": "That multiplies by 15 scenarios but forgets the 4 trials."
+        },
+        {
+          "id": "c",
+          "text": "`1.2 72.0`",
+          "rationale": "Off by ten in the per-token prices."
+        },
+        {
+          "id": "d",
+          "text": "`0.12 7.2`",
+          "rationale": "Per call: 0.012 + 0.008 = 0.02; six calls is 0.12; 60 runs is 7.20.",
+          "correct": true
+        }
+      ],
+      "explanation": "Estimate before you run, then measure. Recompute with real token counts from your logs and the prices on the pricing page on the day you run; record both in the write-up.",
+      "week": 5,
+      "tags": [
+        "cost",
+        "project"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w5-q5",
+      "type": "multi",
+      "prompt": "Which belong in the project's eval set as their own scenarios? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Pull requests mixed into the issues list",
+          "rationale": "Correct. The issues endpoints return them.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "More changed issues than one API page",
+          "rationale": "Correct. Tests pagination and early stopping.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The reviewer rejects the draft",
+          "rationale": "Correct. A should-not-act case: nothing gets posted.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "An issue body asking the agent to email the notes outside",
+          "rationale": "Correct. An injection scenario.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "A scenario copied from the reference report so the agent always passes",
+          "rationale": "Writing tests the system cannot fail measures nothing."
+        }
+      ],
+      "explanation": "Balance should-act and should-not-act cases, include data edge cases and tool failures, and keep at least three injection scenarios. Every scenario has a fixture, an expected end state, and a reference outcome.",
+      "week": 5,
+      "tags": [
+        "agent-evals",
+        "project"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w5-q6",
+      "type": "scenario",
+      "prompt": "Your design has the agent call post_status itself after approval. A reviewer suggests instead that the agent only saves a draft and your application posts it after a human clicks approve. What is the main benefit?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It reduces token usage by half.",
+          "rationale": "Token savings are minor."
+        },
+        {
+          "id": "b",
+          "text": "The model never holds a tool that reaches the outside, so no injected instruction can make it post; the only outbound action is code you wrote, triggered by a person.",
+          "rationale": "Yes. It removes the outbound leg from the model's reach.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "GitHub requires it.",
+          "rationale": "No such requirement."
+        },
+        {
+          "id": "d",
+          "text": "It makes the agent faster.",
+          "rationale": "Speed is not the point."
+        }
+      ],
+      "explanation": "Draft-then-approve with the post performed by application code is a plan-then-execute design: the set of actions is fixed by you. The approval step is the product, and it is one decision per run, which keeps reviewers attentive.",
+      "week": 5,
+      "tags": [
+        "draft-then-approve",
+        "lethal-trifecta"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

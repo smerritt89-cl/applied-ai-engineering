@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.435
+Cleaning without losing meaning, and catching silent failures.
+
+2
+00:00:03.715 --> 00:00:06.637
+Cleaning should remove noise and leave the words alone.
+
+3
+00:00:06.917 --> 00:00:25.776
+A safe default set: Unicode normalization (NFKC turns the “fi” ligature that PDF extractors often emit back into “f” and “i”), consistent line endings, removing soft hyphens, collapsing runs of blank lines, and stripping headers, footers, and page numbers that repeat across pages.
+
+4
+00:00:26.056 --> 00:00:28.168
+Be careful with anything more aggressive.
+
+5
+00:00:28.448 --> 00:00:42.528
+Lowercasing, removing punctuation, or “fixing” typos changes what a citation can quote, and the Studio 1 rule still holds: if you will verify quotes against the source later, the stored text has to be the source.
+
+6
+00:00:42.808 --> 00:00:46.605
+The more important job is detecting failures that raise no error.
+
+7
+00:00:46.885 --> 00:00:52.752
+Run deterministic checks per page and per document at ingest time: Characters per page.
+
+8
+00:00:53.032 --> 00:00:57.789
+A page with almost no text is probably a scan or an image-only slide.
+
+9
+00:00:58.069 --> 00:01:00.395
+Route it to OCR or the vision tier.
+
+10
+00:01:00.675 --> 00:01:02.083
+Replacement characters.
+
+11
+00:01:02.363 --> 00:01:09.595
+A high share of U+FFFD (the “unknown character” symbol) means the font encoding defeated the extractor.
+
+12
+00:01:09.875 --> 00:01:10.941
+Zero chunks.
+
+13
+00:01:11.221 --> 00:01:15.467
+Any document that produces no chunks should be an alert, not a log line.
+
+14
+00:01:15.747 --> 00:01:16.792
+Hidden text.
+
+15
+00:01:17.072 --> 00:01:27.056
+OWASP’s guidance on vector and embedding weaknesses recommends extracting text in ways that expose hidden content and auditing the knowledge base for poisoning.
+
+16
+00:01:27.336 --> 00:01:34.440
+White-on-white text or tiny fonts in an uploaded file can carry instructions that end up in your model’s context.
+
+17
+00:01:34.720 --> 00:01:44.704
+Decide whether ingested text may contain instructions (it may) and treat retrieved text as data in your prompts, as Studio 1 taught for tool results.
+
+18
+00:01:44.984 --> 00:01:47.651
+The exercise below builds the first three checks.

@@ -1,0 +1,342 @@
+---
+id: s6-w1-l1
+studio: s6
+week: 1
+order: 1
+title: Architectures for LLM services
+summary: Four ways to put a model call behind a product (synchronous request and response, streaming to a browser, background jobs, and batch processing), how to choose between them, and why the model call always lives on your server.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Explain why the model call belongs in your back end, and list the controls that position gives you
+  - Choose between synchronous, streaming, background-job, and batch architectures from a task's latency, duration, and volume
+  - Describe how server-sent events carry a streamed reply from the Claude API through your server to a browser, and parse an event stream
+  - Use the Message Batches API for work that can wait, keying results by custom_id
+sources:
+  - { id: claude-authentication-docs, use: summarized, where: "Browser-based applications; API keys" }
+  - { id: claude-streaming-docs, use: summarized, where: "Event types; error events; error recovery" }
+  - { id: claude-errors-docs, use: summarized, where: "Long requests" }
+  - { id: claude-batch-processing-w4, use: summarized }
+  - { id: claude-python-sdk, use: summarized, where: "Streaming helpers and batches" }
+  - { id: mdn-sse, use: summarized }
+  - { id: whatwg-sse, use: linked }
+  - { id: fastapi-custom-response, use: summarized, where: "StreamingResponse" }
+  - { id: vercel-env-vars, use: summarized, where: "Troubleshooting: NEXT_PUBLIC_ variables" }
+  - { id: stripe-idempotency, use: linked }
+  - { id: huyen-ai-engineering, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      A product manager asks for a "summarize this 200-page contract" button. Your measurements show the call takes
+      between 40 seconds and 6 minutes, and users are fine getting an email when it is done. Which architecture fits?
+    options:
+      - id: a
+        text: A synchronous endpoint with a 10-minute timeout, so the browser waits for the full answer.
+        rationale: The browser, proxies, and your host's request limit all have to survive six minutes of silence. Many won't.
+      - id: b
+        text: Streaming to the browser, so the user sees text as it is generated.
+        rationale: Streaming fixes perceived latency for someone watching. Nobody is watching here, and the request still has to outlive your platform's duration limit.
+      - id: c
+        text: A background job, where the endpoint enqueues the work, returns a job id at once, and a worker calls the model and notifies the user.
+        correct: true
+        rationale: Yes. The work outlives any reasonable request, and the user doesn't need to watch it happen.
+    explanation: >-
+      Duration and whether someone is watching decide the architecture. Long work that a person waits for, but doesn't
+      watch, belongs in a job queue with a status the client can check. If hundreds of these could wait until morning,
+      the Message Batches API would be cheaper still.
+  - id: kc2
+    type: mcq
+    prompt: Why should a web app's browser code call your back end instead of calling the Claude API directly?
+    options:
+      - id: a
+        text: The Claude API does not support HTTPS from browsers.
+        rationale: Transport is not the issue. The issue is who can read the credential.
+      - id: b
+        text: Anyone using the page can read an API key shipped in its code, and your back end is where you enforce auth, quotas, logging, and spend limits.
+        correct: true
+        rationale: Right. Anthropic's authentication docs say to call the API from your own back end for exactly this reason.
+      - id: c
+        text: Browsers cannot parse server-sent events.
+        rationale: Browsers parse server-sent events natively. That is what your back end sends them.
+    explanation: >-
+      A key in browser code is a public key: it can be copied and used from anywhere, billed to you. Beyond secrecy,
+      the server is the only place you can apply per-user rate limits, assemble prompts users cannot tamper with,
+      validate outputs, and log what happened.
+  - id: kc3
+    type: predict-output
+    prompt: Batch results come back in any order. What does this print?
+    code: |
+      results = [
+          {"custom_id": "ticket-3", "label": "billing"},
+          {"custom_id": "ticket-1", "label": "bug"},
+      ]
+      tickets = ["ticket-1", "ticket-2", "ticket-3"]
+      by_id = {r["custom_id"]: r["label"] for r in results}
+      print([by_id.get(t, "MISSING") for t in tickets])
+    options:
+      - id: a
+        text: "`['billing', 'bug', 'MISSING']`"
+        rationale: That is what you get if you zip results to inputs by position, which is the bug this code avoids.
+      - id: b
+        text: "`['bug', 'MISSING', 'billing']`"
+        correct: true
+        rationale: Keyed by custom_id, each ticket gets its own label, and the one with no result is visible as missing.
+      - id: c
+        text: A KeyError for ticket-2
+        rationale: "`dict.get` with a default never raises."
+    explanation: >-
+      The Batches API documentation says results may not match the input order, so always join on custom_id. Treat
+      a missing or errored result as a first-class outcome: re-submit it, or report it, but never let it shift every
+      later answer onto the wrong record.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Week 1: from a script to a service
+
+Every studio so far ended with code you ran yourself. This studio is about what changes when other people use it: they arrive at the same time, from browsers and phones, at hours you don't choose, while the model provider has its own bad minutes. Week 1 covers the shape of the service (this lesson), how it survives failures (lesson 2), and where it runs (lesson 3). Weeks 2 to 4 add cost and latency work, observability, and guardrails.
+
+Start with one rule that has no exceptions in this course: **the model call lives on your server.** Anthropic's authentication docs are direct about it: call the API from your own back end, not from code in your users' browsers, because anyone who uses a page can read an API key in that page's code. A leaked key is billed to you, and it works from anywhere until you revoke it.
+
+Secrecy is only half the reason. Your back end is the one place where you control what happens around the call. It is where you authenticate the user, apply per-user quotas and spend caps, assemble the system prompt so users cannot edit it, validate and post-process the output, log the request for debugging and evals, and choose the model. Each of those is a later lesson in this studio. None of them is possible if the browser talks to the provider directly.
+
+The same logic applies to mobile apps and desktop clients: a binary you ship is readable by anyone who wants to read it. Anthropic does offer a narrow alternative for iOS and macOS apps (App Attest, which issues short-lived tokens to verified installations), but the default design for this course is a thin client in front of a back end that owns every model call.
+</Listen>
+
+<Mermaid
+  alt="Architecture diagram. The user's browser sends requests to your back end. The back end checks authentication, quotas and spend caps, builds the prompt, and holds the API key. It calls the Claude API, then validates the output and logs the request before returning to the browser. The browser never holds the key."
+  caption="The back end is the policy point. The browser never sees the key or the system prompt."
+  chart={`flowchart LR
+  B["Browser or mobile app (no key)"] -->|"user message"| S["Your back end"]
+  S --> P["Auth, quotas, spend caps"]
+  P --> Q["Build prompt (system prompt stays server-side)"]
+  Q -->|"API key from secret store"| C["Claude API"]
+  C --> V["Validate output, log, record cost"]
+  V -->|"reply or stream"| B`}
+/>
+
+<Listen>
+## Pattern 1: synchronous request and response
+
+The simplest shape: the client sends a request, your server calls the model, waits for the complete reply, and returns it. This is the right default for short, bounded work: classifying a ticket, extracting fields from an email, drafting a one-paragraph reply, answering a tool call inside another service. It is easy to test, easy to cache, and easy to retry, because a request either produced a whole answer or it didn't.
+
+Its weakness is that the caller waits for the last token. Output tokens are generated one at a time (Studio 1, lesson 1), so a long answer is slow, and every proxy, load balancer, and hosting platform between the user and the model has to keep the connection open that long without seeing a byte. Anthropic's errors documentation warns about this for long requests: some networks drop idle connections after a variable period, and it recommends the streaming or Message Batches APIs for long-running requests, especially those over 10 minutes. The Python SDK enforces a version of the same advice: it refuses a non-streaming request whose `max_tokens` is large enough that it expects the call to exceed its 10-minute default timeout, and tells you to stream instead.
+
+So use synchronous calls when the output is short or a machine is the consumer, and keep `max_tokens` sized to the task. When a person is watching text appear, or the output is long, stream.
+</Listen>
+
+<Listen>
+## Pattern 2: streaming to a browser
+
+With streaming, the API sends the reply as it is generated, using **server-sent events** (SSE), a plain HTTP response with content type `text/event-stream`. The body is a sequence of events, each a few lines of `field: value` (most often `event:` and `data:`), separated by a blank line. Lines that start with a colon are comments, which servers use as keep-alives. The format is defined in the HTML standard, and MDN's guide is the practical reference.
+
+A chat feature streams twice. First hop: your server opens a stream to the Claude API and receives events in a fixed order. `message_start` arrives first, then for each content block a `content_block_start`, a run of `content_block_delta` events carrying the text, and a `content_block_stop`; then `message_delta` (which carries the stop reason and usage) and finally `message_stop`. The stream can also contain `ping` events, and, importantly, `error` events: the streaming docs show an `overloaded_error` arriving mid-stream, after the HTTP status was already 200. Second hop: your server re-emits the parts the user needs (text deltas, a final status) as its own event stream to the browser.
+
+Don't forward the provider's raw stream to the browser. Translate it. You decide the event vocabulary (for example `meta`, `delta`, `done`, `error`), you drop what the client shouldn't see, and you get a place to enforce deadlines and handle failures, which lesson 2 builds on.
+
+Three practical details. The SDK's stream helpers (`client.messages.stream(...)` with `text_stream` and `get_final_message()` in Python) do the parsing for you on the first hop. The browser's built-in `EventSource` only issues GET requests without a body, so chat front ends that need to POST a message often use `fetch` and read the response body as a stream instead; the wire format is the same. And over HTTP/1.1, browsers allow only about six concurrent SSE connections per domain across all tabs, according to MDN, so long-lived streams per tab add up faster than you'd expect.
+</Listen>
+
+<Mermaid
+  alt="Sequence diagram of a streamed chat reply. The browser POSTs a message to your server. Your server opens a stream to the Claude API. The API sends message_start, then several content_block_delta events with text, then message_delta with the stop reason, then message_stop. For each text delta, your server sends a delta event to the browser. At the end, your server checks the stop reason and sends a done event, or an error event if something failed."
+  caption="Two hops of server-sent events. Your server translates between them and decides what the browser sees."
+  chart={`sequenceDiagram
+  participant B as Browser
+  participant S as Your server
+  participant C as Claude API
+  B->>S: POST /chat/stream (message)
+  S->>C: messages.stream(...)
+  C-->>S: message_start
+  C-->>S: content_block_delta (text)
+  S-->>B: event: delta
+  C-->>S: content_block_delta (text)
+  S-->>B: event: delta
+  C-->>S: message_delta (stop_reason, usage)
+  C-->>S: message_stop
+  S-->>B: event: done (or error)`}
+/>
+
+<DragOrder
+  client:visible
+  prompt="Put the events of one streamed Claude reply with a single text block in the order the API sends them"
+  items={[
+    "message_start",
+    "content_block_start",
+    "content_block_delta (repeated, one per chunk of text)",
+    "content_block_stop",
+    "message_delta (stop_reason and usage)",
+    "message_stop",
+  ]}
+  explanation="Message, then block start, deltas, block stop, then the message-level delta with the stop reason, then message_stop. Ping events can appear anywhere, and an error event can arrive mid-stream even though the HTTP status was 200, so your parser must handle both."
+/>
+
+<PyRunner
+  client:visible
+  id="s6-w1-parse-sse"
+  title="Parse a server-sent event stream"
+  starter={`def parse_sse(text):
+    """Parse a text/event-stream body into a list of (event, data) tuples.
+
+    Rules (a subset of the HTML standard's SSE parsing):
+    - Events are separated by a blank line.
+    - A line starting with ":" is a comment: ignore it.
+    - "event: NAME" sets the event's name. Without one, the name is "message".
+    - "data: VALUE" appends VALUE to the event's data. Several data lines
+      are joined with a newline.
+    - After the colon, remove ONE leading space if present (not all spaces).
+    - Ignore other fields (id, retry, anything unknown).
+    - An event with no data lines is not dispatched (skip it).
+    """
+    # TODO
+    return []
+
+
+stream = (
+    ": keep-alive\\n"
+    "\\n"
+    "event: delta\\n"
+    'data: {"text": "Hel"}\\n'
+    "\\n"
+    "event: delta\\n"
+    'data: {"text": "lo"}\\n'
+    "\\n"
+    "event: done\\n"
+    'data: {"model": "claude-opus-5-5"}\\n'
+    "\\n"
+)
+print(parse_sse(stream))
+`}
+  tests={`ev = parse_sse(stream)
+assert ev == [("delta", '{"text": "Hel"}'), ("delta", '{"text": "lo"}'), ("done", '{"model": "claude-opus-5-5"}')], f"got {ev}"
+assert parse_sse("data: hi\\n\\n") == [("message", "hi")], "the default event name is 'message'"
+assert parse_sse("data: line one\\ndata: line two\\n\\n") == [("message", "line one\\nline two")], "join data lines with a newline"
+assert parse_sse("data:  two spaces\\n\\n") == [("message", " two spaces")], "remove exactly one leading space"
+assert parse_sse("event: ping\\n\\n") == [], "an event without data is not dispatched"
+assert parse_sse(": just a comment\\n\\n") == [], "comments are ignored"
+assert parse_sse("id: 7\\nretry: 3000\\ndata: x\\n\\n") == [("message", "x")], "ignore id and retry fields"
+assert parse_sse("data: last\\n") == [], "an event is dispatched only when its blank line arrives"`}
+  solution={`def parse_sse(text):
+    events = []
+    name, data = None, []
+    # The piece after the final newline is empty or an unterminated line: drop it.
+    for line in text.split("\\n")[:-1]:
+        if line == "":
+            if data:
+                events.append((name or "message", "\\n".join(data)))
+            name, data = None, []
+            continue
+        if line.startswith(":"):
+            continue
+        field, _, value = line.partition(":")
+        if value.startswith(" "):
+            value = value[1:]
+        if field == "event":
+            name = value
+        elif field == "data":
+            data.append(value)
+    return events`}
+>
+Write `parse_sse`. You won't need it with the SDK on the first hop, but you will need to know exactly what your own server emits, and a parser like this is how you test it. The last check matters: an event without its terminating blank line was cut off, and a client that acts on it acts on a partial message.
+</PyRunner>
+
+<Listen>
+## Pattern 3: background jobs and queues
+
+Some work takes longer than anyone should hold an HTTP request open: summarizing a long document set, running an agent that makes dozens of tool calls, generating a report with several model passes and checks. For these, split the request from the work. The endpoint validates the request, writes a job record, puts a message on a queue, and returns immediately with a job id (HTTP 202 Accepted is the conventional status). A separate worker process takes jobs off the queue, calls the model, stores the result, and updates the job's status. The client polls a status endpoint, subscribes to a stream of progress events, or gets a notification when the job finishes.
+
+This buys you three things. Durations are no longer bounded by your web host's request limit (lesson 3 has the numbers). Failures become recoverable: a worker that crashes leaves the job in the queue for another worker, and a job that failed can be retried later without the user resubmitting. And load becomes smooth: a spike of requests becomes a longer queue rather than a wall of concurrent model calls that trips your rate limits.
+
+It also brings a new obligation: **the same job can run twice.** Queues typically deliver at least once, and a worker can crash after the model answered but before it recorded success. Calling the model twice only costs money. Sending the customer two emails, or creating two tickets, is a bug. Make every side effect at the end of a job idempotent, with an idempotency key derived from the job id, the same pattern Stripe's API uses for payments and the one you used for write tools in Studio 1. And because the worker runs unattended, the checks you'd do by eye in a chat UI (schema validation, evidence checks, a judge pass) must run in code before any side effect.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of a background job. The client POSTs a job to the API, which validates it, writes a job record with status queued, puts a message on a queue, and returns 202 with a job id. A worker takes the job from the queue, calls the model, validates the output, performs side effects with an idempotency key, and marks the job done or failed. The client polls the job status endpoint or receives a notification."
+  caption="Long work moves off the request path. The worker owns retries, validation, and idempotent side effects."
+  chart={`flowchart LR
+  C["Client"] -->|"POST /jobs"| A["API: validate, create job (queued)"]
+  A -->|"202 + job id"| C
+  A --> Q[("Queue")]
+  Q --> W["Worker: call model"]
+  W --> V{"Output passes checks?"}
+  V -- "yes" --> E["Side effects with idempotency key"]
+  V -- "no" --> F["Mark failed or retry later"]
+  E --> D[("Job store: done + result")]
+  C -->|"GET /jobs/id or notification"| D`}
+/>
+
+<Listen>
+## Pattern 4: batch processing
+
+When results can wait hours and nobody is watching, the cheapest option is often the provider's own batch interface. Anthropic's Message Batches API takes a list of ordinary Messages requests, each with a `custom_id` you choose, and processes them asynchronously. According to the batch processing docs on the review date, batches cost 50 percent of standard prices, hold up to 100,000 requests or 256 MB, usually finish within an hour, and expire after 24 hours if not finished; results stay available for 29 days. A batch request can't stream, can't set `fallbacks` or `speed`, and Batches have their own rate limits, separate from the Messages API's.
+
+Batch fits work like nightly classification of the day's support tickets, backfilling summaries for an archive, re-scoring a test set when you change a prompt (Studio 3), or generating synthetic data. It does not fit anything a user is waiting on.
+
+Two habits make batch pipelines correct. First, **key results by `custom_id`**, never by position: the docs say results can come back in any order. Second, **handle every result type**. Each result is `succeeded`, `errored`, `canceled`, or `expired`, and a production pipeline counts each kind, re-submits the retryable ones, and reports the rest. A batch with 3 percent of items silently missing is a quiet data-quality bug that shows up weeks later in a dashboard.
+</Listen>
+
+```python
+import anthropic
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from anthropic.types.messages.batch_create_params import Request
+
+client = anthropic.Anthropic()
+batch = client.messages.batches.create(
+    requests=[
+        Request(
+            custom_id=ticket["id"],
+            params=MessageCreateParamsNonStreaming(
+                model="claude-haiku-5-5",  # high volume, simple labels: the cheap tier, verified by an eval
+                max_tokens=256,
+                messages=[{"role": "user", "content": f"Label this ticket: {ticket['text']}"}],
+            ),
+        )
+        for ticket in tickets
+    ]
+)
+# Later (poll until processing_status == "ended"), then join on custom_id:
+labels = {}
+for result in client.messages.batches.results(batch.id):
+    if result.result.type == "succeeded":
+        labels[result.custom_id] = result.result.message.content[0].text
+missing = [t["id"] for t in tickets if t["id"] not in labels]  # errored, canceled, or expired: handle them
+```
+
+<Callout type="tip" title="Model choice follows the pattern">
+The architecture changes which model makes sense. A streaming chat UI is judged on time to first token and answer quality, so a capable model is usually worth it, with a cheaper fallback when it is overloaded (lesson 2). A batch job is judged on cost per correct item, and the 50 percent discount applies to every model, so run your Studio 3 eval on a sample and pick the cheapest model that clears your bar. A background agent is judged on whether it finishes the task, where a stronger model that needs fewer retries is often cheaper per completed task. Measure per task, not per call.
+</Callout>
+
+<Listen>
+## Choosing: three questions
+
+You can choose the pattern with three questions about the task, answered from measurements rather than guesses (log a sample of real or realistic requests and look at the duration distribution, not the average).
+
+**Is a person watching the output appear?** If yes and the output is more than a sentence or two, stream. If no, don't pay the complexity cost of streaming.
+
+**How long does it take at the slow end?** Use something like the 99th percentile. If that is comfortably within a few seconds to a minute, a synchronous call (or a stream) is fine. If it can run for minutes, or involves many model calls, move it to a background job, because your host's request limit, the user's patience, and flaky networks will all cut it off.
+
+**Can it wait for hours?** If the results feed a report, an index, or tomorrow's queue, use batch processing and take the discount.
+
+Most real products mix patterns: a streaming chat endpoint, a background job for "analyze this folder," and a nightly batch that re-labels yesterday's conversations for your eval set. The pieces share one back end, one set of secrets, and one logging pipeline, which is what lesson 3 deploys.
+</Listen>
+
+<Callout type="pitfall" title="A key in the client bundle">
+The easiest way to leak a key is not hard-coding it in a component. It's a build setting. Frameworks inline some environment variables into browser code on purpose: Vercel's docs, for example, note that Next.js inlines variables prefixed `NEXT_PUBLIC_` into the client bundle at build time. Name a variable `NEXT_PUBLIC_ANTHROPIC_API_KEY` to "make it work" in a client component and you've published it. If a browser needs model output, add a server route. Then check: search your built client assets for `sk-ant` before every release (lesson 3's checklist automates this).
+</Callout>
+
+<GoDeeper title="Recovering an interrupted stream">
+A stream can break partway: a network blip, a deploy that restarts your server, an `overloaded_error` event. Anthropic's streaming docs describe a recovery approach: keep the text you already received, then send a new request that includes it. For Claude 4.6 and later models, the docs say to put the partial response in a user message with an instruction to continue from where it left off (older models used an assistant prefill instead, which current models reject). Tool use and thinking blocks can't be partially recovered; you resume from the most recent text block.
+
+Whether to resume or restart is a product decision. Resuming saves tokens and keeps the user's view stable, but the continuation is a second generation that may not join seamlessly, so test it on your own outputs before relying on it. Restarting is simpler and is the right default when outputs are short. On the browser hop, the SSE standard has its own mechanism: if your server sends an `id:` with each event, a reconnecting `EventSource` sends the last id back in a `Last-Event-ID` header, so a server that buffers recent events can replay what the client missed.
+</GoDeeper>
+
+<LabLink path="labs/studio-6/01-resilient-service" title="Lab: a resilient LLM service" needs={["Python 3.10+", "No API key for the core lab", "Optional: FastAPI, uvicorn, Anthropic API key"]} minutes={90}>
+Build the service this week is about: a FastAPI app with a synchronous `/chat` endpoint and a streaming `/chat/stream` endpoint that emits server-sent events. You'll write the parts that make it survive failures (lesson 2): error classification, retries with backoff and jitter under one deadline, a circuit breaker per model, a fallback from Opus to Sonnet, and a degraded mode. Offline tests use a fake client and a fake clock; FastAPI is optional and its tests skip without it.
+</LabLink>
+
+<Listen>
+## What you'll carry into the next lesson
+
+The model call lives on your server, behind your own policy checks. Synchronous calls fit short work with a machine consumer; streaming fits a person watching; background jobs fit long work, with idempotent side effects because jobs can run twice; batch fits work that can wait, keyed by `custom_id`. Every one of these patterns has a failure mode where the provider returns an error, times out, or declines, and in a stream that can happen after you've already shown the user half an answer. Lesson 2 is about handling all of those on purpose.
+</Listen>

@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.368
+A failure taxonomy you can diagnose.
+
+2
+00:00:02.648 --> 00:00:12.184
+Barnett and colleagues (2024) reported seven failure points from building three RAG systems in research, education, and biomedicine.
+
+3
+00:00:12.464 --> 00:00:21.104
+This course uses six categories that map onto them and onto the stages you built in weeks 1 to 3, because each category points at a different fix.
+
+4
+00:00:21.384 --> 00:00:22.493
+Missing content.
+
+5
+00:00:22.773 --> 00:00:25.013
+The answer isn’t in the corpus at all.
+
+6
+00:00:25.293 --> 00:00:31.032
+The correct behavior is to abstain, and the failure is answering anyway (Barnett’s FP1).
+
+7
+00:00:31.312 --> 00:00:37.221
+Fix: abstention, and a log of unanswerable questions so the content owners know what to write.
+
+8
+00:00:37.501 --> 00:00:38.589
+Retrieval miss.
+
+9
+00:00:38.869 --> 00:00:42.133
+The answer is in the corpus, but no retriever returned it.
+
+10
+00:00:42.413 --> 00:00:51.693
+Common causes are vocabulary mismatch (the user says “per diem,” the policy says “meal limit”), chunks that split the answer, and missing metadata.
+
+11
+00:00:51.973 --> 00:00:56.453
+Fix: hybrid search, query rewriting, better chunking (weeks 2 and 3).
+
+12
+00:00:56.733 --> 00:00:57.672
+Ranking miss.
+
+13
+00:00:57.952 --> 00:01:02.432
+Retrieval found the passage but it ranked below the cutoff (Barnett’s FP2).
+
+14
+00:01:02.712 --> 00:01:06.979
+Fix: reranking, a larger k, or both, measured with recall at k.
+
+15
+00:01:07.259 --> 00:01:08.560
+Context overflow.
+
+16
+00:01:08.840 --> 00:01:18.397
+The passage made the cut but was dropped or truncated when the prompt was assembled, because of a token budget or a consolidation step (Barnett’s FP3).
+
+17
+00:01:18.677 --> 00:01:23.989
+Fix: budget by tokens, not passage count, and log exactly what reached the model.
+
+18
+00:01:24.269 --> 00:01:25.443
+Synthesis error.
+
+19
+00:01:25.723 --> 00:01:40.528
+The right passage was in the context and the model still got it wrong: didn’t extract it, merged two facts, answered too generally or too narrowly, left something out, or ignored the requested format (Barnett’s FP4 to FP7).
+
+20
+00:01:40.808 --> 00:01:45.395
+Fix: prompt structure, quote-first prompting, a different model, verification.
+
+21
+00:01:45.675 --> 00:01:46.805
+Outdated source.
+
+22
+00:01:47.085 --> 00:01:51.160
+The answer is faithfully drawn from a passage that is no longer true.
+
+23
+00:01:51.440 --> 00:01:59.419
+Barnett’s list doesn’t name this one, but it’s common in company corpora, and lesson 10’s lab showed that every mechanical check passes it.
+
+24
+00:01:59.699 --> 00:02:07.187
+Fix: at ingestion (remove or flag superseded documents, store effective dates), and in the prompt (prefer the newest).

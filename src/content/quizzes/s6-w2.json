@@ -1,0 +1,377 @@
+{
+  "id": "s6-w2",
+  "studio": "s6",
+  "week": 2,
+  "title": "Week 2 quiz: Cost and latency",
+  "questions": [
+    {
+      "id": "s6w2-q1",
+      "type": "mcq",
+      "prompt": "A request has tool definitions, a system prompt, and messages. You put a single `cache_control` breakpoint on the last system block. What does that breakpoint cache?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Only the last system block.",
+          "rationale": "A breakpoint caches the whole prefix up to that point, not one block."
+        },
+        {
+          "id": "b",
+          "text": "The system prompt but not the tools, which are cached separately with their own breakpoint.",
+          "rationale": "Tools render before system, so they are part of the prefix the system breakpoint covers."
+        },
+        {
+          "id": "c",
+          "text": "The tool definitions and the system prompt together, because the prompt renders in the order tools, system, messages.",
+          "correct": true,
+          "rationale": "Yes. The cache key covers every byte before the breakpoint in render order."
+        },
+        {
+          "id": "d",
+          "text": "Everything, including the messages that follow.",
+          "rationale": "Content after the last breakpoint is processed at the full input price."
+        }
+      ],
+      "explanation": "Render order (tools, then system, then messages) is the key to placement. It also explains why a per-user tool list destroys caching across users: tools come first, so a difference there changes every byte that follows.",
+      "week": 2,
+      "tags": [
+        "caching"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6w2-q2",
+      "type": "multi",
+      "prompt": "Which of these changes, made between two otherwise identical requests in the same conversation, prevent the second request from reading the cached prefix written by the first? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Adding one tool to the tool list",
+          "correct": true,
+          "rationale": "Tool definitions render first; changing them invalidates everything."
+        },
+        {
+          "id": "b",
+          "text": "Interpolating the current timestamp at the top of the system prompt",
+          "correct": true,
+          "rationale": "The prefix bytes differ on every request."
+        },
+        {
+          "id": "c",
+          "text": "Changing the user's newest question, which sits after the last breakpoint",
+          "rationale": "Content after the breakpoint isn't part of the cached prefix. This is exactly where varying content belongs."
+        },
+        {
+          "id": "d",
+          "text": "Switching from standard speed to fast mode",
+          "correct": true,
+          "rationale": "The fast mode docs say requests at different speeds don't share cached prefixes."
+        },
+        {
+          "id": "e",
+          "text": "Switching the model from Sonnet 5.5 to Haiku 5.5",
+          "correct": true,
+          "rationale": "Caches are scoped per model, which is one hidden cost of cascades."
+        }
+      ],
+      "explanation": "Caching is byte-exact and model-scoped, and some request settings are part of the key. Keep tools, system, model, speed, and top-level effort fixed for a conversation, and put anything that varies after the last breakpoint.",
+      "week": 2,
+      "tags": [
+        "caching",
+        "invalidators"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w2-q3",
+      "type": "predict-output",
+      "prompt": "Prices are USD per million tokens for Claude Sonnet 5.5 at the time of writing. What does this print?",
+      "code": "p = {\"input\": 2.00, \"write_5m\": 2.50, \"read\": 0.10, \"output\": 10.00}\nu = {\"input_tokens\": 1000, \"cache_creation_input_tokens\": 2000,\n     \"cache_read_input_tokens\": 10000, \"output_tokens\": 500}\ncost = (u[\"input_tokens\"] * p[\"input\"]\n        + u[\"cache_creation_input_tokens\"] * p[\"write_5m\"]\n        + u[\"cache_read_input_tokens\"] * p[\"read\"]\n        + u[\"output_tokens\"] * p[\"output\"]) / 1_000_000\nprint(round(cost, 4))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.031`",
+          "rationale": "That prices all 13,000 input tokens at the full $2 rate. Cache writes and reads each have their own price."
+        },
+        {
+          "id": "b",
+          "text": "`0.013`",
+          "correct": true,
+          "rationale": "2,000 + 5,000 + 1,000 + 5,000 = 13,000 millionths of a dollar, which is $0.013."
+        },
+        {
+          "id": "c",
+          "text": "`0.008`",
+          "rationale": "This leaves out the cache write."
+        },
+        {
+          "id": "d",
+          "text": "`0.032`",
+          "rationale": "That prices the 10,000 cache reads at the full input rate instead of $0.10 per million."
+        }
+      ],
+      "explanation": "Four meters, four prices. Here the 10,000 cached tokens cost only $0.001, while 500 output tokens cost $0.005: once caching works, output often becomes the largest line item.",
+      "week": 2,
+      "tags": [
+        "cost",
+        "usage"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w2-q4",
+      "type": "code-reading",
+      "prompt": "This function builds the system prompt for a support agent. Cache reads are near zero even for back-to-back requests from the same customer. What is the most likely cause?",
+      "code": "import json\n\ndef build_system(policy_text, customer):\n    profile = {\"tier\": customer.tier, \"region\": customer.region,\n               \"flags\": {f for f in customer.flags}}\n    return [\n        {\"type\": \"text\", \"text\": json.dumps(profile, default=list) + \"\\n\\n\" + policy_text,\n         \"cache_control\": {\"type\": \"ephemeral\"}},\n    ]",
+      "options": [
+        {
+          "id": "a",
+          "text": "The policy text is too long to cache.",
+          "rationale": "Long prefixes cache fine; the risk is prefixes that are too short."
+        },
+        {
+          "id": "b",
+          "text": "The per-customer profile sits before the policy, and it serializes a set, whose iteration order isn't guaranteed to be stable, so the prefix bytes can differ even for the same customer; and no two customers ever share the policy's cache entry.",
+          "correct": true,
+          "rationale": "Yes. Two problems: volatile content ahead of the stable part, and non-deterministic serialization of that content."
+        },
+        {
+          "id": "c",
+          "text": "`cache_control` must be on the messages, not the system prompt.",
+          "rationale": "System blocks are a normal place for a breakpoint."
+        },
+        {
+          "id": "d",
+          "text": "`json.dumps` is not allowed in prompts.",
+          "rationale": "Any text is allowed; the problem is that this text changes."
+        }
+      ],
+      "explanation": "Put the shared policy first with the breakpoint after it, and move per-customer context after the breakpoint (into the user turn or a mid-conversation system message). When you must serialize structured context, make it deterministic: sorted lists instead of sets, and `sort_keys=True`.",
+      "week": 2,
+      "tags": [
+        "caching",
+        "invalidators",
+        "code-reading"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w2-q5",
+      "type": "scenario",
+      "prompt": "Every night your eval suite sends 5,000 synchronous requests that share a 6,000-token rubric, and the team reads the results the next morning. Cost is the concern. What is the best change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Run the suite through the Message Batches API, key results by `custom_id`, put a breakpoint after the rubric with the one-hour lifetime, and retry or report items whose result isn't `succeeded`.",
+          "correct": true,
+          "rationale": "Yes. Nobody waits on any single item, batch halves every token, discounts stack with caching, and the one-hour lifetime suits batches that run longer than five minutes."
+        },
+        {
+          "id": "b",
+          "text": "Switch the suite to fast mode so it finishes sooner.",
+          "rationale": "Fast mode raises the price and isn't available in batches. Speed isn't the constraint here."
+        },
+        {
+          "id": "c",
+          "text": "Drop to the smallest model for the eval to save money.",
+          "rationale": "Changing the model changes what you're evaluating. Free wins come before trades."
+        },
+        {
+          "id": "d",
+          "text": "Fire all 5,000 requests concurrently so the cache warms faster.",
+          "rationale": "Concurrent requests can't read an entry until the first response starts, so a burst mostly pays full price."
+        }
+      ],
+      "explanation": "Batch is the second free lever after caching for unattended work. The operational details (results in any order, per-item status, 24-hour expiry) are what make it reliable.",
+      "week": 2,
+      "tags": [
+        "batch",
+        "caching"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w2-q6",
+      "type": "scenario",
+      "prompt": "A colleague proposes a cascade: send every request to Haiku 5.5, and escalate to Opus 5.5 when a checker rejects the answer. Today everything runs on Opus 5.5 at its default effort. What do you ask for before building it?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; FrugalGPT showed cascades cut costs by up to 98 percent.",
+          "rationale": "That result is on the paper's tasks and its era's prices. It doesn't tell you about your workload."
+        },
+        {
+          "id": "b",
+          "text": "A measurement of Opus 5.5 at lower effort on the same eval, priced in cost per completed task, plus the checker's accuracy on labeled examples; build the cascade only if it beats the single model's whole cost and score curve.",
+          "correct": true,
+          "rationale": "Yes. This is Anthropic's recommended order, and a cascade is only as good as the checker that decides when to escalate."
+        },
+        {
+          "id": "c",
+          "text": "A benchmark showing Haiku is faster per token.",
+          "rationale": "Speed per token isn't cost per completed task, and it says nothing about the checker."
+        },
+        {
+          "id": "d",
+          "text": "A plan to run both models on every request and keep the better answer.",
+          "rationale": "That costs more than either model alone."
+        }
+      ],
+      "explanation": "The simpler alternative often wins: one strong model at lower effort keeps one cache namespace and has no router to get wrong. When a cascade does win, its weak point is the checker: measure its true and false positive rates, and audit the traffic it accepts from the cheap model.",
+      "week": 2,
+      "tags": [
+        "routing",
+        "model-selection"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6w2-q7",
+      "type": "mcq",
+      "prompt": "You port a cached workload from Claude to OpenAI. According to OpenAI's prompt caching guide, what changes about verifying that caching works?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; OpenAI also reports `cache_read_input_tokens`.",
+          "rationale": "The field names differ between providers."
+        },
+        {
+          "id": "b",
+          "text": "Caching can't be verified on OpenAI; you have to infer it from latency.",
+          "rationale": "OpenAI reports cached tokens in the usage object."
+        },
+        {
+          "id": "c",
+          "text": "Caching is automatic on supported models, and you check `usage.input_tokens_details.cached_tokens`; the same rule applies of putting static content first.",
+          "correct": true,
+          "rationale": "Yes. The mechanism and field differ, but the prefix-match principle is the same."
+        },
+        {
+          "id": "d",
+          "text": "You must create a named cache object before every request.",
+          "rationale": "That describes explicit caching on some older Gemini models, not OpenAI's automatic caching."
+        }
+      ],
+      "explanation": "Normalize usage from every provider into one record shape (uncached input, cache writes, cache reads, output) before you compare costs. The prefix-match rule is universal; field names, minimum lengths, and lifetimes are not.",
+      "week": 2,
+      "tags": [
+        "caching",
+        "providers"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6w2-q8",
+      "type": "predict-output",
+      "prompt": "Each model call in an agent independently has a 1 percent chance of being very slow. What does this print for a task that makes 20 calls?",
+      "code": "p_slow_call = 0.01\ncalls = 20\np_task_hits_slow = 1 - (1 - p_slow_call) ** calls\nprint(round(p_task_hits_slow, 3))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.01`",
+          "rationale": "That's the per-call probability; the task makes 20 chances."
+        },
+        {
+          "id": "b",
+          "text": "`0.2`",
+          "rationale": "Close, but adding probabilities overcounts overlapping events. The exact value is slightly lower."
+        },
+        {
+          "id": "c",
+          "text": "`0.182`",
+          "correct": true,
+          "rationale": "1 minus 0.99 to the 20th is about 0.182: nearly one task in five."
+        },
+        {
+          "id": "d",
+          "text": "`0.818`",
+          "rationale": "That's the probability that no call is slow."
+        }
+      ],
+      "explanation": "This is the fan-out effect Dean and Barroso describe in \"The Tail at Scale\": a rare call-level event becomes a common task-level one. Measure tail latency per task, and attack the number of calls as well as their speed.",
+      "week": 2,
+      "tags": [
+        "latency",
+        "percentiles"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w2-q9",
+      "type": "code-reading",
+      "prompt": "This helper is supposed to log time to first visible output. What does `first_text` actually measure?",
+      "code": "import time\n\ndef timed(client, **params):\n    sent = time.perf_counter()\n    with client.messages.stream(**params) as stream:\n        message = stream.get_final_message()\n        first_text = time.perf_counter() - sent\n        for event in stream:\n            pass\n    return message, first_text",
+      "options": [
+        {
+          "id": "a",
+          "text": "The time until the first text delta arrives.",
+          "rationale": "No event is inspected before the timestamp is taken."
+        },
+        {
+          "id": "b",
+          "text": "Roughly the time to finish, because `get_final_message()` waits for the whole response before the timestamp is taken.",
+          "correct": true,
+          "rationale": "Yes. Record timestamps while iterating events (message_start, the first text delta), then read the final message."
+        },
+        {
+          "id": "c",
+          "text": "Zero, because streaming returns immediately.",
+          "rationale": "`get_final_message()` blocks until the stream completes."
+        },
+        {
+          "id": "d",
+          "text": "The time to first token, including thinking.",
+          "rationale": "That would need a timestamp at the `message_start` event."
+        }
+      ],
+      "explanation": "Timing code is easy to get subtly wrong, and wrong timing leads to wrong levers. Mark timestamps inside the event loop, use a monotonic clock, and sanity-check on a request with no thinking that time to first token and first text are close.",
+      "week": 2,
+      "tags": [
+        "latency",
+        "streaming",
+        "code-reading"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w2-q10",
+      "type": "multi",
+      "prompt": "Using the task-time equation (calls times TTFT, plus output tokens over output speed, plus time outside the model), which levers act mainly on the output term? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Asking for a two-line answer format with an example",
+          "correct": true,
+          "rationale": "Fewer output tokens."
+        },
+        {
+          "id": "b",
+          "text": "Fast mode",
+          "correct": true,
+          "rationale": "Higher output tokens per second; the docs say it doesn't focus on TTFT."
+        },
+        {
+          "id": "c",
+          "text": "Lowering effort on a routine route",
+          "correct": true,
+          "rationale": "Fewer thinking and output tokens, which count in the output term whether or not they are displayed."
+        },
+        {
+          "id": "d",
+          "text": "Prefetching the customer's account into the first request",
+          "rationale": "That cuts the number of calls (and tool time), not the output term."
+        },
+        {
+          "id": "e",
+          "text": "Caching a 150,000-token prefix",
+          "rationale": "That shortens TTFT on reads, the first term."
+        }
+      ],
+      "explanation": "Naming the term a lever moves keeps you from applying the wrong fix. If the decomposition shows the time is in tool execution or extra calls, no amount of output shaping or fast mode will reach it.",
+      "week": 2,
+      "tags": [
+        "latency"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

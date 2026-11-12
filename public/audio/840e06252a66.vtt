@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.003
+The dataset.
+
+2
+00:00:01.283 --> 00:00:02.605
+Start with what you have.
+
+3
+00:00:02.885 --> 00:00:09.883
+Your Studio 2 project produced a corpus, a question-answering system, and probably a handful of test questions.
+
+4
+00:00:10.163 --> 00:00:17.267
+Grow that into a set with four kinds of cases, and tag each case with its kind and source so you can report by slice.
+
+5
+00:00:17.547 --> 00:00:22.603
+Real questions, from users, logs, or colleagues who would actually use the system.
+
+6
+00:00:22.883 --> 00:00:30.925
+Synthetic questions generated from documents (lesson 11), checked by hand, especially for questions that need two chunks.
+
+7
+00:00:31.205 --> 00:00:37.093
+Regression cases: every failure you found in error analysis and review, with the rule it broke.
+
+8
+00:00:37.373 --> 00:00:43.325
+Should-abstain cases: questions the corpus can’t answer, where the right behavior is to say so.
+
+9
+00:00:43.605 --> 00:00:48.661
+Without these, a system that always answers looks better than one that knows its limits.
+
+10
+00:00:48.941 --> 00:00:50.499
+Each case needs labels.
+
+11
+00:00:50.779 --> 00:01:00.037
+At minimum: the relevant chunks (for retrieval metrics), and either a reference answer or a list of facts a correct answer must contain (for correctness).
+
+12
+00:01:00.317 --> 00:01:03.603
+Add a should-abstain flag, and notes from whoever labeled it.
+
+13
+00:01:03.883 --> 00:01:14.187
+Labels are the expensive part, so spend them where they matter: a domain expert on reference answers, synthetic generation plus spot checks for retrieval labels.
+
+14
+00:01:14.467 --> 00:01:15.491
+Split the set.
+
+15
+00:01:15.771 --> 00:01:24.837
+A dev set you iterate against freely, and a held-out set you run rarely (say, once per candidate you are seriously considering) and never tune against.
+
+16
+00:01:25.117 --> 00:01:34.205
+Version both, as files in the repository with a version number in the log, because a number without its dataset version can’t be compared to anything.
+
+17
+00:01:34.485 --> 00:01:42.251
+When chunking changes, regenerate retrieval labels with a script, not by hand, and record that as a new dataset version.
+
+18
+00:01:42.531 --> 00:01:43.384
+How big?
+
+19
+00:01:43.664 --> 00:01:47.419
+Large enough that the differences you care about show up outside the noise.
+
+20
+00:01:47.699 --> 00:01:50.344
+That is a statistics question, covered below.

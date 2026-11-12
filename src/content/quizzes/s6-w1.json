@@ -1,0 +1,369 @@
+{
+  "id": "s6-w1",
+  "studio": "s6",
+  "week": 1,
+  "title": "Week 1 quiz: Deployment",
+  "questions": [
+    {
+      "id": "s6w1-q1",
+      "type": "mcq",
+      "prompt": "A TypeScript service sets `new Anthropic({ timeout: 30 })`, intending a 30-second timeout. What actually happens?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Requests time out after 30 seconds, as intended.",
+          "rationale": "The TypeScript SDK's timeout is in milliseconds, not seconds."
+        },
+        {
+          "id": "b",
+          "text": "Requests time out after 30 milliseconds, so nearly every call fails (after the SDK's retries).",
+          "rationale": "Right. TypeScript uses milliseconds; Python uses seconds.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The SDK rejects the value because the minimum is 60 seconds.",
+          "rationale": "There is no such minimum; the value is accepted and applied."
+        },
+        {
+          "id": "d",
+          "text": "It sets a 30-minute timeout, because the unit is minutes.",
+          "rationale": "No current Anthropic SDK takes minutes."
+        }
+      ],
+      "explanation": "Units differ by SDK: Python takes seconds (a float or an `anthropic.Timeout`), TypeScript takes milliseconds, Go and Java take duration types. A 30 ms timeout looks like an outage in your logs. Write timeouts with explicit unit-bearing names in config (`attempt_timeout_s`) and test them.",
+      "week": 1,
+      "tags": [
+        "timeouts",
+        "sdk"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6w1-q2",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "base, cap = 0.5, 8.0\nprint([min(cap, base * 2 ** (n - 1)) for n in range(1, 7)])",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[0.5, 1.0, 2.0, 4.0, 8.0, 8.0]`",
+          "rationale": "Yes. The ceiling doubles each retry until the cap holds it at 8.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`[0.5, 1.0, 2.0, 4.0, 8.0, 16.0]`",
+          "rationale": "The `min` with the cap stops the growth at 8."
+        },
+        {
+          "id": "c",
+          "text": "`[1.0, 2.0, 4.0, 8.0, 8.0, 8.0]`",
+          "rationale": "Retry 1 uses 2 to the power 0, which is 1, times the base of 0.5."
+        },
+        {
+          "id": "d",
+          "text": "`[0.5, 0.5, 0.5, 0.5, 0.5, 0.5]`",
+          "rationale": "The exponent changes with n, so the ceiling grows."
+        }
+      ],
+      "explanation": "These are the ceilings for capped exponential backoff. With full jitter, the actual wait before retry n is a uniform draw between 0 and that ceiling, so clients that failed together spread out instead of retrying in lockstep. The cap keeps any single wait bounded; a request deadline bounds the total.",
+      "week": 1,
+      "tags": [
+        "backoff",
+        "jitter"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6w1-q3",
+      "type": "code-reading",
+      "prompt": "This helper wraps every model call in a service that has turned SDK retries off. What is its most serious problem?",
+      "code": "def call_with_retry(fn, attempts=4):\n    for i in range(attempts):\n        try:\n            return fn()\n        except Exception:\n            time.sleep(2 ** i)\n    raise RuntimeError(\"model unavailable\")",
+      "options": [
+        {
+          "id": "a",
+          "text": "It retries every exception, including permanent ones like a 400 or 401, and then hides the real error behind a generic one.",
+          "rationale": "Yes. Bad requests get four slow failures and the log loses the actual cause.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "It should use `time.sleep(2 * i)` instead of `2 ** i`.",
+          "rationale": "Linear backoff would be worse, not better. The base pattern is fine; the classification and the missing jitter are the problems."
+        },
+        {
+          "id": "c",
+          "text": "Four attempts is above the SDK's default, which the API rejects.",
+          "rationale": "The API does not know how many times you retry. It counts requests against your rate limit."
+        },
+        {
+          "id": "d",
+          "text": "`fn()` must be awaited.",
+          "rationale": "Nothing here is async; this is a synchronous helper."
+        }
+      ],
+      "explanation": "Three fixes: catch only transient errors (connection errors, 408, 409, 429, 5xx) and let permanent ones propagate; add jitter so many clients don't retry in sync; and re-raise the last exception (or chain it) so logs keep the status code and `request-id`. A deadline check before each sleep would also stop it outliving the caller.",
+      "week": 1,
+      "tags": [
+        "retries",
+        "error-handling"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w1-q4",
+      "type": "scenario",
+      "prompt": "Your streaming chat endpoint has sent about 40 percent of an answer to the browser when the upstream stream fails with an `overloaded_error` event. A fallback model is available. What should the endpoint do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Silently start the fallback model with the same prompt and append its output to what the user already sees.",
+          "rationale": "The fallback writes a new answer from the beginning. Appending it produces a reply that repeats or contradicts itself."
+        },
+        {
+          "id": "b",
+          "text": "Send an error event saying the reply was interrupted, keep the partial text visible but marked incomplete, and let the user retry (which can go to the fallback).",
+          "rationale": "Right. Once text is on screen, switch models only with the user's knowledge.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Keep the connection open and wait for the primary to recover, however long it takes.",
+          "rationale": "An unbounded wait ties up the connection and leaves the user staring at a frozen reply; the deadline exists for this."
+        },
+        {
+          "id": "d",
+          "text": "Return HTTP 503 to the browser.",
+          "rationale": "The 200 status and headers were sent when the stream started. You can only send more events now."
+        }
+      ],
+      "explanation": "Before the first token, falling back is invisible to the user and is the right move. After it, the model is fixed for that reply. Report the interruption as an event, keep or discard the partial text according to the error (a mid-stream refusal's partial text should be discarded), and make the retry explicit. Anthropic's streaming docs also describe resuming from the partial text with a continuation request, which you can offer if you've tested it on your outputs.",
+      "week": 1,
+      "tags": [
+        "streaming",
+        "fallbacks"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w1-q5",
+      "type": "multi",
+      "prompt": "According to Anthropic's docs on the review date, which of these can a request inside a Message Batch **not** do? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Stream its response",
+          "rationale": "A batch request can't set `stream`. Results are collected when the batch ends.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Use the server-side `fallbacks` parameter",
+          "rationale": "The refusal docs say batches don't support it; such an item comes back errored.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Set `speed` (fast mode)",
+          "rationale": "Fast mode is not available with the Batch API.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Use tools and prompt caching",
+          "rationale": "Batches support most Messages API features, including tools and caching."
+        },
+        {
+          "id": "e",
+          "text": "Use a `custom_id` you choose to join results back to inputs",
+          "rationale": "That is exactly how results are matched, because they can arrive in any order."
+        }
+      ],
+      "explanation": "Batch requests are ordinary Messages requests processed asynchronously at a discount, minus the features that only make sense for a live call. For refused batch items, re-submit them to a different model yourself, in a follow-up batch or a direct call.",
+      "week": 1,
+      "tags": [
+        "batch"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w1-q6",
+      "type": "mcq",
+      "prompt": "Why can a Cloudflare Worker on the Paid plan proxy a two-minute model stream even though its CPU-time limit defaults to 30 seconds?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Cloudflare raises the limit automatically for AI traffic.",
+          "rationale": "No such rule is documented. The reason is how CPU time is counted."
+        },
+        {
+          "id": "b",
+          "text": "Waiting on network requests doesn't count toward CPU time, and HTTP-triggered Workers have no hard wall-clock limit while the client stays connected.",
+          "rationale": "Right. A proxy spends almost all of its time waiting, which costs very little CPU.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Streams are exempt from all Worker limits.",
+          "rationale": "CPU time still applies to the work your code does per chunk; it is just small for a proxy."
+        },
+        {
+          "id": "d",
+          "text": "It can't; the stream is cut off at 30 seconds.",
+          "rationale": "The docs distinguish CPU time from duration. Wall-clock time is not capped at 30 seconds."
+        }
+      ],
+      "explanation": "Know which clock a platform limits. Edge workers meter CPU, so I/O-bound proxies fit well; serverless functions and containers typically cap wall-clock duration, including streaming time. In both cases, check what happens when the client disconnects: Cloudflare's docs say request-bound tasks may be canceled, so hand must-finish work to `waitUntil` or a queue.",
+      "week": 1,
+      "tags": [
+        "hosting",
+        "edge"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w1-q7",
+      "type": "predict-output",
+      "prompt": "Using a breaker with consecutive-failure counting, threshold 2, reset timeout 10 seconds, and a fake clock, what does this print?",
+      "code": "br = CircuitBreaker(failure_threshold=2, reset_timeout=10, clock=clock)\nbr.record_failure()\nbr.record_success()\nbr.record_failure()\nbr.record_failure()\nclock.advance(12)\nfirst = br.allow()\nsecond = br.allow()\nprint(br.state, first, second)",
+      "options": [
+        {
+          "id": "a",
+          "text": "`half_open True False`",
+          "rationale": "Yes. Two consecutive failures opened it, 12 s passed, the first caller got the trial, the second waits.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`closed True True`",
+          "rationale": "The success reset the count, but the next two failures were consecutive and opened it."
+        },
+        {
+          "id": "c",
+          "text": "`open False False`",
+          "rationale": "The reset timeout (10 s) has passed, so it is half-open."
+        },
+        {
+          "id": "d",
+          "text": "`half_open True True`",
+          "rationale": "Half-open allows exactly one trial until that trial is recorded."
+        }
+      ],
+      "explanation": "Walk the state machine: failure (count 1), success (count 0), failure, failure (count 2: open). After the reset timeout the breaker is half-open, and it admits one trial call. Its outcome decides between closed and open again. The fake clock is what lets a test check this in microseconds.",
+      "week": 1,
+      "tags": [
+        "circuit-breaker",
+        "testing"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w1-q8",
+      "type": "code-reading",
+      "prompt": "A service has a 60-second request deadline and a fallback chain of two models. Which line lets the chain run past the deadline?",
+      "code": "deadline = clock.now() + 60\nfor model in [\"claude-opus-5-5\", \"claude-sonnet-5-5\"]:\n    for attempt in range(3):\n        try:\n            return client.complete(model=model, timeout=30)   # line A\n        except TransientError:\n            if clock.now() + 1 >= deadline:                     # line B\n                break\n            clock.sleep(1)                                        # line C\nreturn DEGRADED                                                   # line D",
+      "options": [
+        {
+          "id": "a",
+          "text": "Line A: every attempt gets a fixed 30-second timeout instead of the smaller of 30 seconds and the time remaining.",
+          "rationale": "Yes. An attempt started at second 50 can run to second 80.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Line B: it should compare with `>` instead of `>=`.",
+          "rationale": "That changes one boundary instant, not the overrun."
+        },
+        {
+          "id": "c",
+          "text": "Line C: sleeping one second is too long.",
+          "rationale": "The sleep is checked against the deadline first. The unbounded attempt is the problem."
+        },
+        {
+          "id": "d",
+          "text": "Line D: returning a degraded message breaks the deadline.",
+          "rationale": "Returning immediately is the fastest thing the service can do."
+        }
+      ],
+      "explanation": "Deadline propagation means each attempt's timeout is the minimum of its own budget and what is left of the request's, and an attempt with nothing left is not started. Without it, a chain with fallbacks can take several times longer than the deadline promises.",
+      "week": 1,
+      "tags": [
+        "deadlines",
+        "timeouts"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6w1-q9",
+      "type": "scenario",
+      "prompt": "A teammate runs a load test against a preview deployment. Within minutes, production users start getting 429 errors. Preview and production both read the same `ANTHROPIC_API_KEY`. What is the best structural fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ask the team to run load tests only at night.",
+          "rationale": "A schedule is a request, not a control. The next accident won't check the clock."
+        },
+        {
+          "id": "b",
+          "text": "Give each environment its own key in its own Anthropic workspace, with workspace rate and spend limits set below the organization's, and never give preview the production key.",
+          "rationale": "Right. Workspace limits keep one environment from consuming another's capacity.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Raise the SDK's max_retries in production so it rides out the 429s.",
+          "rationale": "More retries add load to the same exhausted limit."
+        },
+        {
+          "id": "d",
+          "text": "Switch production to a different model whenever a load test runs.",
+          "rationale": "That treats the symptom and changes production behavior without an eval."
+        }
+      ],
+      "explanation": "Rate limits are enforced per organization, and Anthropic lets you set lower limits per workspace so that one workspace can't starve the others. Separate keys per environment also contain leaks: a key exposed by an unreviewed preview build can't touch production.",
+      "week": 1,
+      "tags": [
+        "environments",
+        "rate-limits",
+        "secrets"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w1-q10",
+      "type": "mcq",
+      "prompt": "A background worker calls the model, then sends the customer an email, then marks the job done. It crashes right after sending the email, and the queue redelivers the job. What prevents a second email?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Setting the SDK's max_retries to 0.",
+          "rationale": "SDK retries are not involved. The queue redelivered the whole job."
+        },
+        {
+          "id": "b",
+          "text": "An idempotency key derived from the job id that the email step checks and records, so a repeat with the same key is skipped.",
+          "rationale": "Yes. The side effect, not the model call, has to be idempotent.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Lowering the model's effort so the job finishes before it can crash.",
+          "rationale": "Speed does not change at-least-once delivery."
+        },
+        {
+          "id": "d",
+          "text": "Catching all exceptions in the worker.",
+          "rationale": "The crash happened outside your code's control; a try block doesn't survive a process restart."
+        }
+      ],
+      "explanation": "Queues typically deliver at least once, so every job can run twice. The model call is safe to repeat (it only costs tokens and may give a different answer); the email is not. Key side effects by something stable, like the job id, as payment APIs such as Stripe's do.",
+      "week": 1,
+      "tags": [
+        "idempotency",
+        "jobs"
+      ],
+      "difficulty": 1
+    }
+  ]
+}

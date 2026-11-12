@@ -1,0 +1,304 @@
+---
+id: s4-w4-l10
+studio: s4
+week: 4
+order: 10
+title: Permissions, human-in-the-loop, and sandboxing
+summary: >-
+  Constrain what an agent can do instead of hoping it behaves. Least privilege, read versus write tools, approval
+  gates people actually read, sandboxes that hold even when the model is fooled, audit logs, and reversibility,
+  connected to the Claude Code permission modes you already use and to Managed Agents permission policies.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Separate what an agent tends to do (prompts, training, classifiers) from what it is able to do (permissions, sandboxes), and explain why only the second gives guarantees
+  - Apply least privilege to an agent's tools, credentials, and network, and classify each tool by read or write and by reversibility
+  - Design an approval gate that denies by default, shows exact arguments, and asks rarely enough that people still read it
+  - Map Claude Code's permission modes and rule precedence, and Managed Agents permission policies, onto the same design ideas
+  - Specify an audit log that lets you reconstruct and, where possible, undo what an agent did
+sources:
+  - { id: anthropic-containing-claude, use: summarized, where: "Three types of risk; human-in-the-loop telemetry; environment, model, and content layers" }
+  - { id: anthropic-cc-sandboxing-post, use: summarized }
+  - { id: cc-permissions-docs, use: summarized, where: "Permission system; Manage permissions; rule syntax" }
+  - { id: cc-permission-modes-docs, use: summarized, where: "Available modes; auto mode; bypassPermissions" }
+  - { id: cc-sandboxing-docs, use: summarized, where: "What the sandbox restricts; what runs outside it" }
+  - { id: cc-hooks-docs, use: linked }
+  - { id: claude-ma-permission-policies, use: summarized }
+  - { id: claude-ma-secure-deployment, use: summarized, where: "Settings table, most important first" }
+  - { id: owasp-excessive-agency, use: summarized }
+  - { id: mcp-tools-spec, use: summarized, where: "User interaction model" }
+  - { id: owasp-logging-cheatsheet, use: summarized, where: "Which events to log; data to exclude" }
+  - { id: willison-camel, use: summarized, where: "User fatigue" }
+  - { id: openai-agent-safety, use: summarized, where: "Keep tool approvals on" }
+  - { id: stripe-idempotency, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      Your project settings contain the allow rule `Bash(aws s3 ls)` and the deny rule `Bash(aws *)`. Claude Code
+      tries to run `aws s3 ls`. What happens, according to the Claude Code permission docs?
+    options:
+      - id: a
+        text: It runs, because the more specific allow rule wins.
+        rationale: Specificity does not change the order. That is the intuition the docs warn against.
+      - id: b
+        text: It is blocked, because deny rules are evaluated first and the first match decides.
+        correct: true
+        rationale: Rules are evaluated deny, then ask, then allow. An allow rule cannot carve an exception out of a deny rule.
+      - id: c
+        text: Claude Code asks you, because the two rules conflict.
+        rationale: There is no conflict resolution prompt; the evaluation order settles it.
+    explanation: >-
+      Deny, then ask, then allow, first match wins. This is a deliberate design: a broad deny is a hard boundary
+      that a later, narrower allow cannot weaken by accident. Build your own guards the same way.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your team's internal agent asks for approval on every tool call, including searches. After a month, logs show
+      reviewers approve almost everything within two seconds. What is the best change?
+    options:
+      - id: a
+        text: Add a warning banner to every approval asking reviewers to read carefully.
+        rationale: It treats a design problem as a discipline problem. Fatigue comes from volume.
+      - id: b
+        text: Stop asking for reads, batch writes into one reviewable draft, block clear violations with deterministic rules, and ask only for the remaining irreversible actions.
+        correct: true
+        rationale: Fewer, more meaningful approvals, with rules handling what rules can decide.
+      - id: c
+        text: Remove approvals and rely on the system prompt telling the agent to be careful.
+        rationale: A prompt shapes tendencies; it is not a control.
+    explanation: >-
+      Anthropic reported that Claude Code users approved roughly 93% of permission prompts, and that attention drops
+      as approvals pile up. The fix is architectural: sandbox and allowlist what you can, deny what is clearly wrong,
+      and reserve human attention for the few decisions that need judgment.
+  - id: kc3
+    type: multi
+    prompt: Which of these are enforced by the environment, so they hold even if the model is fully compromised by a prompt injection? Select all that apply.
+    options:
+      - id: a
+        text: An OS-level sandbox that blocks network access except to allowlisted hosts
+        correct: true
+        rationale: The operating system enforces it whatever the model decides.
+      - id: b
+        text: A credential scoped to read-only access on one repository
+        correct: true
+        rationale: The API refuses writes no matter who asks.
+      - id: c
+        text: A system prompt that says "never send data to external sites"
+        rationale: The model can be talked out of instructions. This lowers risk; it guarantees nothing.
+      - id: d
+        text: A deny rule in your harness that runs before any tool executes
+        correct: true
+        rationale: Deterministic code between the request and the action.
+    explanation: >-
+      Anthropic's containment post separates the model layer (prompts, classifiers, training), which shapes what an
+      agent tends to do, from the environment layer (sandboxes, scoped credentials, egress controls), which limits
+      what it can do. Use both, but only the second gives you a guarantee.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Two ways to cap the blast radius
+
+In Studio 1 you gated one write tool behind an approval. An agent from this studio is a bigger problem: it chooses its own steps, holds several tools, and may run for many turns while you look elsewhere. You can't review every decision, so the question becomes how much damage the worst run could do, and how to bound it.
+
+Anthropic's engineering post "How we contain Claude across products" (May 2026) frames the answer in two parts. The first is **supervision**: a human in the loop approves actions. The second is **containment**: limit what the agent is *able* to do, with sandboxes, virtual machines, scoped credentials, and egress controls (rules on which network destinations traffic may reach). The post also names three sources of risk to design against: a user who directs the agent to do harm (deliberately or carelessly), a model that takes a harmful action nobody asked for, and an external attacker who reaches the agent through tools, files, or network content.
+
+The post's key distinction is between layers. Defenses in the **model** (system prompts, classifiers, training) shape what the agent tends to do; because models are probabilistic, they never reach 100%. Defenses in the **environment** set hard boundaries: if a credential never enters the sandbox, it cannot be stolen, whatever caused the attempt. And the **content** the agent reads (MCP servers, web results, files) is a third surface you limit by restricting tools and access.
+
+Keep that split in mind for the whole week. Every control you add, ask: is this a tendency or a boundary? You want both, and you must know which is which.
+</Listen>
+
+<Mermaid
+  alt="Layered defense diagram. A tool call requested by the model passes through four layers in order: deterministic policy in the harness (allow, ask, or deny), a human approval for the asks, scoped credentials at the API, and the sandbox with filesystem and network limits. Every decision is written to an audit log. Model-layer defenses (system prompt, classifiers) sit beside the model and lower the chance of a bad request but are not a boundary."
+  caption="Model-layer defenses reduce how often a bad call is requested. The layers after the model decide whether it can happen."
+  chart={`flowchart LR
+  M["Model requests a tool call"] --> P{"Harness policy"}
+  P -- "deny" --> X["Blocked, is_error result"]
+  P -- "ask" --> H{"Human approval: exact args"}
+  H -- "no or timeout" --> X
+  H -- "yes" --> C["Scoped credential"]
+  P -- "allow" --> C
+  C --> S["Sandbox: files + network allowlist"]
+  S --> R["Effect"]
+  P -.-> L[("Audit log")]
+  H -.-> L
+  S -.-> L
+  SP["System prompt, classifiers"] -.-> M`}
+/>
+
+<Listen>
+## Least privilege, three ways
+
+**Least privilege** means each part of the system gets the narrowest access that still does its job. For an agent, apply it on three axes.
+
+**Tools.** Give the agent only the tools the task needs. OWASP's Excessive Agency entry lists excessive functionality as a root cause: an extension that only needs to read documents but can also delete them. Anthropic's Managed Agents security guide puts it as a default: start the agent toolset with every tool disabled, then enable the ones you need. A tool that is not loaded cannot be misused, and it also costs no context tokens.
+
+**Credentials.** The tool's identity should be scoped to the task, not to you. A status-report agent needs read access to issues and permission to post in one channel, not an admin token for the whole tracker. GitHub's fine-grained personal access tokens, which you'll use in the project, can be limited to specific repositories and specific permissions. The Managed Agents guide goes further: keep credentials in a vault that injects them into outbound requests, so the secret never sits in the sandbox where the agent could read and leak it.
+
+**Network.** Most damage from a fooled agent leaves through the network: an email, an HTTP request, a rendered image. Restrict egress to the hosts the task needs. The Managed Agents guide's recommended environment setting is limited networking with only the hosts the agent needs, and Claude Code's sandbox routes every connection through a proxy that checks the host against your allowed domains, which start empty.
+
+Least privilege has one more benefit that matters to a PM: it makes the risk legible. "This agent can read issues in two repos and post to one channel" is a sentence a security reviewer can approve. "This agent has my token" is not.
+</Listen>
+
+<Listen>
+## Read, write, and reversible
+
+Studio 1 sorted tools into reads and writes. For agents, add a second axis: **reversibility**, meaning how cheaply you can undo the effect.
+
+A useful grid has three rows. **Reads** (list issues, fetch a docs page) change nothing; their worst outcome is a wrong answer or, as you'll see next lesson, untrusted text entering the context. **Reversible writes** (create a draft, add a label, open a pull request) change state you can roll back. **Irreversible or external writes** (send an email, post to a customer channel, merge, delete, pay) cannot be recalled once they happen, and often affect people outside your system.
+
+The grid tells you where to spend control. Reads can usually run without asking, as long as they cannot also carry data out (a "read" tool that fetches arbitrary URLs is also a way to send data in the query string; treat it as outbound). Reversible writes can run automatically inside a sandbox if you log them and can undo them. Irreversible writes get a human, or a design that makes them reversible: a **draft-then-approve** step, where the agent writes a draft and a person publishes it, turns "post to Slack" into "create a draft" plus one deliberate click. That pattern is the spine of this studio's project.
+
+Two more properties make writes safer to automate. **Idempotency** (Studio 1): a retried call does not create a duplicate. And **dry runs**: a mode where the tool reports what it would do without doing it, which is also the cheapest way to show a reviewer the exact effect.
+</Listen>
+
+<Listen>
+## Approval gates that people actually read
+
+Approvals are the obvious control and the most often misused. Anthropic's containment post reports that Claude Code's telemetry showed users approved roughly 93% of permission prompts, and that the more approvals people see, the less attention they pay to each. Anthropic's sandboxing post (October 2025) calls this approval fatigue, and Simon Willison, writing about the CaMeL paper, describes users who are asked constantly falling into a state where they say yes to everything. A gate that is always clicked is not a gate.
+
+Design for the reviewer's attention, as a scarce resource:
+
+- **Ask rarely.** Do not ask for reads. Batch related writes into one decision (one status draft, not twelve posts).
+- **Let rules decide what rules can decide.** A call to a non-allowlisted host, or private data in an outbound request, should be denied by code, not offered to a tired human. The lab proves this with a reviewer who approves everything: the attacks are still blocked.
+- **Show the exact effect.** Display the real arguments, or better, a rendered preview or diff of what will change, never the model's summary of them. The summary is model output and can be wrong or manipulated.
+- **Say why you are asking.** "Outbound request after untrusted content and private data entered the context" tells the reviewer what to look for.
+- **Deny by default.** A timeout, a crashed UI, or an ambiguous answer is a no. Only an explicit yes runs the action.
+- **Close the loop.** A declined call returns an error result telling the model not to retry, so the agent continues instead of asking again.
+
+The MCP specification says applications should keep a human able to deny tool invocations, and OpenAI's agent-safety guide says to keep tool approvals on for MCP tools. Both are right, and both work only when the approvals are rare enough to mean something.
+</Listen>
+
+<Callout type="pitfall" title="Asking about everything, then trusting the clicks">
+A gate on every call produces a log full of approvals that nobody read, which is worse than no gate, because it looks like oversight. If your approval rate is near 100% and the median decision time is a second or two, your reviewers are rubber-stamping. Measure both, and treat a high approval rate as a signal to remove asks (with rules or sandboxing in their place), not as evidence that the agent is safe.
+</Callout>
+
+<Listen>
+## The permission modes you already use
+
+You've used Claude Code for a year, so you have already lived inside this design. Its permission docs describe a tiered system: reads within the working directory run without asking, while shell commands (apart from a built-in read-only set), file edits, and web fetches ask in the default mode. Rules come in three kinds, **allow**, **ask**, and **deny**, written as `Tool` or `Tool(specifier)`, for example `Bash(npm run *)` or `WebFetch(domain:example.com)`. They are evaluated deny first, then ask, then allow, and the first match wins regardless of how specific a rule is. So a broad deny such as `Bash(aws *)` blocks `aws s3 ls` even if you also allowed that exact command. The docs also note that these rules are enforced by Claude Code, not by the model: instructions in CLAUDE.md shape what Claude tries, not what it is allowed to do.
+
+The permission modes are presets on that system. At the time of writing the docs list six: `default` (reads only run without asking), `acceptEdits` (adds file edits and common filesystem commands), `plan` (analyze without editing), `auto` (a separate classifier model reviews actions before they run and blocks things like sending sensitive data to external endpoints, production deploys, or force pushes), `dontAsk` (only pre-approved tools; anything that would prompt is denied, suited to CI), and `bypassPermissions` (everything runs, recommended only in isolated containers or VMs). The docs warn that auto mode reduces prompts but does not guarantee safety.
+
+Read that list as a design catalog. `dontAsk` is an allowlist with deny-by-default. `auto` replaces human approvals with a model-layer check, which helps with fatigue but is probabilistic. `bypassPermissions` is safe only when the environment is the boundary. The same three choices (rules, human, classifier) appear in every agent you will build.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s4-w4-permission-rules"
+  title="Implement Claude Code style rule precedence"
+  starter={`import fnmatch
+
+def parse_rule(rule):
+    """'Bash(npm run *)' -> ('Bash', 'npm run *'); 'Read' -> ('Read', None)."""
+    if "(" in rule and rule.endswith(")"):
+        tool, spec = rule.split("(", 1)
+        return tool, spec[:-1]
+    return rule, None
+
+def rule_matches(rule, tool, arg):
+    """A bare tool name matches every call to that tool. Otherwise the specifier
+    is a glob over the call's primary argument (fnmatch.fnmatchcase: * matches any text)."""
+    # TODO
+    return False
+
+def decide(tool, arg, rules, default):
+    """rules: {"deny": [...], "ask": [...], "allow": [...]}.
+    Check deny, then ask, then allow; the first list with a matching rule decides.
+    If nothing matches, return default[tool] if present, else "ask"."""
+    # TODO
+    return "ask"
+
+RULES = {
+    "deny": ["Bash(aws *)", "Bash(git push *)", "Read(./.env)"],
+    "ask": ["Bash(npm publish*)"],
+    "allow": ["Bash(npm run *)", "Bash(aws s3 ls)", "Read"],
+}
+DEFAULT = {"Read": "allow", "Edit": "ask", "Bash": "ask"}
+
+print(decide("Bash", "aws s3 ls", RULES, DEFAULT))
+print(decide("Bash", "npm run test", RULES, DEFAULT))
+print(decide("Read", "./.env", RULES, DEFAULT))
+`}
+  tests={`assert parse_rule("Bash(git push *)") == ("Bash", "git push *")
+assert rule_matches("Read", "Read", "./src/app.py"), "a bare tool name matches every call"
+assert rule_matches("Bash(npm run *)", "Bash", "npm run build")
+assert not rule_matches("Bash(npm run *)", "Bash", "npx run build")
+assert not rule_matches("Bash(npm run *)", "Edit", "npm run build"), "the tool name must match too"
+assert decide("Bash", "aws s3 ls", RULES, DEFAULT) == "deny", "deny is checked first, so a narrower allow cannot override it"
+assert decide("Read", "./.env", RULES, DEFAULT) == "deny", "deny beats the bare Read allow"
+assert decide("Read", "./README.md", RULES, DEFAULT) == "allow"
+assert decide("Bash", "npm run test", RULES, DEFAULT) == "allow"
+assert decide("Bash", "npm publish --tag next", RULES, DEFAULT) == "ask"
+assert decide("Bash", "git push origin main", RULES, DEFAULT) == "deny"
+assert decide("Edit", "./src/app.py", RULES, DEFAULT) == "ask", "no rule: fall back to the default for the tool"
+assert decide("WebFetch", "https://x.example", RULES, DEFAULT) == "ask", "unknown tool with no rule: ask"
+both = {"deny": [], "ask": ["Bash(npm *)"], "allow": ["Bash(npm run test)"]}
+assert decide("Bash", "npm run test", both, DEFAULT) == "ask", "ask is checked before allow"`}
+  solution={`def rule_matches(rule, tool, arg):
+    rtool, spec = parse_rule(rule)
+    if rtool != tool:
+        return False
+    return spec is None or fnmatch.fnmatchcase(arg, spec)
+
+def decide(tool, arg, rules, default):
+    for outcome in ("deny", "ask", "allow"):
+        if any(rule_matches(r, tool, arg) for r in rules.get(outcome, [])):
+            return outcome
+    return default.get(tool, "ask")`}
+>
+This is a simplified model of the documented precedence: deny, then ask, then allow, first match wins. The real matcher is more careful (it understands compound commands, wrappers, and paths), which is exactly why the docs recommend sandboxing in addition to rules. Notice what the tests encode: an allow rule can never weaken a deny rule, so a deny list is a boundary you can reason about.
+</PyRunner>
+
+<Listen>
+## Sandboxes: the boundary that holds when the model is fooled
+
+A **sandbox** is an execution environment whose limits are enforced below the model: by the operating system, a container, or a virtual machine. Anthropic's sandboxing post explains why it needs two parts. **Filesystem isolation** keeps the agent to specific directories, so a fooled agent can't modify sensitive files. **Network isolation** keeps it to approved hosts, so it can't leak data or download malware. Without network isolation, a compromised agent could send out your SSH keys; without filesystem isolation, it could escape the sandbox and reach the network anyway. The post reports that, in Anthropic's internal usage, sandboxing reduced permission prompts by 84%, which is the point: a strong boundary lets you ask less.
+
+Claude Code's sandbox docs are precise about what is covered, and the details are where real gaps hide. The sandbox wraps shell commands and the processes they start; Claude's file tools, MCP servers, and hooks run outside it. By default sandboxed commands can write only to the working directory and a temp directory, but can read most of the machine, including credential files such as `~/.ssh`, unless you deny those reads. Network goes through a proxy with an allowlist that starts empty. Environment variables, including secrets, are inherited unless you scrub them. A sandbox is only as good as your knowledge of its edges.
+
+For hosted agents, Claude Managed Agents runs each session in its own container, and its security guide lists the settings in order of importance: where the agent runs, limited networking with only the needed hosts, credentials in vaults, allowlists on web tools, a permission policy on each tool, the smallest tool set, keeping untrusted input away from powerful tools, a budget on each session, and transcript monitoring. The permission policies are a direct analogue of what you've built: `always_allow` runs the tool, `always_ask` pauses the session until your application sends a confirmation, and `auto` lets the server evaluate each call and run it, deny it, or pause for you. Those policies cover tools that Anthropic's servers execute (the built-in toolset and MCP tools); tools your own application executes still need your own gate.
+</Listen>
+
+<Callout type="note" title="Choosing where the boundary lives">
+For a coding agent on a laptop, use your agent's sandbox (Claude Code's, or a dev container) plus deny rules. For a scheduled agent that touches company systems, prefer a hosted or containerized runtime with egress allowlists and vaulted credentials, so nothing secret lives where the model runs. For any provider (Claude, OpenAI's Agents tooling, Google's ADK, or an open model you host), the questions are the same: who executes the tools, where do credentials live, and what can the network reach? Read each platform's security page before you trust its defaults.
+</Callout>
+
+<Listen>
+## Audit logs and reversibility
+
+When something goes wrong, you need to answer three questions fast: what did the agent do, why was it allowed, and can we undo it? An **audit log** answers the first two. OWASP's logging cheat sheet recommends logging security-relevant events such as authorization failures and high-risk actions, with enough context (when, where, who, what) to reconstruct them, and it warns against writing secrets and sensitive personal data into logs.
+
+For an agent, write one record per tool call, including the blocked ones: the run and step, the tool and its exact arguments (redacting secrets), the decision (allow, ask, deny), the rule that decided it, whether a human approved and who, whether it executed, and the result or error. Add the model id, prompt version, and token counts so you can connect behavior to configuration. Blocked calls are the most valuable rows: they show what the agent tried to do, which is your early warning that something in its inputs is steering it. The Managed Agents guide suggests going further with an optional offline reviewer that reads every finished transcript on a schedule.
+
+Reversibility is the other half. For each write tool, decide before launch how you would undo it: delete the draft, revert the commit, close the issue, post a correction. If the honest answer is "we can't," that tool belongs behind a human, or out of the agent entirely. Write the undo procedure into your runbook, and test it once. A log tells you what happened; a tested undo path is what makes an incident small.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the checks a well-designed harness applies to one tool call, from first to last"
+  items={[
+    "Reject unknown tools and schema-invalid arguments",
+    "Apply deny rules: destinations, channels, and data-flow policy",
+    "Apply ask rules: request human approval with the exact arguments",
+    "Execute inside the sandbox with a scoped credential",
+    "Label the result (untrusted, private) and write the audit record",
+  ]}
+  explanation="Cheap, certain checks run first so no human is asked about a call that would be rejected anyway. Deny rules come before asks so a rubber-stamp approval cannot override a hard boundary. The sandbox and scoped credential still apply to whatever gets through, and labeling the result feeds the next call's checks (lesson 11)."
+/>
+
+<LabLink path="labs/studio-4/04-agent-guardrails" title="Lab 04: an approval-gated harness with an injection test suite" needs={["Python 3.10+", "Anthropic API key (optional: offline tests use a scripted fake client)"]} minutes={75}>
+Build the guard, the deny-by-default approval gate, and the audit log for a status-report agent, then run it against ten fixture trackers (eight with injection attempts). You'll measure attack success and utility with the guard on and off, and show that a reviewer who approves everything still cannot let the attacks through. Start it after lesson 11, which covers the data-flow rule.
+</LabLink>
+
+<GoDeeper title="Hooks, classifiers, and where each belongs">
+Claude Code also lets you run your own code before and after tool calls (hooks); a PreToolUse hook can block a call, which makes it a place to put deterministic policy such as "never edit files under infra/". Auto mode's classifier is a model-layer defense that reviews actions in context; Anthropic's containment post reports it catches roughly 83% of overeager behaviors before they execute, which is useful and also a reminder that a probabilistic check has a miss rate. Managed Agents' `auto` policy makes the same trade on the server. A reasonable design uses rules for what can be stated precisely, a classifier to cut prompt volume on the rest, a human for irreversible actions, and a sandbox underneath all of it.
+</GoDeeper>
+
+<Listen>
+## What a working engineer does with this
+
+Before you give an agent a new tool, write one line for it in a table: read or write, reversible or not, which credential it uses and what that credential can reach, and what happens if it is called with the worst arguments you can imagine. Then choose the control per row: run freely, run in a sandbox, ask a human, or leave it out. Put the table in your design doc. It is the artifact a security reviewer will ask for, and it is the one you will use in the project to justify your design.
+</Listen>

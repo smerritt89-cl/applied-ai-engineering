@@ -1,0 +1,239 @@
+# Studio 6, week 3: observability (tracing, logging and privacy, dashboards and alerts).
+# Reused from other files (do not redefine): claude-pricing-docs, claude-stop-reasons-docs, claude-errors-docs,
+# claude-prompt-caching-docs, hamel-evals-faq, hamel-llm-judge, rogan-gladen-1978, python-re-docs,
+# huyen-ai-engineering.
+
+# ---------- OpenTelemetry ----------
+- id: otel-traces-concepts
+  title: OpenTelemetry documentation, Traces (concepts)
+  author: OpenTelemetry Authors
+  url: https://opentelemetry.io/docs/concepts/signals/traces/
+  license: CC BY 4.0
+  licenseUrl: https://github.com/open-telemetry/opentelemetry.io/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. Trace, span, span context, attributes, events, links, status, kind.
+
+- id: otel-sampling-concepts
+  title: OpenTelemetry documentation, Sampling (concepts)
+  author: OpenTelemetry Authors
+  url: https://opentelemetry.io/docs/concepts/sampling/
+  license: CC BY 4.0
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. Head versus tail sampling; head sampling cannot guarantee keeping every error trace.
+
+- id: otel-python-instrumentation
+  title: OpenTelemetry documentation, Python instrumentation
+  author: OpenTelemetry Authors
+  url: https://opentelemetry.io/docs/languages/python/instrumentation/
+  license: CC BY 4.0
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. TracerProvider, span processors, ConsoleSpanExporter, attributes, events, status.
+
+- id: otel-genai-semconv
+  title: OpenTelemetry semantic conventions for generative AI (semantic-conventions-genai repository)
+  author: OpenTelemetry Authors
+  url: https://github.com/open-telemetry/semantic-conventions-genai
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+  notes: >-
+    Read 2026-11-11. Status Development. Inference span name "{gen_ai.operation.name} {gen_ai.request.model}",
+    tool span "execute_tool {gen_ai.tool.name}", content attributes are opt-in and off by default, three content
+    capture patterns (none, on attributes, external storage with references).
+
+- id: otel-semconv-v1-42-release
+  title: OpenTelemetry semantic conventions v1.42.0 release notes
+  author: OpenTelemetry Authors
+  url: https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.42.0
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+  notes: June 2026. gen_ai.* conventions deprecated in the core repository and moved to semantic-conventions-genai.
+
+- id: otel-genai-blog-2026
+  title: "Inside the LLM Call: GenAI Observability with OpenTelemetry"
+  author: OpenTelemetry blog
+  url: https://opentelemetry.io/blog/2026/genai-observability/
+  license: CC BY 4.0
+  policy: summarize
+  kind: blog
+  notes: 2026. invoke_agent, chat, and execute_tool spans; content not captured by default.
+
+# ---------- Claude ----------
+- id: claude-otel-docs
+  title: OpenTelemetry tracing for the Claude API
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/manage-claude/opentelemetry
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: >-
+    Read 2026-11-11. Beta. SDK tracing versus API tracing, content modes (metadata only by default), content limits,
+    counting tokens once (CLIENT versus SERVER spans), GenAI semantic convention attributes.
+
+- id: claude-otel-spans-ref
+  title: Claude API OpenTelemetry span reference
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/api/opentelemetry/spans
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. Span names, parents, token usage attributes.
+
+- id: claude-data-retention-docs
+  title: API and data retention (zero data retention and HIPAA readiness)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/manage-claude/api-and-data-retention
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: >-
+    Read 2026-11-11. ZDR by arrangement with sales, per organization; feature eligibility table; retained data never
+    used for training without express permission; flagged content may be kept up to 2 years even under ZDR.
+
+- id: anthropic-commercial-retention
+  title: How long do you store my organization's data? (Anthropic Privacy Center)
+  author: Anthropic
+  url: https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Updated 2026-07-01, read 2026-11-11. API inputs and outputs deleted within 30 days by default, with listed exceptions.
+
+- id: claude-admin-api-docs
+  title: Claude Admin API guide
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/manage-claude/admin-api
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. Admin keys use the prefix sk-ant-admin.
+
+# ---------- Other providers ----------
+- id: openai-your-data
+  title: OpenAI API, Data controls in the OpenAI platform
+  author: OpenAI
+  url: https://developers.openai.com/api/docs/guides/your-data
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: >-
+    Read 2026-11-11. No training on API data by default; abuse monitoring logs up to 30 days; ZDR and Modified Abuse
+    Monitoring need approval; Responses store data at least 30 days by default; some endpoints not ZDR-eligible.
+
+- id: gemini-api-terms
+  title: Gemini API Additional Terms of Service
+  author: Google
+  url: https://aistudio.google.com/docs/terms
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+  notes: >-
+    Effective 2026-03-23, read 2026-11-11. Unpaid Services may use content to improve products, with human review;
+    Paid Services do not, but log prompts for a limited period for abuse detection; EEA, Switzerland, UK rule.
+
+- id: vertex-zdr-docs
+  title: Vertex AI and zero data retention
+  author: Google Cloud
+  url: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/vertex-ai-zero-data-retention
+  license: CC BY 4.0
+  policy: summarize
+  kind: docs
+  notes: >-
+    Read 2026-11-11. No training without permission; in-memory caching up to 24 hours by default and how to disable;
+    grounding logs kept up to three days; steps required for zero data retention.
+
+# ---------- Observability tools ----------
+- id: langfuse-docs
+  title: Langfuse documentation, Observability overview
+  author: Langfuse
+  url: https://langfuse.com/docs/observability/overview
+  license: Copyright Langfuse
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. Open source, self-hostable; traces, observations, scores; LLM-as-judge on production traces.
+
+- id: arize-phoenix-docs
+  title: Arize Phoenix documentation
+  author: Arize AI
+  url: https://arize.com/docs/phoenix
+  license: Copyright Arize AI
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. Open source; built on OpenTelemetry and OpenInference; tracing, evals, datasets, experiments, prompts.
+
+- id: langsmith-observability-docs
+  title: LangSmith Observability documentation
+  author: LangChain
+  url: https://docs.langchain.com/langsmith/observability
+  license: Copyright LangChain
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. Tracing across frameworks, dashboards and alerts, online evaluations, annotation queues; cloud, hybrid, self-hosted.
+
+# ---------- Logging, privacy, compliance ----------
+- id: owasp-logging-cheatsheet
+  title: OWASP Logging Cheat Sheet
+  author: OWASP Cheat Sheet Series
+  url: https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. Data to exclude from logs; masking, hashing, pseudonymization; access control and retention of logs.
+
+- id: presidio-docs
+  title: Presidio documentation (PII identification and anonymization)
+  author: Data Privacy Stack (originally Microsoft)
+  url: https://presidio.dataprivacystack.org/
+  license: MIT
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11. NER plus regex, rules, checksums, and context; warns there is no guarantee it finds all sensitive information.
+
+- id: gdpr-regulation
+  title: Regulation (EU) 2016/679 (General Data Protection Regulation)
+  author: European Parliament and Council of the European Union
+  url: https://eur-lex.europa.eu/eli/reg/2016/679/oj
+  license: EU legal text (reuse permitted with acknowledgement)
+  policy: summarize
+  kind: report
+  notes: Article 4(5) pseudonymisation, Article 5(1) purpose limitation, data minimisation, storage limitation; recital 26.
+
+- id: python-hmac-docs
+  title: Python documentation, hmac
+  author: Python Software Foundation
+  url: https://docs.python.org/3/library/hmac.html
+  license: PSF License
+  policy: summarize
+  kind: docs
+
+# ---------- Monitoring and alerting ----------
+- id: sre-monitoring-distributed
+  title: "Site Reliability Engineering, chapter 6: Monitoring Distributed Systems"
+  author: Rob Ewaschuk (ed. Betsy Beyer), Google
+  url: https://sre.google/sre-book/monitoring-distributed-systems/
+  license: CC BY-NC-ND 4.0
+  policy: summarize
+  kind: book
+  notes: Four golden signals, tail latency and histograms, pages should be urgent, actionable, and about symptoms.
+
+- id: sre-workbook-alerting-slos
+  title: "The Site Reliability Workbook, chapter 5: Alerting on SLOs"
+  author: Steven Thurgood (ed.), Google
+  url: https://sre.google/workbook/alerting-on-slos/
+  license: CC BY-NC-ND 4.0
+  policy: summarize
+  kind: book
+  notes: Alert precision, recall, detection time, reset time; burn rate; multiwindow multi-burn-rate alerts; low-traffic services.
+
+- id: huyen-distribution-shift
+  title: Data Distribution Shifts and Monitoring
+  author: Chip Huyen
+  url: https://huyenchip.com/2022/02/07/data-distribution-shifts-and-monitoring.html
+  license: Copyright Chip Huyen
+  policy: summarize
+  kind: blog
+  notes: 2022. Covariate, label, and concept shift; monitoring inputs and outputs when labels arrive late.

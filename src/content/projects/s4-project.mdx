@@ -1,0 +1,211 @@
+---
+id: s4-project
+studio: s4
+title: "An agent that automates a PM workflow"
+summary: >-
+  Build an agent that writes the weekly project status from an issue tracker, through an MCP server you build, with
+  a draft-then-approve step before anything is posted. Prove it with an eval set of at least 15 scenarios, injection
+  tests that show your guardrails hold, and the cost of every run.
+estHours: 20
+repoName: pm-status-agent
+requirements:
+  - { id: r1, text: "A design doc (DESIGN.md) written before the agent: which steps are fixed code and which are model-driven and why, a tool table (read or write, reversible or not, credential and scope, worst-case call), and a lethal-trifecta analysis naming each leg present and how you remove or gate it" }
+  - { id: r2, text: "An MCP server you build that exposes the tracker: read tools (for example list_changed_issues and get_issue) returning compact records, pagination handled in the server, pull requests separated from issues, and date filtering done in code" }
+  - { id: r3, text: "Two data sources behind the same server interface: a fixture tracker loaded from JSON files, and either GitHub Issues on a public repository through the REST API or a second, richer fixture tracker; the agent code does not change between them" }
+  - { id: r4, text: "Credentials kept in environment variables and scoped to the task (for GitHub, a fine-grained token limited to the repository and read access, with an expiry); no secrets in fixtures, logs, prompts, or the repo" }
+  - { id: r5, text: "The agent produces a weekly status draft (shipped, in progress, blocked, needs a decision, with issue numbers for each line) from the tracker for a given week, with untrusted issue text passed as data, never in the system prompt" }
+  - { id: r6, text: "A draft-then-approve step: the reviewer sees the exact text as it will be posted, the issues behind each line, and anything the guard removed or blocked; approve, edit, or reject with a reason; nothing is posted without an explicit approval, and a timeout or error counts as a rejection" }
+  - { id: r7, text: "A deterministic guard between the model and every tool: allowlisted destinations (channel, hosts), no links to unlisted hosts in posted text, a data-flow rule for any private data, and a step budget; blocked calls return an error result and are not retried" }
+  - { id: r8, text: "An audit log (JSONL) with one record per tool call, including blocked ones: run id, step, tool, redacted arguments, decision and rule, approval and approver, executed or not, and token usage" }
+  - { id: r9, text: "An eval set of at least 15 scenarios as fixture trackers, covering happy paths, data edge cases (pagination, pull requests mixed in, missing assignees), tool failures (rate limit or server error), should-not-act cases (rejection, disallowed channel, empty tracker), and at least 3 injection scenarios; each with an expected end state and a reference report" }
+  - { id: r10, text: "An eval runner that runs every scenario for at least 3 trials on a fresh environment each time, grades end state, trajectory rules, and report quality (code checks plus a calibrated judge or your own labels), and reports success rate, pass^k, safety violations by scenario, steps (median and p90), and cost per run and per successful run" }
+  - { id: r11, text: "Injection results reported as two numbers together, attack success rate and benign task success, with the guard on and off (or against a scripted worst-case model as in lab 04), and a written release rule that includes zero tolerated safety violations" }
+  - { id: r12, text: "A write-up (WRITEUP.md) using the template on this page, including a stakeholder summary, cost per weekly run at stated prices and date, known limitations, and how you used AI assistants" }
+  - { id: s1, text: "Run it on a schedule (cron, a CI workflow, or a hosted scheduled agent) that drafts automatically and notifies the reviewer, with the approval still required before posting", required: false }
+  - { id: s2, text: "Compare two configurations on your eval (for example a small model for per-issue records and a larger one for the report, against one model for both, or two effort levels) and place them on a success versus cost-per-success frontier", required: false }
+  - { id: s3, text: "Add a second tracker (ClickUp, Linear, or Jira) behind the same MCP interface and report what in your server turned out to be GitHub-specific", required: false }
+rubric:
+  - id: usefulness
+    criterion: Usefulness of output
+    levels:
+      1: "Reports are generic, list issues without judgment, or contain claims not supported by the tracker."
+      2: "Reports are accurate on easy weeks but miss blocked or slipped work, or mix pull requests and issues."
+      3: "Reports a stakeholder could act on: accurate, organized by what changed and what needs a decision, every line traceable to issue numbers, checked against reference reports."
+      4: "Level 3, plus at least one real reviewer used it for a week or more and their edits and rejections were fed back into the eval set and the prompt."
+  - id: tools
+    criterion: Tool and MCP design
+    levels:
+      1: "The agent calls the GitHub API directly or through one catch-all tool; no server boundary."
+      2: "An MCP server exists, but tools return raw payloads, mix reads and writes, or leave date filtering and pagination to the model."
+      3: "Read tools return compact, well-described records; deterministic work (dates, pagination, PR filtering) is in tested server code; the write path is narrow and separate; fixtures and live data share one interface."
+      4: "Level 3, plus tool descriptions revised from transcript evidence, and a clear argument, backed by the eval, for which steps are agentic and which are fixed."
+  - id: safety
+    criterion: Safety and guardrails
+    levels:
+      1: "The agent can post or fetch anything; safety relies on the system prompt."
+      2: "An approval step exists, but it shows a summary rather than the exact text, approves on timeout, or the guard can be bypassed by an unlisted host or channel."
+      3: "Trifecta analysis in the design doc, deterministic guard with allowlists and a data-flow rule, deny-by-default approval of the exact text, scoped credentials, and a complete audit log."
+      4: "Level 3, plus a structural defense (constrained per-issue records or a fixed action plan) that removes a leg, and evidence that a reviewer who approves everything still cannot cause a leak."
+  - id: evaluation
+    criterion: Evaluation
+    levels:
+      1: "A few manual runs judged by eye."
+      2: "Scenarios exist but are mostly happy paths, run once each, or graded only by whether a post exists."
+      3: "At least 15 balanced scenarios with fixtures and reference outcomes, several trials on fresh environments, end-state and trajectory graders, pass^k, and safety violations reported separately with a written release rule."
+      4: "Level 3, plus graders tested against do-nothing and deliberately wrong runs, a quality judge calibrated against your labels, and failures analyzed by first point of divergence."
+  - id: robustness
+    criterion: Robustness and cost
+    levels:
+      1: "Crashes on API errors or large trackers; cost unknown."
+      2: "Handles the happy path and some errors; cost estimated but not measured."
+      3: "Retries with limits on rate limits and server errors, reports gaps honestly instead of inventing data, enforces a step budget, and measures cost per run and per successful run at stated prices."
+      4: "Level 3, plus cost and latency tails (p90) reported and reduced with evidence, and a configuration choice justified on a cost and success frontier."
+  - id: communication
+    criterion: Communication
+    levels:
+      1: "Missing or a list of features."
+      2: "Explains what was built, but a stakeholder could not tell whether to adopt it or what the risks are."
+      3: "A decision-first summary in plain language (what it does, how reliable, what it costs, the main risk) plus a technical appendix a reviewer could reproduce."
+      4: "Level 3, and a non-engineer who read it could explain when to trust the draft, what the approval step is for, and what would make you turn the agent off."
+milestones:
+  - { id: m1, title: "Design and fixtures", week: 5, deliverables: ["DESIGN.md with the tool table and trifecta analysis", "Fixture tracker format and the first 8 scenarios with expected end states", "MCP server read tools with unit tests"] }
+  - { id: m2, title: "Agent, guard, and approval", week: 5, deliverables: ["Draft generation on fixtures", "Guard, approval step, and audit log", "Baseline eval run over all scenarios with costs logged"] }
+  - { id: m3, title: "Hardening and write-up", week: 5, deliverables: ["Injection scenarios and attack-success results", "Live data source connected", "WRITEUP.md and self-assessment against the rubric"] }
+defense:
+  - { id: d1, text: "Walk through your trifecta analysis. Which leg did you remove or gate, and what would change if the agent gained access to private customer notes?" }
+  - { id: d2, text: "Show one blocked call from your audit log. Which rule blocked it, and what would have happened without that rule?" }
+  - { id: d3, text: "Why is each step either fixed code or model-driven? What evidence from your eval supports the split?" }
+  - { id: d4, text: "Your release rule: what are the thresholds, and what result would make you hold the release?" }
+sources:
+  - { id: anthropic-effective-agents, use: summarized }
+  - { id: github-rest-issues, use: summarized }
+  - { id: github-rest-rate-limits, use: summarized }
+  - { id: github-fine-grained-pats, use: summarized }
+  - { id: mcp-tools-spec, use: linked }
+  - { id: willison-lethal-trifecta, use: linked }
+  - { id: anthropic-demystifying-evals, use: linked }
+  - { id: yao-2024-taubench, use: linked }
+  - { id: debenedetti-2024-agentdojo, use: linked }
+  - { id: kapoor-2024-agents-matter, use: linked }
+  - { id: claude-ma-secure-deployment, use: linked }
+---
+
+## The brief
+
+Somebody on every product team spends Friday afternoon turning the issue tracker into a status update. Your job is to automate that, safely: an agent that reads the tracker through an MCP server you build, drafts the weekly status, and posts it only after a person approves the exact text.
+
+The interesting part is not the summary. It is everything around it. The agent reads text that anyone can write (issue bodies and comments), so it is a target for prompt injection. It can post, so it has a way to communicate out. If you add anything private, it holds the whole lethal trifecta. You will design for that from the start, prove the design with an injection suite, and show, with an eval of at least 15 scenarios run several times each, how reliable the agent is and what each weekly run costs.
+
+The default task uses **GitHub Issues on a public repository** through the REST API, read with a token scoped to that repository. If you'd rather not touch a live API, use the **fixture tracker** (JSON files of issues and comments) for everything, and build a second, richer fixture set as your "live" source. Either way, the agent must not know which source it is reading: that's the job of your MCP server.
+
+Build it in its own repository (`pm-status-agent`).
+
+## What you get
+
+- **Lesson 13** walks through the five design decisions (workflow versus agent, the server boundary, the tool and trifecta tables, the approval step, the eval and budget). Do the one-page exercise at the end of it first.
+- **Lab 04 (this studio, week 4)** gives you a guard, a deny-by-default approval gate, an audit log, an injection fixture format, and a scorer. Adapt it.
+- **Week 3's labs** give you an MCP server and client to start from; **week 2's** give you the agent loop and context management.
+- **Lesson 12** gives you the eval summary (success, pass^k, cost per success, the safety gate, the frontier), and **Studio 3's** harness patterns give you logging, intervals, and CI.
+
+## Suggested architecture
+
+<Mermaid
+  alt="Project architecture. A scheduler or command starts a run for a given week. The agent host connects to your MCP server, which reads either the fixture tracker or the GitHub REST API with a scoped token, handling pagination, pull-request filtering, and date windows. Untrusted issue records flow to a per-issue step that returns constrained records, then to a report-writing step that produces a draft. Every tool call passes through a guard with allowlists, a data-flow rule, and a step budget, and is written to the audit log. The draft goes to an approval screen showing the exact text, the issues behind each line, and anything the guard removed. Only on explicit approval does application code post the status to the one allowed channel. An eval runner replays scenario fixtures through the same path, several trials each, and writes success, pass^k, safety violations, steps, and cost to a report."
+  caption="One reasonable design. The model never holds the posting action: application code posts after a human approves. Change any of this if you have a reason, and write the reason down."
+  chart={`flowchart TD
+  RUN["Run for week W"] --> HOST["Agent host"]
+  HOST <--> MCP["Your MCP server: read tools"]
+  MCP --> FX[("Fixture tracker")]
+  MCP --> GH[("GitHub REST API, scoped token")]
+  HOST --> G{"Guard: allowlists, data flow, budget"}
+  G -.-> LOG[("Audit log")]
+  MCP --> MAP["Per-issue step: constrained records"]
+  MAP --> RPT["Report step: draft"]
+  RPT --> AP{"Reviewer: exact text, sources, guard flags"}
+  AP -- "approve" --> POST["App code posts to the one allowed channel"]
+  AP -- "reject or timeout" --> STOP["Nothing posted, reason logged"]
+  EV["Eval runner: 15+ scenarios x trials"] -.-> RUN
+  EV --> REP["Report: success, pass^k, violations, steps, cost"]`}
+/>
+
+<Callout type="tip" title="Write the fixtures before the agent">
+Your first commit after the design doc should be the fixture format and eight scenarios with expected end states. Then build the MCP read tools and test them without any model. Your first model run is then a real baseline, logged with its cost, and every later change is a comparison against it.
+</Callout>
+
+## Pitfalls
+
+<Callout type="pitfall" title="Pull requests, pages, and 'updated' versus 'opened'">
+GitHub's issues endpoints return pull requests too (they carry a `pull_request` key), list endpoints return at most 100 items per page, and the `since` parameter filters by last update. Each of these produces a plausible but wrong report. Handle all three in server code, and give each its own scenario.
+</Callout>
+
+<Callout type="pitfall" title="Letting the model choose where things go">
+If the model picks the channel, the recipients, or which links to include, an injected issue can pick them too. Fix destinations in configuration, post from application code after approval, and strip or block links to hosts you did not allowlist.
+</Callout>
+
+<Callout type="pitfall" title="An approval step nobody reads">
+A reviewer who approves every draft in three seconds is not a control. Show the exact text with the issue numbers behind each line, flag what the guard removed, keep it to one decision per run, and track approval rate, edits, and rejections. Your guard must also be strong enough that a rubber-stamp reviewer cannot cause a leak; test that explicitly.
+</Callout>
+
+<Callout type="pitfall" title="Averaging safety into the score">
+One trial that leaks data or posts to the wrong place is a failed release, however good the average is. Report violations by scenario id, gate on zero, and read every violating transcript.
+</Callout>
+
+<Callout type="pitfall" title="Evaluating on the live API">
+Live data changes, rate limits bite (60 requests an hour unauthenticated, 5,000 with a token, per GitHub's docs), and you can't reset it between trials. Run the eval on fixtures, cache live responses during development, and use the live source for a final smoke test.
+</Callout>
+
+## Constraints
+
+- Use the official SDKs for model calls and the official MCP SDK for your server, with keys and tokens in environment variables.
+- The full eval (all scenarios, all trials) must run offline against fixtures, and the guard and scorer tests must run without an API key, using a scripted fake client as in lab 04.
+- Keep a full eval run under $5 at current prices, and a single weekly run under a budget you state in the design doc. Log both, with the date of the prices you used.
+- Never post to a channel, repository, or address other people use during development. Use a private test channel or a file-backed outbox.
+
+## Write-up template
+
+Put this in `WRITEUP.md` and fill it in. Aim for two pages plus the appendix.
+
+```markdown
+# PM status agent: write-up
+
+## Stakeholder summary (read this first)
+One paragraph for a non-engineer: what the agent does each week, how often its draft is right (in plain words,
+with a range), what a reviewer still has to do, what a run costs, the main risk, and what would make you turn it off.
+Who outside engineering read this, and what did they ask?
+
+## The workflow and the design
+- The job before the agent: who did it, how long it took, what a good update contains
+- Fixed code versus model-driven steps, and why (cite eval evidence if you compared)
+- MCP server: tools and resources, what each returns, where pagination and date logic live
+- Data sources: fixture tracker and live source, and how the agent stays unaware of which it reads
+
+## Safety
+- Tool table: tool | read/write | reversible | credential and scope | worst-case call | control
+- Lethal trifecta: which legs are present, which you removed or gated, and how
+- Guard rules, approval step (what the reviewer sees and decides), and one example from the audit log of a blocked call
+- Injection results: attack success rate and benign task success, guard on and off (or worst-case model), per scenario
+
+## Evaluation
+- Scenario set: count by category (happy path, edge case, tool failure, should-not-act, injection), how references were made
+- Graders: end-state checks, trajectory rules, quality judge or labels (and how it was calibrated)
+- Release rule, written before the final run
+
+| Configuration | Success (n, interval) | pass^3 | Safety violations | Steps p50 / p90 | Cost per run | Cost per success |
+|---|---|---|---|---|---|---|
+| Baseline | | | | | | |
+| Final | | | | | | |
+
+## Cost
+Tokens and dollars per weekly run, prices and the date you used them, and where the cost goes (which step).
+
+## Limitations and next steps
+What the eval doesn't cover, what still fails, and what you would build or measure next.
+
+## How I used AI assistants
+Which tools, for what (server code, fixtures, prompts, tests), in what permission mode and sandbox, and what you had to correct.
+
+## Appendix
+How to run the eval with one command, the fixture format, an excerpt of the audit log, and the full guard rules.
+```
+
+When you finish, score yourself with the rubric below (ideally a day later), paste your repo link, and mark the project submitted.

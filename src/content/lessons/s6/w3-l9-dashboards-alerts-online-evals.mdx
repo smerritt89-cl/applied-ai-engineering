@@ -1,0 +1,284 @@
+---
+id: s6-w3-l9
+studio: s6
+week: 3
+order: 9
+title: Dashboards, alerts, and online evaluation
+summary: The metrics that matter for an LLM system (cost, latency percentiles, error, refusal, and truncation rates, quality signals), online evals on sampled traffic with the Studio 3 tools, drift, user feedback, and alerts designed to page only when a person must act.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Choose dashboard metrics for an LLM system and explain why percentiles, rates by failure type, and cost per completed task beat averages and totals
+  - Design an online evaluation on sampled production traffic, size the sample, and correct a judge's pass rate for its known error rates
+  - Detect drift in inputs, outputs, models, and judges, and separate it from noise
+  - Use user feedback as a signal while accounting for its biases
+  - Design alerts with good precision and recall using symptom-based, multiwindow burn-rate rules, and route slow-moving quality problems to tickets instead of pages
+sources:
+  - { id: sre-monitoring-distributed, use: summarized, where: "Four golden signals, tail latency, what should page" }
+  - { id: sre-workbook-alerting-slos, use: summarized, where: "Alert attributes, burn rate, multiwindow multi-burn-rate alerts, low-traffic services" }
+  - { id: claude-stop-reasons-docs, use: summarized, where: "refusal and max_tokens" }
+  - { id: claude-errors-docs, use: summarized, where: "429 and 529" }
+  - { id: claude-pricing-docs, use: summarized }
+  - { id: claude-otel-docs, use: summarized, where: "Exported spans are best effort" }
+  - { id: hamel-evals-faq, use: summarized, where: "Sampling traces, online evaluation" }
+  - { id: hamel-llm-judge, use: summarized }
+  - { id: rogan-gladen-1978, use: summarized }
+  - { id: huyen-distribution-shift, use: summarized }
+  - { id: langfuse-docs, use: linked, where: "Evaluations on production traces" }
+  - { id: langsmith-observability-docs, use: linked, where: "Online evaluations, dashboards and alerts" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your LLM judge, run on a 2 percent sample of production answers, scored one bad answer at 3 in 10 at 2 a.m.
+      A teammate wants a page whenever any sampled answer scores below 4. What do you recommend?
+    options:
+      - id: a
+        text: Page on it. Quality matters more than sleep.
+        rationale: A single judged sample is noisy and not urgent. Pages that don't need immediate human action train people to ignore pages.
+      - id: b
+        text: Track the corrected pass rate over a window with its interval, open a ticket when it drops below a threshold, and add the failing trace to the review queue.
+        correct: true
+        rationale: Yes. Quality drifts slowly and needs investigation, which is ticket work. One bad answer is review-queue material.
+      - id: c
+        text: Drop the judge; it obviously can't be trusted.
+        rationale: A single low score is expected even from a good system. Measure the judge's TPR and TNR instead of reacting to one score.
+    explanation: >-
+      Google's SRE guidance reserves pages for urgent, actionable symptoms. Most quality signals are statistical and
+      slow: aggregate them, put an interval on them, and route them to tickets and review queues. Page on outages,
+      error-budget burn, and runaway cost.
+  - id: kc2
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      import math
+      lat = [800] * 95 + [20000] * 5          # 100 calls, in ms
+      mean = sum(lat) / len(lat)
+      p95 = sorted(lat)[math.ceil(0.95 * len(lat)) - 1]
+      p99 = sorted(lat)[math.ceil(0.99 * len(lat)) - 1]
+      print(mean, p95, p99)
+    options:
+      - id: a
+        text: "`1760.0 800 20000`"
+        correct: true
+        rationale: The mean blends the two groups; p95 lands on the 95th value (still 800); p99 lands among the slow calls.
+      - id: b
+        text: "`1760.0 20000 20000`"
+        rationale: Nearest-rank p95 of 100 values is the 95th sorted value, which is the last fast call.
+      - id: c
+        text: "`800.0 800 800`"
+        rationale: The five 20-second calls raise the mean well above 800.
+    explanation: >-
+      The mean (1.76 s) describes no real user: 95 waited 0.8 s and 5 waited 20 s. p95 hides the slow group entirely
+      here, and p99 shows it. Chart several percentiles, and remember that a tail of 5 percent of users is a lot of
+      people. Which percentile you alert on is a product decision.
+  - id: kc3
+    type: mcq
+    prompt: >-
+      A judge has TPR 0.90 (it passes 90 percent of truly good answers) and TNR 0.80 (it fails 80 percent of truly bad
+      ones). On this week's sample it passes 76 percent. Using the Rogan and Gladen correction, what is the estimated
+      true pass rate?
+    options:
+      - id: a
+        text: 76 percent
+        rationale: That's the raw judge rate, which mixes true quality with the judge's errors.
+      - id: b
+        text: About 80 percent
+        correct: true
+        rationale: (0.76 + 0.80 - 1) / (0.90 + 0.80 - 1) = 0.56 / 0.70 = 0.80.
+      - id: c
+        text: About 68 percent
+        rationale: That would be multiplying by TPR, which isn't the correction.
+    explanation: >-
+      The corrected estimate is (observed + TNR - 1) / (TPR + TNR - 1). Here the judge is harsher than reality, so the
+      true rate is a little higher than what it reports. The correction is only as good as your TPR and TNR estimates,
+      so re-measure them on fresh human labels when traffic changes.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## From traces to a picture of the system
+
+Traces and logs answer questions about individual requests. A dashboard answers a different question: **is the system healthy right now, and is it getting better or worse?** Alerts answer a narrower one: **does a person need to act now?** Online evaluation answers the question that ordinary monitoring can't: **are the answers still good?**
+
+Google's SRE book offers the classic starting point for any user-facing service: if you can measure only four things, measure **latency, traffic, errors, and saturation**. All four apply to LLM systems, with translations. Latency includes time to first token for streamed answers. Errors include failures that return HTTP 200, such as refusals and truncations. Saturation includes your provider's rate limits, which you hit long before your own servers are busy. LLM systems then add two signals that ordinary services don't have: **cost**, which scales with every token, and **quality**, which can collapse while every other signal is green.
+</Listen>
+
+<Listen>
+## The metrics that matter
+
+**Cost.** Chart cost per request and per completed task, broken down by feature, model, and prompt version, plus total daily spend against a budget. Cost per completed task is the one that guides decisions: a cheaper model that needs two retries or a human fix isn't cheaper. Compute cost from token counts and a versioned price table, and reconcile weekly against the provider's own usage reporting: Anthropic's docs note that exported spans are delivered on a best-effort basis, so a sum over spans can undercount.
+
+**Latency percentiles.** Use p50, p95, and p99, not the mean. The SRE book's point is that an average hides a slow tail; record latency in histogram buckets so you can compute any percentile later. Chart time to first token separately for streamed responses, and track latency of failed requests separately too: the book notes that a slow error is even worse than a fast one, and timeouts are slow errors by definition.
+
+**Error rates, by type.** Split them, because each type has a different owner and fix. Rate limiting (HTTP 429 on Claude) means you need more capacity or better backoff. Provider overload (529, `overloaded_error`, on Claude) means retries with jitter and possibly a fallback model. Timeouts may mean `max_tokens` is set too high for a synchronous path. Your own validation failures (a structured output that parses but fails your checks) point at the prompt.
+
+**Refusals and truncations.** These look like success at the HTTP layer. Claude reports `stop_reason: "refusal"` (with a category in `stop_details`) and `max_tokens` when output was cut off; other providers have equivalents, such as the refusal field in OpenAI's structured outputs. Track each as a rate per route. A refusal rate that doubles after a prompt change is a regression even though nothing errored.
+
+**Quality signals.** The share of sampled answers that pass your graders (next section), user feedback rates, and task-level outcomes where you have them (a ticket resolved without escalation, a drafted reply sent without edits). Tool-level signals matter for agents: tool error rate, calls per task, and loop length.
+
+Break every metric down by the dimensions you recorded in lesson 7: model, prompt version, route, and customer tier. A global average can stay flat while one prompt version on one route falls apart.
+</Listen>
+
+<Mermaid
+  alt="Sample dashboard layout in four rows. Row 1, headline tiles: requests today, cost today against budget, p95 latency, error rate, refusal rate, and judged pass rate with its interval. Row 2, cost: daily cost by model as a stacked bar chart, and cost per completed task by prompt version as a line. Row 3, latency and reliability: p50, p95, p99 latency and time to first token as lines; error rate split by type (429, 529, timeout, validation); refusal and max_tokens truncation rates. Row 4, quality and drift: corrected judge pass rate by route with confidence band; thumbs-down rate; input length and topic mix compared with last month; and a table of the slowest and most expensive traces with links."
+  caption="A one-screen layout for an LLM feature. Headline tiles first, then cost, reliability, and quality, each broken down by the dimensions you can act on."
+  chart={`flowchart TB
+  subgraph R1["Row 1: headline tiles (last 24 h)"]
+    direction LR
+    T1["Requests"] --- T2["Cost vs budget"] --- T3["p95 latency"] --- T4["Error rate"] --- T5["Refusal rate"] --- T6["Judged pass rate +/- interval"]
+  end
+  subgraph R2["Row 2: cost"]
+    direction LR
+    C1["Daily cost by model (stacked)"] --- C2["Cost per completed task by prompt version"]
+  end
+  subgraph R3["Row 3: latency and reliability"]
+    direction LR
+    L1["p50 / p95 / p99 and time to first token"] --- L2["Errors by type: 429, 529, timeout, validation"] --- L3["Refusal and max_tokens rates by route"]
+  end
+  subgraph R4["Row 4: quality and drift"]
+    direction LR
+    Q1["Corrected pass rate by route, with band"] --- Q2["Thumbs-down rate"] --- Q3["Input length and topic mix vs baseline"] --- Q4["Slowest and costliest traces (links)"]
+  end
+  R1 --> R2 --> R3 --> R4`}
+/>
+
+<Listen>
+## Online evaluation on sampled traffic
+
+Offline evals (Studio 3) tell you whether a change is safe to ship. **Online evals** tell you whether the shipped system is still good on the traffic it actually gets. The mechanics reuse what you already built.
+
+**Sample.** Take a uniform random sample of production traces for measurement, as Studio 3's review-queue lesson showed. Keep it separate from targeted samples (thumbs-down, judge failures, latency outliers), which are for discovery and are deliberately enriched with failures. Hamel Husain and Shreya Shankar's evals FAQ makes the same split. Run the graders asynchronously, off the request path, so evaluation never adds latency or failure modes to the user's request.
+
+**Grade.** Run the cheap, certain graders on every sampled trace: code-based checks such as citation verification, schema rules, and forbidden-content filters. Run the LLM judge from Studio 3, with the prompt you calibrated against human labels, on the same sample. Several tracing tools (Langfuse and LangSmith among them) can run evaluators on production traces for you; the statistics are the same either way.
+
+**Size the sample.** You have the math. To estimate a pass rate near 0.9 within about plus or minus 3 points at 95 percent confidence, the normal approximation gives n of about 1.96 squared times 0.9 times 0.1, divided by 0.03 squared, which is about 384 judged traces per reporting window. At 20,000 requests a day, a 2 percent sample gives that daily. At 2,000 a day, report weekly instead of sampling more aggressively than your judge budget allows. The judge has a cost too: price it with the same table as everything else.
+
+**Correct.** A judge's raw pass rate is biased by its own errors. Studio 3 showed the Rogan and Gladen correction: with the judge's true positive rate (TPR) and true negative rate (TNR) measured on human labels, the estimated true pass rate is (observed + TNR - 1) / (TPR + TNR - 1). Chart the corrected rate with its interval, and keep a person relabeling a small random sample every week or two, because a judge's TPR and TNR drift when traffic does.
+</Listen>
+
+<Callout type="pitfall" title="Grading your own outputs with the same blind spots">
+If production answers come from one model and the online judge is the same model with a different prompt, the judge can share the generator's failure modes, and Studio 3 covered the evidence for self-preference in LLM judges. Calibration against human labels is what tells you how much that matters on your task. When stakes are high, consider a judge from a different model family, measured the same way, rather than assuming either is neutral.
+</Callout>
+
+<Listen>
+## Drift: when the world moves under a working system
+
+Chip Huyen's essay on distribution shifts gives the classic vocabulary from ML: **covariate shift** (the input distribution changes), **label shift** (the output distribution changes), and **concept drift** (the right answer for the same input changes). It also makes a practical point: you rarely get ground-truth labels quickly in production, so you monitor what you can see without labels, the inputs and the model's outputs, as early warning. Her essay also cites a Google review in which most of the failures examined came from ordinary software causes rather than ML-specific ones, a useful reminder to check deploys and dependencies first.
+
+For LLM systems, watch four kinds:
+
+- **Input drift.** Topic mix, language, input length, share of inputs with attachments. A new customer segment or a marketing campaign changes what users ask.
+- **Output drift.** Answer length, refusal rate, tool calls per task, share of answers citing no source. These move when the model or prompt behaves differently, even before anyone labels a failure.
+- **Model drift.** Providers update models and aliases. Record the response's model identifier on every call, so a change in behavior can be lined up against a change in the model actually serving you.
+- **Judge drift.** Your evaluator is a model too. If the corrected pass rate jumps the day you upgraded the judge's model, that is the judge changing, not your product.
+
+Compare each metric against a baseline window (last month, or the week before a release) and look for changes that persist across several windows, not single-day blips. Drift is almost always ticket work: something to investigate this week, not wake someone for tonight.
+</Listen>
+
+<Listen>
+## User feedback: useful, biased, never the whole story
+
+Explicit feedback (thumbs up and down, ratings, a "report" button) is cheap to collect and valuable for finding failures, but it's a biased sample: most users never click, and the ones who do skew toward strong reactions. Implicit signals often tell you more: the user regenerates the answer, edits a drafted reply heavily before sending, copies the answer, abandons the session, or escalates to a human.
+
+Use feedback two ways, and keep them apart. As **discovery**, every thumbs-down goes into the review queue with its trace id attached, which is why the trace id belongs on every feedback event. As **measurement**, chart feedback rates over time per route and version, but never treat the thumbs-down rate as your quality estimate: the random sample with a calibrated judge is your measurement, and feedback is a second, biased signal that should move in the same direction. When the two disagree, investigate; that disagreement is information.
+</Listen>
+
+<Listen>
+## Alerts that wake people only for good reasons
+
+The SRE book's rules for what should page are short: a page must be urgent, actionable, and about a symptom users feel, not a cause, and every page should be actionable. The SRE workbook adds four properties to judge any alert by: **precision** (the share of alerts that were real), **recall** (the share of real incidents that alerted), **detection time**, and **reset time** (how long it keeps firing after the problem ends). A noisy alert has low precision; people learn to ignore it, and then it has low recall too.
+
+The workbook's recommended design for availability alerts is **multiwindow, multi-burn-rate**. Start from a service-level objective (SLO), say 99.9 percent of requests succeed over 30 days. The allowed failures are the **error budget**, and the **burn rate** is how fast you're spending it: burn rate 1 spends exactly the whole budget in the 30 days. For a 99.9 percent SLO the workbook suggests paging when 2 percent of the monthly budget burns within an hour (burn rate 14.4) or 5 percent within six hours (burn rate 6), and opening a ticket when 10 percent burns within three days. Each rule also requires a short window (about one twelfth of the long one) to exceed the same rate, so the alert stops soon after the problem does instead of firing for an hour on stale data.
+
+Translating that to an LLM system:
+
+- **Page** on availability burn (errors, timeouts, and possibly refusals on routes where a refusal is a failure), on latency SLO burn for interactive routes, and on cost burn: spend per hour far above budget usually means a loop, a retry storm, or abuse, and it is both urgent and actionable.
+- **Ticket** for quality: a corrected pass rate below threshold over a window, sustained drift, rising thumbs-down rate, a judge whose agreement with fresh human labels dropped.
+- **Dashboard only** for everything else.
+
+Two cautions from the workbook apply directly. Low-traffic routes make rates jumpy (one failure in ten requests looks like a disaster), so combine routes, lengthen windows, or add synthetic traffic. And very strict targets can't be defended by alerting alone; at some point the defense is design (fallback models, canary releases) rather than faster pages.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s6-w3-burn-rate-alert"
+  title="Implement a multiwindow burn-rate page"
+  starter={`SLO = 0.99                     # 99% of requests succeed
+BUDGET = 1 - SLO               # 1% of requests may fail
+
+def error_rate(events, now, window_s):
+    """events: list of (t_seconds, ok_bool). Fraction of events with t in (now - window_s, now] that failed.
+    Return 0.0 if the window has no events."""
+    # TODO
+    return 0.0
+
+def burn_rate(events, now, window_s):
+    """How fast the error budget is being spent in the window: error rate divided by BUDGET."""
+    # TODO
+    return 0.0
+
+def should_page(events, now):
+    """Page if EITHER rule holds:
+      fast: burn rate over 1 hour  > 14.4 AND over 5 minutes  > 14.4
+      slow: burn rate over 6 hours > 6    AND over 30 minutes > 6"""
+    # TODO
+    return False
+
+# A synthetic day: one request every 10 seconds, mostly fine.
+def traffic(start, end, fail_every=None):
+    out = []
+    for i, t in enumerate(range(start, end, 10)):
+        ok = not (fail_every and i % fail_every == 0)
+        out.append((t, ok))
+    return out
+
+H = 3600
+quiet = traffic(0, 6 * H)                                  # six healthy hours
+outage = quiet + traffic(6 * H, 6 * H + 600, fail_every=1) # then a 10-minute full outage
+recovered = outage + traffic(6 * H + 600, 7 * H)           # then healthy again for 50 minutes
+print("quiet:", should_page(quiet, 6 * H))
+print("during outage:", should_page(outage, 6 * H + 600), round(burn_rate(outage, 6 * H + 600, 300), 1))
+print("after recovery:", should_page(recovered, 7 * H), round(burn_rate(recovered, 7 * H, H), 1))
+`}
+  tests={`H = 3600
+quiet = traffic(0, 6 * H)
+outage = quiet + traffic(6 * H, 6 * H + 600, fail_every=1)
+recovered = outage + traffic(6 * H + 600, 7 * H)
+assert error_rate([], 100, 60) == 0.0, "an empty window has no errors"
+assert abs(error_rate([(1, True), (2, False), (3, False), (4, True)], 4, 10) - 0.5) < 1e-9, "2 failures out of 4 events is 0.5"
+assert error_rate([(1, False), (50, True)], 50, 10) == 0.0, "only events inside (now - window, now] count"
+assert abs(burn_rate([(1, False)] + [(t, True) for t in range(2, 101)], 100, 1000) - 1.0) < 1e-9, "1% errors burns at exactly 1x"
+assert should_page(quiet, 6 * H) is False, "no page when healthy"
+assert should_page(outage, 6 * H + 600) is True, "a 10-minute full outage must page"
+assert burn_rate(outage, 6 * H + 600, 300) > 14.4
+assert burn_rate(recovered, 7 * H, H) > 14.4, "the 1-hour window still remembers the outage"
+assert should_page(recovered, 7 * H) is False, "the short windows let the page reset after recovery"
+sporadic = traffic(0, 7 * H, fail_every=50)
+assert should_page(sporadic, 7 * H) is False, "2% errors (burn rate 2) is ticket territory, not a page"`}
+  solution={`def error_rate(events, now, window_s):
+    inside = [ok for t, ok in events if now - window_s < t <= now]
+    if not inside:
+        return 0.0
+    return sum(1 for ok in inside if not ok) / len(inside)
+
+def burn_rate(events, now, window_s):
+    return error_rate(events, now, window_s) / BUDGET
+
+def should_page(events, now):
+    fast = burn_rate(events, now, 3600) > 14.4 and burn_rate(events, now, 300) > 14.4
+    slow = burn_rate(events, now, 6 * 3600) > 6 and burn_rate(events, now, 1800) > 6
+    return fast or slow`}
+>
+Write the three functions, then press **Check my answer**. The interesting test is the recovery: an hour after a ten-minute full outage, the one-hour burn rate is still far above 14.4, so a single-window alert would still be firing. The short window is what lets the page reset. The last test is the other side: a steady 2 percent error rate burns the budget at 2x, which matters (it would spend a month's budget in about two weeks) but isn't an emergency, so it belongs in a ticket rule with a longer window.
+</PyRunner>
+
+<GoDeeper title="Why the workbook's numbers are what they are">
+The thresholds follow from simple arithmetic you can redo for your own SLO. Spending a fraction f of a 30-day (720-hour) budget within a window of w hours requires a burn rate of f times 720 divided by w. For 2 percent in 1 hour that is 0.02 times 720, or 14.4; for 5 percent in 6 hours it is 0.05 times 720 divided by 6, or 6; for 10 percent in 3 days (72 hours) it is 1. Choose f by asking how much of the month's budget you're willing to lose before a person looks, and w by how fast you need to know. For LLM cost alerts, the same structure works with a dollar budget in place of an error budget: the burn rate is spend per hour divided by the budgeted spend per hour, with a long and a short window so a runaway agent loop pages quickly and the page stops once you've killed it.
+</GoDeeper>
+
+<Listen>
+## What a working team does
+
+Keep one screen per LLM feature, with headline tiles, cost, reliability, and quality, each broken down by model, prompt version, and route. Chart percentiles and rates by failure type, and include refusals and truncations as failures. Run graders on a uniform random sample off the request path, size the sample with the arithmetic above, correct the judge's rate with measured TPR and TNR, and relabel a small sample by hand on a schedule. Watch inputs, outputs, models, and judges for drift against a baseline. Treat feedback as discovery first and a biased measurement second. Page only for symptoms that are urgent and actionable (availability, latency, cost burn), with multiwindow rules; send quality and drift to tickets. Then review the alerts themselves every month: which ones fired, which were real, and which incidents were found by a customer instead. That last list is your alerting system's recall, measured.
+</Listen>

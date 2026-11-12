@@ -1,0 +1,367 @@
+{
+  "id": "s4-w4",
+  "studio": "s4",
+  "week": 4,
+  "title": "Week 4 quiz: Agents you can trust",
+  "questions": [
+    {
+      "id": "s4w4-q1",
+      "type": "mcq",
+      "prompt": "Anthropic's containment post distinguishes defenses in the model from defenses in the environment. Which statement matches that distinction?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Model-layer defenses are deterministic; environment defenses are probabilistic.",
+          "rationale": "Reversed. Models are probabilistic; an OS sandbox is not."
+        },
+        {
+          "id": "b",
+          "text": "Model-layer defenses (prompts, classifiers, training) shape what an agent tends to do; environment defenses (sandboxes, egress controls, scoped credentials) limit what it can do.",
+          "rationale": "Yes. Only the environment gives a hard boundary.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Environment defenses are only needed for models below a capability threshold.",
+          "rationale": "The post argues the opposite: more capable models find more unexpected paths, so containment matters more."
+        },
+        {
+          "id": "d",
+          "text": "They are two names for the same layer.",
+          "rationale": "They are separate layers that should overlap."
+        }
+      ],
+      "explanation": "Use both, and know which is which. A classifier with a 1% miss rate is valuable, but if a credential never enters the sandbox, no miss can leak it.",
+      "week": 4,
+      "tags": [
+        "containment",
+        "least-privilege"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s4w4-q2",
+      "type": "code-reading",
+      "prompt": "This is the approval step in an agent harness. What is the most serious problem?",
+      "code": "def gate(call, ask_human):\n    try:\n        answer = ask_human(call.name, call.model_summary)\n    except TimeoutError:\n        answer = True  # don't block the agent on a slow reviewer\n    return bool(answer)",
+      "options": [
+        {
+          "id": "a",
+          "text": "It should use a while loop to ask until the human says yes.",
+          "rationale": "Repeated asking is approval fatigue by design."
+        },
+        {
+          "id": "b",
+          "text": "bool(answer) is slower than comparing to True.",
+          "rationale": "Performance is irrelevant; the semantics matter. bool('no') is also True, which is another bug."
+        },
+        {
+          "id": "c",
+          "text": "It shows the model's summary instead of the exact arguments, and a timeout counts as approval.",
+          "rationale": "Both break the gate: the summary is model output that can be wrong or manipulated, and a timeout should be a no.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Nothing; timeouts are rare.",
+          "rationale": "Rare failures in a gate are the ones attackers and outages find."
+        }
+      ],
+      "explanation": "Deny by default (any error, timeout, or ambiguous answer is a no), show the exact arguments or a rendered preview, and treat only an explicit True as consent. Note that bool('no') is True, so a free-text answer would also approve.",
+      "week": 4,
+      "tags": [
+        "approvals",
+        "human-in-the-loop"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w4-q3",
+      "type": "scenario",
+      "prompt": "You are running Claude Code on a repository that holds deploy scripts with production credentials in the environment. You want fewer prompts for routine test runs. Which setup is the best fit, based on the Claude Code docs?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Default mode with the Bash sandbox on, network allowlisted, credential reads denied, environment secrets scrubbed, and an allow rule for the test command.",
+          "rationale": "Yes. Sandboxed commands can run with fewer prompts, and the boundary is enforced by the OS.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "bypassPermissions on your laptop, since you trust the model.",
+          "rationale": "The docs recommend bypassPermissions only in isolated containers or VMs."
+        },
+        {
+          "id": "c",
+          "text": "Add 'never touch production' to CLAUDE.md.",
+          "rationale": "The docs say permission rules are enforced by Claude Code, not by instructions in CLAUDE.md."
+        },
+        {
+          "id": "d",
+          "text": "acceptEdits mode, which blocks network access.",
+          "rationale": "acceptEdits auto-approves file edits; it is not a network control."
+        }
+      ],
+      "explanation": "Sandbox plus rules is the documented route to fewer prompts without giving up a boundary. Remember the sandbox's edges: it wraps shell commands, reads most of the machine by default, and inherits environment variables unless you scrub them.",
+      "week": 4,
+      "tags": [
+        "claude-code",
+        "sandboxing",
+        "permissions"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w4-q4",
+      "type": "multi",
+      "prompt": "Which of these are outbound channels an injected instruction could use to exfiltrate data from a status-report agent? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "fetch_url with data in the query string",
+          "rationale": "Correct. The server owner sees the query string.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "A Markdown image in a post, rendered by the chat client",
+          "rationale": "Correct. Rendering requests the image URL, with whatever data it carries.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "An email draft the agent saves for review",
+          "rationale": "Correct, if a person may send it without reading; a draft is outbound once approved, so it needs the same checks.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "list_issues reading the tracker",
+          "rationale": "Reading brings untrusted content in; on its own it sends nothing out to a destination the attacker chooses."
+        }
+      ],
+      "explanation": "Classify tools by where data can go, not by whether they change your systems. Read tools that fetch arbitrary URLs and anything that gets rendered are outbound.",
+      "week": 4,
+      "tags": [
+        "prompt-injection",
+        "lethal-trifecta"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w4-q5",
+      "type": "predict-output",
+      "prompt": "A simple host allowlist check. What does this print?",
+      "code": "ALLOWED = {\"acme.example\"}\n\ndef ok(host):\n    return any(host.endswith(a) for a in ALLOWED)\n\nprint(ok(\"docs.acme.example\"), ok(\"evilacme.example\"), ok(\"acme.example.evil.example\"))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`True False False`",
+          "rationale": "That is what a correct check prints; this one has a bug."
+        },
+        {
+          "id": "b",
+          "text": "`True True True`",
+          "rationale": "acme.example.evil.example does not end with acme.example."
+        },
+        {
+          "id": "c",
+          "text": "`True True False`",
+          "rationale": "Yes. endswith without a dot lets evilacme.example through.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "`False False False`",
+          "rationale": "docs.acme.example ends with acme.example."
+        }
+      ],
+      "explanation": "Match exactly, or as a true subdomain: host == a or host.endswith('.' + a). Lookalike domains are the standard way past a sloppy allowlist, so test both forms.",
+      "week": 4,
+      "tags": [
+        "allowlists",
+        "guards"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w4-q6",
+      "type": "mcq",
+      "prompt": "In Willison's dual LLM pattern, what does the privileged LLM never see?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The user's request",
+          "rationale": "The privileged LLM is the one the user talks to."
+        },
+        {
+          "id": "b",
+          "text": "The contents of untrusted data; it handles references such as $VAR1 instead",
+          "rationale": "Yes. The quarantined LLM reads the untrusted text; the privileged one passes variables around.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The tool definitions",
+          "rationale": "It is the model with the tools."
+        },
+        {
+          "id": "d",
+          "text": "Its own previous outputs",
+          "rationale": "Irrelevant to the pattern."
+        }
+      ],
+      "explanation": "The pattern keeps untrusted tokens away from the model that can act. Its remaining weakness, which CaMeL addresses with capabilities, is that untrusted data can still influence where trusted data flows.",
+      "week": 4,
+      "tags": [
+        "dual-llm",
+        "design-patterns"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s4w4-q7",
+      "type": "scenario",
+      "prompt": "Your agent summarizes each issue, then writes a report and posts it after approval. Injection tests show issue text sometimes persuades the report-writing step to add links. You have one sprint. What is the most effective change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Add a sentence to the system prompt saying not to include links from issues.",
+          "rationale": "Worth adding, but it is a tendency, not a control."
+        },
+        {
+          "id": "b",
+          "text": "Switch to the largest available model for both steps.",
+          "rationale": "Model robustness helps, but it changes rates, not guarantees, and costs more."
+        },
+        {
+          "id": "c",
+          "text": "Ask the reviewer to look harder for links.",
+          "rationale": "A human can miss them; rules can't."
+        },
+        {
+          "id": "d",
+          "text": "Have the per-issue step return a fixed-schema record (status, owner, blocked, a one-sentence summary with URLs stripped), and strip or deny links to unlisted hosts in the final post.",
+          "rationale": "Yes. Map-reduce with constrained outputs, plus a deterministic output check.",
+          "correct": true
+        }
+      ],
+      "explanation": "The LLM map-reduce pattern isolates each untrusted item and passes forward only constrained results. Pair it with a deterministic check on the outbound text, and keep the reviewer for judgment calls.",
+      "week": 4,
+      "tags": [
+        "design-patterns",
+        "prompt-injection"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w4-q8",
+      "type": "code-reading",
+      "prompt": "This eval loop runs 5 trials per scenario. What is wrong with it?",
+      "code": "env = load_fixture(\"tracker.json\")\nfor scenario in scenarios:\n    for trial in range(5):\n        result = run_agent(client, scenario.task, env)\n        record(scenario.id, trial, grade(env, scenario))",
+      "options": [
+        {
+          "id": "a",
+          "text": "All trials share one environment, so state from earlier trials (posts, edits) leaks into later ones and grading.",
+          "rationale": "Yes. Each trial needs a fresh environment.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Five trials is too many for pass^k.",
+          "rationale": "Several trials is the point of pass^k."
+        },
+        {
+          "id": "c",
+          "text": "grade should read the agent's final message instead of the environment.",
+          "rationale": "The opposite: grade the outcome, not the claim."
+        },
+        {
+          "id": "d",
+          "text": "record should only be called on success.",
+          "rationale": "Failures are the most useful records."
+        }
+      ],
+      "explanation": "Build the environment inside the trial loop. Anthropic's agent-evals guide reports both correlated failures and inflated scores from shared state, including an agent reading earlier trials' git history.",
+      "week": 4,
+      "tags": [
+        "agent-evals",
+        "environments"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w4-q9",
+      "type": "predict-output",
+      "prompt": "Using tau-bench's pass^k estimator, what does this print?",
+      "code": "from math import comb\nresults = {\"s1\": [True]*5, \"s2\": [True, True, True, True, False]}\nk = 3\nvals = [comb(sum(r), k) / comb(len(r), k) for r in results.values()]\nprint(round(sum(vals) / len(vals), 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.9`",
+          "rationale": "That is the plain success rate (9 of 10)."
+        },
+        {
+          "id": "b",
+          "text": "`0.7`",
+          "rationale": "s1 gives 1.0; s2 gives C(4,3)/C(5,3) = 4/10 = 0.4; the mean is 0.7.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`0.4`",
+          "rationale": "That is s2 alone."
+        },
+        {
+          "id": "d",
+          "text": "`0.5`",
+          "rationale": "Not derivable from these counts."
+        }
+      ],
+      "explanation": "One failure in five trials drops that scenario's pass^3 to 0.4. Reliability across trials falls much faster than the average success rate suggests.",
+      "week": 4,
+      "tags": [
+        "pass-k",
+        "agent-evals"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w4-q10",
+      "type": "multi",
+      "prompt": "Which are recommended settings in Anthropic's Managed Agents security guide? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Limited networking with only the hosts the agent needs",
+          "rationale": "Correct.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Start the agent toolset with every tool disabled, then enable what you need",
+          "rationale": "Correct.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "A budget on each session sized to what a run should cost",
+          "rationale": "Correct.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "always_allow on every tool for agents that read untrusted input, so they finish faster",
+          "rationale": "The guide says no agent that reads untrusted input should hold an always_allow tool that writes files, runs commands, or changes records."
+        }
+      ],
+      "explanation": "The guide orders settings by importance: where the agent runs, network limits, vaulted credentials, web tool allowlists, permission policies, the smallest tool set, keeping untrusted input away from powerful tools, budgets, and monitoring.",
+      "week": 4,
+      "tags": [
+        "managed-agents",
+        "least-privilege"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

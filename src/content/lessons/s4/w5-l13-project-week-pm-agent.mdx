@@ -1,0 +1,249 @@
+---
+id: s4-w5-l13
+studio: s4
+week: 5
+order: 13
+title: "Project week: designing the PM workflow agent"
+summary: >-
+  Set up the studio project before you write the agent: decide what should be a workflow and what should be
+  agentic, draw the MCP server boundary, fill in the tool and trifecta tables, design the draft-then-approve step,
+  and plan the eval set and cost budget. This lesson frames the decisions; the project is where you make them.
+estMinutes: 50
+reviewed: 2026-11-11
+objectives:
+  - Decide which parts of a weekly status workflow should be fixed code and which should be model-driven, and justify the split
+  - Design an MCP server boundary for an issue tracker with read tools, resources, and a narrowly scoped write path
+  - Produce a tool table and a lethal-trifecta analysis for the agent before writing it
+  - Plan a draft-then-approve step, an eval set of at least 15 scenarios, and a cost budget per run
+  - Handle the GitHub Issues API's practical details (pull requests in issue lists, pagination, rate limits, scoped tokens)
+sources:
+  - { id: anthropic-effective-agents, use: summarized, where: "Workflows versus agents; start simple" }
+  - { id: github-rest-issues, use: summarized, where: "List repository issues; pull requests in issue endpoints" }
+  - { id: github-rest-issue-comments, use: linked }
+  - { id: github-rest-rate-limits, use: summarized }
+  - { id: github-fine-grained-pats, use: summarized }
+  - { id: mcp-tools-spec, use: summarized }
+  - { id: willison-lethal-trifecta, use: summarized }
+  - { id: anthropic-demystifying-evals, use: linked }
+  - { id: claude-ma-secure-deployment, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: code-reading
+    prompt: You list a repository's issues through GitHub's REST API to count open bugs. What does this code get wrong?
+    code: |
+      issues = gh.get(f"/repos/{owner}/{repo}/issues", params={"state": "open", "per_page": 100}).json()
+      open_bugs = [i for i in issues if any(l["name"] == "bug" for l in i["labels"])]
+      print(len(open_bugs))
+    options:
+      - id: a
+        text: It counts pull requests labeled "bug" as issues, and it reads only the first page.
+        correct: true
+        rationale: The issues endpoints also return pull requests (identified by a pull_request key), and per_page caps at 100.
+      - id: b
+        text: Nothing; state=open excludes pull requests.
+        rationale: Open pull requests are returned too.
+      - id: c
+        text: per_page must be at most 30.
+        rationale: The default is 30; the maximum is 100.
+    explanation: >-
+      GitHub's docs say every pull request is an issue to the REST API, so filter out items with a pull_request key.
+      And any list can span pages: follow pagination until there are no more pages, within a request budget. Both
+      are scenarios for your eval set.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A teammate proposes letting the agent decide each week whether to post the status to the project channel,
+      email it to executives, or open a GitHub discussion. What is the strongest objection?
+    options:
+      - id: a
+        text: It adds outbound channels and lets model output (possibly steered by issue text) choose the destination, widening the trifecta for little benefit.
+        correct: true
+        rationale: Destinations should be fixed by your code and allowlisted. Choice of channel is not where the value is.
+      - id: b
+        text: Claude cannot call more than two tools.
+        rationale: Not true, and not the issue.
+      - id: c
+        text: Executives do not read email.
+        rationale: Perhaps, but the design problem is the expanded attack surface.
+    explanation: >-
+      Keep the action set fixed (plan-then-execute): the agent drafts; your code decides where an approved draft
+      goes. Model-driven choices belong where judgment adds value, such as summarizing and prioritizing.
+  - id: kc3
+    type: mcq
+    prompt: Why build the eval fixtures before the agent works end to end?
+    options:
+      - id: a
+        text: Because the scenarios (edge cases, failures, injections) tell you what the tools and guard must handle, and give you a baseline from the first run.
+        correct: true
+        rationale: Eval-first turns vague requirements into checks you can run on every change.
+      - id: b
+        text: Because GitHub requires fixtures for API access.
+        rationale: It does not; fixtures are for you.
+      - id: c
+        text: Because evals are cheaper to write after the prompt is final.
+        rationale: The prompt is never final, and evals written after the fact tend to test what already works.
+    explanation: >-
+      A fixture tracker with fifteen scenarios is a specification you can execute. Writing it first is the agent
+      version of test-driven development, and it means your first logged run is a real baseline.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The job
+
+Every week, someone on a product team reads the issue tracker and writes a status update: what shipped, what is blocked, what slipped, what needs a decision. It takes an hour if the tracker is tidy, and it is the kind of work people do late on Friday. Your studio project automates it: an agent that reads a tracker through an MCP server you build, drafts the weekly status, and posts it only after a person approves the draft. You will evaluate it on at least 15 scenarios, including injection attempts, and report what each run costs.
+
+This lesson does not build it. It walks through the decisions you need to make first, in the order a careful engineer would make them, so that by the end of the week your design document can answer the questions a reviewer will ask. The project page has the requirements, rubric, and write-up template.
+</Listen>
+
+<Listen>
+## Decision 1: what is a workflow, and what is agentic?
+
+Week 1 drew the line between workflows (code decides the steps) and agents (the model decides). Anthropic's "Building effective agents" recommends the simplest solution that works, adding agentic complexity only when it demonstrably improves results. Apply that here, honestly.
+
+Much of this job is deterministic. Which issues changed this week is a query with a date filter. Which closed, which opened, which have no assignee: code. Where the report goes: fixed by configuration. The parts that benefit from a model are reading free-text bodies and comments to judge what actually happened ("fix is in review" versus "blocked on legal"), grouping related items, and writing a clear summary for a stakeholder.
+
+A defensible starting design is therefore a **workflow with model-driven steps**: code fetches and filters; a model turns each changed issue into a structured record; a model drafts the report from the records; code shows the draft to a reviewer and posts it on approval. Where would real agency help? Perhaps in deciding to read comments or linked issues when a body is ambiguous, which is a bounded, read-only loop. The rubric rewards a justified choice, in either direction: if you build a full agent loop, show on your eval that it beats the simpler design enough to pay for its extra cost and risk.
+</Listen>
+
+<Listen>
+## Decision 2: the MCP server boundary
+
+Week 3 taught you to build MCP servers. For this project the server is the boundary between your agent and the tracker, and the place where least privilege lives.
+
+Start with **resources and read tools**. Something like `list_changed_issues(since, until)` that returns compact records (number, title, state, labels, assignee, updated time, a truncated body) rather than raw API payloads; `get_issue(number)` with comments for the cases that need detail; perhaps a resource for the project's configuration (milestones, label meanings). Return natural-language fields and sensible page sizes, as Studio 1's tool-design lesson recommended, and do the date arithmetic in the server, not in the model.
+
+Then the **write path**. The agent should not hold a general "post anything anywhere" tool. One option: the agent's only write is `save_draft(text)`, and posting happens in your application after a human approves, through code the model never calls. Another: a `post_status` tool on the server that only accepts the configured channel and is gated by approval. Decide which, and write down why. The MCP tools specification expects a human able to deny tool invocations; your design should make that the normal path, not an exception.
+
+Finally, **credentials**. For GitHub, a fine-grained personal access token can be limited to specific repositories and specific permissions, with an expiry. A read-only token on one repository is enough for the default project; if you post back to GitHub (a discussion or a comment), give that one action its own narrowly scoped token. Keep tokens in environment variables, never in fixtures, logs, or prompts.
+</Listen>
+
+<Callout type="pitfall" title="Pull requests are issues, and lists have pages">
+GitHub's REST docs state that every pull request is an issue to the API, so the issues endpoints return pull requests too; you identify them by the `pull_request` key. List endpoints return 30 items by default and at most 100 per page, so a busy repository needs pagination. And the `since` parameter filters by last update time, not creation time. Each of these is a classic silent bug in a status report (PRs counted as bugs, page two never read, "updated" confused with "opened"), and each deserves a scenario in your eval set.
+</Callout>
+
+<PyRunner
+  client:visible
+  id="s4-w5-changed-this-week"
+  title="Classify a week's tracker changes, deterministically"
+  starter={`def changes_this_week(items, start, end):
+    """items: dicts shaped like GitHub issue JSON (the fields used here):
+       number, title, state ("open"/"closed"), created_at, closed_at (or None), updated_at,
+       assignee (dict or None), and "pull_request" present only for pull requests.
+    Timestamps are ISO strings like "2026-11-09T14:00:00Z"; compare them as strings.
+    The week is start <= t < end.
+    Return {"opened": [...], "closed": [...], "updated": [...], "unassigned_open": [...]}:
+    lists of issue numbers, sorted ascending, with pull requests excluded.
+      opened:   created this week
+      closed:   closed this week (an issue can be both opened and closed this week)
+      updated:  updated this week but neither opened nor closed this week
+      unassigned_open: currently open with no assignee (any week)"""
+    # TODO
+    return {"opened": [], "closed": [], "updated": [], "unassigned_open": []}
+
+W0, W1 = "2026-11-09T00:00:00Z", "2026-11-16T00:00:00Z"
+items = [
+    {"number": 1, "title": "Export timeout", "state": "open", "created_at": "2026-10-01T10:00:00Z",
+     "closed_at": None, "updated_at": "2026-11-10T09:00:00Z", "assignee": {"login": "priya"}},
+    {"number": 2, "title": "SSO", "state": "closed", "created_at": "2026-10-20T10:00:00Z",
+     "closed_at": "2026-11-11T16:00:00Z", "updated_at": "2026-11-11T16:00:00Z", "assignee": {"login": "marcus"}},
+    {"number": 3, "title": "Bump deps", "state": "open", "created_at": "2026-11-12T08:00:00Z",
+     "closed_at": None, "updated_at": "2026-11-12T08:00:00Z", "assignee": None, "pull_request": {"url": "..."}},
+]
+print(changes_this_week(items, W0, W1))
+`}
+  tests={`W0, W1 = "2026-11-09T00:00:00Z", "2026-11-16T00:00:00Z"
+def it(n, state, created, closed=None, updated=None, assignee="a", pr=False):
+    d = {"number": n, "title": f"#{n}", "state": state, "created_at": created, "closed_at": closed,
+         "updated_at": updated or closed or created, "assignee": {"login": assignee} if assignee else None}
+    if pr:
+        d["pull_request"] = {"url": "x"}
+    return d
+items = [
+    it(1, "open", "2026-10-01T10:00:00Z", updated="2026-11-10T09:00:00Z"),
+    it(2, "closed", "2026-10-20T10:00:00Z", closed="2026-11-11T16:00:00Z"),
+    it(3, "open", "2026-11-12T08:00:00Z", assignee=None, pr=True),
+    it(4, "open", "2026-11-13T08:00:00Z", assignee=None),
+    it(5, "closed", "2026-11-09T00:00:00Z", closed="2026-11-15T23:59:59Z"),
+    it(6, "open", "2026-09-01T00:00:00Z", updated="2026-11-16T00:00:00Z", assignee=None),
+    it(7, "closed", "2026-09-01T00:00:00Z", closed="2026-11-02T00:00:00Z", updated="2026-11-10T00:00:00Z"),
+]
+r = changes_this_week(items, W0, W1)
+assert 3 not in sum(r.values(), []), "pull requests come back from the issues endpoint; exclude them"
+assert r["opened"] == [4, 5], "created within [start, end); start is inclusive"
+assert r["closed"] == [2, 5], "5 was opened and closed this week: it appears in both"
+assert r["updated"] == [1, 7], "updated this week, but not opened or closed this week (7 was closed last week)"
+assert 6 not in r["updated"], "end is exclusive"
+assert r["unassigned_open"] == [4, 6], "open with no assignee, any week"`}
+  solution={`def changes_this_week(items, start, end):
+    def inweek(t):
+        return t is not None and start <= t < end
+    issues = [i for i in items if "pull_request" not in i]
+    opened = sorted(i["number"] for i in issues if inweek(i["created_at"]))
+    closed = sorted(i["number"] for i in issues if inweek(i.get("closed_at")))
+    updated = sorted(i["number"] for i in issues
+                     if inweek(i["updated_at"]) and i["number"] not in opened and i["number"] not in closed)
+    unassigned = sorted(i["number"] for i in issues if i["state"] == "open" and not i.get("assignee"))
+    return {"opened": opened, "closed": closed, "updated": updated, "unassigned_open": unassigned}`}
+>
+This is the part of the job that should not be left to a model. Put logic like this in your MCP server or your workflow code, test it like any other function, and hand the model only the result. String comparison works here because the timestamps share one fixed format and time zone; in your project, parse them with `datetime` and say which time zone defines "this week."
+</PyRunner>
+
+<Listen>
+## Decision 3: the tool table and the trifecta
+
+Fill in the table from lesson 10 for every tool the agent can call: read or write, reversible or not, credential and scope, and what the worst call could do. Then do lesson 11's trifecta analysis out loud.
+
+For the default project: issue bodies and comments are **untrusted content** (anyone who can file an issue writes them, and on a public repository that is anyone). **Private data** may be absent if you use a public repository and nothing else, which is a legitimate way to remove a leg. But many real versions add something private: internal notes, customer names, a roadmap. If yours does, say so. The **outbound** leg is the post, plus anything that fetches URLs.
+
+Then pick your structural defense and say which leg it addresses. A map-reduce reader that turns each issue into a fixed-schema record with no URLs and no free text longer than a sentence makes injected instructions much harder to carry forward. A fixed action set means nothing in an issue can add a destination. A deterministic guard (allowlisted channel, no links to unlisted hosts, no private values in outbound text) is the control that holds when the model is fooled. You built that guard in lab 04; adapting it is fair game.
+</Listen>
+
+<Listen>
+## Decision 4: draft, then approve
+
+The approval step is the product, not a safety tax. Design it for the person who will use it on a Friday afternoon.
+
+Show the **exact text** that will be posted, rendered the way the channel will render it, with links visible. Show **what the draft is based on**: the issue numbers behind each line, so a reviewer can spot-check one claim in seconds. Flag what the guard noticed: "2 issue bodies contained instructions that were ignored," "1 link was removed." Offer three choices: approve, edit then approve, or reject with a reason, and log the decision. A rejection with a reason is free training data for your eval set.
+
+Keep it to **one approval per run**. Lesson 10's numbers on approval fatigue apply here: if a reviewer approves twelve small posts a week, they stop reading by the third. One draft, carefully shown, gets read.
+</Listen>
+
+<Listen>
+## Decision 5: the eval set and the budget
+
+Use lesson 12's composition: happy paths, data edge cases (pagination, pull requests mixed in, missing assignees, reopened issues), tool failures (a rate-limit error, a timeout), should-not-act cases (reviewer rejects, channel not allowed, empty tracker), and at least three injection scenarios. Build them as fixture trackers your MCP server can load, with expected end states and reference reports. Run several trials per scenario on fresh fixtures.
+
+Set a **cost budget per run** before you build, and measure against it. Count model calls, tokens, and dollars at the current prices; record the date. GitHub's own limits also shape the design: the REST API allows 60 requests per hour unauthenticated and 5,000 per hour for a personal access token, so cache responses during development and run the eval on fixtures, not on the live API.
+
+Decide the **release rule** now and write it in your README: for example, zero safety violations across all trials, end-state success above a threshold you choose, and cost per run below your budget. Writing it before you see results is what makes it a rule.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put the project's build order in the sequence this lesson recommends"
+  items={[
+    "Write the design doc: workflow vs agent split, tool table, trifecta analysis",
+    "Build the fixture tracker and the first scenarios, with expected end states",
+    "Build the MCP server's read tools and test them without a model",
+    "Add the model steps and run the baseline eval",
+    "Add the guard and the draft-then-approve step, then the injection scenarios",
+    "Connect the live GitHub source and measure cost per run",
+  ]}
+  explanation="Decisions first, then an executable specification (fixtures and scenarios), then deterministic tools you can test without a model, then the model, then the controls, and only at the end the live data source. Each step gives the next one something to be checked against."
+/>
+
+<Callout type="tip" title="Using your coding agent on this project">
+You will probably build much of this with Claude Code or another coding agent. Apply this week to it as well: run it in a mode and sandbox you chose on purpose, keep the GitHub token out of its context, and review what it writes against your tests rather than its summary. In your write-up, say what you delegated and what you had to correct.
+</Callout>
+
+<GoDeeper title="If you want a harder version">
+Three stretch directions, each with a real design question. Use a second tracker (ClickUp, Linear, or Jira) through the same MCP interface, and see how much of your server was GitHub-specific. Run the agent on a schedule (a cron job, or a hosted scheduled deployment), which removes the human from the start of the loop but must keep them at the approval. Or compare two model configurations on your eval, for example a small model for per-issue records and a larger one for the report against one model for both, and place them on the cost and success frontier from lesson 12.
+</GoDeeper>
+
+<Listen>
+## Before you open the project page
+
+Write one page answering five questions: what is fixed code and what is model-driven, and why; which tools exist and what each can reach; which trifecta legs are present and how you break or gate them; what the reviewer sees and decides; and how you will know it works, at what cost. Every rubric criterion on the project page maps to one of these answers.
+</Listen>

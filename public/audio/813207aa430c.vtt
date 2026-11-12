@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.429
+Prompt structure for RAG.
+
+2
+00:00:01.709 --> 00:00:04.717
+The layout of a RAG prompt is not a matter of taste.
+
+3
+00:00:04.997 --> 00:00:09.307
+Anthropic’s long-context guidance makes two concrete recommendations.
+
+4
+00:00:09.587 --> 00:00:22.771
+Put long documents near the top, above the question and instructions: in Anthropic’s tests, queries at the end improved response quality by up to 30 percent, especially with complex multi-document inputs.
+
+5
+00:00:23.051 --> 00:00:30.624
+And wrap each document in its own tags with its metadata (a source, an index) so the model can tell passages apart.
+
+6
+00:00:30.904 --> 00:00:43.555
+This connects to the “lost in the middle” result from Studio 1: models use information unevenly across long inputs, so make the structure easy to navigate and send only what the question needs.
+
+7
+00:00:43.835 --> 00:00:52.517
+Give every passage a stable id that your code controls, such as travel-002 or pep-0008#s3.
+
+8
+00:00:52.797 --> 00:00:56.424
+The id is what the model cites and what your verifier checks.
+
+9
+00:00:56.704 --> 00:01:03.765
+A position number (“document 4”) is fragile, because the same chunk sits at a different position on every query.
+
+10
+00:01:04.045 --> 00:01:05.240
+Then write the rules.
+
+11
+00:01:05.520 --> 00:01:07.845
+Answer only from the provided sources.
+
+12
+00:01:08.125 --> 00:01:09.853
+Cite the source of each statement.
+
+13
+00:01:10.133 --> 00:01:14.507
+If sources conflict, prefer the newer one and say an older one disagrees.
+
+14
+00:01:14.787 --> 00:01:20.589
+If the sources don’t contain the answer, reply with one exact sentence you can detect in code.
+
+15
+00:01:20.869 --> 00:01:32.027
+Anthropic’s guidance on reducing hallucinations recommends exactly these moves: give the model explicit permission to say it doesn’t know, and restrict it to the provided documents.
+
+16
+00:01:32.307 --> 00:01:36.061
+One more rule matters because your corpus is untrusted input.
+
+17
+00:01:36.341 --> 00:01:43.125
+Retrieved text can contain instructions (“ignore previous instructions and…”), whether planted or accidental.
+
+18
+00:01:43.405 --> 00:01:52.771
+Keep your rules in the system prompt, keep passages clearly delimited as data, and never let the content of a passage change what tools the model can call.
+
+19
+00:01:53.051 --> 00:01:57.040
+Studio 1’s prompt injection material applies here unchanged.

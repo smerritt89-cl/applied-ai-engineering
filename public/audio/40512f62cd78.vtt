@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.157
+Query routing: not every question should hit the index.
+
+2
+00:00:03.437 --> 00:00:22.104
+A RAG system usually receives several kinds of input: questions the corpus answers, questions it can’t (out of scope), small talk, requests that need structured data (a count, a date range, something a database or API answers better than text search), and questions that need several lookups.
+
+3
+00:00:22.384 --> 00:00:29.232
+Sending all of them through the same retrieve-then-generate path wastes money on some and gives poor answers to others.
+
+4
+00:00:29.512 --> 00:00:34.611
+A router is a classification step before retrieval: given the query, pick a path.
+
+5
+00:00:34.891 --> 00:00:45.152
+It can be rules (a regular expression for order numbers), a small classifier, or a call to a small, fast model with a short list of labels and structured output.
+
+6
+00:00:45.432 --> 00:00:57.123
+This is the classic place for the cheapest tier, such as claude-haiku-5-5: the task is narrow, the output is a label, and you can measure its accuracy directly on labeled queries.
+
+7
+00:00:57.403 --> 00:01:02.544
+A router you haven’t measured just moves errors earlier in the pipeline, where they’re harder to see.
+
+8
+00:01:02.824 --> 00:01:04.893
+Routing can also choose how to answer.
+
+9
+00:01:05.173 --> 00:01:19.211
+Li and colleagues (2024) compared RAG with long-context models across several public benchmarks and found that, given enough resources, long context did better on average while RAG cost far less.
+
+10
+00:01:19.491 --> 00:01:28.856
+Their Self-Route method lets the model judge whether the retrieved chunks are enough to answer; if not, the query is escalated to the long-context path.
+
+11
+00:01:29.136 --> 00:01:34.875
+They report much lower compute cost than always using long context with comparable performance.
+
+12
+00:01:35.155 --> 00:01:43.133
+You don’t have to copy it to use the idea: try the cheap path first, check a signal you trust, and escalate only when the signal says so.

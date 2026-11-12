@@ -1,0 +1,373 @@
+{
+  "id": "s6-w3",
+  "studio": "s6",
+  "week": 3,
+  "title": "Week 3 quiz: Observability",
+  "questions": [
+    {
+      "id": "s6w3-q1",
+      "type": "mcq",
+      "prompt": "In OpenTelemetry, what do all the spans of one trace have in common?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The same span id",
+          "rationale": "Each span has its own span id; that's how parents and children refer to each other."
+        },
+        {
+          "id": "b",
+          "text": "The same trace id",
+          "correct": true,
+          "rationale": "Yes. The trace id groups every span of one request, across services."
+        },
+        {
+          "id": "c",
+          "text": "The same parent span",
+          "rationale": "Only siblings share a parent. A trace is a tree with several levels."
+        },
+        {
+          "id": "d",
+          "text": "The same span kind",
+          "rationale": "A trace mixes kinds: a Server root, Client model calls, Internal tool work."
+        }
+      ],
+      "explanation": "The span context (trace id plus span id) is what propagates between services, for example in the W3C traceparent header. Putting the trace id on log records, eval results, and feedback events makes it a join key across your whole observability stack.",
+      "week": 3,
+      "tags": [
+        "tracing",
+        "opentelemetry"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6w3-q2",
+      "type": "code-reading",
+      "prompt": "This instrumentation follows the GenAI semantic conventions for a Claude call. Which line records a misleading value whenever prompt caching is in use?",
+      "code": "u = response.usage\nspan.set_attribute(\"gen_ai.request.model\", \"claude-opus-5-5\")          # A\nspan.set_attribute(\"gen_ai.response.model\", response.model)               # B\nspan.set_attribute(\"gen_ai.usage.input_tokens\", u.input_tokens)           # C\nspan.set_attribute(\"gen_ai.usage.output_tokens\", u.output_tokens)         # D",
+      "options": [
+        {
+          "id": "a",
+          "text": "Line A",
+          "rationale": "The requested model is known before the call; recording it is correct."
+        },
+        {
+          "id": "b",
+          "text": "Line B",
+          "rationale": "Recording the model that actually served the response is exactly what this attribute is for."
+        },
+        {
+          "id": "c",
+          "text": "Line C",
+          "correct": true,
+          "rationale": "The convention's input count includes cached tokens, but Claude's usage.input_tokens counts only uncached input. Add cache reads and writes."
+        },
+        {
+          "id": "d",
+          "text": "Line D",
+          "rationale": "Output tokens map directly."
+        }
+      ],
+      "explanation": "Mapping a provider's field into a standard attribute is a translation, not a copy. Claude reports cache_read_input_tokens and cache_creation_input_tokens separately from input_tokens. If you copy input_tokens straight across, every cache hit makes input look smaller than it was, and any cost computed from the span is wrong.",
+      "week": 3,
+      "tags": [
+        "semantic-conventions",
+        "tokens",
+        "caching"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w3-q3",
+      "type": "multi",
+      "prompt": "Which of these belong on every model-call span or log record by default? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Prompt name and version",
+          "correct": true,
+          "rationale": "Without it you can't tie a quality change to a prompt release."
+        },
+        {
+          "id": "b",
+          "text": "Token counts by kind (uncached input, cache reads, cache writes, output)",
+          "correct": true,
+          "rationale": "Each kind has its own price, and the counts drive cost and context-growth analysis."
+        },
+        {
+          "id": "c",
+          "text": "The full user message text",
+          "rationale": "Content capture is opt-in under the semantic conventions and should follow a written policy."
+        },
+        {
+          "id": "d",
+          "text": "Finish reason (for example end_turn, max_tokens, refusal)",
+          "correct": true,
+          "rationale": "Truncations and refusals return HTTP 200; the finish reason is how you count them."
+        },
+        {
+          "id": "e",
+          "text": "The user's email address, for support follow-up",
+          "rationale": "Use a keyed-hash pseudonym; the email is personal data the log doesn't need."
+        }
+      ],
+      "explanation": "Record what you will filter, group, or alert on, plus what you need to reproduce a problem: model requested and returned, prompt version, tokens, latency, cost, finish reason, error type, and context ids. Keep content and direct identifiers out unless a policy says otherwise.",
+      "week": 3,
+      "tags": [
+        "tracing",
+        "logging"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6w3-q4",
+      "type": "scenario",
+      "prompt": "Your team turns on both Claude SDK tracing and Claude API tracing, and also wraps each call in its own `chat claude-opus-5-5` span with token attributes. The weekly cost dashboard, which sums `gen_ai.usage.*` over all spans, now shows triple last month's spend, while the provider invoice is flat. What is the best fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Turn off API tracing; it must be reporting wrong numbers.",
+          "rationale": "The numbers are right; they are counted three times. Turning off one source still leaves two."
+        },
+        {
+          "id": "b",
+          "text": "Divide the dashboard total by three.",
+          "rationale": "That breaks the moment any one source is sampled or disabled. Fix the query, not the result."
+        },
+        {
+          "id": "c",
+          "text": "Stop recording token counts on spans and read the invoice monthly.",
+          "rationale": "You'd lose per-route and per-version cost, which is the point of the dashboard."
+        },
+        {
+          "id": "d",
+          "text": "Pick one span type as the source of truth for usage (for example the API's server spans, as Anthropic's docs suggest when both exist) and make the dashboard query only that.",
+          "correct": true,
+          "rationale": "Yes. Several spans legitimately carry the same request's usage; the query must count each request once."
+        }
+      ],
+      "explanation": "Nesting is how tracing works: your span contains the SDK's client span, which contains the API's server span, and each may carry usage. Anthropic's docs say to sum one source per request and tell client and server spans apart by kind. Also reconcile against the provider's usage reporting regularly, since exported spans are best effort.",
+      "week": 3,
+      "tags": [
+        "tracing",
+        "cost",
+        "claude"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w3-q5",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "import re\nPHONE = re.compile(r\"(?<![\\w+])(?:\\(\\d{3}\\)|\\d{3})[\\s.-]?\\d{3}[\\s.-]?\\d{4}(?!\\w)\")\nprint(PHONE.sub(\"[PHONE]\", \"Order 4155550134 shipped; call 020 7946 0958\"))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`Order [PHONE] shipped; call 020 7946 0958`",
+          "correct": true,
+          "rationale": "The 10-digit order number matches (a false positive) and the UK-format number doesn't (a false negative)."
+        },
+        {
+          "id": "b",
+          "text": "`Order 4155550134 shipped; call [PHONE]`",
+          "rationale": "Reversed. The UK number is grouped 3-4-4, which this pattern doesn't accept."
+        },
+        {
+          "id": "c",
+          "text": "`Order [PHONE] shipped; call [PHONE]`",
+          "rationale": "The second number has 11 digits in a 3-4-4 grouping; the pattern needs 3-3-4."
+        },
+        {
+          "id": "d",
+          "text": "`Order 4155550134 shipped; call 020 7946 0958`",
+          "rationale": "A bare run of 10 digits matches the pattern because the separators are optional."
+        }
+      ],
+      "explanation": "One line shows both error types. Regex redaction over-matches things that look like the pattern and misses formats you didn't write. Measure both on labeled log lines before trusting a redactor, and don't let it be your only protection.",
+      "week": 3,
+      "tags": [
+        "redaction",
+        "privacy"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w3-q6",
+      "type": "mcq",
+      "prompt": "According to Anthropic's published policies (checked on this week's review date), what is true of zero data retention on the Claude API?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It is a toggle every organization can switch on in the Console.",
+          "rationale": "ZDR is requested through Anthropic's sales team and enabled per organization by the account team."
+        },
+        {
+          "id": "b",
+          "text": "It guarantees Anthropic never retains anything, including content flagged for policy violations.",
+          "rationale": "The docs say flagged content may still be retained, up to 2 years, and data may be kept where the law requires."
+        },
+        {
+          "id": "c",
+          "text": "It is an arrangement enabled per organization that covers only features marked eligible; stateful features such as the Files API and code execution are not covered.",
+          "correct": true,
+          "rationale": "Yes. The feature eligibility table is part of the arrangement, and using a non-eligible feature steps outside it for that data."
+        },
+        {
+          "id": "d",
+          "text": "It also deletes the prompts your tracing vendor stores.",
+          "rationale": "ZDR concerns Anthropic's storage. Your vendors and logs keep whatever you send them."
+        }
+      ],
+      "explanation": "Provider data policies have three layers: the default (Anthropic's commercial API deletes inputs and outputs within 30 days, with listed exceptions), the arrangement (ZDR or HIPAA readiness, with feature eligibility), and exceptions (flagged content, legal holds). Name all three, with the date you checked, when a privacy review asks.",
+      "week": 3,
+      "tags": [
+        "privacy",
+        "retention",
+        "claude"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w3-q7",
+      "type": "scenario",
+      "prompt": "A product manager prototyped a feature on the free tier of the Gemini API using real customer emails, and now wants to launch it to customers in Germany on the same setup. What should you raise first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; Google does not train on API data.",
+          "rationale": "That's true for Paid Services. The Gemini API terms say Unpaid Services content may be used to improve products and read by human reviewers."
+        },
+        {
+          "id": "b",
+          "text": "Switch to Vertex AI, which has zero retention with no configuration.",
+          "rationale": "Vertex can support zero retention, but its docs list steps such as disabling caching and avoiding some grounding features."
+        },
+        {
+          "id": "c",
+          "text": "Add a regex redactor and keep the free tier.",
+          "rationale": "Redaction misses things, and it doesn't change the EEA requirement."
+        },
+        {
+          "id": "d",
+          "text": "The terms differ by tier: unpaid use may be used to improve Google's products and seen by reviewers, the terms say not to submit personal information to it, and apps serving users in the EEA must use Paid Services.",
+          "correct": true,
+          "rationale": "Yes. Both the prototype's data handling and the launch plan conflict with the published terms."
+        }
+      ],
+      "explanation": "Data handling is a model-selection criterion. The tier you prototype on can carry different terms from the tier you ship on. Check the current terms, involve your privacy colleagues, and redo the prototype's data review before launch.",
+      "week": 3,
+      "tags": [
+        "privacy",
+        "providers",
+        "gemini"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w3-q8",
+      "type": "predict-output",
+      "prompt": "Using nearest-rank percentiles, what does this print?",
+      "code": "import math\ndef pct(xs, p):\n    xs = sorted(xs)\n    return xs[math.ceil(p / 100 * len(xs)) - 1]\n\nlatency_ms = [400, 420, 450, 500, 520, 610, 700, 900, 1500, 9000]\nprint(pct(latency_ms, 50), pct(latency_ms, 90), sum(latency_ms) / len(latency_ms))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`520 1500 1500.0`",
+          "correct": true,
+          "rationale": "Rank 5 of 10 is 520, rank 9 is 1500, and the mean is 15,000 / 10."
+        },
+        {
+          "id": "b",
+          "text": "`565.0 9000 1500.0`",
+          "rationale": "Nearest rank doesn't interpolate between 520 and 610, and p90 of 10 values is the 9th, not the 10th."
+        },
+        {
+          "id": "c",
+          "text": "`520 9000 1500.0`",
+          "rationale": "ceil(0.9 * 10) is 9, so p90 is the 9th sorted value, 1500."
+        },
+        {
+          "id": "d",
+          "text": "`610 1500 900.0`",
+          "rationale": "Rank 5 is 520, and the single 9-second call pulls the mean up to 1500."
+        }
+      ],
+      "explanation": "One slow call makes the mean three times the median, while p90 ignores it. With only 10 calls, each percentile rests on one or two values. Report the count next to every percentile, and be careful alerting on tails of small samples.",
+      "week": 3,
+      "tags": [
+        "metrics",
+        "latency"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w3-q9",
+      "type": "mcq",
+      "prompt": "For a service with a 99.9 percent availability SLO over 30 days, the Google SRE workbook's multiwindow alert pages when the 1-hour burn rate exceeds 14.4. Why does the rule also require the 5-minute burn rate to exceed 14.4?",
+      "options": [
+        {
+          "id": "a",
+          "text": "So the alert resets soon after the problem ends, instead of firing for up to an hour on old errors.",
+          "correct": true,
+          "rationale": "Yes. The short window improves reset time while the long window keeps precision."
+        },
+        {
+          "id": "b",
+          "text": "To catch shorter outages the 1-hour window misses.",
+          "rationale": "A 5-minute window alone would be very noisy. Here it is a second condition, not an alternative."
+        },
+        {
+          "id": "c",
+          "text": "Because the 1-hour window can't be computed until the hour is over.",
+          "rationale": "Windows slide; both are computed continuously."
+        },
+        {
+          "id": "d",
+          "text": "To halve the error budget.",
+          "rationale": "The budget is set by the SLO, not by the alert windows."
+        }
+      ],
+      "explanation": "The workbook judges alerts by precision, recall, detection time, and reset time. A long window gives precision; requiring a short window too (about one twelfth of the long one) gives fast reset. The same structure works for cost-burn alerts on runaway agent loops.",
+      "week": 3,
+      "tags": [
+        "alerting",
+        "slo"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6w3-q10",
+      "type": "scenario",
+      "prompt": "Your online judge's corrected pass rate for the reply feature dropped from 0.88 to 0.81 over two weeks, with non-overlapping intervals. Errors, latency, and cost are flat, and the response model id hasn't changed. Input length and the share of non-English tickets both rose after a new customer onboarded. What is the best next step?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Page the on-call engineer.",
+          "rationale": "Nothing is down and no immediate action fixes it. This is investigation work."
+        },
+        {
+          "id": "b",
+          "text": "Roll back last week's prompt change.",
+          "rationale": "There's no evidence a prompt change caused it; the drift lines up with a traffic change."
+        },
+        {
+          "id": "c",
+          "text": "Open a ticket, pull failing traces from the new customer's traffic into the review queue, and check whether the judge's TPR and TNR hold on that traffic with fresh human labels.",
+          "correct": true,
+          "rationale": "Yes. The evidence points at input drift; confirm with error analysis, and confirm the judge itself still measures correctly on the new inputs."
+        },
+        {
+          "id": "d",
+          "text": "Ignore it; the judge is probably wrong.",
+          "rationale": "Possibly, which is why you check the judge, but a sustained, significant drop deserves investigation either way."
+        }
+      ],
+      "explanation": "Drift is usually ticket work: correlate the quality change with changes in inputs, outputs, models, and the judge, then read traces. A new population can both lower true quality and change the judge's error rates, so re-measure the judge before trusting the corrected number.",
+      "week": 3,
+      "tags": [
+        "online-evals",
+        "drift",
+        "alerting"
+      ],
+      "difficulty": 3
+    }
+  ]
+}

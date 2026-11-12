@@ -1,0 +1,366 @@
+{
+  "id": "s4-w2",
+  "studio": "s4",
+  "week": 2,
+  "title": "Week 2 quiz: The agent loop",
+  "questions": [
+    {
+      "id": "s4w2-q1",
+      "type": "mcq",
+      "prompt": "Which description of a Claude task budget (`output_config.task_budget`, beta) is accurate?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It is an enforced cap: the API returns an error once the agent has used `total` tokens.",
+          "rationale": "The docs call it advisory. The model can occasionally exceed it; max_tokens is the enforced per-request cap."
+        },
+        {
+          "id": "b",
+          "text": "It is an advisory token budget for one agentic turn; the model sees a countdown and paces itself, while `max_tokens` stays the hard per-request limit.",
+          "rationale": "Yes. Pair it with enforced limits in your harness.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It limits how many tool calls the model may make per request.",
+          "rationale": "It counts tokens (thinking, tool calls, tool results, output), not calls."
+        },
+        {
+          "id": "d",
+          "text": "It counts every token in the history you resend on each request.",
+          "rationale": "The docs say it counts what Claude sees in the current turn, not the resent history."
+        }
+      ],
+      "explanation": "A task budget changes behavior (pacing, graceful wrap-up); it does not stop anything. The minimum total is 20,000 tokens, and a budget that is clearly too small can make the model decline or cut the task short. Keep your own step and token counters as the enforced backstop.",
+      "week": 2,
+      "tags": [
+        "task-budgets",
+        "stopping"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w2-q2",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "max_steps = 2\nsteps, status = 0, \"running\"\nfor reply in [\"tool\", \"tool\", \"tool\", \"answer\"]:\n    if steps >= max_steps:\n        status = \"budget\"\n        break\n    steps += 1\n    if reply == \"answer\":\n        status = \"done\"\n        break\nprint(status, steps)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`budget 2`",
+          "rationale": "Yes. Two model calls happen, then the check before the third call trips.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`budget 3`",
+          "rationale": "The check runs before incrementing, so a third call never starts."
+        },
+        {
+          "id": "c",
+          "text": "`running 2`",
+          "rationale": "The status is set to budget when the cap trips."
+        },
+        {
+          "id": "d",
+          "text": "`done 4`",
+          "rationale": "The loop never reaches the answer: the cap stops it first."
+        }
+      ],
+      "explanation": "The budget check sits at the top of the loop, before money is spent. That ordering means max_steps is exactly the number of model calls. It also means the model never gets to answer unless you warn it on its last allowed step.",
+      "week": 2,
+      "tags": [
+        "agent-loop",
+        "budgets"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s4w2-q3",
+      "type": "code-reading",
+      "prompt": "This loop handles a turn where the model asked for several tools. What is wrong with it?",
+      "code": "for block in response.content:\n    if block.type == \"tool_use\":\n        content, is_error = run_tool(block.name, block.input)\n        messages.append({\"role\": \"user\", \"content\": [\n            {\"type\": \"tool_result\", \"tool_use_id\": block.id,\n             \"content\": content, \"is_error\": is_error}]})",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "tool_result blocks must not include tool_use_id.",
+          "rationale": "Each result must include the matching tool_use_id."
+        },
+        {
+          "id": "b",
+          "text": "Nothing; this is the documented pattern.",
+          "rationale": "Look at how many user messages one turn produces."
+        },
+        {
+          "id": "c",
+          "text": "It sends each tool_result in its own user message; all results for a turn should go back in one user message.",
+          "rationale": "Right. The parallel tool use docs warn that splitting results teaches the model to stop making parallel calls.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "It should run the tools in reverse order.",
+          "rationale": "Order of execution is not the problem; message structure is."
+        }
+      ],
+      "explanation": "One assistant turn with N tool_use blocks gets exactly one user message with N tool_result blocks (plus any text after them). It is a small structural detail with a measurable effect on how often the model batches independent calls.",
+      "week": 2,
+      "tags": [
+        "parallel-tools",
+        "agent-loop"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w2-q4",
+      "type": "multi",
+      "prompt": "Your agent on `claude-opus-5-5` reads long documents. Which approaches keep its context under control **without** invalidating preserved thinking blocks? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Return smaller tool results in the first place (pagination, snippets, size caps).",
+          "rationale": "Results are sized before they are ever sent, so nothing in history changes.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Server-side tool-result clearing with `clear_tool_uses_20250919`.",
+          "rationale": "The prefix check compares what you sent, not the server's edited copy.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Shortening old tool_result contents on the client before each request, keeping thinking blocks.",
+          "rationale": "The preserved thinking docs list this as an edit that invalidates every later thinking block."
+        },
+        {
+          "id": "d",
+          "text": "Server-side compaction.",
+          "rationale": "Compaction is designed to work with the check; it reads messages from the most recent compaction block.",
+          "correct": true
+        }
+      ],
+      "explanation": "On current Claude models a thinking block is bound to everything before it. Append-only histories, results sized at creation, and server-side clearing or compaction are compatible. Client-side edits are not, unless you also strip the thinking blocks and accept losing that reasoning.",
+      "week": 2,
+      "tags": [
+        "context-engineering",
+        "preserved-thinking"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s4w2-q5",
+      "type": "scenario",
+      "prompt": "A product team's long-running support agent gradually forgets a rule from the user's first message (\"never offer refunds above $50\") after many steps and a compaction. What is the most robust fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Raise the compaction threshold so compaction never happens.",
+          "rationale": "That postpones the problem and grows context rot."
+        },
+        {
+          "id": "b",
+          "text": "Switch to a model with a larger context window.",
+          "rationale": "Bigger windows do not fix lost instructions after summarization."
+        },
+        {
+          "id": "c",
+          "text": "Repeat the rule in every user message by editing the first message each turn.",
+          "rationale": "Rewriting earlier turns breaks caching and, on current Claude models, invalidates later thinking blocks."
+        },
+        {
+          "id": "d",
+          "text": "Put the rule in the stable system prompt (or a project instruction file that is re-injected), enforce it in the refund tool's own validation, and tell the compactor what must survive.",
+          "rationale": "Yes. Persistent rules belong in stable context, and a rule that matters is enforced in code.",
+          "correct": true
+        }
+      ],
+      "explanation": "The Agent SDK docs make this exact point: compaction can drop instructions from early in a conversation, so persistent rules go in CLAUDE.md or the system prompt, not the first message. And a business rule with money attached should be a check in the tool, not only a sentence the model has to remember.",
+      "week": 2,
+      "tags": [
+        "compaction",
+        "context-engineering"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w2-q6",
+      "type": "mcq",
+      "prompt": "Which pairing of product and description is correct?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Tool runner: hosted by Anthropic with a sandbox per session.",
+          "rationale": "That is Managed Agents. The tool runner runs in your process."
+        },
+        {
+          "id": "b",
+          "text": "Claude Managed Agents: Anthropic runs the agent loop and a per-session sandbox; you create the agent once and start sessions.",
+          "rationale": "Correct.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Claude Agent SDK: Anthropic hosts it, so you do not deploy anything.",
+          "rationale": "You host and deploy the Agent SDK yourself."
+        },
+        {
+          "id": "d",
+          "text": "Claude Agent SDK: a thin helper in the `anthropic` SDK that loops over tools you define.",
+          "rationale": "That is the tool runner. The Agent SDK is Claude Code as a library."
+        }
+      ],
+      "explanation": "Two questions sort the Claude options: who supplies the harness, and who supplies the deployment. Tool runner and Agent SDK supply harnesses (thin and full); you host both. Managed Agents supplies both.",
+      "week": 2,
+      "tags": [
+        "frameworks",
+        "claude"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s4w2-q7",
+      "type": "predict-output",
+      "prompt": "The Claude Agent SDK counts each turn with tool calls, plus one for the final text-only answer. A task needs two turns with tool calls and then a final answer. Which `ResultMessage.subtype` does each setting produce?",
+      "code": "# turn 1: Grep    turn 2: Read    final turn: text only\nfor limit in (2, 3):\n    print(limit, run(prompt, ClaudeAgentOptions(max_turns=limit)).subtype)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "Both give error_max_turns",
+          "rationale": "Three turns is exactly enough."
+        },
+        {
+          "id": "b",
+          "text": "`max_turns=2` gives error_during_execution",
+          "rationale": "Hitting the turn cap has its own subtype."
+        },
+        {
+          "id": "c",
+          "text": "`max_turns=2` gives success; `max_turns=3` gives success",
+          "rationale": "With 2, there is no turn left for the final answer."
+        },
+        {
+          "id": "d",
+          "text": "`max_turns=2` gives error_max_turns; `max_turns=3` gives success",
+          "rationale": "Yes. The final text-only response is a turn too.",
+          "correct": true
+        }
+      ],
+      "explanation": "Off-by-one errors in limits are common across frameworks because each counts differently. Read the counting rule in the docs, then set the limit from measured runs with headroom. On error subtypes the `result` field is absent, so check the subtype before reading it.",
+      "week": 2,
+      "tags": [
+        "frameworks",
+        "budgets"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w2-q8",
+      "type": "scenario",
+      "prompt": "Your research agent sometimes calls `search_docs` with the same query four or five times in a row before running out of steps. The tool works. What should the harness do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Increase max_steps so it has more chances.",
+          "rationale": "More steps on a stuck agent buys more identical searches."
+        },
+        {
+          "id": "b",
+          "text": "Detect repeated identical calls, append a short note after the tool results suggesting a different query or an answer, and stop with a `no_progress` status if it continues.",
+          "rationale": "Yes. It is a strategy error, and the harness can see it without understanding the task.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Return an empty string from the tool after the first call.",
+          "rationale": "That hides information and gives the model nothing to adjust to."
+        },
+        {
+          "id": "d",
+          "text": "Retry the API call with exponential backoff.",
+          "rationale": "Backoff is for transport errors such as 429 or 529, not for strategy errors."
+        }
+      ],
+      "explanation": "Strategy errors are invisible at the level of a single step. Simple harness checks (identical calls, no new documents read) catch many of them early, and a distinct stop status makes them measurable across versions.",
+      "week": 2,
+      "tags": [
+        "error-recovery",
+        "agent-loop"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w2-q9",
+      "type": "mcq",
+      "prompt": "According to Anthropic's multi-agent research post and context engineering post, what is the main benefit of a subagent?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It is the best fit for tightly coupled coding tasks.",
+          "rationale": "The research post names tasks with shared context and many dependencies, including most coding, as poor fits."
+        },
+        {
+          "id": "b",
+          "text": "It always lowers total token usage.",
+          "rationale": "The research post reports multi-agent systems using about 15 times the tokens of a chat."
+        },
+        {
+          "id": "c",
+          "text": "It explores in its own context window and returns a condensed result, keeping the lead agent's context focused.",
+          "rationale": "Yes. Isolation is the point; summaries of about 1,000 to 2,000 tokens are typical.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "It removes the need to verify results, because two agents check each other.",
+          "rationale": "A subagent's summary is model output the lead must still check."
+        }
+      ],
+      "explanation": "Use subagents where isolation or parallelism is worth extra tokens: separable research, broad searches, reading-heavy subtasks that can run on a cheaper model. Ask them to return source ids so you can spot-check their summaries.",
+      "week": 2,
+      "tags": [
+        "subagents",
+        "context-engineering"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s4w2-q10",
+      "type": "scenario",
+      "prompt": "You are adopting the OpenAI Agents SDK for an internal tool that will run Claude models through an adapter, at a company whose policy forbids sending conversation data to unapproved third parties. Which change is required before the first real run?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Disable tracing (for example `OPENAI_AGENTS_DISABLE_TRACING=1`) or replace the trace processor with one that sends spans to an approved system.",
+          "rationale": "Yes. The SDK's docs say tracing is on by default and exports to OpenAI's backend.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Set `max_turns=None` so the agent can finish.",
+          "rationale": "That removes a safety limit; it has nothing to do with data export."
+        },
+        {
+          "id": "c",
+          "text": "Switch the tools to strict mode.",
+          "rationale": "Good practice, but unrelated to where traces go."
+        },
+        {
+          "id": "d",
+          "text": "None; the adapter means all traffic goes to Anthropic.",
+          "rationale": "Model calls go to the model provider, but tracing is a separate export."
+        }
+      ],
+      "explanation": "Every framework ships defaults that touch data, cost, and safety: tracing destinations, turn limits, permission modes. List them on day one and set each explicitly, with a test that fails if someone flips one back.",
+      "week": 2,
+      "tags": [
+        "frameworks",
+        "observability"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

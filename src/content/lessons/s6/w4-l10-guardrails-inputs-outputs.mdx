@@ -1,0 +1,343 @@
+---
+id: s6-w4-l10
+studio: s6
+week: 4
+order: 10
+title: Guardrails for inputs and outputs
+summary: "Layered checks around a model call: deterministic input validation, topic and policy classifiers, hosted moderation and open safety models, provider refusals, output validation (schemas, groundedness, PII, leaks, links), and what each guard costs in latency, money, and wrongly blocked users."
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Describe a guardrail as a classifier with error rates, and place each guard in a layered pipeline before or after the model call
+  - Choose among deterministic checks, a small-model classifier, a hosted moderation endpoint, and an open safety model for a given policy, with evidence
+  - Handle provider refusals correctly, including discarding partial output and resetting context
+  - Validate model output with schemas, groundedness checks, PII filters, leak detection, and link allowlists
+  - Estimate the latency and cost each guard adds, and pick a blocking threshold from labeled data instead of a default
+sources:
+  - { id: openai-moderation-guide, use: summarized, where: "Models, categories, scores as signals, streaming" }
+  - { id: openai-safety-best-practices, use: linked }
+  - { id: llama-guard-4-card, use: summarized, where: "Taxonomy, inputs, reported recall and false positive rate, limitations" }
+  - { id: inan-2023-llama-guard, use: summarized }
+  - { id: llama-prompt-guard-2-card, use: summarized, where: "Labels, context length, latency, limitations" }
+  - { id: shieldgemma-model-card, use: summarized }
+  - { id: azure-prompt-shields, use: summarized, where: "User prompt attacks and document attacks" }
+  - { id: gemini-safety-settings, use: summarized }
+  - { id: claude-content-moderation-guide, use: summarized, where: "When to use Claude, categories, risk levels, cost estimate" }
+  - { id: claude-refusals-fallback, use: summarized, where: "Refusal response, partial output, server-side fallback" }
+  - { id: claude-streaming-refusals, use: summarized, where: "Reset context after refusal; refusals are responses, not errors" }
+  - { id: claude-reduce-prompt-leak, use: summarized, where: "Post-processing; keep proprietary details out" }
+  - { id: anthropic-constitutional-classifiers, use: summarized }
+  - { id: sharma-2025-constitutional-classifiers, use: linked }
+  - { id: yt-anthropic-defending-jailbreaks, use: embedded }
+  - { id: presidio-docs, use: summarized }
+  - { id: claude-structured-outputs, use: summarized }
+  - { id: nemo-guardrails-docs, use: summarized }
+  - { id: rebedea-2023-nemo-guardrails, use: linked }
+  - { id: guardrails-ai-repo, use: summarized }
+  - { id: owasp-llm10-consumption, use: summarized, where: "Input limits, rate limits, timeouts" }
+  - { id: hamel-llm-judge, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You add an LLM-based output check that reads each full answer before showing it. Safety looks better in
+      testing, but the support team reports that answers now appear all at once after a long pause, instead of
+      streaming. Median time to first visible token went from under a second to several seconds. What is the best
+      next step?
+    options:
+      - id: a
+        text: Remove the output check, since users prefer streaming.
+        rationale: That trades a measured safety gain for speed without looking at which risks the check actually covers.
+      - id: b
+        text: Keep cheap deterministic output checks inline on the stream (or per sentence), and run the LLM check only where the risk justifies the wait, or asynchronously as monitoring on a sample.
+        correct: true
+        rationale: Yes. Match each guard's cost to the risk it covers. Regex checks add microseconds and can run per chunk; a model check is a full round trip and belongs on high-risk routes or in monitoring.
+      - id: c
+        text: Switch the main model to a faster one so the total time stays the same.
+        rationale: It might help, but it changes answer quality to pay for a guard you haven't justified, and the guard still blocks the stream.
+    explanation: >-
+      Streaming and full-output checks conflict: a check that needs the whole answer must wait for the whole answer.
+      OpenAI's moderation docs note the same thing for their endpoint. Decide per route which checks gate the response
+      and which only monitor it.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      A Claude request returns HTTP 200 with `stop_reason: "refusal"` after streaming part of an answer. What should
+      your application do?
+    options:
+      - id: a
+        text: Show the partial text, since it was already generated.
+        rationale: The docs say to treat partial output from a refusal as incomplete and discard it.
+      - id: b
+        text: Discard the partial output, show your own message, and reset or rephrase the refused turn before continuing (or let a configured fallback model answer).
+        correct: true
+        rationale: Yes. Continuing the same context tends to produce more refusals; a fallback model or a reset is the documented path.
+      - id: c
+        text: Treat it as a server error and retry the identical request with backoff.
+        rationale: It is not an error, and re-sending the same request to the same model usually gets refused again.
+    explanation: >-
+      Refusals are responses, not errors, so monitoring built only on error rates misses them. Track refusal rate as
+      its own metric, discard partial output, and either reset the turn or use server-side fallback (or the SDK
+      middleware) to retry on another model.
+  - id: kc3
+    type: multi
+    prompt: Which of these belong in an output guard for a customer support assistant? Select all that apply.
+    options:
+      - id: a
+        text: Block replies containing a canary string planted in the system prompt
+        correct: true
+        rationale: A cheap, exact detector for system prompt leakage.
+      - id: b
+        text: Redact personal data that appears in the reply but not in the user's own message
+        correct: true
+        rationale: Catches leaks of other customers' details while letting the assistant echo the user's own information.
+      - id: c
+        text: Replace links whose host is not on an allowlist
+        correct: true
+        rationale: Prevents the assistant from repeating phishing or attacker-supplied links.
+      - id: d
+        text: Rewrite the user's message to remove instructions before it reaches the model
+        rationale: That's an input-side control, and rewriting user text is fragile. Output guards act on what the model produced.
+    explanation: >-
+      Output guards check what the model produced against facts you control: your canary, what the user actually
+      supplied, your list of trusted domains, your schema. Each is deterministic and cheap, which is why they can run on
+      every response.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## A guardrail is a classifier, so it has error rates
+
+Week 3 gave you traces of what your system does. This week is about controlling what it is allowed to do. A **guardrail** is any check that sits between a request and a response and can allow, modify, or block it. Some are deterministic code (a length limit, a regex for card numbers). Some are models (a moderation endpoint, a small classifier, a judge). All of them make decisions, and every decision procedure that isn't trivial has two error rates: it blocks things it should allow (false positives, which annoy and lose real users) and it allows things it should block (false negatives, which are the incidents).
+
+That framing is the most useful idea in this lesson, because it tells you how to work. You don't "add guardrails" and declare the system safe. You decide what you are guarding against, choose a check, and measure both error rates on labeled examples, exactly as you measured LLM judges in Studio 3. A guard you haven't measured is a guess, and a guard with a 10 percent false-positive rate on a support bot turns away one customer in ten.
+
+No single layer is enough. Model providers train their models to decline harmful requests and run their own classifiers. You add checks on the input, checks on the output, and, most important, an architecture that limits damage when everything else fails: least privilege for tools, no secrets in prompts, approval before side effects. Lesson 11 covers that last layer. This lesson builds the first ones.
+</Listen>
+
+<Mermaid
+  alt="Guarded request pipeline. A user message passes deterministic input checks (size, format, rate limit), then PII redaction, then injection heuristics, then an optional topic and policy classifier. Blocked requests return a fixed message without calling the model. Allowed requests go to the model call, where the provider's own safety classifiers may return a refusal, which is handled with a fixed message or a fallback model. Otherwise the output goes through output checks (schema, groundedness, canary leak, PII the user didn't supply, link allowlist) before the reply is shown. Every decision is logged to traces."
+  caption="Cheap, certain checks first; model-based checks where the risk justifies them; every decision logged so you can measure it."
+  chart={`flowchart TD
+  U["User message"] --> D{"Deterministic checks: size, format, rate limit"}
+  D -- "fail" --> B["Fixed message, no model call"]
+  D -- "pass" --> R["Redact PII"]
+  R --> H{"Injection heuristics"}
+  H -- "match" --> B
+  H -- "clear" --> C{"Topic and policy classifier (optional)"}
+  C -- "off topic or unsafe" --> B
+  C -- "on topic" --> M["Model call"]
+  M --> RF{"stop_reason refusal?"}
+  RF -- "yes" --> F["Discard partial output; fixed message or fallback model"]
+  RF -- "no" --> O{"Output checks: schema, grounding, canary, PII, links"}
+  O -- "block" --> B
+  O -- "allow or redact" --> OUT["Reply"]
+  B -.-> L[("Traces: every decision and reason")]
+  OUT -.-> L
+  F -.-> L`}
+/>
+
+<Listen>
+## Input validation: the boring checks that do the most work
+
+Start with checks that need no model at all. They cost microseconds, they never hallucinate, and they close whole categories of problems.
+
+**Size limits.** Cap the characters or tokens a user can send, and the number of turns you will resend. The OWASP entry on unbounded consumption (LLM10) lists oversized and variable-length inputs as a way to exhaust compute and run up cost, and its first mitigation is validating and capping input size. Pair it with per-user rate limits and the per-request timeouts you built in week 1.
+
+**Format and type.** If a field should be a booking number, validate it as one before it ever goes near a prompt. If uploads should be PDFs under 10 MB, enforce that. Every input you can reject on type is one the model never has to interpret.
+
+**PII redaction.** If the task doesn't need the user's card number, phone, or government ID, remove it before it reaches the model, your logs, or a third-party classifier. Regular expressions plus checksums (the Luhn check for card numbers) catch the structured kinds. Libraries such as Microsoft's Presidio, now a community project, combine named-entity recognition, patterns, and context, and its own documentation states that "there is no guarantee that Presidio will find all sensitive information." Treat redaction as risk reduction, not a guarantee. Know the trade-off too: once you replace a phone number with `[PHONE]`, the model can't use it. Systems that need the value swap it for a reversible token kept server side.
+
+**Injection heuristics.** A handful of narrow patterns ("ignore previous instructions", fake `</system>` tags, long base64 runs) block the laziest attacks at no cost. They are trivially bypassed by rephrasing or translation, so they are a floor. The lab measures exactly how much they catch and how many real customers they block.
+</Listen>
+
+<Listen>
+## Topic and policy classifiers: four families
+
+When a rule needs judgment ("is this about car rentals?", "is this asking for help committing a crime?"), you need a classifier. There are four families, and choosing among them is a model-selection decision you should make with evidence.
+
+**A small general model with structured output.** You write the policy as categories with definitions and ask a cheap, fast model for a label from a fixed enum. Anthropic's content moderation guide recommends this kind of setup with a small model for high volume, shows a risk-level variant (auto-block high risk, send medium risk to people), and notes that detailed category definitions catch cases a bare category list misses. Its strengths are flexibility (change the policy by editing text) and nuance. Its weakness is that it reads attacker-controlled text, so it can be manipulated too.
+
+**Open safety models.** Meta's Llama Guard 4 is a 12B model that classifies both prompts and responses against a 14-category hazard taxonomy based on MLCommons, and accepts text and images. Its model card reports, on Meta's internal English test set for output filtering, 69 percent recall at an 11 percent false-positive rate. Read that carefully: that's a capable classifier that still misses about a third of unsafe outputs on its own benchmark. Google's ShieldGemma (2B, 9B, 27B) returns a probability of a policy violation for four harm types, in English. Both run on your own hardware, which matters when data can't leave your environment.
+
+**Hosted moderation endpoints.** OpenAI's moderation endpoint (`omni-moderation-latest`) is free, takes text and images, and returns per-category scores. Its docs say to treat the scores as signals for your own policy rather than an automatic blocking decision, and warn that scores can shift when the model is upgraded, so thresholds need recalibrating. Gemini exposes adjustable safety filters per harm category. These are cheap to adopt and you don't control them: categories are theirs, not your product's policy.
+
+**Prompt-attack detectors.** Specialized models flag injection and jailbreak attempts rather than harmful content. Llama Prompt Guard 2 comes in 86M and 22M sizes, reads 512 tokens at a time, labels text benign or malicious, and its card warns that adaptive attacks designed to evade it can succeed. Azure's Prompt Shields separates user prompt attacks from document attacks (instructions hidden in retrieved content), and notes it was trained and evaluated mainly on English.
+</Listen>
+
+| Option | Good for | Added latency and cost | Main caveat |
+|---|---|---|---|
+| Regex and checksums | Structured PII, size, obvious injection strings | Microseconds, free | Rephrasing defeats it; only finds what you anticipated |
+| Small model plus enum output | Your product's own topic and policy rules | One model round trip; small per-token cost | Reads attacker text, so it can be steered; measure it |
+| Open safety model (Llama Guard, ShieldGemma) | Standard harm categories, data that must stay in house | One inference on your GPU | Fixed taxonomy; reported recall is well below 100 percent |
+| Hosted moderation endpoint | Fast start on common harm categories | One HTTP call; OpenAI's is free | Their categories and thresholds, which can shift on upgrade |
+| Prompt-attack detector | Injection and jailbreak attempts in input or retrieved docs | About 20 to 90 ms per 512-token check on an A100 (model card figures) | Adaptive attacks get through; mostly English training |
+
+<Callout type="tip" title="Choose with your own labels">
+Every number above comes from the vendor's own test set. Before you adopt one, label 100 to 200 real messages from your traffic (including the awkward benign ones) plus the attacks you care about, and measure recall and false-positive rate yourself. The Studio 3 tooling you built for judges works unchanged: a classifier is a judge with a fixed rubric.
+</Callout>
+
+<Listen>
+## The provider's own layer: refusals
+
+Current Claude models include safety classifiers that can decline a request. When that happens you get a normal HTTP 200 response with `stop_reason` set to `"refusal"` and a `stop_details` object naming a policy category (which can be null). A refusal can arrive before any output or partway through a stream. Anthropic's docs are specific about what to do: treat any partial output as incomplete and discard it, and reset or rephrase the refused turn before continuing, because continuing the same context tends to produce more refusals. You can also opt into server-side fallback (in beta), which retries a declined request on a recommended fallback model inside the same call.
+
+Two engineering consequences. First, a refusal is not an error, so dashboards built only on error rates won't show it. Track refusal rate per route as its own signal; a jump usually means a prompt change, a new kind of traffic, or abuse. Second, refusals include false positives. Anthropic's category descriptions say benign work in areas such as cybersecurity can trigger them, which is a reason to show a helpful fixed message and offer a human path rather than a dead end.
+
+It's worth seeing what provider-side guards cost at scale. Anthropic reported that its updated Constitutional Classifiers (input and output classifiers trained on synthetic data generated from a written constitution) cut jailbreak success in an automated evaluation from 86 percent to 4.4 percent, with an increase in over-refusals of 0.38 percent that wasn't statistically significant, and about 24 percent more compute. Even the best-resourced guard has a measured price and a nonzero miss rate.
+</Listen>
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+
+response = client.beta.messages.create(
+    model="claude-opus-5-5",
+    max_tokens=2048,
+    system=SYSTEM_PROMPT,
+    messages=[{"role": "user", "content": guarded_text}],
+    betas=["server-side-fallback-2026-07-01"],
+    fallbacks="default",   # retry a classifier refusal on Anthropic's recommended fallback model
+)
+
+if response.stop_reason == "refusal":
+    # Partial output is incomplete: drop it. Log the category (it may be None) as its own metric.
+    log_refusal(route="support", category=getattr(response.stop_details, "category", None))
+    reply = "Sorry, I can't help with that one. Our team can: https://help.northwind.example/contact"
+else:
+    reply = "".join(b.text for b in response.content if b.type == "text")
+```
+
+<Listen>
+## Output validation: check what came back against facts you control
+
+Output guards work best when they compare the model's output with something the model can't change.
+
+**Schemas.** Structured outputs guarantee shape, not truth (you learned this in Studio 1). Keep the schema check, and keep the cross-field rules and evidence checks that sit on top of it.
+
+**Groundedness.** For anything that answers from documents, verify citations in code: the cited passage was actually retrieved, and the quoted text appears in it (Studio 2). Where the claim needs judgment, a narrow LLM check ("does this passage support this sentence?") helps, measured against your labels like any judge.
+
+**PII the user didn't supply.** If the reply contains an email or phone number that wasn't in the user's own message, it probably came from somewhere it shouldn't, such as another customer's record retrieved by a tool. Redact it and log it.
+
+**System prompt leakage.** Plant a random canary string in the system prompt and block any output containing it. Anthropic's guidance on prompt leaks recommends exactly this kind of post-processing, and warns that elaborate leak-proofing instructions can degrade task performance; it also says to leave out proprietary details the model doesn't need. A canary detects verbatim leaks only. A model can paraphrase its instructions, which is why the real fix is having nothing secret in the prompt (lesson 11).
+
+**Links and actions.** Allow links only to hosts you list, and compare hostnames, not substrings (`help.example.com.evil.test` contains your domain). If output will be rendered as HTML, escape it: lesson 11's exercise builds that sanitizer.
+</Listen>
+
+<Predict
+  title="What a guard costs on the critical path"
+  code={`# Median latencies in ms, measured on a test route
+classifier = 350   # small-model topic classifier
+model = 2400       # main model call, full answer
+regex = 1          # input and output pattern checks
+
+sequential = regex + classifier + model + regex
+# Option: start the classifier and the main call at the same time,
+# and discard the answer if the classifier says block.
+parallel = regex + max(classifier, model) + regex
+print(sequential, parallel)`}
+  options={["2752 2402", "2752 2752", "2402 2402", "352 2400"]}
+  answer={0}
+>
+Running the classifier concurrently with the main call hides its 350 ms behind the longer call. The price: when the classifier blocks, you have already paid for a main call you throw away, and you must never stream any of that answer to the user before the verdict arrives. That is a good trade when blocks are rare and latency matters, and a bad one when blocks are common or the main call is expensive.
+</Predict>
+
+<Listen>
+## The cost and latency of every guard
+
+Put each guard on a ledger with four columns: what it catches, its measured error rates, the latency it adds to the critical path, and the money it costs per request.
+
+Deterministic checks sit at the top of the ledger: microseconds and free, so run them on everything. A small-model classifier adds a round trip and a per-call cost; Anthropic's moderation guide works through an example of a billion short posts a month and shows that model choice changes the bill by a factor of about fifty, so the classifier is usually your cheapest capable model, chosen by measuring it, not by assuming the cheapest is good enough. An LLM judge on the output adds a full call and, worse, needs the complete answer, which defeats streaming. OpenAI's docs make the same point about their moderation endpoint: with streaming, results arrive only after the full output is generated.
+
+You have four ways to reconcile output checks with streaming. Buffer the whole answer on high-risk routes and accept the wait. Check incrementally, running cheap pattern checks on each sentence as it streams and stopping the stream if one fires. Stream and retract, showing text immediately and replacing it if a later check fails (acceptable for low-stakes chat, not for anything a user might act on immediately). Or move the expensive check off the critical path: run it asynchronously on all traffic or a sample, as monitoring that feeds alerts and your regression set rather than as a gate.
+
+The general rule: gate on cheap, certain checks; gate on expensive model checks only where the risk is high; monitor with everything else.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s6-w4-threshold"
+  title="Pick a blocking threshold from labeled data"
+  starter={`# A classifier returns a score from 0 to 1 for "this message violates policy".
+# You labeled 16 real messages: label 1 = should block, 0 = should allow.
+SCORES = [0.97, 0.91, 0.88, 0.83, 0.74, 0.62, 0.41, 0.35,
+          0.66, 0.58, 0.33, 0.21, 0.12, 0.09, 0.05, 0.02]
+LABELS = [1,    1,    1,    1,    1,    1,    1,    1,
+          0,    0,    0,    0,    0,    0,    0,    0]
+
+def rates_at(threshold, scores, labels):
+    """Block when score >= threshold. Return (recall, false_positive_rate):
+    recall = blocked positives / all positives
+    false_positive_rate = blocked negatives / all negatives"""
+    # TODO
+    pass
+
+def pick_threshold(scores, labels, max_fpr):
+    """Among the distinct score values used as thresholds, return the one with the
+    highest recall whose false_positive_rate <= max_fpr. Break recall ties by the
+    HIGHER threshold (fewer blocks). Return None if no threshold qualifies."""
+    # TODO
+    pass
+
+for t in (0.9, 0.7, 0.5, 0.3):
+    print(t, rates_at(t, SCORES, LABELS))
+print("chosen for FPR <= 0.125:", pick_threshold(SCORES, LABELS, 0.125))
+`}
+  tests={`r, f = rates_at(0.5, SCORES, LABELS)
+assert abs(r - 0.75) < 1e-9, "at 0.5, six of eight positives are blocked"
+assert abs(f - 0.25) < 1e-9, "at 0.5, two of eight negatives are blocked (0.66 and 0.58)"
+assert rates_at(0.99, SCORES, LABELS) == (0.0, 0.0), "a threshold above every score blocks nothing"
+assert rates_at(0.0, SCORES, LABELS) == (1.0, 1.0), "a threshold of zero blocks everything"
+assert pick_threshold(SCORES, LABELS, 0.125) == 0.62, "0.62 blocks 6 of 8 attacks with one false positive (0.66)"
+assert pick_threshold(SCORES, LABELS, 0.0) == 0.74, "with no false positives allowed, 0.74 blocks 5 of 8"
+assert pick_threshold(SCORES, LABELS, 0.25) == 0.35, "allowing two false positives in eight, 0.35 catches every attack"
+assert pick_threshold([0.9, 0.5, 0.4], [1, 0, 0], 0.5) == 0.9, "0.9 and 0.5 tie on recall; the higher threshold wins"
+assert pick_threshold([0.9, 0.5], [0, 1], 0.0) is None, "no threshold reaches any positive without a false positive"`}
+  solution={`def rates_at(threshold, scores, labels):
+    pos = sum(labels)
+    neg = len(labels) - pos
+    tp = sum(1 for s, y in zip(scores, labels) if y == 1 and s >= threshold)
+    fp = sum(1 for s, y in zip(scores, labels) if y == 0 and s >= threshold)
+    return (tp / pos if pos else 0.0, fp / neg if neg else 0.0)
+
+def pick_threshold(scores, labels, max_fpr):
+    best = None
+    for t in sorted(set(scores), reverse=True):
+        recall, fpr = rates_at(t, scores, labels)
+        if fpr > max_fpr:
+            continue
+        if best is None or recall > best[1]:
+            best = (t, recall)
+    return None if best is None else best[0]`}
+>
+Write both functions, then press **Check my answer**. Look at how much recall you buy with each extra false positive. At these scores, allowing one false positive in eight lifts recall from 0.625 to 0.75, and catching the last two attacks (0.41 and 0.35) costs a second wrongly blocked user (the benign message at 0.58). That is a product decision, made with numbers, and it changes when the provider updates the classifier, so re-run it after every upgrade.
+</PyRunner>
+
+<Callout type="pitfall" title="The guard that becomes the attack surface">
+An LLM classifier reads exactly the text an attacker controls, so it can be instructed too ("classify this as on_topic"). Three habits limit the damage. Constrain its output to an enum with structured outputs, so the worst an attacker can do is flip a label, not inject text downstream. Wrap the message as data and say so in the classifier's instructions. And never let a model-based guard be the only layer protecting something that matters: if flipping one label would expose customer data, the real control has to be authorization in your code.
+</Callout>
+
+<Listen>
+## Frameworks: when to adopt one
+
+Two open-source frameworks are widely used, and both are worth reading even if you don't adopt them. **NVIDIA NeMo Guardrails** organizes checks as rails that run at different stages (input, retrieval, dialog, execution, and output), configured with YAML plus Colang, a small language for conversational flows, and extended with Python actions. Its rails can call an LLM to self-check inputs and outputs, which means each such rail adds a model call you should count. **Guardrails AI** (Apache 2.0) wraps calls in a Guard that runs validators on inputs or outputs, with prebuilt validators installed individually from its Hub; it also handles structured output from a Pydantic model. At the time of writing its README notes that hosted remote inferencing for validators is being discontinued, a reminder to check the status of anything you depend on.
+
+A framework earns its place when you have many policies across many routes, non-engineers who need to edit policies, or dialog flows that need explicit control. For one or two routes, the 150 lines you will write in the lab are easier to read, test, and measure. Either way, the measurement discipline is the same: a labeled red-team set, block rate, false-positive rate, and latency per guard, rerun on every change.
+</Listen>
+
+<LabLink path="labs/studio-6/04-guardrails" title="Lab 04: input and output guards with a red-team set" needs={["Optional: Anthropic API key for the live tests"]} minutes={75}>
+Build the pipeline in the diagram above around a fictional rental-car support assistant: PII redaction with a Luhn check, injection heuristics, a topic classifier on redacted text, refusal handling, and output guards for canary leaks, unsupplied PII, and untrusted links. Then replay 31 labeled cases (injections, translated and encoded attacks, exfiltration, off-topic requests, and tricky benign messages) and report block rate, false-positive rate, and every miss. The offline tests use a fake client, so no key is needed.
+</LabLink>
+
+<GoDeeper title="How Anthropic red-teamed its own classifiers">
+The Constitutional Classifiers work is a detailed public case study of guard engineering at scale: how the classifiers were trained from a written constitution of allowed and disallowed content, how a bug bounty and thousands of hours of human red teaming were used to test them, and how the team traded over-refusal and compute against robustness. Read the research post, then the paper (Sharma and colleagues, 2025) for the methodology. The discussion below, from Anthropic's channel, covers the same work with the researchers involved.
+
+<Video id="BaNXYqcfDyo" title="Defending against AI jailbreaks" channel="Anthropic" minutes={74} source="https://www.anthropic.com/research/constitutional-classifiers" />
+</GoDeeper>
+
+<Listen>
+## The checklist for any guarded route
+
+Write down what you are guarding against before you pick a guard. Run deterministic checks (size, format, rate, PII, obvious injection strings) on every request. Choose a model-based classifier with your own labeled data, constrain its output to an enum, and feed it redacted text. Handle refusals as responses: discard partial output, reset the turn or fall back, and chart the refusal rate. Validate output against facts you control: schema, citations, canary, the user's own data, your domain list. Put every guard on the ledger with its error rates, added latency, and cost, and keep the expensive ones off the critical path unless the risk demands it. Log every decision with its reason, so the next lesson's threat model and the last lesson's incident response have data to work with.
+</Listen>

@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.728
+Three ways to get citations.
+
+2
+00:00:02.008 --> 00:00:03.352
+Prompt-based markers.
+
+3
+00:00:03.632 --> 00:00:09.435
+The code above asks the model to write its citations inline, as an id plus an exact quote.
+
+4
+00:00:09.715 --> 00:00:14.771
+This works with any provider, including open models, and the output is easy to parse.
+
+5
+00:00:15.051 --> 00:00:22.069
+The cost: the model writes every quote out, so you pay output tokens for them, and nothing guarantees the quote is real.
+
+6
+00:00:22.349 --> 00:00:25.805
+A model can invent a quote as fluently as it invents a fact.
+
+7
+00:00:26.085 --> 00:00:27.685
+You must verify every one.
+
+8
+00:00:27.965 --> 00:00:29.565
+Claude’s citations feature.
+
+9
+00:00:29.845 --> 00:00:34.837
+Instead of asking for markers, you mark the sources and let the API do the bookkeeping.
+
+10
+00:00:35.117 --> 00:00:53.955
+You can send a document block (plain text, which the API chunks into sentences; a PDF, chunked into sentences from its extracted text; or custom content, where your own blocks are the citable units) or, for RAG, a search_result block per retrieved passage with your id in its source field.
+
+11
+00:00:54.235 --> 00:00:59.675
+Enable citations on every source (the setting must be the same for all of them in a request).
+
+12
+00:00:59.955 --> 00:01:06.525
+The reply comes back as a sequence of text blocks, and the blocks that draw on a source carry a citations list.
+
+13
+00:01:06.805 --> 00:01:16.384
+For search results, each citation has the source and title you supplied, the cited_text, the search_result_index, and the range of content blocks it covers.
+
+14
+00:01:16.664 --> 00:01:19.800
+The docs list three advantages over prompt-based quotes.
+
+15
+00:01:20.080 --> 00:01:22.917
+The cited_text doesn’t count toward output tokens.
+
+16
+00:01:23.197 --> 00:01:30.152
+Citations are guaranteed to point at documents you actually provided, because the API extracts the text itself.
+
+17
+00:01:30.432 --> 00:01:43.189
+And in Anthropic’s evaluations, the feature picked the most relevant quotes significantly more often than prompting alone (that last one is Anthropic’s measurement, so treat it as a claim to confirm on your data).
+
+18
+00:01:43.469 --> 00:01:45.091
+Provider-hosted retrieval.
+
+19
+00:01:45.371 --> 00:01:58.619
+OpenAI’s file search tool and Gemini’s File Search tool run the retrieval for you over files you upload, and both return file_citation annotations on the answer text, naming the file the model used.
+
+20
+00:01:58.899 --> 00:02:03.976
+You trade control (chunking, ranking, which passages reach the model) for convenience.
+
+21
+00:02:04.256 --> 00:02:11.467
+For this studio you build your own retrieval, so you can measure it; hosted search is a reasonable baseline to compare against.

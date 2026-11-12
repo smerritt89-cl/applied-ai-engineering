@@ -1,0 +1,234 @@
+# Studio 4, week 2 (the agent loop) sources not already in core.yaml, s1-*.yaml, s3-*.yaml, or s4-w1.yaml.
+# Reused: anthropic-writing-tools, claude-tool-runner, claude-parallel-tool-use, claude-handle-tool-calls,
+# claude-effort-docs, claude-prompt-caching-docs, aws-backoff-jitter, liu-2023-lost-middle (s1);
+# anthropic-effective-agents, ms-ai-agents-beginners, hf-agents-course (core);
+# anthropic-multi-agent-research, hf-smolagents-intro-agents, yao-2022-react (s4-w1).
+# All URLs checked with curl on 2026-11-11; YouTube ids checked with oEmbed the same day.
+
+# ---------- Claude API docs (summarize) ----------
+- id: claude-task-budgets-docs
+  title: Task budgets (Claude docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/build-with-claude/task-budgets
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Beta header task-budgets-2026-03-13. Advisory token budget for one agentic turn; minimum total 20,000; counts what Claude sees, not resent history; max_tokens stays the hard cap.
+
+- id: claude-context-editing-docs
+  title: Context editing (Claude docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/build-with-claude/context-editing
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Beta header context-management-2025-06-27. clear_tool_uses_20250919 (defaults trigger 100,000 input tokens, keep 3 tool uses) and clear_thinking_20251015; applied_edits in the response.
+
+- id: claude-compaction-docs
+  title: Compaction overview (Claude docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/build-with-claude/compaction
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Compaction on demand versus compaction at a token threshold versus your own summarizer; each has its own page and beta header.
+
+- id: claude-preserved-thinking-docs
+  title: Preserved thinking (Claude docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/build-with-claude/preserved-thinking
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: The prefix check. Clearing or shortening an earlier tool_result on the client invalidates later thinking blocks; server-side context editing and compaction do not.
+
+- id: claude-memory-tool-docs
+  title: Memory tool (Claude docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: memory_20250818, client-side, /memories directory, path traversal protection, multisession pattern.
+
+- id: claude-managed-agents-overview
+  title: Claude Managed Agents overview (Claude docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/managed-agents/overview
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Beta header managed-agents-2026-04-01. Agent, environment, session, events. Not eligible for zero data retention at the time of writing.
+
+# ---------- Claude Code and Agent SDK docs (summarize) ----------
+- id: claude-agent-sdk-overview
+  title: Agent SDK overview (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/agent-sdk/overview
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Compares the Agent SDK, the Claude Code CLI, the Client SDK (with its tool runner), and Managed Agents.
+
+- id: claude-agent-sdk-loop
+  title: How the agent loop works (Agent SDK docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/agent-sdk/agent-loop
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Turns, max_turns and max_budget_usd with error_max_turns / error_max_budget_usd results, parallel read-only tools, automatic compaction, what consumes context.
+
+- id: claude-code-subagents-docs
+  title: Create custom subagents (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/sub-agents
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+
+- id: claude-code-memory-docs
+  title: How Claude remembers your project (Claude Code docs)
+  author: Anthropic
+  url: https://code.claude.com/docs/en/memory
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: CLAUDE.md scopes and imports, target under 200 lines per file, auto memory (MEMORY.md first 200 lines or 25KB loaded per session).
+
+# ---------- Other frameworks (summarize) ----------
+- id: openai-agents-sdk-docs
+  title: OpenAI Agents SDK (Python) documentation
+  author: OpenAI
+  url: https://openai.github.io/openai-agents-python/
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: Agents, handoffs and agents-as-tools, guardrails, sessions, tracing. Package openai-agents.
+
+- id: openai-agents-running-docs
+  title: Running agents (OpenAI Agents SDK docs)
+  author: OpenAI
+  url: https://openai.github.io/openai-agents-python/running_agents/
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: The Runner loop; max_turns and MaxTurnsExceeded.
+
+- id: openai-agents-tracing-docs
+  title: Tracing (OpenAI Agents SDK docs)
+  author: OpenAI
+  url: https://openai.github.io/openai-agents-python/tracing/
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: Tracing on by default, exported to the OpenAI backend; OPENAI_AGENTS_DISABLE_TRACING=1; unavailable under ZDR.
+
+- id: langgraph-overview-docs
+  title: LangGraph overview
+  author: LangChain
+  url: https://docs.langchain.com/oss/python/langgraph/overview
+  license: Copyright LangChain
+  policy: summarize
+  kind: docs
+  notes: Low-level orchestration runtime; durable execution, human-in-the-loop, memory; does not require LangChain.
+
+- id: langgraph-persistence-docs
+  title: Persistence (LangGraph docs)
+  author: LangChain
+  url: https://docs.langchain.com/oss/python/langgraph/persistence
+  license: Copyright LangChain
+  policy: summarize
+  kind: docs
+
+- id: langgraph-interrupts-docs
+  title: Interrupts (LangGraph docs)
+  author: LangChain
+  url: https://docs.langchain.com/oss/python/langgraph/interrupts
+  license: Copyright LangChain
+  policy: summarize
+  kind: docs
+  notes: interrupt() pauses and persists state; resume with Command(resume=...); the node re-runs from its start on resume.
+
+- id: smolagents-docs
+  title: smolagents documentation (index and guided tour)
+  author: Hugging Face
+  url: https://huggingface.co/docs/smolagents/index
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/smolagents/blob/main/LICENSE
+  policy: adapt
+  kind: docs
+  notes: CodeAgent versus ToolCallingAgent, model-agnostic via LiteLLM and others, sandboxed executors, max_steps, final_answer_checks. Guided tour at /docs/smolagents/guided_tour.
+
+- id: wang-2024-codeact
+  title: Executable Code Actions Elicit Better LLM Agents (Wang et al., 2024)
+  author: Xingyao Wang and colleagues
+  url: https://arxiv.org/abs/2402.01030
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+# ---------- Engineering writing (summarize) ----------
+- id: anthropic-context-engineering
+  title: Effective context engineering for AI agents
+  author: Prithvi Rajasekaran, Ethan Dixon, Carly Ryan, Jeremy Hadfield (Anthropic)
+  url: https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+  license: Copyright Anthropic
+  policy: summarize
+  kind: blog
+  notes: Published 2025-09-29. Context rot and the attention budget, right-altitude system prompts, just-in-time retrieval, compaction, structured note-taking, subagents returning condensed summaries.
+
+- id: anthropic-long-running-harnesses
+  title: Effective harnesses for long-running agents
+  author: Justin Young (Anthropic)
+  url: https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+  license: Copyright Anthropic
+  policy: summarize
+  kind: blog
+  notes: Published 2025-11-26. Initializer plus coding agent; feature list in JSON, progress file, git; failure modes (one-shotting, declaring victory early).
+
+- id: anthropic-agent-sdk-blog
+  title: Building agents with the Claude Agent SDK
+  author: Thariq Shihipar (Anthropic)
+  url: https://claude.com/blog/building-agents-with-the-claude-agent-sdk
+  license: Copyright Anthropic
+  policy: summarize
+  kind: blog
+  notes: Published 2025-09-29. Gather context, take action, verify work, repeat. The Claude Code SDK was renamed the Claude Agent SDK. Old anthropic.com/engineering URL redirects here.
+
+- id: chroma-context-rot
+  title: "Context Rot: How Increasing Input Tokens Impacts LLM Performance"
+  author: Kelly Hong, Anton Troynikov, Jeff Huber (Chroma)
+  url: https://www.trychroma.com/research/context-rot
+  license: Copyright Chroma
+  policy: summarize
+  kind: report
+  notes: Published 2025-07-14. 18 models; performance falls with input length even on simple tasks; vendor research, not peer reviewed.
+
+- id: huyen-agents-2025
+  title: Agents
+  author: Chip Huyen
+  url: https://huyenchip.com/2025/01/07/agents.html
+  license: Copyright Chip Huyen
+  policy: summarize
+  kind: blog
+  notes: Published 2025-01-07. Planning versus execution, reflection, tool selection, failure modes (invalid tool, invalid parameters, false completion), efficiency metrics.
+
+# ---------- Video (embed) ----------
+- id: yt-anthropic-tips-agents
+  title: Tips for building AI agents
+  author: Anthropic (Barry Zhang, Erik Schluntz, Alex Albert)
+  url: https://www.youtube.com/watch?v=LP5OCa20Zpg
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: Official Anthropic channel, about 18 minutes.
+
+- id: yt-anthropic-future-agents
+  title: Building the future of agents with Claude
+  author: Anthropic (Alex Albert, Brad Abrams, Katelyn Lesse)
+  url: https://www.youtube.com/watch?v=XuvKFsktX0Q
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: Official Anthropic channel, about 22 minutes. Chapters on agentic frameworks (5:05), the Agent SDK (8:35), and context and memory (14:35).

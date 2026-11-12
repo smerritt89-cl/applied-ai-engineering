@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.515
+Why PDFs are hard.
+
+2
+00:00:01.795 --> 00:00:08.088
+A PDF is a set of instructions for painting a page: put these glyphs at these coordinates in this font.
+
+3
+00:00:08.368 --> 00:00:11.184
+It is not a document with paragraphs and headings.
+
+4
+00:00:11.464 --> 00:00:21.149
+The pypdf documentation puts it plainly: PDF files have no semantic layer, so headings, paragraphs, and tables have to be inferred from positions.
+
+5
+00:00:21.429 --> 00:00:24.949
+That one fact explains most of what goes wrong: Reading order.
+
+6
+00:00:25.229 --> 00:00:33.315
+Two-column layouts, sidebars, and figure captions can come out interleaved, because the extractor has to guess which block follows which.
+
+7
+00:00:33.595 --> 00:00:34.512
+Whitespace.
+
+8
+00:00:34.792 --> 00:00:44.776
+Spaces are often positioning adjustments rather than characters, so words get glued together or split apart, and hyphenated line breaks survive as broken words.
+
+9
+00:00:45.056 --> 00:00:45.867
+Tables.
+
+10
+00:00:46.147 --> 00:00:48.984
+A table is usually just text placed at positions.
+
+11
+00:00:49.264 --> 00:00:58.309
+A naive extractor flattens it into a stream of cells with no rows or columns, and the number “60” loses the label “days” two columns away.
+
+12
+00:00:58.589 --> 00:00:59.827
+Headers and footers.
+
+13
+00:01:00.107 --> 00:01:07.211
+“Confidential, page 3 of 40” repeats on every page and lands in the middle of sentences that cross page breaks.
+
+14
+00:01:07.491 --> 00:01:08.344
+Scans.
+
+15
+00:01:08.624 --> 00:01:10.203
+A scanned page is an image.
+
+16
+00:01:10.483 --> 00:01:17.629
+A text-layer parser such as pypdf is not OCR software and returns little or nothing, without raising an error.
+
+17
+00:01:17.909 --> 00:01:30.048
+pypdf is still the right first tool for digitally born PDFs: it is local, fast, free, and reads the real characters, which is more reliable than OCR when a text layer exists.
+
+18
+00:01:30.328 --> 00:01:34.979
+The point is to know which of these failures your documents trigger, and to check for them.

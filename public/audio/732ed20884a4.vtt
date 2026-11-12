@@ -1,0 +1,101 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.091
+Long context, caching, or RAG?
+
+2
+00:00:02.371 --> 00:00:06.659
+Current frontier models accept very long inputs (Claude Opus 5.
+
+3
+00:00:06.939 --> 00:00:13.744
+5 has a one-million-token context window), so a fair question for any corpus is: why retrieve at all?
+
+4
+00:00:14.024 --> 00:00:33.544
+Anthropic’s own contextual retrieval write-up (September 2024) gives a simple rule of thumb: if the knowledge base is under about 200,000 tokens (around 500 pages), you can include all of it in the prompt, and prompt caching makes that much cheaper and faster.
+
+5
+00:00:33.824 --> 00:00:35.851
+Compare the options on four axes.
+
+6
+00:00:36.131 --> 00:00:36.877
+Cost.
+
+7
+00:00:37.157 --> 00:00:40.699
+Without caching, you pay for the whole corpus on every question.
+
+8
+00:00:40.979 --> 00:00:46.227
+With caching, the corpus is a stable prefix: you pay a cache write when it’s created (1.
+
+9
+00:00:46.507 --> 00:00:54.251
+25 times the input price for the five-minute lifetime) and a much lower read price afterwards (on Claude Opus 5.
+
+10
+00:00:54.531 --> 00:00:55.640
+5, 0.
+
+11
+00:00:55.920 --> 00:00:59.824
+05 times the input price at the time of writing; 0.
+
+12
+00:01:00.104 --> 00:01:01.981
+1 times on many other models).
+
+13
+00:01:02.261 --> 00:01:06.933
+Each hit refreshes the lifetime for free, so steady traffic keeps the cache warm.
+
+14
+00:01:07.213 --> 00:01:08.109
+Latency.
+
+15
+00:01:08.389 --> 00:01:11.547
+Processing a long prompt takes time even when it’s cheap.
+
+16
+00:01:11.827 --> 00:01:21.704
+Caching helps a lot here (Anthropic reported more than a twofold latency reduction in that write-up), but a RAG prompt of a few thousand tokens is still shorter.
+
+17
+00:01:21.984 --> 00:01:22.944
+Accuracy.
+
+18
+00:01:23.224 --> 00:01:34.147
+Long context removes retrieval misses, ranking misses, and context overflow in one stroke, which is why it often wins on average in studies like Li and colleagues’.
+
+19
+00:01:34.427 --> 00:01:41.637
+It doesn’t remove synthesis errors, and “lost in the middle” effects mean the model can still overlook a passage it was given.
+
+20
+00:01:41.917 --> 00:01:50.579
+Barnett and colleagues also noted that larger context windows improved answer accuracy in their systems, which is consistent with this.
+
+21
+00:01:50.859 --> 00:01:52.117
+Freshness and scale.
+
+22
+00:01:52.397 --> 00:01:57.475
+Every change to the corpus invalidates the cached prefix after the point of change.
+
+23
+00:01:57.755 --> 00:02:06.096
+Corpora that are large, change often, or need per-user permissions (each user sees different documents) push you toward retrieval.
+
+24
+00:02:06.376 --> 00:02:10.813
+The conclusion is not “RAG is obsolete” or “long context is a gimmick.
+
+25
+00:02:11.093 --> 00:02:24.043
+” It’s that for a small, stable corpus, long context with caching is the baseline your RAG system must beat on your eval set, and for a large or fast-changing one, RAG is the only option that scales.

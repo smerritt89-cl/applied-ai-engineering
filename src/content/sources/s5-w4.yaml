@@ -1,0 +1,232 @@
+# Sources for Studio 5, weeks 4 and 5: honest benchmarking, serving open models, preference tuning, and the project.
+# Reused from other files (do not redefine here): ouyang-2022, hf-llm-course, mlabonne-llm-course, huyen-ai-engineering
+# (core); claude-pricing-docs, artificial-analysis-methodology, deng-2023-contamination, hf-meta-llama, qwen-github,
+# openai-gpt-oss, yt-karpathy-deep-dive (s1-w1, core); vllm-structured-outputs, willard-2023-guided (s1-w3);
+# miller-2024-error-bars, anthropic-demystifying-evals (s3-w1); efron-1979-bootstrap, anthropic-stats-evals-post (s3-w3);
+# zhao-2024-lora-land, gudibande-2023-imitation, anthropic-commercial-terms (s5-w2).
+
+# ---------- Small fine-tuned models versus frontier models ----------
+- id: bucher-2024-finetuned-small
+  title: "Fine-Tuned 'Small' LLMs (Still) Significantly Outperform Zero-Shot Generative AI Models in Text Classification (Bucher and Martini, 2024)"
+  author: Martin Juan Jose Bucher and Marco Martini
+  url: https://arxiv.org/abs/2406.08660
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Fine-tuned BERT-style models beat zero-shot GPT-3.5, GPT-4, and Claude Opus on several classification tasks.
+
+- id: hsieh-2023-distilling-step
+  title: "Distilling Step-by-Step! Outperforming Larger Language Models with Less Training Data and Smaller Model Sizes (Hsieh et al., 2023)"
+  author: Cheng-Yu Hsieh et al.
+  url: https://arxiv.org/abs/2305.02301
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Findings of ACL 2023. A 770M T5 trained on rationales beat few-shot 540B PaLM on one benchmark with 80% of the data.
+
+- id: hinton-2015-distillation
+  title: Distilling the Knowledge in a Neural Network (Hinton, Vinyals, and Dean, 2015)
+  author: Geoffrey Hinton, Oriol Vinyals, Jeff Dean
+  url: https://arxiv.org/abs/1503.02531
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+# ---------- Serving ----------
+- id: kwon-2023-pagedattention
+  title: Efficient Memory Management for Large Language Model Serving with PagedAttention (Kwon et al., 2023)
+  author: Woosuk Kwon et al.
+  url: https://arxiv.org/abs/2309.06180
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: SOSP 2023. The vLLM paper; reports 2 to 4 times the throughput of FasterTransformer and Orca at similar latency.
+
+- id: vllm-docs
+  title: vLLM documentation
+  author: vLLM project
+  url: https://docs.vllm.ai/en/latest/
+  license: Apache 2.0 (code); docs copyright the vLLM project
+  policy: summarize
+  kind: docs
+  notes: Features list checked 2026-11-11 (continuous batching, PagedAttention, quantization formats, multi-LoRA, OpenAI-compatible server).
+
+- id: vllm-openai-server
+  title: OpenAI-compatible server (vLLM docs)
+  author: vLLM project
+  url: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+  license: Apache 2.0 (code); docs copyright the vLLM project
+  policy: summarize
+  kind: docs
+
+- id: vllm-lora-docs
+  title: LoRA adapters (vLLM docs)
+  author: vLLM project
+  url: https://docs.vllm.ai/en/latest/features/lora.html
+  license: Apache 2.0 (code); docs copyright the vLLM project
+  policy: summarize
+  kind: docs
+
+- id: llamacpp-server
+  title: llama.cpp HTTP server (llama-server README)
+  author: ggml-org
+  url: https://github.com/ggml-org/llama.cpp/tree/master/tools/server
+  license: MIT
+  policy: summarize
+  kind: repo
+  notes: OpenAI-compatible routes, continuous batching with parallel slots, GGUF quantized models, grammar and JSON-schema constrained output.
+
+- id: ollama-structured-outputs
+  title: Structured outputs (Ollama docs)
+  author: Ollama
+  url: https://docs.ollama.com/capabilities/structured-outputs
+  license: Copyright Ollama
+  policy: summarize
+  kind: docs
+
+- id: ollama-openai-compat
+  title: OpenAI compatibility (Ollama docs)
+  author: Ollama
+  url: https://docs.ollama.com/api/openai-compatibility
+  license: Copyright Ollama
+  policy: summarize
+  kind: docs
+
+- id: hf-tgi-docs
+  title: Text Generation Inference (Hugging Face docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/text-generation-inference/index
+  license: Apache 2.0 (code); docs copyright Hugging Face
+  policy: summarize
+  kind: docs
+  notes: Checked 2026-11-11. TGI is in maintenance mode; Hugging Face recommends vLLM, SGLang, llama.cpp, or MLX going forward.
+
+- id: hf-inference-endpoints
+  title: Inference Endpoints (Hugging Face docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/inference-endpoints/index
+  license: Copyright Hugging Face
+  policy: summarize
+  kind: docs
+
+- id: hf-inference-endpoints-pricing
+  title: Inference Endpoints pricing (Hugging Face docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/inference-endpoints/pricing
+  license: Copyright Hugging Face
+  policy: summarize
+  kind: docs
+  notes: Snapshot 2026-11-11, for example 1x NVIDIA L4 on AWS at $0.80/hour, 1x A100 80GB on AWS at $2.50/hour; billed per minute.
+
+- id: sglang-repo
+  title: SGLang (GitHub)
+  author: SGLang project
+  url: https://github.com/sgl-project/sglang
+  license: Apache 2.0
+  policy: summarize
+  kind: repo
+
+- id: frantar-2022-gptq
+  title: "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers (Frantar et al., 2022)"
+  author: Elias Frantar, Saleh Ashkboos, Torsten Hoefler, Dan Alistarh
+  url: https://arxiv.org/abs/2210.17323
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: lin-2023-awq
+  title: "AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration (Lin et al., 2023)"
+  author: Ji Lin et al.
+  url: https://arxiv.org/abs/2306.00978
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: yt-anyscale-vllm
+  title: Fast LLM Serving with vLLM and PagedAttention (Ray Summit 2023)
+  author: Woosuk Kwon and Zhuohan Li (Anyscale YouTube channel)
+  url: https://www.youtube.com/watch?v=5ZlavKF_98U
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+# ---------- Preference tuning ----------
+- id: christiano-2017-rlhf
+  title: Deep Reinforcement Learning from Human Preferences (Christiano et al., 2017)
+  author: Paul Christiano, Jan Leike, Tom Brown, Miljan Martic, Shane Legg, Dario Amodei
+  url: https://arxiv.org/abs/1706.03741
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: rafailov-2023-dpo
+  title: "Direct Preference Optimization: Your Language Model is Secretly a Reward Model (Rafailov et al., 2023)"
+  author: Rafael Rafailov, Archit Sharma, Eric Mitchell, Stefano Ermon, Christopher D. Manning, Chelsea Finn
+  url: https://arxiv.org/abs/2305.18290
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: May 2023 (NeurIPS 2023). Closed-form optimal policy turns the RLHF objective into a classification loss on preference pairs.
+
+- id: bai-2022-constitutional
+  title: "Constitutional AI: Harmlessness from AI Feedback (Bai et al., 2022)"
+  author: Yuntao Bai et al. (Anthropic)
+  url: https://arxiv.org/abs/2212.08073
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: trl-dpo-trainer
+  title: DPO Trainer (Hugging Face TRL docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/trl/dpo_trainer
+  license: Apache 2.0 (code); docs copyright Hugging Face
+  policy: summarize
+  kind: docs
+  notes: Checked 2026-11-11. Preference format (prompt, chosen, rejected); beta defaults to 0.1; reference model defaults to the initial policy; PEFT adapters supported.
+
+# ---------- Publishing ----------
+- id: hf-model-cards
+  title: Model Cards (Hugging Face Hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/hub/model-cards
+  license: Copyright Hugging Face
+  policy: summarize
+  kind: docs
+  notes: Card contents, license and base_model metadata (adapters, fine-tunes, quantized versions), eval results.
+
+- id: mitchell-2019-model-cards
+  title: Model Cards for Model Reporting (Mitchell et al., 2019)
+  author: Margaret Mitchell et al.
+  url: https://arxiv.org/abs/1810.03993
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: hf-qwen3-4b-instruct-2507
+  title: Qwen3-4B-Instruct-2507 model card (Hugging Face)
+  author: Qwen team (Alibaba)
+  url: https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507
+  license: Apache 2.0 (model); card copyright the Qwen team
+  policy: summarize
+  kind: docs
+  notes: License field checked 2026-11-11 (apache-2.0). By contrast, Qwen2.5-3B-Instruct carries the qwen-research license.
+
+- id: hf-qwen25-3b-instruct
+  title: Qwen2.5-3B-Instruct model card (Hugging Face)
+  author: Qwen team (Alibaba)
+  url: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct
+  license: Qwen Research License (model); card copyright the Qwen team
+  policy: summarize
+  kind: docs
+  notes: License field checked 2026-11-11 (other, qwen-research), unlike the Apache 2.0 Qwen2.5-1.5B-Instruct.
+
+- id: ami-meeting-corpus
+  title: AMI Meeting Corpus
+  author: AMI Consortium (University of Edinburgh)
+  url: https://groups.inf.ed.ac.uk/ami/corpus/
+  license: CC BY 4.0
+  licenseUrl: https://creativecommons.org/licenses/by/4.0/
+  policy: adapt
+  kind: repo
+  notes: 100 hours of meeting recordings with orthographic transcripts; about two thirds are scripted design-team scenarios.

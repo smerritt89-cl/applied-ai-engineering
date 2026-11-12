@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.387
+Abstaining on purpose.
+
+2
+00:00:01.667 --> 00:00:07.597
+“I don’t know based on the provided sources” is a correct answer whenever the sources don’t contain one.
+
+3
+00:00:07.877 --> 00:00:19.803
+Anthropic’s first recommendation for reducing hallucinations is to give the model explicit permission to admit uncertainty, and in RAG you can go further, because you have signals the model doesn’t.
+
+4
+00:00:20.083 --> 00:00:22.045
+Design abstention in three layers.
+
+5
+00:00:22.325 --> 00:00:29.024
+In the prompt, say exactly when to abstain and give one exact sentence, so code can detect it without guessing.
+
+6
+00:00:29.304 --> 00:00:41.613
+Before generation, add a cheap gate: if the best retrieval or reranker score is below a threshold you calibrated on your eval set, skip the model call and abstain, or ask a clarifying question.
+
+7
+00:00:41.893 --> 00:00:48.144
+That saves money on questions you can’t answer and removes the temptation for the model to improvise.
+
+8
+00:00:48.424 --> 00:01:01.651
+After generation, treat an answer whose substantive claims have no verified citations as an abstention in disguise: show the sources you found and say they don’t settle it, rather than shipping unsupported text.
+
+9
+00:01:01.931 --> 00:01:05.664
+Then measure it, in two directions, because each can be gamed alone.
+
+10
+00:01:05.944 --> 00:01:10.979
+Abstention recall is the share of unanswerable questions where the system abstained.
+
+11
+00:01:11.259 --> 00:01:16.229
+False abstention rate is the share of answerable questions where it abstained anyway.
+
+12
+00:01:16.509 --> 00:01:20.776
+A system that always says “I don’t know” has perfect recall and is useless.
+
+13
+00:01:21.056 --> 00:01:28.139
+Your eval set needs both kinds of question for these numbers to exist, which is one of the requirements in lesson 12.

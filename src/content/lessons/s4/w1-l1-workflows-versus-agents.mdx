@@ -1,0 +1,310 @@
+---
+id: s4-w1-l1
+studio: s4
+week: 1
+order: 1
+title: Workflows versus agents
+summary: What separates a workflow (code decides the path) from an agent (the model decides the path), the spectrum of autonomy between them, the agent loop at a glance, and four questions to answer before you build an agent at all.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Define workflows and agents by who controls the next step, and place a real system on the autonomy spectrum
+  - Describe the agent loop (think, act, observe, repeat) and the stopping conditions every loop needs
+  - Explain why more autonomy buys flexibility at the price of cost, latency, and compounding errors
+  - Apply four questions (complexity, value, viability, cost of error) to decide whether a task deserves an agent
+sources:
+  - { id: anthropic-effective-agents, use: summarized, where: "What are agents; When (and when not) to use agents; Building blocks, workflows, and agents" }
+  - { id: hf-smolagents-intro-agents, use: adapted, where: "Agency levels table; When to use agents and when to avoid them" }
+  - { id: hf-agents-course, use: adapted, where: "Unit 1, the Thought-Action-Observation cycle" }
+  - { id: ms-ai-agents-beginners, use: adapted, where: "Lesson 1, Introduction to AI agents (environment, sensors, actuators; when to use agents)" }
+  - { id: yt-ng-agentic, use: embedded }
+  - { id: yt-zhang-effective-agents, use: linked }
+  - { id: yao-2022-react, use: summarized }
+  - { id: claude-tool-runner, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: A support tool calls a model to classify each ticket into one of four queues, then runs fixed code for each queue. Where does it sit, in Anthropic's terms?
+    options:
+      - id: a
+        text: It is an agent, because a model makes a decision.
+        rationale: The model makes one bounded choice among paths your code defined. It never decides what happens after that.
+      - id: b
+        text: It is a workflow (routing), because the possible paths are predefined in code.
+        correct: true
+        rationale: Yes. Workflows can contain model decisions; what makes them workflows is that code fixes the set of paths.
+      - id: c
+        text: It is neither, because it uses no tools.
+        rationale: Routing needs no tools. Tool use is a capability of the augmented model, not the definition of an agent.
+    explanation: >-
+      Anthropic's distinction is about control flow. In a workflow, LLMs and tools are orchestrated through predefined code
+      paths. In an agent, the model directs its own process and tool use. A router gives the model one switch to flip;
+      an agent gives it the loop.
+  - id: kc2
+    type: code-reading
+    prompt: This loop drives an agent. Which important safeguard is missing?
+    code: |
+      messages = [{"role": "user", "content": task}]
+      while True:
+          reply = model(messages)
+          if reply["type"] == "final":
+              return reply["text"]
+          result = run_tool(reply["tool"], reply["args"])
+          messages.append({"role": "tool", "content": result})
+    options:
+      - id: a
+        text: The loop never appends the model's own reply to the history.
+        rationale: That is also a real bug (the model loses track of what it asked for), but it is not the safeguard that bounds the loop.
+      - id: b
+        text: A step or cost budget, so the loop stops if the model never says it is done.
+        correct: true
+        rationale: Yes. Without a cap, a confused model can loop until you hit a rate limit or a large bill.
+      - id: c
+        text: A temperature setting to make the model deterministic.
+        rationale: Determinism would not guarantee termination, and current Claude models reject sampling parameters anyway.
+    explanation: >-
+      Every agent loop needs at least two stopping conditions: the model's own "I'm done" and a budget the code enforces
+      (steps, tokens, dollars, or wall-clock time). The snippet also forgets to append the model's tool request to the
+      history, a second bug worth spotting. You will write a loop with a budget in the exercise.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      Your director wants "an agent" that turns each weekly project-status spreadsheet into a one-paragraph summary for
+      the exec email. The columns never change. What do you recommend first?
+    options:
+      - id: a
+        text: A multi-step agent with tools to read the sheet, search Slack, and draft the email, so it can handle anything.
+        rationale: Flexibility you don't need costs money and adds failure modes. Nothing here is open-ended.
+      - id: b
+        text: A single model call with the sheet in context and a clear prompt, plus a code check on the output.
+        correct: true
+        rationale: Yes. The task is fully specified, so the simplest tier wins. Add steps only when measurement shows a gap.
+      - id: c
+        text: Nothing; models can't summarize spreadsheets reliably.
+        rationale: Summarizing structured data you supply is well within current models' ability. Verify the numbers in code.
+    explanation: >-
+      Run the four questions. Complexity: low, the path is known. Value: modest per run. Viability: high. Cost of error:
+      moderate, since execs act on the numbers, so check figures against the sheet in code. A known path means a single
+      call or a short workflow, not an agent.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## A word that means too many things
+
+"Agent" is the most overloaded word in AI engineering right now. Vendors call a chatbot with one tool an agent. Researchers use it for a system that plans and acts over hours. Your colleagues use it for anything that seems to do more than answer a question. That ambiguity has a cost: teams commit to "building an agent" before anyone has said what the system should decide on its own, and they discover the answer in production.
+
+This studio uses a precise definition, taken from Anthropic's engineering post "Building effective agents" (Erik Schluntz and Barry Zhang, December 2024), which has become a common reference point. The post groups everything under the umbrella of **agentic systems** and then draws one line through it.
+
+**Workflows** are systems where models and tools are orchestrated through predefined code paths. Your code decides what happens next. A model may write, classify, or check at each step, but the sequence and the set of branches are fixed by you.
+
+**Agents** are systems where the model dynamically directs its own process and tool use, keeping control over how it accomplishes the task. The model decides what to do next, observes the result, and decides again, until it judges the task done or something stops it.
+
+The question to ask of any system, then, is simple: **who chooses the next step, your code or the model?** Everything else in this week follows from that. Workflows are predictable and cheap to debug because you can read the control flow. Agents are flexible because they can handle paths you did not anticipate, and they pay for that flexibility in cost, latency, and errors that compound across steps.
+</Listen>
+
+<Listen>
+## The building block: an augmented model
+
+Both workflows and agents are built from the same brick, which the Anthropic post calls the **augmented LLM**: a model with access to retrieval, tools, and memory. You built most of one in Studio 1 (tool use) and Studio 2 (retrieval). The model can generate its own search queries, pick tools, and decide what to remember.
+
+Microsoft's "AI Agents for Beginners" course describes the same thing in older vocabulary from classical AI. An agent has an **environment** it operates in (a booking system, a code repository, a project tracker), **sensors** that read the environment's state (tools that look things up), and **actuators** that change it (tools that write). That framing is worth keeping, because it makes risk visible. Sensors can return wrong or hostile data. Actuators can do damage. When you design an agent later in this studio, you will list both explicitly.
+
+The Anthropic post's advice on the brick itself is practical. Tailor the augmentations to your use case, and give the model a well-documented interface to each one. It also recommends starting with the model API directly rather than a framework, because many patterns take only a few lines of code, and frameworks can hide the prompts and responses you need to see when something goes wrong. If you do use one, understand what it does underneath. This week you will write every pattern by hand for exactly that reason.
+</Listen>
+
+<Listen>
+## Autonomy is a dial, not a switch
+
+Hugging Face's smolagents documentation (Apache 2.0, adapted here) offers a sharper way to see the line: agency is a spectrum, measured by how much the model's output controls your program's flow. The table below adapts its levels and adds where each fits in Anthropic's terms.
+
+Read it from top to bottom as handing over more control. At the top, model output is just data your code processes. Next, it flips a switch your code defined. Then it chooses which function runs and with what arguments. Then it decides whether the loop continues at all. Finally, one agent can start others.
+
+Two consequences matter for you as the engineer. First, each step down multiplies the number of possible executions, which is what makes agents capable of novel paths and also what makes them hard to test: you cannot enumerate the trajectories. Second, you can usually choose the level. Most product features are best served at the top two or three rows, with a model making bounded choices inside code you can read. The smolagents guide puts it plainly: if a predetermined workflow fits your queries, code it, because it is more reliable; reach for agentic behavior when the predetermined workflow falls short too often.
+</Listen>
+
+| Level | The model's output... | Short name | Sketch | Anthropic's terms |
+|---|---|---|---|---|
+| 0 | has no effect on program flow | Simple processor | `summary = llm(text)` | Single call |
+| 1 | picks a branch your code defined | Router | `if llm_says_bug(t): triage() else: faq()` | Workflow (routing) |
+| 2 | chooses a function and its arguments | Tool call | `run(llm_tool, llm_args)` | Augmented LLM |
+| 3 | decides whether to keep going | Multi-step agent | `while llm_continue(): step()` | Agent |
+| 4 | starts other agentic workflows | Multi-agent | `if llm_delegate(): run_agent()` | Orchestrator-workers or agent teams |
+
+<Video id="sal78ACtGTc" title="What's next for AI agentic workflows ft. Andrew Ng of AI Fund" channel="Sequoia Capital" minutes={13} source="https://www.youtube.com/watch?v=sal78ACtGTc">
+Andrew Ng's March 2024 talk at Sequoia's AI Ascent is a useful companion to the Anthropic post, from a different angle. Watch for three things. His argument that iterating (draft, critique, revise) can matter as much as the choice of model, illustrated with coding benchmark results. His four design patterns: reflection, tool use, planning, and multi-agent collaboration. And his candor that reflection and tool use were reliable at the time while planning and multi-agent collaboration were less predictable. Notice that most of what he calls "agentic workflows" would be workflows under Anthropic's definition: the iteration is designed by the engineer.
+</Video>
+
+<Listen>
+## The agent loop at a glance
+
+Strip away the frameworks and every agent runs the same loop. The Hugging Face Agents Course calls it the **Thought, Action, Observation** cycle. The model reasons about what to do (thought), emits a tool call with arguments (action), and your code runs the tool and feeds the result back (observation). The model reads the observation and either takes another action or produces a final answer. The course compares it to a while loop whose rules live in the system prompt and tool definitions.
+
+The pattern has a research lineage. ReAct (Yao and colleagues, 2022) showed that interleaving reasoning traces with actions helped models on question answering and interactive tasks, partly because actions let the model look things up instead of hallucinating, and the reasoning helped it track and update a plan. Today's APIs build this in: in Studio 1 you saw that a Claude response with `stop_reason` equal to `tool_use` is the model asking your code to act, and the SDK's tool runner automates the loop.
+
+What the model cannot do is stop the loop safely on its own. It may decide it is finished too early, or never. So every loop you write has at least two exits: the model's final answer, and a **budget** your code enforces (a maximum number of steps, tokens, dollars, or seconds). Real loops add more: a stop when a write needs human approval, a stop when the same tool call repeats with the same arguments, and an error path when a tool fails. Week 2 is entirely about building this loop well. For now, notice its shape, and notice where your code sits: between every action the model requests and the world.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of an agent loop. The task and context go to the model. The model either returns a final answer, which ends the loop, or requests a tool call. Code checks the budget; if exceeded, the loop stops and reports. Otherwise code runs the tool, appends the observation to the context, and returns to the model."
+  caption="The agent loop. The model chooses each action; your code owns the budget and runs every tool."
+  chart={`flowchart TD
+  T["Task + context"] --> M["Model: think, then answer or request a tool"]
+  M -->|"final answer"| F["Return answer"]
+  M -->|"tool request"| B{"Budget left?"}
+  B -->|"no"| S["Stop and report: out of budget"]
+  B -->|"yes"| R["Your code runs the tool (checks, approvals)"]
+  R --> O["Append observation to context"]
+  O --> M`}
+/>
+
+<Predict
+  title="How many model calls?"
+  code={`script = ["tool:search", "tool:search", "tool:fetch", "final:done"]
+
+def model(step):
+    return script[step]
+
+calls, step = 0, 0
+while step < 3:
+    reply = model(step)
+    calls += 1
+    if reply.startswith("final"):
+        break
+    step += 1
+print(calls, reply)`}
+  options={["4 final:done", "3 tool:fetch", "3 final:done", "4 tool:fetch"]}
+  answer={1}
+>
+The budget is three steps. The scripted model wanted a fourth call to finish, but the loop exits after `step` reaches 3, having made three calls, with the last reply still a tool request. This is the behavior you want from a budget, and it means your code must report "stopped at budget" rather than pretending `tool:fetch` is an answer.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s4-w1-minimal-loop"
+  title="Write a minimal agent loop with a budget"
+  starter={`import json
+
+def search_tickets(query):
+    data = {"login": ["T-101 login fails on SSO", "T-140 password reset loop"],
+            "export": ["T-122 CSV export times out"]}
+    return json.dumps(data.get(query, []))
+
+TOOLS = {"search_tickets": search_tickets}
+
+
+def run_agent(task, model, tools, max_steps=5):
+    """Run a think-act-observe loop.
+
+    model(history) returns one of:
+      {"type": "final", "text": "..."}
+      {"type": "tool", "name": "...", "args": {...}}
+    history is a list of dicts; start it with {"role": "user", "content": task}.
+
+    Rules:
+    - Append every model reply to history as {"role": "assistant", "content": reply}.
+    - For a tool request, run the tool and append {"role": "tool", "content": result}.
+      An unknown tool name is not a crash: append an error observation that lists
+      the real tool names, and keep going.
+    - Stop on a final answer: return {"status": "done", "answer": text, "steps": n}.
+    - Stop when the model has been called max_steps times without a final answer:
+      return {"status": "budget_exceeded", "answer": None, "steps": max_steps}.
+    "steps" counts model calls.
+    """
+    # TODO
+    pass`}
+  tests={`def scripted(replies):
+    calls = []
+    def model(history):
+        calls.append([dict(h) for h in history])
+        return replies[len(calls) - 1]
+    return model, calls
+
+m, calls = scripted([
+    {"type": "tool", "name": "search_tickets", "args": {"query": "login"}},
+    {"type": "final", "text": "Two login tickets: T-101 and T-140."},
+])
+r = run_agent("Find login bugs", m, TOOLS)
+assert r is not None, "run_agent returned None"
+assert r["status"] == "done" and r["steps"] == 2, f"expected done after 2 model calls, got {r}"
+assert "T-101" in calls[1][-1]["content"], "the tool result should be the last thing the model sees on its second call"
+assert calls[1][-2]["role"] == "assistant", "append the model's tool request to history before the observation"
+
+loop = [{"type": "tool", "name": "search_tickets", "args": {"query": "export"}}] * 10
+m, calls = scripted(loop)
+r = run_agent("Find export bugs", m, TOOLS, max_steps=3)
+assert r == {"status": "budget_exceeded", "answer": None, "steps": 3}, f"budget must stop the loop, got {r}"
+assert len(calls) == 3, "the model must be called exactly max_steps times"
+
+m, calls = scripted([
+    {"type": "tool", "name": "delete_ticket", "args": {"id": "T-101"}},
+    {"type": "final", "text": "I can only search."},
+])
+r = run_agent("Clean up", m, TOOLS)
+assert r["status"] == "done", "an unknown tool should produce an observation, not an exception"
+obs = calls[1][-1]
+assert obs["role"] == "tool" and "search_tickets" in obs["content"], "the error observation should list the real tools"`}
+  solution={`def run_agent(task, model, tools, max_steps=5):
+    history = [{"role": "user", "content": task}]
+    for step in range(1, max_steps + 1):
+        reply = model(history)
+        history.append({"role": "assistant", "content": reply})
+        if reply["type"] == "final":
+            return {"status": "done", "answer": reply["text"], "steps": step}
+        tool = tools.get(reply["name"])
+        if tool is None:
+            result = f"Error: unknown tool '{reply['name']}'. Available tools: {', '.join(sorted(tools))}"
+        else:
+            result = tool(**reply["args"])
+        history.append({"role": "tool", "content": result})
+    return {"status": "budget_exceeded", "answer": None, "steps": max_steps}`}
+>
+Implement `run_agent`. The "model" here is a scripted fake, so you can test the loop's control logic without an API key, which is exactly how you will test real agents in week 2. Three behaviors are checked: a normal run that ends with a final answer, a model that never stops (the budget must end it), and a model that asks for a tool that doesn't exist (return an instructive error observation rather than crashing).
+</PyRunner>
+
+<DragOrder
+  client:visible
+  prompt="Order these systems from least to most model autonomy"
+  items={[
+    "A model summarizes each meeting transcript; code emails the summary",
+    "A model labels each ticket billing, bug, or other; code sends it to that queue",
+    "A model picks which of three lookup tools to call for a question, once",
+    "A model keeps calling search and read tools until it decides it can answer",
+    "A lead model spawns research subagents and decides when their findings are enough",
+  ]}
+  explanation="Simple processor, router, single tool call, multi-step agent, multi-agent. Each step hands the model more control over what runs next, and multiplies the paths you have to test."
+/>
+
+<Listen>
+## Four questions before you build an agent
+
+Anthropic's post states the principle bluntly: find the simplest solution possible, and only increase complexity when needed, which may mean not building an agentic system at all. Agentic systems trade latency and cost for better task performance, so the question is always whether the trade is worth it. Often a single call, optimized with retrieval and good examples, is enough.
+
+To make that judgment repeatable, this course uses four questions. They follow the checklist Barry Zhang, a co-author of the post, gives in his AI Engineer Summit 2025 talk (linked in the sources), phrased for a team decision.
+
+1. **Complexity.** Is the task multi-step and hard to specify in advance? If you can draw the full decision tree, build the tree as a workflow: it is cheaper and you control every branch. "Turn this design doc into a working pull request" is open-ended. "Extract the decisions from this transcript" is not.
+2. **Value.** Does the outcome justify the extra cost and latency? Agents explore, and exploration burns tokens. A task worth a few cents per run can't support a loop that costs dollars.
+3. **Viability.** Can current models actually do each critical part of the task? Test the weakest link before you build around it. If one capability is shaky, narrow the scope until it isn't.
+4. **Cost of error.** When the agent is wrong, how bad is it, and how quickly will you find out? Errors that are cheap and easy to detect (a failing test, a draft a person reviews) make autonomy tolerable. Errors that are costly or silent (a wrong refund, an email to a client) demand approvals, read-only access, or no agent.
+
+If any answer is no, stay at a simpler tier. Coding agents are the standard example of a task that passes all four: the work is open-ended, valuable, within current models' reach, and verifiable by tests and review. That last property is the one teams most often skip, and lesson 3 is about why it matters.
+</Listen>
+
+<Callout type="pitfall" title="Building the agent first and the task definition later">
+The most common failure is architectural, not technical: a team picks "an agent" as the solution before writing down what decisions the system must make on its own. The result is a loop with ten tools solving a problem that was a three-step workflow, and nobody can say why it chose a given path. Write the decision list first. Every decision your code can make deterministically should stay in code; give the model only the decisions that genuinely need judgment.
+</Callout>
+
+<GoDeeper title="Where the definitions disagree">
+Not every source draws the line where Anthropic does. Andrew Ng's talk uses "agentic workflows" for designed iteration loops, which Anthropic would call workflows. Microsoft's course lists classical agent types (simple reflex, model-based, goal-based, utility-based, learning, hierarchical, multi-agent) borrowed from the AI textbook tradition, where even a thermostat counts as a simple reflex agent. The smolagents guide treats agency as continuous. None of these is wrong; they answer different questions. For engineering decisions, the control-flow definition is the most useful because it predicts what you will have to test and debug: if the model chooses the path, you need trajectory-level evaluation (Studio 3, lesson 11) and runtime guardrails (week 4). If code chooses the path, ordinary unit tests and per-step evals cover most of it.
+
+Zhang's talk is about 15 minutes and expands on the post's three principles (keep it simple, show the agent's planning, invest in the tool interface). Watch it after lesson 3, when the cost and reliability arguments will be concrete.
+</GoDeeper>
+
+<Listen>
+## What to carry into the next two lessons
+
+You now have a vocabulary and a decision rule. A workflow is code choosing the path with models doing bounded work at each step. An agent is the model choosing the path inside a loop your code bounds. Autonomy is a dial, and the right setting is usually lower than the hype suggests. The four questions tell you when to turn it up.
+
+Lesson 2 makes the workflow side concrete: five patterns from the Anthropic post, each in a few lines of code, and how to verify each one's output. Lesson 3 does the math on the agent side: why per-step reliability compounds, what a loop really costs, and what published measurements say about how long a task current agents can handle.
+</Listen>

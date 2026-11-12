@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.408
+Quoting evidence first.
+
+2
+00:00:01.688 --> 00:00:09.624
+A related technique works with or without the citations feature: ask the model to pull out the relevant quotes before it answers.
+
+3
+00:00:09.904 --> 00:00:14.576
+Anthropic’s long-context guidance recommends this for long-document tasks.
+
+4
+00:00:14.856 --> 00:00:21.448
+Extracting quotes into their own tags first helps the model focus on the relevant parts and ignore the rest.
+
+5
+00:00:21.728 --> 00:00:25.184
+Then the answer is written from the quotes, not from the whole pile.
+
+6
+00:00:25.464 --> 00:00:28.728
+Quote-first has two engineering benefits beyond quality.
+
+7
+00:00:29.008 --> 00:00:37.392
+The quotes are an intermediate output you can check before you spend tokens on an answer: if none of them verify, you can stop and abstain.
+
+8
+00:00:37.672 --> 00:00:50.835
+And when you review failures later, the quotes show you what the model thought was relevant, which is how you tell a retrieval problem (the right passage wasn’t there) from a synthesis problem (it was there, and the model ignored it).
+
+9
+00:00:51.115 --> 00:00:57.451
+The cost is latency and tokens, so measure whether it helps on your eval set before making it the default.
+
+10
+00:00:57.731 --> 00:01:05.880
+On short, single-passage questions it often won’t; on questions that need two or three passages combined, it is more likely to.

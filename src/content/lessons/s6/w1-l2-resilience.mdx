@@ -1,0 +1,370 @@
+---
+id: s6-w1-l2
+studio: s6
+week: 1
+order: 2
+title: "Resilience: timeouts, retries, fallbacks"
+summary: How an LLM service fails, and what to do about each kind of failure. SDK timeouts and retries, backoff with jitter, rate limits and 429s, idempotency, circuit breakers, graceful degradation, model and refusal fallbacks, and how to test all of it without waiting for an outage.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Classify a failed model call as transient, permanent, or a refusal, and pick the right response for each
+  - Configure SDK timeouts and retries, including units and defaults, and avoid stacking retries across layers
+  - Implement capped exponential backoff with jitter that honors retry-after, inside one overall deadline
+  - Explain what a circuit breaker protects, and implement one with closed, open, and half-open states
+  - Design fallbacks across models and providers, including refusal fallbacks, and a degraded mode
+  - Test failure handling deterministically with fake clients and a fake clock
+sources:
+  - { id: claude-errors-docs, use: summarized, where: "HTTP errors; long requests; SDK retries" }
+  - { id: claude-rate-limits-docs, use: summarized, where: "Token bucket; cache-aware ITPM; spend caps; response headers" }
+  - { id: claude-refusals-fallback, use: summarized }
+  - { id: claude-streaming-docs, use: summarized, where: "Error events" }
+  - { id: claude-python-sdk, use: summarized, where: "Timeouts and retries" }
+  - { id: httpx-timeouts, use: summarized }
+  - { id: aws-backoff-jitter, use: summarized }
+  - { id: aws-builders-timeouts-retries, use: summarized }
+  - { id: google-sre-cascading-failures, use: summarized }
+  - { id: fowler-circuit-breaker, use: summarized }
+  - { id: stripe-idempotency, use: summarized }
+  - { id: claude-stop-reasons, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      Your Python service constructs `anthropic.Anthropic()` with default settings. A request hangs on a dead
+      connection. Roughly how long can that one call take, wall clock, before your code sees an exception?
+    options:
+      - id: a
+        text: About 10 seconds, the SDK's default timeout.
+        rationale: The Python default is 10 minutes, not 10 seconds, and it is in seconds (600).
+      - id: b
+        text: Up to about 30 minutes, because the default 10-minute timeout is retried, and the default is 2 retries.
+        correct: true
+        rationale: Yes. Timeouts are retried, so wall clock can reach timeout times (max_retries + 1).
+      - id: c
+        text: Forever, because the SDK has no default timeout.
+        rationale: It has one. It is just long, because generation can be slow.
+    explanation: >-
+      The SDK's defaults are tuned so long generations succeed, not so your service responds quickly. In a web
+      service, set your own timeout and retry count, and remember the units differ by SDK: seconds in Python,
+      milliseconds in TypeScript.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A handful of user prompts get `stop_reason: "refusal"` from your primary model. Your circuit breaker counts any
+      non-success as a failure, and after five refusals in a row it opens, sending all traffic to the fallback model
+      for 30 seconds. What should you change?
+    options:
+      - id: a
+        text: Raise the failure threshold to 50 so refusals rarely trip it.
+        rationale: That also makes the breaker slow to react to a real outage. The problem is what counts as a failure.
+      - id: b
+        text: Treat a refusal as a healthy response from the service. Route that request to a fallback model, and don't count it against the breaker.
+        correct: true
+        rationale: Right. A refusal is an answer about this request, not evidence the service is down.
+      - id: c
+        text: Retry refused requests on the primary model with backoff until they succeed.
+        rationale: Anthropic's refusal docs note that re-sending a refused request to the same model usually earns another refusal.
+    explanation: >-
+      Breakers protect you from an unhealthy dependency. Refusals, like 400s, come from a healthy one. Count only
+      transient failures (timeouts, 429s, 5xx, dropped connections), and send refused requests to another model,
+      either with Anthropic's server-side fallbacks or your own chain.
+  - id: kc3
+    type: multi
+    prompt: Which of these failures should a retry loop retry? Select all that apply.
+    options:
+      - id: a
+        text: A 529 overloaded_error
+        correct: true
+        rationale: Transient. Back off and retry, or fall back.
+      - id: b
+        text: A 429 with a retry-after header
+        correct: true
+        rationale: Transient. Wait at least as long as retry-after says.
+      - id: c
+        text: A 400 invalid_request_error about a malformed message list
+        rationale: Permanent. The same request will fail the same way on every attempt and every model.
+      - id: d
+        text: A 429 whose error details say enforced_spend_limit_reached
+        rationale: The rate-limits docs say this one has no retry-after and keeps failing until access resumes. Retrying just adds load.
+      - id: e
+        text: A connection reset before any response arrived
+        correct: true
+        rationale: Transient. For a model call with no side effects, retrying is safe (it costs tokens, though).
+    explanation: >-
+      Classify before you retry. Status code alone is almost enough, but not quite: the spend-cap 429 looks like a
+      rate limit and behaves like a hard stop. Read the error details your provider documents, and test the
+      classification with constructed errors.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Three kinds of failure
+
+A model call can fail in three ways that need three different responses, so the first job of any resilience code is to tell them apart.
+
+**Transient failures** might succeed if you try again later. The Claude API's errors docs list them: `429 rate_limit_error` when you've exceeded a rate limit, `500 api_error` for an internal problem (the docs say to retry with exponential backoff), `504 timeout_error`, and `529 overloaded_error` when the API is temporarily overloaded across all users. Add the network's own failures: connection resets and timeouts on your side. The response to a transient failure is to wait and retry, or move to another model.
+
+**Permanent failures** will fail the same way however often you try: `400 invalid_request_error` (a malformed request, an unsupported parameter, a spend limit you set yourself), `401` for a bad key, `403` for missing permission, `404` for an unknown model id, `413` for a request over the size limit. Retrying these wastes time, and falling back to another model usually fails too, because the bug is in your request. The response is to fail fast, log it with the `request-id` the API returns, and fix the code. One trap: a 429 is usually transient, but the rate-limits docs describe a 429 for reaching your tier's monthly spend cap that carries no `retry-after` header and keeps failing until access resumes; its error details include `enforced_spend_limit_reached`. Classify on the details, not just the status.
+
+**Refusals** are not errors at all. Current Claude models include safety classifiers that can decline a request; you get a normal HTTP 200 response with `stop_reason: "refusal"` and a `stop_details` object naming the policy category. The service is healthy, it has answered, and the answer is no. Anthropic's refusal docs note that re-sending the same request to the same model usually earns another refusal, so the response is a **different model**, not a retry. Refusals can also arrive mid-stream, after partial text, in which case the docs say to treat the partial output as incomplete and discard it.
+</Listen>
+
+<Listen>
+## What the SDK already does, and its units
+
+Before writing retry code, know what the official SDK does for you. Per Anthropic's errors docs and the SDK documentation on the review date, the SDKs retry transient failures automatically: connection errors, 408, 409, 429, and 5xx, with exponential backoff, **2 retries by default**, honoring `retry-after` when present. You configure this with `max_retries` (`maxRetries` in TypeScript); zero disables it.
+
+The default request timeout is **10 minutes**, because a long generation can legitimately take that long. Here the units bite: Python's `timeout` is in **seconds** (a float, or an `anthropic.Timeout` with separate connect, read, write, and pool values), while TypeScript's is in **milliseconds**. A TypeScript `timeout: 30` is 30 milliseconds, and every request fails. Timeouts are also retried, so a dead connection under default settings can hold a request for up to timeout times (retries plus one): about 30 minutes.
+
+There's a subtler point for streams. The Python SDK is built on an HTTP client (`httpx2`, a fork of HTTPX) whose timeout model the HTTPX docs describe: a single float sets connect, read, write, and pool timeouts, and the **read timeout bounds the wait for each chunk**, not the whole response. A stream that trickles a token every few seconds never trips a 30-second read timeout, however long it runs. If your service needs a total deadline for a stream, enforce it yourself by checking a clock between chunks, as the lab does.
+
+For a user-facing service, the defaults are rarely what you want. A chat endpoint might allow 60 seconds in total and wants to fail over to another model well before then. So you set the timeout per request, and you decide where retries happen.
+</Listen>
+
+```python
+import anthropic
+
+# One layer retries. Here it is the service, so the SDK's own retries are off.
+client = anthropic.Anthropic(max_retries=0)
+
+response = client.with_options(timeout=20.0).messages.create(  # seconds in Python
+    model="claude-opus-5-5",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Summarize the incident report."}],
+)
+# A finer split: anthropic.Timeout(20.0, connect=2.0, read=10.0)
+# TypeScript equivalent: client.messages.create({...}, { timeout: 20_000 })  // milliseconds
+```
+
+<Listen>
+## Backoff with jitter, and retrying at one layer
+
+When many clients fail at once, say during a provider overload, and all retry after exactly one second, they all arrive again at the same instant and fail again. **Exponential backoff** spreads retries out over time: wait about base times 2 to the power n before retry n, capped at some maximum. **Jitter** spreads them across clients: Marc Brooker's 2015 analysis on the AWS Architecture Blog simulated contending clients and found that adding randomness sharply reduced the work done, with "full jitter" (a uniform random wait between zero and the capped exponential) a simple, effective choice.
+
+If the provider sends `retry-after`, it knows more than your formula does: the rate-limits docs say earlier retries fail. Treat it as a minimum wait.
+
+The bigger risk is **retry amplification**. In the Amazon Builders' Library article on timeouts and retries, Brooker works through a five-layer stack where each layer retries three times: load on the bottom layer can multiply by 243. LLM services stack layers too: the browser retries your endpoint, your endpoint retries a helper, the helper calls the SDK, and the SDK retries the provider. Google's SRE book chapter on cascading failures gives the standard remedies: retry at one layer only, cap retries per request, and keep a server-wide **retry budget** so that once retries exceed some fraction of traffic, requests fail instead of retrying. Pick the layer that knows the most (usually your service, which knows the deadline and the fallback options) and turn the others off, which is why the snippet above sets `max_retries=0`.
+
+Finally, give the whole request **one deadline** and make every attempt fit inside what remains. The SRE chapter calls this deadline propagation: checking the remaining time before each stage, because work finished after the caller gave up helps no one.
+</Listen>
+
+<Predict
+  title="How many upstream calls?"
+  code={`# A browser retries your endpoint up to 2 times (3 attempts in total).
+# Your endpoint retries a failing helper up to 2 times (3 attempts).
+# The helper uses the SDK with its default max_retries=2 (3 attempts).
+# During an outage every attempt fails. One user click produces how many
+# requests to the model provider?
+browser, endpoint, sdk = 3, 3, 3
+print(browser * endpoint * sdk)`}
+  options={["9", "27", "6", "3"]}
+  answer={1}
+>
+Attempts multiply across layers: 3 x 3 x 3 = 27 provider requests for one click, all landing during the outage you are trying to ride out, and counting against the same rate limits. Turn retries off in all but one layer, and the click costs at most 3.
+</Predict>
+
+<Listen>
+## Rate limits and 429s
+
+Anthropic measures rate limits per model class in requests per minute, input tokens per minute, and output tokens per minute, enforced with a **token bucket**: capacity refills continuously rather than resetting on the minute. The docs add two details that change design. A limit of 60 requests per minute may be enforced as one per second, so bursts can trip it even when the per-minute average is fine. And sharp increases in usage can hit **acceleration limits**, so ramp traffic up gradually, for example when you launch a feature or start a backfill.
+
+Three practical consequences. First, **throttle yourself** before the provider does: a concurrency limit or a local token bucket in front of the model call turns a burst into a short queue instead of a wall of 429s. Second, **read the headers**: responses include `anthropic-ratelimit-*` headers with remaining requests and tokens and reset times, which you can log and alert on before you hit the wall. Third, **caching raises your effective limit**: the docs say the default input-token limits count only uncached input tokens, so cache reads don't count, so a well-cached system prompt is a throughput feature as well as a cost one (week 2).
+
+Separate models have separate buckets. On the review date, the rate-limits page lists Claude Opus 5.5 and Claude Sonnet 5.5 with their own limits, not shared with older models in the same family. That is one reason a fallback to another model often succeeds when the primary is rate limited.
+</Listen>
+
+<Listen>
+## Idempotency: what is safe to retry
+
+A model call with no tools is safe to retry in the sense that matters: running it twice changes nothing in the world. It still costs money twice, and because generation varies between runs, the retry can produce a *different* answer. That matters if you already showed the user the first one or wrote it somewhere.
+
+Side effects are different. If a pipeline calls the model, then sends an email, then records success, a crash between the last two steps means a retry sends a second email. The fix is **idempotency**: give each operation a key derived from what it is (the job id, the ticket id plus the action) and make the side effect check the key before acting. Stripe's API documents the canonical version: clients send an idempotency key, and the server returns the saved result for a repeated key instead of performing the operation again. The AWS article puts the rule plainly: don't retry side-effecting calls unless the API is idempotent.
+
+For LLM systems this means two things. Make every write at the end of a pipeline idempotent, as you did for write tools in Studio 1. And decide what a retried *generation* means for the user: in a stream that has already shown text, don't silently restart with a different answer (the lab's streaming endpoint reports an error instead).
+</Listen>
+
+<Listen>
+## Circuit breakers
+
+Retries handle a blip. When a dependency is down for minutes, retrying every request makes things worse: each request waits through its full timeout and backoff before failing, threads and connections pile up, and the extra traffic slows recovery. A **circuit breaker**, as Martin Fowler describes it, wraps the call and tracks failures. While **closed**, calls pass through and consecutive failures are counted; a success resets the count. When failures reach a threshold, the breaker **opens**: calls fail immediately without touching the dependency, which is exactly what you want when you have a fallback model waiting. After a reset timeout, it goes **half-open** and lets one trial call through. Success closes it; failure reopens it and restarts the timer. Fowler also recommends logging every state change and alerting when a breaker trips, because a breaker that opens often is telling you something.
+
+Breakers have critics. The AWS article notes that they add modal behavior that is harder to test and can slow recovery, and suggests local retry budgets as an alternative. The two are compatible: use a retry budget to bound retry load, and a breaker per model to skip a dependency that is clearly down, so requests go straight to the fallback instead of spending their deadline on a dead primary. Whatever you choose, test the state transitions, which is easy only if the breaker reads time from a clock you can control.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s6-w1-circuit-breaker"
+  title="Implement a circuit breaker with a fake clock"
+  starter={`class FakeClock:
+    def __init__(self):
+        self.t = 0.0
+    def now(self):
+        return self.t
+    def advance(self, seconds):
+        self.t += seconds
+
+
+class CircuitBreaker:
+    """closed -> open after failure_threshold CONSECUTIVE failures.
+    open -> half_open once reset_timeout seconds have passed since it opened.
+    half_open: allow exactly one trial call; success closes, failure reopens (timer restarts)."""
+
+    def __init__(self, failure_threshold, reset_timeout, clock):
+        self.failure_threshold = failure_threshold
+        self.reset_timeout = reset_timeout
+        self.clock = clock
+        self.failures = 0
+        self.opened_at = None        # time it last opened, or None when closed
+        self.trial_in_flight = False
+
+    @property
+    def state(self):
+        # TODO: return "closed", "open", or "half_open"
+        return "closed"
+
+    def allow(self):
+        # TODO: True if a call may proceed now
+        return True
+
+    def record_success(self):
+        # TODO
+        pass
+
+    def record_failure(self):
+        # TODO
+        pass
+
+
+clock = FakeClock()
+br = CircuitBreaker(failure_threshold=3, reset_timeout=30, clock=clock)
+for _ in range(3):
+    br.record_failure()
+print(br.state, br.allow())
+`}
+  tests={`c = FakeClock()
+b = CircuitBreaker(3, 30, c)
+assert b.state == "closed" and b.allow()
+b.record_failure(); b.record_failure()
+assert b.state == "closed", "two failures are below the threshold"
+b.record_success(); b.record_failure(); b.record_failure()
+assert b.state == "closed", "a success resets the count: only consecutive failures trip the breaker"
+b.record_failure()
+assert b.state == "open", "three consecutive failures open the breaker"
+assert not b.allow(), "an open breaker fails fast"
+c.advance(29.9)
+assert b.state == "open" and not b.allow(), "still open before the reset timeout"
+c.advance(0.2)
+assert b.state == "half_open", "half-open once the reset timeout has passed"
+assert b.allow(), "the first caller gets the trial"
+assert not b.allow(), "only one trial at a time"
+b.record_failure()
+assert b.state == "open", "a failed trial reopens the breaker"
+c.advance(15)
+assert not b.allow(), "the timer restarted at the failed trial"
+c.advance(15.5)
+assert b.allow(), "a new trial once the reset timeout has passed again"
+b.record_success()
+assert b.state == "closed" and b.allow() and b.allow(), "a successful trial closes it"`}
+  solution={`class CircuitBreaker:
+    def __init__(self, failure_threshold, reset_timeout, clock):
+        self.failure_threshold = failure_threshold
+        self.reset_timeout = reset_timeout
+        self.clock = clock
+        self.failures = 0
+        self.opened_at = None
+        self.trial_in_flight = False
+
+    @property
+    def state(self):
+        if self.opened_at is None:
+            return "closed"
+        if self.clock.now() - self.opened_at >= self.reset_timeout:
+            return "half_open"
+        return "open"
+
+    def allow(self):
+        s = self.state
+        if s == "closed":
+            return True
+        if s == "open" or self.trial_in_flight:
+            return False
+        self.trial_in_flight = True
+        return True
+
+    def record_success(self):
+        self.failures = 0
+        self.opened_at = None
+        self.trial_in_flight = False
+
+    def record_failure(self):
+        if self.state == "half_open":
+            self.opened_at = self.clock.now()
+            self.trial_in_flight = False
+            return
+        self.failures += 1
+        if self.failures >= self.failure_threshold:
+            self.opened_at = self.clock.now()`}
+>
+Fill in the four methods. The breaker never calls `time.time()`: it asks the clock it was given, so the tests can move time forward 30 seconds in a microsecond. That one design choice is what makes failure handling testable, and the lab uses the same idea for retries and deadlines.
+</PyRunner>
+
+<Listen>
+## Fallbacks and graceful degradation
+
+A **fallback chain** is an ordered list of ways to answer: the primary model, then a cheaper or different model, then a degraded response. The lab's chain is Claude Opus 5.5, then Claude Sonnet 5.5, then a static "temporarily unavailable" message. Other useful degraded modes: serve a cached answer for a common question, queue the request and notify the user later, or turn the AI feature off and show the non-AI path. Google's SRE book adds advice that's easy to skip: test the degraded path regularly, because code that only runs during incidents tends to be broken when you need it.
+
+A fallback changes behavior, so treat it as a product decision with evidence. Run your Studio 3 eval on the fallback model too, so you know how much quality you trade for availability, and record which model served each request (the lab's `model` and `notes` fields) so your traces and dashboards can tell them apart. A silent fallback that quietly lowers quality for a week is its own incident.
+
+**Across providers** the same pattern applies, with more work: prompts and tool definitions may need adapting, structured output and refusal behaviors differ, and the providers' rate limits and outages are independent, which is the point. Keep the fallback behind the same interface (the lab's two-method `ModelClient`), and gate it on an eval run for that provider, not on a smoke test.
+
+**Refusal fallbacks** have first-party support. Anthropic's refusal docs describe a beta `fallbacks` parameter: with `fallbacks: "default"` and the `server-side-fallback-2026-07-01` beta header, a declined request is re-run on the fallback model Anthropic recommends for that refusal category, inside the same API call, and the response records the handoff. On the review date it is available on the Claude API and Claude Models on Google Cloud (Anthropic managed); other platforms use a client-side SDK middleware. It is not supported on the Message Batches API, and Claude Haiku 5.5 has no server-side fallback. Every attempt, including the one that declined, counts against its own model's rate limits. Your own chain still matters: it covers outages and overload, and whatever still comes back refused.
+</Listen>
+
+```python
+response = client.beta.messages.create(
+    model="claude-opus-5-5",
+    max_tokens=1024,
+    betas=["server-side-fallback-2026-07-01"],
+    fallbacks="default",  # retry a refused request on the recommended model for its category
+    messages=[{"role": "user", "content": question}],
+)
+if response.stop_reason == "refusal":  # the whole chain declined
+    ...  # show a clear message; log stop_details.category; do not retry the same model
+else:
+    served_by = response.model  # log it: this may not be the model you asked for
+```
+
+<Callout type="pitfall" title="Three ways resilience code makes outages worse">
+**Retrying permanent errors.** A loop that retries every exception turns a typo in a model id into three slow failures per request, and falls back to a second model that fails the same way. Classify first.
+**Retrying at every layer.** SDK defaults plus your retry loop plus a client that retries you multiply load during exactly the minutes you need less of it. Turn retries off everywhere but one layer.
+**Counting refusals or bad requests as outages.** A breaker that counts them can take a healthy primary offline for everyone because of a few prompts. Only transient failures should move a breaker.
+</Callout>
+
+<Listen>
+## Testing failure modes
+
+Failure handling is the code you are least likely to see run before production, so test it deliberately, and without waiting for an outage.
+
+**Fake the client.** Your resilience logic should depend on an interface (complete, stream), not on the SDK directly. A fake that replays a script ("529, 529, then success"; "two chunks, then an overloaded error") lets you test every branch: fallback after exhausted retries, no fallback on a 400, refusal routing, a stream that dies after its first token.
+
+**Fake the clock.** Inject a clock with `now()` and `sleep()`. The fake's `sleep` just advances time, so a test of "the breaker half-opens after 30 seconds" or "the chain never exceeds a 60-second deadline" runs instantly and deterministically. Seed the random generator used for jitter for the same reason.
+
+**Construct real error objects** for the classification layer. The lab builds actual SDK exceptions (a `RateLimitError` with a `retry-after` header, a spend-cap 429 body) so the test fails if the SDK's shapes change under you.
+
+**Inject faults in staging.** Point the service at a fake provider that returns errors at a configurable rate, or wrap the real client with one that randomly raises, and watch your dashboards (week 3): does the breaker open, do fallbacks show up in traces, does p95 latency stay inside your deadline? And rehearse the degraded mode on purpose, the way the SRE book recommends, so the first time it runs is not during an incident.
+</Listen>
+
+<GoDeeper title="Why full jitter works, in one paragraph of probability">
+Suppose n clients fail at the same moment and each waits a delay drawn uniformly from the interval from 0 to c before retrying. The retries are spread across that interval with expected density n over c, instead of all landing at once, so the peak load on the recovering service drops by a factor that grows with c. Doubling c on each attempt (exponential backoff) means that clients who keep failing spread out further each round, which is what lets a service that recovers with limited capacity work through the backlog. The cap keeps any single wait bounded so users aren't stuck for minutes, and the overall deadline bounds the sum. "Equal jitter" (half fixed, half random) guarantees some minimum wait but packs retries into a narrower window. In Brooker's simulation every jittered strategy cut work sharply compared with no jitter; equal jitter was the slowest of them, and full jitter did less work than "decorrelated jitter" at the cost of slightly more time. With `retry-after`, the server is giving you better information than any formula, so a reasonable rule is the maximum of the jittered delay and `retry-after`, plus a check that it still fits the deadline.
+</GoDeeper>
+
+<LabLink path="labs/studio-6/01-resilient-service" title="Lab: a resilient LLM service" needs={["Python 3.10+", "No API key for the core lab", "Optional: FastAPI, uvicorn, Anthropic API key"]} minutes={90}>
+Implement everything in this lesson as one small service: classify real SDK exceptions (including the spend-cap 429), retry with full jitter under a shared deadline, open a per-model circuit breaker, fall back from Opus to Sonnet, degrade to a static message, and stream server-sent events that never switch models after the first token. About 30 offline tests drive it with a fake client and a fake clock.
+</LabLink>
+
+<Listen>
+## The rules, in order
+
+Classify every failure: transient, permanent, or refusal. Retry only transient ones, at one layer, with capped exponential backoff and full jitter, treating `retry-after` as a minimum. Give each request one deadline, and size each attempt to what remains. Make side effects idempotent before you let anything retry. Put a breaker in front of each dependency so a dead one fails fast. Fall back to another model on outages and refusals, record that you did, and know from an eval what it costs you in quality. Keep a degraded mode and exercise it. And test all of this with fakes, because the real failures arrive on their own schedule.
+</Listen>

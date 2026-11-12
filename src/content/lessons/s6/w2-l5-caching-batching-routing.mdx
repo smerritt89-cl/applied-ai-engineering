@@ -1,0 +1,334 @@
+---
+id: s6-w2-l5
+studio: s6
+week: 2
+order: 5
+title: Caching, batching, and routing
+summary: How prompt caching really works (prefix match, breakpoints, lifetimes, verification, silent invalidators), when the Batch API's discount is free money, effort as the first quality-for-cost trade, and model routing and cascades, with the equivalent features at OpenAI and Google.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Explain prompt caching as a prefix match over tools, system, and messages, and place breakpoints so a shared prefix is read rather than rewritten
+  - Choose between the five-minute and one-hour cache lifetimes from the gaps between requests, and compute the break-even
+  - Verify caching from the usage fields and find the common silent invalidators
+  - Decide which workloads belong on the Batch API and handle its results correctly
+  - Use effort as a measured trade, and evaluate routing and cascades against the simpler alternative of one strong model at lower effort
+  - Compare caching and batch features across Claude, OpenAI, and Gemini from their documentation
+sources:
+  - { id: claude-prompt-caching-docs, use: summarized, where: "Prefix order, breakpoints, minimum length, lifetimes, invalidation table, concurrency, isolation" }
+  - { id: claude-pricing-docs, use: summarized, where: "Cache write and read multipliers, batch pricing" }
+  - { id: claude-batch-processing-w4, use: summarized, where: "Limits, completion times, unsupported options, caching with batches" }
+  - { id: claude-cost-intelligence-docs, use: summarized, where: "Measured caching and effort results, re-running failures, multimodel strategies" }
+  - { id: claude-effort-docs, use: summarized }
+  - { id: claude-fast-mode-docs, use: summarized, where: "Different speeds do not share cached prefixes" }
+  - { id: openai-prompt-caching-guide, use: summarized }
+  - { id: openai-batch-guide, use: summarized }
+  - { id: openai-flex-processing, use: summarized }
+  - { id: gemini-context-caching-docs, use: summarized }
+  - { id: gemini-batch-docs, use: summarized }
+  - { id: openai-pricing-docs, use: linked }
+  - { id: gemini-pricing-docs, use: linked }
+  - { id: chen-2023-frugalgpt, use: summarized }
+  - { id: ong-2024-routellm, use: summarized }
+  - { id: yt-claude-platform-more, use: embedded }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You added `cache_control` to your 8,000-token system prompt last week. Today's logs show
+      `cache_creation_input_tokens` near 8,000 on every request and `cache_read_input_tokens` at 0, even for requests
+      seconds apart. A teammate recently added "Current time: {now}" to the top of the system prompt so the model knows
+      the date. What do you do?
+    options:
+      - id: a
+        text: Switch to the one-hour cache lifetime so entries survive longer.
+        rationale: Lifetime isn't the problem; requests are seconds apart. Every request has a different prefix, so there is never anything to read, and the one-hour write costs more.
+      - id: b
+        text: Move the timestamp out of the system prompt to the end of the newest user turn (or a mid-conversation system message), keep the system prompt byte-identical, and add a test that a second identical request shows cache reads.
+        correct: true
+        rationale: Yes. The timestamp sits at the front of the prefix, so every byte after it differs per request. Moving it after the breakpoint restores the shared prefix, and the test catches the next regression.
+      - id: c
+        text: Remove `cache_control`, since caching evidently doesn't work for this prompt.
+        rationale: Caching works; the prompt assembly broke it. Removing it gives up the largest cost lever.
+    explanation: >-
+      Caching is a prefix match on exact bytes. Anything dynamic early in the prompt (timestamps, request ids,
+      unsorted JSON, a per-user tool list) silently turns every request into a cache write. The usage fields are the
+      only thing that reveals it, which is why a standing check is worth more than a one-time look.
+  - id: kc2
+    type: predict-output
+    prompt: >-
+      Five-minute cache writes cost 1.25 times base input and reads cost 0.05 times. What does this print for a
+      prefix sent four times within five minutes?
+    code: |
+      write, read = 1.25, 0.05
+      n = 4
+      cached = write + (n - 1) * read
+      uncached = n * 1.0
+      print(round(cached, 2), round(cached / uncached, 3))
+    options:
+      - id: a
+        text: "`1.4 0.35`"
+        correct: true
+        rationale: One write at 1.25 plus three reads at 0.05 is 1.40 base-input units, 35 percent of the uncached 4.0.
+      - id: b
+        text: "`1.25 0.312`"
+        rationale: The three reads cost something too.
+      - id: c
+        text: "`5.0 1.25`"
+        rationale: Only the first request writes; later ones read.
+    explanation: >-
+      With a five-minute lifetime the cache pays for itself as soon as the prefix is read once (1.25 plus 0.05 is less
+      than 2). With a one-hour lifetime the write costs 2 times base, so you need at least two reads to come out ahead.
+  - id: kc3
+    type: mcq
+    prompt: Which workload is the best fit for the Message Batches API?
+    options:
+      - id: a
+        text: A support chat where customers wait for each reply.
+        rationale: Batches can take up to 24 hours. Nobody waits that long in a chat.
+      - id: b
+        text: Re-scoring last month's 40,000 call transcripts with a new rubric, with results needed by the next morning.
+        correct: true
+        rationale: Yes. Nobody is waiting on any single item, the volume is high, and a next-morning deadline fits the window.
+      - id: c
+        text: An agent that calls tools in a loop until a task is done.
+        rationale: A batch request is single-shot; there is no tool loop inside a batch.
+      - id: d
+        text: A latency-critical path that uses fast mode.
+        rationale: The batch docs list fast mode as unsupported in batches.
+    explanation: >-
+      Batch is for work nobody is waiting on: evaluations, backfills, nightly enrichment. It halves the price of every
+      token, including cached ones, in exchange for asynchronous results. Results come back in any order, so key them
+      by `custom_id`.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Free wins first, trades second
+
+Anthropic's cost guidance sorts every cost lever into two groups, and the order matters. **Free wins** lower what you pay without lowering output quality: prompt caching (usually the largest), trimming input, and batch processing. **Tradeoffs** exchange capability for cost: effort, model choice, and multi-model designs such as routers and cascades. Do the free wins first and leave caching on permanently. Pull the trades last, one at a time, against an eval, because each one can quietly cost you answers.
+
+This lesson follows that order. It spends the most time on caching, because caching is where most teams lose money without noticing, and it ends with routing, because routing is where most teams spend engineering effort before measuring whether a simpler option would do.
+</Listen>
+
+<Listen>
+## Caching is a prefix match
+
+When you mark part of a request with `cache_control`, the API stores the processed prefix up to that point. A later request whose prompt starts with **exactly the same bytes** up to that point reads the stored prefix instead of processing it again. Three rules govern everything else.
+
+**Render order is tools, then system, then messages.** The cache key covers everything before a breakpoint in that order. A breakpoint on the last system block therefore caches your tool definitions and system prompt together.
+
+**Any byte change invalidates everything after it.** A different timestamp, a reordered JSON key, one extra tool: the prefix no longer matches from that point on. The docs' invalidation table adds settings to the list. Changing tool definitions invalidates the whole cache; changing `tool_choice` or adding an image invalidates the message part; changing thinking or effort settings always invalidates the message part; and requests at different speeds (fast mode versus standard) don't share cached prefixes. Caches are also scoped per model, and isolated per workspace on the Claude API.
+
+**Small prefixes don't cache, silently.** Each model has a minimum cacheable length (512 tokens on the current Opus, Sonnet, and Haiku models, per the caching docs at the time of writing). Below it, the request runs uncached with no error, and both cache meters read zero.
+
+Mechanically you have two ways to mark the cache. **Automatic caching** is a top-level `cache_control` field; the API places the breakpoint on the last cacheable block and moves it forward as a conversation grows. **Explicit breakpoints** go on specific content blocks, up to four per request. Use explicit breakpoints when the end of the prompt is unique per request (a one-off question, retrieved rows): put the marker at the end of the **shared** part, or every request writes an entry nobody reads.
+</Listen>
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+
+response = client.messages.create(
+    model="claude-sonnet-5-5",
+    max_tokens=16000,
+    system=[
+        {"type": "text", "text": SUPPORT_INSTRUCTIONS},
+        # Breakpoint at the end of the shared part: tools + instructions + policy manual.
+        {"type": "text", "text": POLICY_MANUAL, "cache_control": {"type": "ephemeral"}},
+    ],
+    messages=[
+        # Varies per request, so it sits after the breakpoint.
+        {"role": "user", "content": f"Today is {today}. Customer question: {question}"},
+    ],
+)
+
+u = response.usage
+total_input = u.input_tokens + (u.cache_creation_input_tokens or 0) + (u.cache_read_input_tokens or 0)
+print("read from cache:", (u.cache_read_input_tokens or 0) / total_input)
+```
+
+<Listen>
+## Lifetimes and the break-even
+
+The default cache entry lives for **five minutes**, and every read refreshes it at no extra cost. A **one-hour** lifetime is available with `"ttl": "1h"`. The lifetime is measured from the start of the request that writes or reads the entry, so a long generation eats into it.
+
+The prices make the decision arithmetic. On Claude, a five-minute write costs 1.25 times the base input price and a one-hour write costs 2 times. A read costs 0.05 times base on Opus 5.5 and Sonnet 5.5 and 0.1 times on most other models, at the time of writing. So a five-minute entry pays for itself the first time it is read (1.25 plus a read is less than 2 full-price sends), and a one-hour entry needs two reads.
+
+Which lifetime to pick depends on the **gaps between requests that share a prefix**, not on their average. If requests start less than five minutes apart, each one refreshes the five-minute entry and it stays warm indefinitely, so the one-hour lifetime buys nothing but a pricier write. If gaps of five to sixty minutes are common (a user who replies after twenty minutes, a batch job that takes longer than five minutes), the one-hour entry avoids repeated writes. Anthropic's cost guide offers a rule of thumb: prefer the one-hour lifetime when about one gap in twenty falls between five minutes and an hour. Beyond an hour, neither helps; you either re-warm on a schedule or accept the cold miss.
+
+Caching also helps latency, though less than cost on short prompts. Anthropic's latency cookbook measured caching cutting cost per task by 85 percent on its sample agent with no significant change in wait, while on a two-turn conversation with a 146,000-token prompt the second turn's wait fell from 1.7 seconds to 0.5. Long prefixes are where caching shows up in seconds.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s6-w2-cache-ttl-walk"
+  title="Simulate the cache for real traffic, then pick a lifetime"
+  starter={`READ_MULT = 0.05                       # Opus 5.5 and Sonnet 5.5 cache reads
+WRITE_MULT = {"5m": 1.25, "1h": 2.0}
+TTL_S = {"5m": 300, "1h": 3600}
+
+def cache_events(timestamps, ttl_s):
+    """Start times (seconds, any order) of requests sharing one cached prefix.
+
+    Return "write" or "read" for each request, in time order. The first
+    request writes. A later request reads if it starts LESS than ttl_s after
+    the previous request started (reads refresh the lifetime); otherwise the
+    entry has expired and it writes again.
+    """
+    # TODO
+    pass
+
+def prefix_cost(timestamps, prefix_tokens, base_price, ttl):
+    """Dollars spent on the prefix alone under lifetime ttl ("5m" or "1h").
+    base_price is USD per million input tokens."""
+    # TODO
+    pass
+
+def uncached_cost(timestamps, prefix_tokens, base_price):
+    return len(timestamps) * prefix_tokens * base_price / 1_000_000
+
+# A support agent's 20,000-token prefix on Opus 5.5 ($4 per million input).
+TRAFFIC = [0, 60, 200, 490, 1490, 1690, 3990, 8990]
+for ttl in ("5m", "1h"):
+    ev = cache_events(TRAFFIC, TTL_S[ttl])
+    print(ttl, ev, prefix_cost(TRAFFIC, 20_000, 4.0, ttl))
+print("uncached", uncached_cost(TRAFFIC, 20_000, 4.0))
+`}
+  tests={`ev5 = cache_events(TRAFFIC, 300)
+assert ev5 is not None, "cache_events returned None"
+assert ev5 == ["write", "read", "read", "read", "write", "read", "write", "write"], f"5m walk: {ev5}"
+ev1 = cache_events(TRAFFIC, 3600)
+assert ev1 == ["write", "read", "read", "read", "read", "read", "read", "write"], f"1h walk: {ev1}"
+assert cache_events([500, 0, 100], 300) == ["write", "read", "write"], "sort the timestamps first: gaps are 100 then 400"
+assert cache_events([0, 300], 300) == ["write", "write"], "a request exactly one lifetime later finds the entry expired"
+c5 = prefix_cost(TRAFFIC, 20_000, 4.0, "5m")
+c1 = prefix_cost(TRAFFIC, 20_000, 4.0, "1h")
+assert abs(c5 - 0.416) < 1e-9, f"5m: 4 writes at 1.25 and 4 reads at 0.05 of $0.08, got {c5}"
+assert abs(c1 - 0.344) < 1e-9, f"1h: 2 writes at 2.0 and 6 reads at 0.05 of $0.08, got {c1}"
+steady = list(range(0, 3600, 60))
+assert prefix_cost(steady, 20_000, 4.0, "5m") < prefix_cost(steady, 20_000, 4.0, "1h"), "steady traffic: 5m is cheaper"`}
+  solution={`def cache_events(timestamps, ttl_s):
+    events, prev = [], None
+    for t in sorted(timestamps):
+        events.append("read" if prev is not None and t - prev < ttl_s else "write")
+        prev = t
+    return events
+
+def prefix_cost(timestamps, prefix_tokens, base_price, ttl):
+    unit = prefix_tokens * base_price / 1_000_000
+    total = 0.0
+    for e in cache_events(timestamps, TTL_S[ttl]):
+        total += unit * (WRITE_MULT[ttl] if e == "write" else READ_MULT)
+    return total`}
+>
+This is the "TTL walk" Anthropic's cost guidance recommends for estimating hit rates from request timestamps you already log. Implement both functions, then press **Check my answer**. On this bursty traffic the one-hour lifetime wins ($0.344 versus $0.416, against $0.64 uncached). The last test shows the opposite on steady traffic. Run the walk on your own logs before choosing.
+</PyRunner>
+
+<Callout type="pitfall" title="Silent invalidators">
+Caching failures don't raise errors; requests succeed and the bill is just higher. Grep the code that builds your prompt prefix for these: `datetime.now()` or a request id in the system prompt; `json.dumps` without `sort_keys=True` (or iterating a set) when serializing context; a per-user tool list (tools render first, so nothing caches across users); conditional system sections that create a different prefix for every flag combination; switching model, speed, or top-level effort mid-conversation; and fanning out many identical requests at once (a cache entry becomes readable only after the first response starts, so parallel twins all pay full price; send one, wait for it to start streaming, then send the rest). The fix for the first group is always the same: move the dynamic piece after the last breakpoint, make it deterministic, or delete it. Then add a standing test that a second identical request shows `cache_read_input_tokens` above zero.
+</Callout>
+
+<Listen>
+## Batch: half price for work nobody is waiting on
+
+The Message Batches API takes a list of ordinary Messages requests, processes them asynchronously, and bills every token at 50 percent of the standard price, according to Anthropic's pricing page. The discount stacks with caching discounts. The docs give the operating envelope: up to 100,000 requests or 256 MB per batch, most batches complete within an hour, and anything not finished in 24 hours expires. Results stay downloadable for 29 days.
+
+Batch fits evaluation runs, backfills, nightly classification or enrichment, and report generation: anything where a person isn't waiting on one item. It doesn't fit chat, agent loops (a batch request is single-shot, so there is no tool loop inside it), or fast mode and streaming, which the batch docs list as unsupported.
+
+Three engineering details catch teams out. **Results arrive in any order**, so key them by `custom_id`, never by position. **Each result has its own status** (succeeded, errored, canceled, expired), so a batch that "ended" can still contain failures you must retry or report. **Caching inside a batch is best-effort**: requests run concurrently, so not every request can read what another wrote. Because batches can run longer than five minutes, the batch docs suggest the one-hour lifetime when many requests share a prefix.
+</Listen>
+
+```python
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from anthropic.types.messages.batch_create_params import Request
+
+batch = client.messages.batches.create(
+    requests=[
+        Request(
+            custom_id=f"call-{call.id}",
+            params=MessageCreateParamsNonStreaming(
+                model="claude-haiku-5-5",
+                max_tokens=2000,
+                system=[{"type": "text", "text": RUBRIC, "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+                messages=[{"role": "user", "content": call.transcript}],
+            ),
+        )
+        for call in calls
+    ]
+)
+# Later: poll client.messages.batches.retrieve(batch.id) until processing_status == "ended",
+# then iterate client.messages.batches.results(batch.id) and branch on result.result.type.
+```
+
+<Listen>
+## Effort: the first trade
+
+Effort (`output_config.effort`) tells the model how much work to put in: how deeply to think and how many tool calls to make. Current Claude models accept `low`, `medium`, `high`, `xhigh`, and `max`. Defaults differ by model, which is a trap when you migrate: Opus 5.5 and Haiku 5.5 default to `medium`, while Sonnet 5.5 defaults to `high`. Set it explicitly per route.
+
+Effort is a real trade, so measure it. Anthropic's published runs of Opus 5.5 on a coding benchmark show the shape: `low` solved 87.4 percent at about $0.11 per task, `medium` 92.8 percent at $0.21, `high` 95.3 percent at $0.29, and `xhigh` 96.7 percent at $0.74. On research and knowledge work the guide reports much flatter curves, where lower effort gives up little. Your curve belongs to your workload.
+
+When you have a cheap failure signal (tests, a validator, a checker), a useful pattern is to **run everything at low effort and re-run only the failures at a higher one**. In the same published runs this reached about 97 percent solved for about $0.17 per task, against 95.3 percent for $0.29 running everything at `high`. Two caveats: price in the checker and the extra wall-clock time on failures, and sweep each effort level in a separate session, because changing top-level effort mid-conversation invalidates the message cache.
+</Listen>
+
+<Listen>
+## Routing and cascades, and the simpler thing to try first
+
+A **router** sends each request to one of several models based on a prediction of difficulty. A **cascade** tries a cheap model first and escalates to a stronger one when a check fails. Both have research behind them. Chen, Zaharia, and Zou's FrugalGPT (2023) learned which combination of models to query and reported matching GPT-4's performance with up to 98 percent cost reduction on their benchmarks. RouteLLM (Ong and colleagues, 2024) trained routers on human preference data to choose between a strong and a weak model, and reported cost savings of over two times in certain cases without degrading response quality on the benchmarks they evaluated.
+
+Those results are real, and they are measured on the authors' tasks and the model prices of their time. Before you build one, measure the simpler alternative Anthropic's guidance recommends: **the strongest model you'd consider, at lower effort, on your own tasks.** Its reasoning is concrete. A newer model at lower effort often matches or beats a previous-generation model at high effort; one model means one cache namespace, while a cascade splits traffic across models whose caches are separate; and a router adds a component that can be wrong. The guide's rule: tune one model before you add a second, and build a pairing only if it beats the single model's whole curve of score against spend.
+
+If a router does earn its place, treat it like any model output and check it. Log every routing decision, measure quality separately on the traffic routed down (the cheap path is where silent regressions hide), track the escalation rate, and keep a fixed eval that runs both paths on the same inputs.
+</Listen>
+
+<Video id="QIriO1-vHYw" title="Getting more out of the Claude Platform" channel="Claude" minutes={28} source="https://claude.com/code-with-claude/session/sf-getting-more-out-of-the-claude-platform">
+A Code w/ Claude 2026 session from Anthropic's Claude Platform product lead. It demonstrates prompt caching, keeping agent context lean (tool search, programmatic tool calling, compaction), and the advisor strategy, a two-model pairing. As you watch, ask of each technique: which bucket of tokens from lesson 4 does it shrink, and how would you verify the saving in the usage fields?
+</Video>
+
+<Listen>
+## The same levers at OpenAI and Google
+
+Every major provider now offers caching and a discounted batch tier. The mechanics differ in ways that matter when you port a system or compare costs. This table summarizes each provider's own documentation as read on the review date; check the linked pages before relying on a detail.
+</Listen>
+
+| | Claude (Anthropic) | OpenAI | Gemini (Google) |
+|---|---|---|---|
+| How caching turns on | Explicit `cache_control` breakpoints (up to 4) or top-level automatic caching | Automatic on supported models; explicit breakpoints on GPT-5.6 and later | Implicit caching on by default for Gemini 2.5 and newer; explicit cache objects on some older models (not Gemini 4) |
+| Minimum prefix | 512 tokens on current Opus, Sonnet, Haiku | 1,024 visible input tokens on GPT-5.6 and later | 4,096 tokens on Gemini 4 and 3.x models listed; 2,048 on 2.5 |
+| Lifetime | 5 minutes (refreshed on read) or 1 hour | 30-minute default or 12 hours on GPT-5.6 and later; older models in-memory or 24 hours | Not stated on the caching page |
+| Price shape | Writes 1.25x (5 min) or 2x (1 h) base; reads 0.05x to 0.1x | Discounted cached input ("up to 95%"); GPT-5.6 and later also have a write rate | Savings passed through automatically; see the pricing page |
+| Where to verify | `cache_read_input_tokens`, `cache_creation_input_tokens` | `usage.input_tokens_details.cached_tokens` | A cached-token count in the usage metadata |
+| Batch tier | Message Batches: 50% off, results within 24 h, up to 100,000 requests | Batch API: 50% off, 24 h window, JSONL file, separate rate-limit pool | Batch API: 50% of standard cost, 24 h target, inline or JSONL file |
+| Batch and caching together | Discounts stack; hits best-effort | Not covered here; check the guide | Cache hits billed at caching rates, not the batch discount |
+
+<Callout type="note" title="A middle tier between batch and real time">
+OpenAI also offers **flex processing**, a service tier for synchronous requests billed at Batch API rates in exchange for slower responses and occasional "resource unavailable" errors when capacity is short. It suits evaluations and enrichment jobs where you want a normal request-response shape but don't need speed. Treat its 429s as a signal to back off or retry on the standard tier, per OpenAI's guide.
+</Callout>
+
+<DragOrder
+  client:visible
+  prompt="Put these cost levers in the order Anthropic's guidance recommends applying them"
+  items={[
+    "Turn on prompt caching and verify reads in the usage fields",
+    "Trim input: delete recaps of tool schemas, defer rarely used reference material",
+    "Move work nobody waits on to the Batch API",
+    "Sweep effort on the current model against the eval",
+    "Try a newer or smaller model, re-sweeping effort from its default",
+    "Consider a router, cascade, or advisor only if it beats the single model's whole curve",
+  ]}
+  explanation="Free wins (caching, input hygiene, batch) first, because they don't trade quality. Then the trades, cheapest to reverse first: effort, then model, then multi-model architectures, each measured against the eval before you keep it."
+/>
+
+<GoDeeper title="The break-even, in general">
+Let w be the write multiplier, r the read multiplier, and suppose a prefix is sent n times with every request after the first a cache hit. The cached cost is w plus (n minus 1) times r, in units of one uncached send, against n uncached. Caching wins when w + (n - 1)r is less than n, that is when n is greater than (w - r)/(1 - r). With w = 1.25 and r = 0.05 that bound is about 1.26, so two sends are enough. With w = 2 (the one-hour lifetime) it is about 2.05, so three sends. The real-world complication is that hits aren't guaranteed: gaps longer than the lifetime turn reads back into writes, which is why simulating your actual timestamps (the exercise above) beats any average.
+
+On FrugalGPT-style cascades, the same algebra applies to models. If a cheap model costs c, a strong one costs C, and the cheap model's answer is accepted with probability a, the expected cost per request is c + (1 - a)C. That beats the strong model alone only when c is less than aC, and only if the accepted answers are actually right, which is a property of your checker, not of the cascade.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Caching is a byte-exact prefix match over tools, system, and messages: keep the prefix frozen, put breakpoints at the end of the shared part, choose the lifetime from real gaps, and verify with the usage fields after every change to prompt assembly. Send work nobody waits on through batch, keyed by `custom_id`. Treat effort as a measured trade, and before you build a router, measure the strongest model at lower effort. The next lesson turns from dollars to seconds.
+</Listen>

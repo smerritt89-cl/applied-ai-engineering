@@ -1,0 +1,309 @@
+---
+id: capstone-w6-l2
+studio: capstone
+week: 6
+order: 2
+title: Writing it up and defending it
+summary: Technical writing for a mixed audience, presenting eval results honestly (intervals, paired differences, held-out headlines, disclosed variants), diagrams that make one point, recording a 5 to 8 minute demo that includes a failure, and answering hard questions with evidence.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Structure a report so a non-engineer can decide from the first paragraph and an engineer can reproduce from the appendix
+  - Report eval results with n, intervals, paired differences, and held-out headlines, and choose wording that matches what the interval supports
+  - Draw an architecture diagram that makes one point, captioned with its takeaway
+  - Plan and record a short demo built from eval cases, including a failure and an attack
+  - Prepare for and answer hard reviewer questions by separating what you measured from what you believe
+sources:
+  - { id: google-tech-writing, use: adapted, where: "Technical Writing One and Two" }
+  - { id: google-tw-audience, use: adapted, where: "Role and proximity; the curse of knowledge" }
+  - { id: google-tw-documents, use: adapted, where: "Scope, audience, key points first" }
+  - { id: google-tw-illustrations, use: adapted, where: "Caption first; limit information per drawing" }
+  - { id: ubl-2020-design-docs, use: summarized, where: "Alternatives considered; review" }
+  - { id: python-pep-1, use: summarized, where: "Rationale and Rejected Ideas sections" }
+  - { id: miller-2024-error-bars, use: summarized }
+  - { id: anthropic-stats-evals-post, use: summarized }
+  - { id: brown-cai-dasgupta-2001, use: summarized }
+  - { id: mitchell-2019-model-cards, use: summarized, where: "Intended use, out-of-scope uses, caveats" }
+  - { id: hamel-llm-judge, use: linked }
+  - { id: klein-2007-premortem, use: summarized }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      During your defense, a reviewer asks: "Your judge scores faithfulness. How often does it disagree with a
+      person on answers that are actually unfaithful?" You calibrated the judge on 70 labels and reported TPR and
+      TNR, but you don't remember the numbers, and you never looked at which cases it got wrong. What is the best
+      answer?
+    options:
+      - id: a
+        text: "\"It agrees with humans about 90 percent of the time,\" because that is roughly what judges achieve in the literature."
+        rationale: That answers a different question (overall agreement, not the rate on unfaithful answers) with a number you didn't measure. Reviewers notice both.
+      - id: b
+        text: Point to the TNR in your calibration table with its interval and n, say plainly that you haven't analyzed the disagreements, and say what you would expect to learn from doing so.
+        correct: true
+        rationale: Yes. It gives the measured number, separates it from what you haven't done, and turns the gap into a next step.
+      - id: c
+        text: Explain that LLM judges are an accepted industry practice, so the exact rate is less important than the trend.
+        rationale: Appeals to common practice don't answer a measurement question, and the trend depends on the judge's error rates too.
+    explanation: >-
+      The question is about the judge's true negative rate: how often it catches unfaithful answers. The best
+      answers in a defense quote what was measured, with its uncertainty, and are explicit about what was not
+      measured. "I haven't looked at that; here is how I would" is a strong answer, not a weak one.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      On 120 held-out cases, your final system's task success minus the baseline's has a paired 95 percent bootstrap
+      interval of -0.01 to 0.07 (mean 0.03). The system costs four times as much per task. Which summary sentence is
+      honest?
+    options:
+      - id: a
+        text: "\"The system significantly outperforms the baseline, with a 3-point gain.\""
+        rationale: The interval includes zero, so the data don't establish a gain, and "significantly" invites a reading the evidence doesn't support.
+      - id: b
+        text: "\"On held-out data we could not distinguish the system from the baseline: the difference was between about 1 point worse and 7 points better, at four times the cost.\""
+        correct: true
+        rationale: Yes. It states the range in plain words, does not claim a win, and puts the cost next to it so a reader can decide.
+      - id: c
+        text: "\"The system is no better than the baseline.\""
+        rationale: Also an overclaim, in the other direction. An interval that includes zero doesn't show equivalence; it reaches up to 7 points better.
+      - id: d
+        text: "\"The system improves task success by 3 percent.\""
+        rationale: A point estimate without its interval hides the main finding, and "3 percent" is ambiguous (3 points or 3 percent of the baseline rate?).
+    explanation: >-
+      An interval that includes zero means "not shown," not "no difference." Report the range, use points for
+      differences in rates, and put cost beside quality. A reader may still choose the system (perhaps the slices that
+      matter improved), but they should choose it knowing the evidence.
+  - id: kc3
+    type: multi
+    prompt: Which belong in the limitations and risks section of a capstone report? Select all that apply.
+    options:
+      - id: a
+        text: Specific failure cases from the eval set, with how often each kind occurs
+        correct: true
+        rationale: Concrete examples with frequencies are the most useful thing a reader can get from this section.
+      - id: b
+        text: Uses you would advise against, and users or data the system was not tested on
+        correct: true
+        rationale: Model cards ask for out-of-scope uses for exactly this reason. It stops readers stretching your evidence.
+      - id: c
+        text: The final state of the risk register, including risks that did not materialize
+        correct: true
+        rationale: It shows what you looked for, which is evidence of rigor, and gives the next team a starting list.
+      - id: d
+        text: A list of features you plan to add, presented as limitations so they sound like strengths
+        rationale: Readers see through this. A roadmap belongs in next steps, and limitations should be stated as limitations.
+    explanation: >-
+      A good limitations section makes your results more credible, not less. It tells a reader where the evidence
+      stops: what fails, how often, on what kinds of input, and what you would not use the system for.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The write-up is part of the system
+
+By week 6 you have built something that works, measured how well, and hardened it. None of that reaches anyone unless the write-up and demo carry it. That is not a soft skill bolted on at the end: in real teams, the report is how a system gets adopted, funded, or stopped, and a reviewer who can't follow your evidence will assume it isn't there.
+
+This lesson covers four things: writing one report that serves two very different readers, presenting eval results without overclaiming, recording a demo that shows evidence rather than polish, and answering the hard questions in a defense. You already have the raw material: the scope doc from week 1, the experiment log, the eval table, the risk register, and the traces. The job now is selection and honesty.
+
+Google's free Technical Writing courses (One and Two) are the main writing reference here. They are written for engineers, short, and licensed so that this lesson can adapt their advice. If you have an afternoon, take Technical Writing One in full; its units on audience, documents, and paragraphs pay off in every report you write after this one.
+</Listen>
+
+<Listen>
+## Two readers, one report
+
+Your report has at least two audiences. One is a **decision-maker** (a hiring manager, a client lead, a head of delivery) who wants to know what the system does, how well, at what cost, and whether to use it. The other is an **engineer** who wants to know whether to believe you, and could reproduce your numbers if you let them.
+
+Google's Technical Writing One course suggests defining your audience by **role** first and then by **proximity**: how close each reader is to the specific knowledge, and how recently they used it. A staff engineer who has never built a RAG system and a PM who has used one daily are close in different ways. The same unit names the trap you are most likely to fall into: the **curse of knowledge**. After six weeks inside your project, "TNR," "should-abstain," and "the held-out split" feel like ordinary words. To your decision-maker they are noise.
+
+The fix is structural, not a matter of dumbing down. The course's documents unit recommends stating scope and audience at the start and putting the key points up front, because readers may stop after the first paragraph. So the report template opens with a one-paragraph summary written for the decision-maker, in plain words: the user, the job, how well it works compared with the baseline, what it costs, the biggest risk, and the recommendation. Everything an engineer needs goes in the sections and appendices that follow, where precision matters more than brevity.
+
+Test the summary on a real person outside engineering. Ask them to tell you, in their own words, what the system does, how well, and what the main risk is. If they can't, rewrite the summary, not the reader.
+</Listen>
+
+<Listen>
+## Show the decisions, including the ones you rejected
+
+The middle of the report explains the system. The temptation is to describe what you built in the order you built it. Readers learn more from **why** than from **what**.
+
+Two long-lived design-writing traditions agree on this. Ubl's account of design docs at Google calls the alternatives-considered section one of the most important: it shows the trade-offs that led to the chosen design, which is what a reviewer is actually evaluating. Python's PEP 1, which governs how Python language changes are proposed, asks for a Rationale section that explains why particular design decisions were made, and a Rejected Ideas section that records the alternatives and why they lost, so the same arguments don't have to be repeated.
+
+For your capstone, a decision record can be three lines: the choice, the alternative, and the evidence. "Hybrid search over dense-only: recall@10 rose from 0.71 to 0.83 on 180 labeled queries (paired difference 0.12, interval 0.07 to 0.17); cost unchanged." A decision you made by judgment, without measurement, is fine too, as long as you say so. What reviewers distrust is a design presented as if it were the only possibility.
+</Listen>
+
+<Listen>
+## Presenting eval results honestly
+
+This is where reports most often go wrong, and where your Studio 3 training is a real advantage. Evan Miller's paper on adding error bars to evals, and Anthropic's companion post, make the case that an eval score is an estimate from a sample, and should be reported like one. Six rules follow for the capstone.
+
+**Every number has n and an interval.** "74 percent" alone tells a reader nothing about how much it would move on another sample. "74 percent (95 percent interval 65 to 82, n=100)" does.
+
+**Comparisons are paired.** Report the per-case difference against the baseline with its interval, not two separate scores side by side. Two overlapping intervals can still hide a clear paired difference, and the reverse.
+
+**The headline is held-out.** Dev numbers are what you tuned against. Report them, but lead with held-out, and say how many times you ran it.
+
+**Disclose the variants.** If you tried twelve prompt versions and report the best, say twelve. The more variants you try against the same cases, the more likely the best one looks good by chance.
+
+**Words match the interval.** If the interval excludes zero, you may say the system is better, by an amount in that range. If it includes zero, say you could not distinguish them, and give the range. Avoid "significant" unless you mean a stated test, because readers hear it as "important." For a cheaper model, the honest claim is equivalence within a tolerance you set in advance: the whole interval sits inside it.
+
+**Translate for the summary.** "About 3 in 4 answers fully correct, and we'd expect between roughly 2 in 3 and 4 in 5 on new questions like these" is accurate and readable. Use points, not percent, for differences between rates.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="capstone-honest-headline"
+  title="Write the headline your numbers support"
+  starter={`import math
+
+def wilson(k, n, z=1.96):
+    """Wilson score interval for k successes out of n, clamped to [0, 1]. Returns (lo, hi)."""
+    # TODO
+    pass
+
+def headline(name, k, n):
+    """Return e.g. "Task success: 72% (95% CI 63% to 80%, n=100)".
+    Round the rate and both bounds to whole percents with round()."""
+    # TODO
+    pass
+
+def verdict(lo, hi, tolerance=0.0):
+    """Classify a paired difference (new minus baseline) from its 95% interval [lo, hi].
+      "better"                     if lo > 0
+      "worse"                      if hi < 0
+      "equivalent within tolerance" if tolerance > 0 and -tolerance <= lo and hi <= tolerance
+      "no clear difference"        otherwise
+    """
+    # TODO
+    pass
+
+print(headline("Task success", 72, 100))
+print(verdict(-0.01, 0.07))
+print(verdict(-0.02, 0.015, tolerance=0.03))
+`}
+  tests={`lo, hi = wilson(72, 100)
+assert abs(lo - 0.6251) < 1e-3 and abs(hi - 0.7986) < 1e-3, f"wilson(72, 100) should be about (0.625, 0.799), got {(lo, hi)}"
+lo0, hi0 = wilson(0, 20)
+assert lo0 == 0 and abs(hi0 - 0.1611) < 1e-3, "with 0 of 20 the interval is about 0 to 16%, not a point at 0 (and lo must not be negative)"
+lo1, hi1 = wilson(20, 20)
+assert hi1 <= 1 and abs(lo1 - 0.8389) < 1e-3, "with 20 of 20 the interval still has a lower bound well below 100%"
+assert headline("Task success", 72, 100) == "Task success: 72% (95% CI 63% to 80%, n=100)", headline("Task success", 72, 100)
+assert headline("Abstained correctly", 0, 20) == "Abstained correctly: 0% (95% CI 0% to 16%, n=20)"
+assert verdict(0.02, 0.09) == "better"
+assert verdict(-0.08, -0.01) == "worse"
+assert verdict(-0.01, 0.07) == "no clear difference", "an interval that includes zero is not a win"
+assert verdict(-0.01, 0.07, tolerance=0.03) == "no clear difference", "the interval reaches 7 points, outside a 3-point tolerance"
+assert verdict(-0.02, 0.015, tolerance=0.03) == "equivalent within tolerance"
+assert verdict(-0.02, 0.015) == "no clear difference", "without a tolerance set in advance, you can't claim equivalence"`}
+  solution={`def wilson(k, n, z=1.96):
+    p = k / n
+    denom = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return max(0.0, center - half), min(1.0, center + half)
+
+def headline(name, k, n):
+    lo, hi = wilson(k, n)
+    return f"{name}: {round(100 * k / n)}% (95% CI {round(100 * lo)}% to {round(100 * hi)}%, n={n})"
+
+def verdict(lo, hi, tolerance=0.0):
+    if lo > 0:
+        return "better"
+    if hi < 0:
+        return "worse"
+    if tolerance > 0 and -tolerance <= lo and hi <= tolerance:
+        return "equivalent within tolerance"
+    return "no clear difference"`}
+>
+Implement the three functions, then press **Check my answer**. The Wilson interval is the one Brown, Cai, and DasGupta (2001) recommend over the textbook "p plus or minus 1.96 standard errors," which behaves badly for small n and rates near 0 or 1. Notice the second test: zero failures out of 20 still leaves room for a failure rate up to about 16 percent. That is the sentence your limitations section needs when you tested few cases of a kind. The paired interval passed to `verdict` would come from your bootstrap in the eval harness.
+</PyRunner>
+
+<Predict
+  title="Which verdict?"
+  language="text"
+  code={`Cheaper model vs current model, paired difference in task success on held-out:
+  mean -0.004, 95% interval -0.031 to 0.022, n = 150
+Tolerance agreed before the run: 0.03 (3 points)`}
+  options={["better", "worse", "equivalent within tolerance", "no clear difference"]}
+  answer={3}
+>
+The lower bound, -0.031, falls just outside the 3-point tolerance, so the whole interval is not inside it. The honest wording is "no clear difference; we can't yet rule out a drop of about 3 points." More held-out cases, or a paired design with less noise, could settle it. Resist moving the tolerance after seeing the result: that is exactly the kind of choice reviewers ask about.
+</Predict>
+
+<Callout type="pitfall" title="Rounding away the uncertainty">
+The most common honest-results failure is not fabrication but compression. The interval appears in the appendix, and the summary says "the system improved accuracy by 8 percent." Dev numbers become the headline because they are higher. A judge's raw rate is quoted when its corrected rate is lower. "Zero injection successes" is reported without saying it was out of 20 attempts. Each choice is small and each makes the result look stronger than the evidence. Check your summary paragraph against the results table line by line before you publish, and ask someone else to do the same.
+</Callout>
+
+<Listen>
+## A diagram that makes one point
+
+Your report needs an architecture diagram, and reviewers will look at it before they read a word. Google's Technical Writing Two course has a short unit on illustrations with advice that transfers directly. **Write the caption first**, stating the takeaway ("Every tool call passes through a permission check; only read tools run without confirmation"), and then draw the picture that supports it. **Limit the information** in a single drawing; the course's rule of thumb is about what you could explain in one paragraph, or around five bullet points. And for a complex system, **show an overview first**, then separate drawings for the subsystems a reader needs to understand.
+
+For the capstone that usually means two diagrams: the reference-architecture overview, simplified to your actual components, and one focused diagram of whichever path carries your argument. That is often the agent loop with its limits and stop conditions, or the verification path that decides between answering, abstaining, and routing to a person. Label arrows with what flows along them. Remove every box a reader doesn't need for the caption's point.
+</Listen>
+
+<Listen>
+## Recording the demo
+
+The capstone demo is 5 to 8 minutes. That limit is deliberate: long enough to show one real task end to end, short enough that you must choose. The project page has the full script outline. Four principles sit behind it.
+
+**Demo from the eval set.** Choose the case you show from your eval cases (ideally at random from a slice you care about), and say so. A hand-picked showcase proves that one example works; a case from the eval set connects the demo to the numbers.
+
+**Show a failure.** Include an abstention or an error, and quote its frequency from the eval table. It feels risky. It is the single most credibility-building minute in the video, because every experienced reviewer knows the system fails sometimes and is waiting to see whether you know how often.
+
+**Show the checks, not just the output.** Narrate the decision points: why the agent called this tool, how the citation was verified, what the guardrail did with the injected instruction. Open one trace and read its cost and latency aloud.
+
+**Make it reproducible.** Write a script, rehearse once, and record in a fresh environment (a new container or a clean checkout) so nothing depends on state you forgot. Add captions. Don't edit out slow steps without saying you did; if a step takes 20 seconds in reality, the viewer should know.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the segments of a 5 to 8 minute capstone demo"
+  items={[
+    "The user, the job, and the number that makes it painful",
+    "The headline result: final versus baseline on held-out, with the interval and cost per task",
+    "One task from the eval set, end to end, narrating the agent's decisions and the citation checks",
+    "A failure or abstention, with how often it happens",
+    "An injection attempt from the suite, and what stops it",
+    "Under the hood: architecture overview, one trace, the CI gate",
+    "Limits, what not to use it for, and what comes next",
+  ]}
+  explanation="Problem before system, result before mechanism. Putting the headline second means a viewer who stops after a minute still leaves with the evidence. Failure and attack come before the architecture tour so they are not cut when you run long."
+/>
+
+<Listen>
+## Limitations and risks: where the evidence stops
+
+A limitations section is not an apology. It tells readers where your evidence ends, so they don't stretch it. Model cards, proposed by Mitchell and colleagues in 2019 as a standard for reporting on models, ask authors to state intended uses, uses that are out of scope, and caveats, precisely so that someone deciding whether to adopt a model can check it against their own situation. The same structure works for a system.
+
+Include specific failure examples with how often each kind occurs. Name the users, inputs, and conditions you didn't test ("English only; RFPs under 80 pages; no scanned documents"). Publish the final risk register, including risks that never materialized, because it shows what you looked for. State the small-sample caveats honestly: "no successful injections in 24 attempts" is consistent with a real success rate of a few percent or more, as the Wilson exercise showed. And say what you would advise against: "Not suitable as the only check before a bid submission."
+
+Reviewers read this section to judge your judgment. A short or vague one suggests you either didn't look or didn't want to say.
+</Listen>
+
+<Listen>
+## Answering hard questions
+
+The defense is where a reviewer tests whether the report holds up. Preparation is most of it.
+
+**Write your answers in advance.** The project page lists likely reviewer questions. Answer each in writing, with a pointer to the evidence (a table row, a log entry, a test). Writing exposes the answers you don't have while there is still time to get them.
+
+**Run a premortem on your own defense.** Klein's premortem works here too: imagine the defense went badly, and list the questions that sank it. Typical ones: "what did the baseline score on held-out?", "how many prompt variants did you try?", "what happens if the retrieved document is the attack?" Then answer them.
+
+**Separate what you measured from what you believe.** The strongest answers sound like: "We measured X, with this interval. We believe Y, because of Z, but we didn't test it." Reviewers are not looking for certainty. They are checking whether you know which of your statements are evidence and which are hypotheses.
+
+**"I don't know, and here's how I'd find out" is a good answer.** It is far better than a guess. A guess delivered confidently, and later found wrong, costs you the credibility of everything else you said.
+
+**Concede, then quantify.** When a reviewer finds a real weakness, agree, and size it: "Yes, the eval set has only nine scanned-PDF cases, so that slice's interval is wide, roughly 40 to 90 percent." Then say what you would do about it.
+
+**Record what you learn.** Note every question you couldn't answer well and every change you would make. If you had a peer or mentor review, list what they asked and what you changed. That list is part of the defense checklist, and in a real team it is the start of the next design review.
+</Listen>
+
+<GoDeeper title="Why Wilson, and when intervals need more care">
+The textbook interval for a proportion, p plus or minus 1.96 times the square root of p(1 minus p) over n, is the Wald interval. Brown, Cai, and DasGupta (2001) showed its actual coverage can fall well below 95 percent, erratically, even at moderate n, and that it collapses to a single point when p is 0 or 1. They recommend the Wilson or Jeffreys interval for small samples. For the capstone's comparisons, the paired bootstrap from Studio 3 remains the right tool. Miller (2024) adds a further caution: when eval cases come in related groups (several questions about one document, several turns of one task), errors within a group are correlated, and intervals that treat every case as independent can be too narrow. Anthropic's companion post reports clustered standard errors on some popular evals more than three times the naive ones. If your eval set has that structure, resample by group (the Studio 3 project's clustered-bootstrap stretch goal), and say in the report which you did. When your claims rest on a judge, the corrected rates from judge calibration belong in the same table; Hamel Husain's guide to LLM judges explains why TPR and TNR, not raw agreement, are the numbers to report.
+</GoDeeper>
+
+<Listen>
+## Before you submit
+
+Read the report summary aloud to someone outside engineering and ask them what they would decide. Check every number in the summary against the results table. Confirm the headline is held-out, with n and an interval, and that the number of held-out runs and variants is disclosed. Watch your demo once at normal speed as if you were a reviewer, and note the first moment you would have stopped trusting it. Confirm one command on a tagged commit reproduces the headline numbers. Then work through the defense checklist on the project page. When it is all green, you have something rarer than a working AI system: one whose quality, cost, and risks a stranger can verify.
+</Listen>

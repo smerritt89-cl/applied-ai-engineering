@@ -1,0 +1,308 @@
+---
+id: s6-w1-l3
+studio: s6
+week: 1
+order: 3
+title: Deploying an LLM app
+summary: Where an LLM service can run (serverless functions, edge workers, containers), what each platform's duration and streaming limits mean for model calls, how to handle secrets and separate environments, and a deploy checklist you can automate.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Compare serverless functions, edge workers, and containers for LLM workloads, using each platform's documented duration and streaming limits
+  - Set SDK timeouts and request deadlines that fit inside a platform's limits
+  - Store and inject model API keys safely, and separate development, preview, and production environments
+  - Choose a hosting option with a heuristic grounded in measured request durations
+  - Write and automate a pre-deploy checklist for an LLM service
+sources:
+  - { id: vercel-functions-limits, use: summarized, where: "Max duration; Edge runtime; request body size; cost and usage" }
+  - { id: vercel-env-vars, use: summarized }
+  - { id: cloudflare-workers-limits, use: summarized, where: "CPU time; duration; client disconnects" }
+  - { id: cloudflare-workers-secrets, use: summarized }
+  - { id: cloud-run-request-timeout, use: summarized }
+  - { id: cloud-run-secrets, use: summarized }
+  - { id: claude-authentication-docs, use: summarized, where: "Key types; key expiration; Workload Identity Federation" }
+  - { id: claude-rate-limits-docs, use: summarized, where: "Setting lower limits for workspaces" }
+  - { id: claude-errors-docs, use: summarized, where: "Long requests" }
+  - { id: twelve-factor-config, use: summarized }
+  - { id: owasp-secrets-cheatsheet, use: summarized }
+  - { id: google-sre-cascading-failures, use: linked }
+  - { id: owasp-llm-top10, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your chat endpoint runs as a serverless function whose platform limit is 300 seconds. The code uses
+      `anthropic.Anthropic()` with defaults, and your retry-and-fallback logic is in the handler. During an
+      overload, users report blank errors and your logs show no fallback ever ran. What is the most likely cause and fix?
+    options:
+      - id: a
+        text: The fallback model was also overloaded; add a third model.
+        rationale: The logs show the fallback never ran at all, so the chain never got that far.
+      - id: b
+        text: The SDK's default 10-minute timeout (plus retries) outlives the 300-second platform limit, so the platform kills the function before your code regains control. Set a per-request timeout and a deadline well inside the platform limit.
+        correct: true
+        rationale: Yes. Your error handling only runs if your code is still alive when the call fails.
+      - id: c
+        text: Serverless functions cannot call external APIs during an overload.
+        rationale: They can. The problem is timing, not network access.
+    explanation: >-
+      Timeouts must nest: SDK attempt timeout, then your request deadline, then the platform's limit, each with room
+      to spare. When the outer limit is shortest, the platform terminates the request with its own error and none of
+      your fallbacks, logging, or degraded responses run.
+  - id: kc2
+    type: mcq
+    prompt: Cloud Run's secrets docs describe exposing a Secret Manager secret as an environment variable or as a mounted volume. Why do they recommend pinning a version for the environment-variable form?
+    options:
+      - id: a
+        text: Environment variables are resolved when the instance starts, so "latest" would mean different instances can run with different values depending on when they started.
+        correct: true
+        rationale: Right. A pinned version makes every instance's secret explicit and changes it only through a deploy.
+      - id: b
+        text: Environment variables can't hold values longer than one version.
+        rationale: There is no such rule. The issue is when the value is read.
+      - id: c
+        text: Mounted volumes are insecure, so pinning compensates.
+        rationale: The docs present volumes as the option that works well with rotation, not as insecure.
+    explanation: >-
+      A value read at startup is frozen for the life of that instance. That is fine, and predictable, if you pin a
+      version and roll it out like code. If you want rotation without redeploying, read the secret at use time
+      (a mounted volume, or a secret-manager client) and handle the read failing.
+  - id: kc3
+    type: multi
+    prompt: Which of these belong in an automated pre-deploy check for an LLM service? Select all that apply.
+    options:
+      - id: a
+        text: Fail if any variable exposed to the client bundle looks like a secret
+        correct: true
+        rationale: Public-prefixed variables are inlined into browser code by some frameworks.
+      - id: b
+        text: Fail if the request deadline does not fit inside the platform's duration limit with a margin
+        correct: true
+        rationale: Otherwise the platform, not your code, decides how requests fail.
+      - id: c
+        text: Fail if the configured model ids are not on an allowlist you have evaluated
+        correct: true
+        rationale: A model change is a behavior change. It should arrive through a reviewed config change and an eval, not a typo.
+      - id: d
+        text: Ask the model whether the deployment looks safe
+        rationale: A model can review a diff, but a deploy gate needs deterministic checks that give the same answer every time.
+    explanation: >-
+      The checks that catch most deploy-time LLM incidents are cheap and deterministic: secrets in the wrong place,
+      timeouts that don't nest, retries stacked across layers, wrong keys in the wrong environment, and unreviewed
+      model ids. Encode them in code and run them in CI, the same way Studio 3 gated prompt changes.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## What an LLM workload asks of a host
+
+A typical web request spends a few milliseconds of CPU and returns in under a second. An LLM request is different in three ways, and they decide which hosting options fit.
+
+**It is long and mostly waiting.** A model call can take seconds to minutes, and almost all of that time your code is idle, waiting on the network. Platforms that bill or limit by CPU time treat that very differently from platforms that limit wall-clock time.
+
+**It streams.** A chat reply is a response body that keeps arriving for tens of seconds. The host has to support streamed responses, and its limits have to count streaming time in a way you can live with.
+
+**It carries a valuable secret.** The model API key can spend real money and, depending on its permissions, read your organization's data. It has to reach the server without ever touching the browser, the repository, or a log line.
+
+This lesson looks at three common hosting shapes through those three lenses, with one documented example each: **serverless functions** (Vercel Functions), **edge workers** (Cloudflare Workers), and **containers** (Google Cloud Run). These are examples, not endorsements; many other hosts follow the same shapes, and the questions you ask of them are the same. The numbers below were checked against each platform's documentation on the review date. Limits change, so check them again when you deploy.
+</Listen>
+
+<Listen>
+## Serverless functions: Vercel Functions as the example
+
+A serverless function is code the platform runs on demand per request and scales automatically. You deploy a handler; the platform handles servers.
+
+The limit that matters most is **maximum duration**. Vercel's limits page (with Fluid compute, the default for new projects) gives a default of 300 seconds on every plan; Hobby can't go higher, while Pro and Enterprise can configure up to 800 seconds, with a 1,800-second maximum in beta. The page is explicit that the duration includes time spent sending the response, **including streamed responses**, and that a function that runs out of time gets a 504 `FUNCTION_INVOCATION_TIMEOUT`. Functions on Vercel's separate Edge runtime have a different rule: they must begin sending a response within 25 seconds and can then stream for up to 300 seconds.
+
+Two other details on that page are LLM-relevant. The 4.5 MB request and response body limit does not apply to streamed responses. And Vercel bills Functions by active CPU time plus provisioned memory time, where waiting for I/O, such as calling AI models, does not count toward active CPU time.
+
+What this means for you: a five-minute ceiling, by default, on everything a request does, retries and fallbacks included. Short chat replies and extraction calls fit comfortably. A multi-step agent that sometimes runs for eight minutes does not, and should be a background job (lesson 1) regardless of host.
+</Listen>
+
+<Listen>
+## Edge workers: Cloudflare Workers as the example
+
+An edge worker runs your code in many locations close to users, in a lightweight runtime (JavaScript and related languages, with a restricted set of APIs). Cold starts are small and global latency is low, which makes workers popular for API gateways and proxies, including proxies in front of model APIs.
+
+The surprise in Cloudflare's limits page is that the primary limit is **CPU time**, not wall-clock time: 10 milliseconds per HTTP request on the Free plan, and on Paid a default of 30 seconds that you can raise to 5 minutes. The docs state that waiting on network requests does not count toward CPU time, and that there is no hard limit on duration for HTTP-triggered Workers: as long as the client stays connected, the Worker can keep processing and streaming. A Worker that forwards a model stream does very little computation per chunk, so it can stream a long reply while using little CPU.
+
+Two cautions. First, the docs warn that when the client disconnects, tasks associated with that request may be canceled, so work that must finish after the user closes the tab (logging, billing records) needs `ctx.waitUntil()`, which the docs say can run for up to 30 seconds after the response is sent or the client disconnects, or a queue. Second, the runtime is not a general server: heavy Python dependencies, long-running loops, and background workers belong elsewhere.
+</Listen>
+
+<Listen>
+## Containers: Google Cloud Run as the example
+
+A container platform runs your own image, so you choose the language, the libraries, and the server (the lab's FastAPI app with uvicorn, for instance). Cloud Run scales containers per request, down to zero when idle.
+
+Its request limit is a **request timeout**: Cloud Run's docs give a default of 300 seconds, configurable up to 3,600 seconds (60 minutes), with a 504 when a service doesn't respond within the limit. The page describes the timeout as the time a service has to return a response and does not single out streaming, so measure a long stream against your configured timeout before you rely on it.
+
+Containers fit when you need control: a Python service with dependencies that won't fit a function, long agent runs, a worker process that drains a queue, or the same image running locally, in CI, and in production. The trade is more to own: the image, its base-layer patches, its health checks, its concurrency settings.
+</Listen>
+
+| Shape (example) | Duration limit on the review date | Streaming notes | Good fit |
+|---|---|---|---|
+| Serverless function (Vercel Functions, Fluid compute) | 300 s default; up to 800 s on Pro and Enterprise (1,800 s in beta) | Limit includes streaming time; Edge runtime must start responding within 25 s, then stream up to 300 s | Chat and extraction endpoints next to a web front end |
+| Edge worker (Cloudflare Workers) | CPU time: 10 ms (Free), 30 s default up to 5 min (Paid); no hard wall-clock limit while the client is connected | Network waits don't count as CPU; work may be canceled when the client disconnects | Thin, global proxies and gateways in front of model APIs |
+| Container (Google Cloud Run) | 300 s default request timeout, up to 3,600 s | Docs don't address streaming specifically; test it | Python services, long-running agents, queue workers |
+
+<Callout type="pitfall" title="The platform limit is shorter than your SDK timeout">
+The Anthropic SDKs default to a 10-minute request timeout, retried twice. Every platform default in the table above is shorter. If you deploy SDK defaults, a slow or hung call outlives the function: the platform kills the request with its own 504, and your retries, fallbacks, degraded message, and log line never run. Timeouts must nest, each with margin: **SDK attempt timeout, inside your request deadline, inside the platform's limit.** For a chat endpoint on a 300-second platform, something like a 20-second attempt timeout and a 60-second deadline leaves plenty of room. For longer work, move it to a background job instead of raising every limit.
+</Callout>
+
+<Listen>
+## Secrets: where the key lives
+
+The Twelve-Factor App's rule is the usual starting point: config, including credentials, varies between deploys and belongs in the environment, not the code; its test is whether you could open-source the repository right now without leaking a credential. OWASP's Secrets Management Cheat Sheet adds the caveats: centralize secrets in a managed store, rotate them, scope each one to what needs it, keep them out of source code, Docker images, and CI logs, scan for leaks, and remember that environment variables are visible to every process and can end up in logs and crash dumps.
+
+Each example platform has a secret store that injects values at runtime. Vercel environment variables are encrypted at rest and can be typed as Config or Secret, where Secret values are write-only after saving; changes apply only to new deployments. Cloudflare secrets are set with `wrangler secret put`, hidden after creation, and read from the Worker's `env` binding, with a `.dev.vars` or `.env` file (git-ignored) for local development. Cloud Run reads from Google Secret Manager, either as an environment variable resolved when the instance starts (the docs recommend pinning a version) or as a mounted volume read at access time, which suits rotation.
+
+On the Anthropic side, the authentication docs recommend storing keys in a secrets manager, rotating them, and disabling any key you suspect has leaked. They distinguish personal keys (for your own development) from **service account keys** (for shared and production workloads, so the key doesn't break when a person leaves), let you set an **expiration** when you create a key, and describe **Workload Identity Federation** for production workloads on cloud platforms: the service exchanges its cloud identity for a short-lived token, so there is no long-lived API key to leak at all. Prefer federation where your platform supports it, and a scoped service account key from a secret store where it doesn't.
+</Listen>
+
+<Listen>
+## Environments: development, preview, production
+
+Most teams run at least three environments: **development** on a laptop, **preview** or staging deployments for each branch or pull request, and **production**. Vercel, for example, scopes each environment variable to Production, Preview, Development, or custom environments. For an LLM service, separating them is about more than databases.
+
+**Separate keys and spend.** Give each environment its own API key, ideally in its own Anthropic workspace. The rate-limits docs describe per-workspace spend and rate limits below the organization's, so a runaway preview deployment or a load test can't consume production's rate limit or budget. A preview build should never hold the production key: preview deployments often run code that hasn't been reviewed yet.
+
+**Model ids are config, and changing them is a deploy.** Pin exact model ids per environment in reviewed configuration, keep an allowlist of models you've evaluated, and promote a model change the way you promote code: run the Studio 3 eval and regression gate in preview, then ship. A model swap that arrives through an unreviewed environment-variable edit is a behavior change nobody tested.
+
+**Same image, different config.** Build once and promote the same artifact from preview to production, changing only configuration. That is what makes "it worked in staging" mean something.
+
+**Know which environment answered.** Log the environment, model id, and deploy version with every request (week 3 builds this into traces), so an incident review can tell a preview experiment from production traffic.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s6-w1-preflight"
+  title="Automate the pre-deploy check"
+  starter={`ALLOWED_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
+PUBLIC_PREFIXES = ("NEXT_PUBLIC_", "VITE_", "PUBLIC_")
+SECRET_WORDS = ("KEY", "SECRET", "TOKEN")
+MARGIN = 5  # seconds of headroom between your deadline and the platform's limit
+
+
+def preflight(config):
+    """Return a sorted list of problem codes for a deployment config.
+
+    missing_key           ANTHROPIC_API_KEY is absent or empty in env_vars
+    public_secret         a variable with a public prefix has a secret-looking name
+                          (contains KEY, SECRET, or TOKEN) or a value starting with "sk-ant"
+    deadline_too_long     request_deadline + MARGIN > platform_max_duration
+    timeout_exceeds_deadline   sdk_timeout > request_deadline
+    stacked_retries       app_retries is True and sdk_max_retries > 0
+    unknown_model         any value in config["models"] is not in ALLOWED_MODELS
+    key_env_mismatch      config["key_env"] != config["env"]
+    """
+    problems = set()
+    # TODO
+    return sorted(problems)
+
+
+good = {
+    "env": "production",
+    "key_env": "production",
+    "platform_max_duration": 300,
+    "request_deadline": 60,
+    "sdk_timeout": 20,
+    "sdk_max_retries": 0,
+    "app_retries": True,
+    "models": {"primary": "claude-opus-5-5", "fallback": "claude-sonnet-5-5"},
+    "env_vars": {"ANTHROPIC_API_KEY": "sk-ant-example", "NEXT_PUBLIC_APP_NAME": "Helpdesk"},
+}
+print(preflight(good))
+`}
+  tests={`import copy
+assert preflight(good) == [], f"the good config should pass, got {preflight(good)}"
+def variant(**changes):
+    c = copy.deepcopy(good)
+    for k, v in changes.items():
+        c[k] = v
+    return c
+assert preflight(variant(env_vars={"NEXT_PUBLIC_APP_NAME": "x"})) == ["missing_key"]
+assert preflight(variant(env_vars={"ANTHROPIC_API_KEY": ""})) == ["missing_key"], "an empty key is a missing key"
+leak = variant(env_vars={"ANTHROPIC_API_KEY": "sk-ant-a", "NEXT_PUBLIC_ANTHROPIC_API_KEY": "sk-ant-a"})
+assert preflight(leak) == ["public_secret"]
+sneaky = variant(env_vars={"ANTHROPIC_API_KEY": "sk-ant-a", "VITE_BACKEND": "sk-ant-a"})
+assert preflight(sneaky) == ["public_secret"], "check values too, not only names"
+assert preflight(variant(request_deadline=298)) == ["deadline_too_long"], "leave a margin under the platform limit"
+assert preflight(variant(sdk_timeout=600)) == ["timeout_exceeds_deadline"], "the SDK default (600 s) does not fit"
+assert preflight(variant(sdk_max_retries=2)) == ["stacked_retries"]
+assert preflight(variant(sdk_max_retries=2, app_retries=False)) == [], "SDK retries alone are fine"
+assert preflight(variant(models={"primary": "claude-opus-5-5", "fallback": "claude-sonet-5-5"})) == ["unknown_model"], "catch typos"
+assert preflight(variant(env="preview")) == ["key_env_mismatch"], "a preview deploy holding the production key"
+bad = variant(sdk_timeout=600, sdk_max_retries=2, env="preview")
+assert preflight(bad) == ["key_env_mismatch", "stacked_retries", "timeout_exceeds_deadline"], "report every problem, sorted"`}
+  solution={`def preflight(config):
+    problems = set()
+    env_vars = config.get("env_vars", {})
+    if not env_vars.get("ANTHROPIC_API_KEY"):
+        problems.add("missing_key")
+    for name, value in env_vars.items():
+        if name.startswith(PUBLIC_PREFIXES):
+            looks_secret = any(w in name.upper() for w in SECRET_WORDS)
+            if looks_secret or str(value).startswith("sk-ant"):
+                problems.add("public_secret")
+    if config["request_deadline"] + MARGIN > config["platform_max_duration"]:
+        problems.add("deadline_too_long")
+    if config["sdk_timeout"] > config["request_deadline"]:
+        problems.add("timeout_exceeds_deadline")
+    if config["app_retries"] and config["sdk_max_retries"] > 0:
+        problems.add("stacked_retries")
+    if any(m not in ALLOWED_MODELS for m in config["models"].values()):
+        problems.add("unknown_model")
+    if config["key_env"] != config["env"]:
+        problems.add("key_env_mismatch")
+    return sorted(problems)`}
+>
+Each code is a real way LLM deploys go wrong: a key in the client bundle, timeouts that don't nest, retries stacked across layers, a model-id typo that only fails in production, and a preview deployment holding the production key. In a real pipeline this runs in CI on the deploy configuration and blocks the release on any problem, the same way your Studio 3 eval gate blocks a prompt regression.
+</PyRunner>
+
+<Listen>
+## Choosing a host: a heuristic
+
+Start from measurements, not from a favorite platform. Take a few hundred realistic requests (your eval set is a good source), log their end-to-end durations including retries, and look at the slow end, not the average. Then ask, in order:
+
+**Does any request need longer than a few minutes?** Then that work is a background job with a queue and a worker, whatever else you choose. Workers usually run best in containers, where you control the process lifetime.
+
+**Is the service mostly a thin layer over model calls, next to a web front end?** Serverless functions are the low-effort default: deploys tied to your repository, per-branch previews with their own environment variables, and streaming support. Check that your 99th-percentile duration, plus a margin, sits well inside the function's duration limit.
+
+**Is it a global gateway or proxy with little computation?** An edge worker's CPU-time model suits it: forwarding a stream costs little CPU. Make sure work that must finish after a disconnect (usage records, logs) is handed to `waitUntil` or a queue.
+
+**Do you need Python libraries, long runs, custom servers, or the same image everywhere?** Use containers, and accept the operational work that comes with them.
+
+Most products end up with two of these: a function or container serving the request path, and a container worker draining a queue. And whatever you pick, a host's limits are a moving target. Record the limits you depend on in your deploy configuration (the `platform_max_duration` above), so the preflight check fails loudly if someone changes the plan or the platform.
+</Listen>
+
+<Listen>
+## The deploy checklist
+
+Run through this list before the first release, and automate what you can in CI.
+
+**Secrets.** The API key comes from the platform's secret store or federation, never the repository or the image. No public-prefixed variable holds anything secret, and your built client assets contain no `sk-ant` string. Each environment has its own key, in its own workspace with its own spend and rate limits. Keys have an owner (a service account), an expiration or rotation plan, and a revocation runbook.
+
+**Timeouts and retries.** SDK attempt timeout, inside the request deadline, inside the platform limit, each with margin. Retries in exactly one layer. Streams enforce a total deadline.
+
+**Failure handling.** Errors are classified; breakers per model; a fallback chain whose quality you've measured; a degraded mode you have exercised on purpose.
+
+**Models and prompts.** Model ids pinned per environment and on an evaluated allowlist; the eval and regression gate passed on this build.
+
+**Streaming.** Streaming verified end to end on the real platform, through any proxy or CDN in front of it, with a reply longer than your longest expected one.
+
+**Observability.** Each request logs environment, deploy version, model actually used, token usage, latency, the API's `request-id`, and whether a fallback or degraded mode ran (week 3 turns this into traces and dashboards).
+
+**Abuse and limits.** Per-user rate limits and input size limits at the edge of your service; the OWASP LLM Top 10 review (week 4) scheduled before you widen access.
+
+**Rollback.** You know how to return to the previous deploy, and a model or prompt change can be rolled back the same way as code.
+</Listen>
+
+<GoDeeper title="Rolling out changes to an LLM service">
+Code, prompts, and model ids all change behavior, and an LLM service has fewer guarantees than most that a change which passed tests behaves the same on real traffic. Three practices from conventional release engineering carry over well. **Canary releases**: send a small share of production traffic to the new version and compare its error rate, latency, cost per request, and online quality signals (week 3) with the old version before widening. **Shadow traffic**: run the new prompt or model on a copy of real requests without showing users the result, then score both outputs with your Studio 3 graders. **Fast rollback**: keep the previous version deployable and its configuration intact, so undoing a bad model swap is one action, not a debugging session. Some platforms build parts of this in (Cloudflare's secrets docs, for instance, describe separate commands for gradual deployments of Worker versions), but the decision rule is yours: define in advance which metric movements stop a rollout.
+</GoDeeper>
+
+<Listen>
+## Week 1 in one paragraph
+
+Put the model call on your server, and pick the request shape from the task: synchronous for short machine-facing work, streaming for a person watching, background jobs for long work, batch for work that can wait. Classify failures, retry only transient ones at one layer with jittered backoff inside a deadline, break circuits on dead dependencies, fall back to models whose quality you've measured, and degrade on purpose. Deploy where the platform's limits contain your deadlines with room to spare, keep secrets in secret stores and out of browsers, separate environments down to the API key, and gate every release on checks a machine runs. Next week is about making all of this cheaper and faster: caching, batching, routing, and budgets.
+</Listen>

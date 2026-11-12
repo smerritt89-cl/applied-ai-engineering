@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.067
+The statistics.
+
+2
+00:00:01.347 --> 00:00:04.717
+Week 3 gave you the tools; here is how they fit the harness.
+
+3
+00:00:04.997 --> 00:00:07.621
+Compare systems on the same questions, paired.
+
+4
+00:00:07.901 --> 00:00:14.728
+When you test a change, run the baseline and the candidate on the same cases and analyze the per-question differences.
+
+5
+00:00:15.008 --> 00:00:29.600
+Evan Miller’s “Adding Error Bars to Evals” (2024) makes the case for paired analysis: questions vary enormously in difficulty, and pairing removes that variation from the comparison, which shrinks the interval a lot.
+
+6
+00:00:29.880 --> 00:00:38.328
+In code: for each question, candidate score minus baseline score, then a bootstrap interval on the mean difference by resampling questions.
+
+7
+00:00:38.608 --> 00:00:40.187
+Report intervals, always.
+
+8
+00:00:40.467 --> 00:00:44.349
+A mean without an interval invites people to read noise as signal.
+
+9
+00:00:44.629 --> 00:00:59.285
+Miller also recommends clustered standard errors when questions come in groups (several questions about the same document), because grouped questions are not independent; resample whole groups in your bootstrap if your set has that structure.
+
+10
+00:00:59.565 --> 00:01:01.805
+Size the set for the effect you care about.
+
+11
+00:01:02.085 --> 00:01:05.925
+Before you run an experiment, ask what difference would change your decision.
+
+12
+00:01:06.205 --> 00:01:11.859
+If a 2-point gain in faithfulness wouldn’t change anything, you don’t need the sample size to detect one.
+
+13
+00:01:12.139 --> 00:01:23.509
+If you need to detect 5 points and your interval half-width at n = 100 is 6 points, either add cases or accept that this eval can only detect large changes.
+
+14
+00:01:23.789 --> 00:01:25.197
+Say which in your write-up.
+
+15
+00:01:25.477 --> 00:01:27.077
+Handle non-determinism.
+
+16
+00:01:27.357 --> 00:01:31.368
+If outputs vary between runs, one run per question adds noise.
+
+17
+00:01:31.648 --> 00:01:39.392
+Either run each question a few times and average per question, or at least rerun the baseline to see how much it moves on its own.
+
+18
+00:01:39.672 --> 00:01:43.811
+A “gain” smaller than the baseline’s run-to-run movement is not a gain.
+
+19
+00:01:44.091 --> 00:01:46.117
+Decide your stopping rule in advance.
+
+20
+00:01:46.397 --> 00:01:52.328
+Running the eval repeatedly and stopping when the number looks good is a way to manufacture a result.
+
+21
+00:01:52.608 --> 00:01:56.000
+Fix the dataset version and the comparison before you look.

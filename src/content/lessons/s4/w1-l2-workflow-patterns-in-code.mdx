@@ -1,0 +1,446 @@
+---
+id: s4-w1-l2
+studio: s4
+week: 1
+order: 2
+title: Workflow patterns in code
+summary: The five workflow patterns from Anthropic's "Building effective agents" (prompt chaining, routing, parallelization, orchestrator-workers, evaluator-optimizer), when each one fits, a short code sketch for each, and the check that keeps each one honest.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Implement prompt chaining with a programmatic gate between steps
+  - Implement routing with a strict label parser, a safe fallback, and per-route model choice
+  - Distinguish sectioning from voting, and aggregate votes with an abstain threshold
+  - Explain how orchestrator-workers differs from parallel sectioning, and when its extra cost pays off
+  - Build an evaluator-optimizer loop with a round limit, and explain why external checks beat self-critique alone
+sources:
+  - { id: anthropic-effective-agents, use: summarized, where: "Workflow: prompt chaining, routing, parallelization, orchestrator-workers, evaluator-optimizer" }
+  - { id: claude-cookbook-agent-patterns, use: adapted, where: "basic_workflows, orchestrator_workers, evaluator_optimizer notebooks" }
+  - { id: anthropic-multi-agent-research, use: summarized, where: "Architecture overview; token usage; when multi-agent is a poor fit" }
+  - { id: wang-2022-self-consistency, use: summarized }
+  - { id: madaan-2023-self-refine, use: summarized }
+  - { id: huang-2023-self-correct, use: summarized }
+  - { id: claude-structured-outputs, use: summarized, where: "JSON outputs with output_config.format" }
+  - { id: claude-pricing-docs, use: summarized, where: "Model pricing table, checked 2026-11-11" }
+  - { id: claude-effort-docs, use: linked }
+  - { id: ms-ai-agents-beginners, use: linked, where: "Lesson 7, planning design; lesson 8, multi-agent design patterns" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: What distinguishes orchestrator-workers from parallelization by sectioning?
+    options:
+      - id: a
+        text: Orchestrator-workers runs subtasks in parallel; sectioning runs them in sequence.
+        rationale: Both can run subtasks in parallel. Sectioning is defined by parallel execution.
+      - id: b
+        text: In sectioning, your code defines the subtasks in advance; in orchestrator-workers, a model decides the subtasks at run time from the input.
+        correct: true
+        rationale: Yes. That flexibility is the whole point, and it is also why the pattern costs more and is harder to test.
+      - id: c
+        text: Orchestrator-workers requires a different model for each worker.
+        rationale: Workers can all use one model. Choosing a cheaper worker model is an optimization, not the definition.
+    explanation: >-
+      Anthropic's post puts the difference in one line: the pattern looks like parallelization, but the subtasks are not
+      predefined. Use sectioning when you know the parts (review a PRD for security, legal, and accessibility). Use
+      orchestrator-workers when the parts depend on the input (which files a code change touches, which sources a
+      research question needs).
+  - id: kc2
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      from collections import Counter
+      votes = ["risk", "no_risk", "risk", None, "no_risk"]
+      valid = [v for v in votes if v is not None]
+      label, n = Counter(valid).most_common(1)[0]
+      print(label if n / len(votes) >= 0.6 else "escalate")
+    options:
+      - id: a
+        text: "`risk`"
+        rationale: "`risk` leads among valid votes, but 2 of 5 is 0.4, below the 0.6 threshold."
+      - id: b
+        text: "`escalate`"
+        correct: true
+        rationale: Right. The share is computed over all five votes, including the unparseable one, and no label reaches 60%.
+      - id: c
+        text: "`no_risk`"
+        rationale: "`no_risk` ties `risk` at 2 votes, and a tie is not a majority either way."
+    explanation: >-
+      The denominator matters. Dividing by all votes (including failures) means a run with many unparseable replies
+      cannot quietly reach "consensus". Ties and low agreement should escalate to a person, not be broken arbitrarily.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      You build an evaluator-optimizer loop where the same model drafts a status update and then critiques its own draft
+      for accuracy. Accuracy does not improve after three rounds. What change is most likely to help?
+    options:
+      - id: a
+        text: Raise the round limit to ten.
+        rationale: If the critique can't see the errors, more rounds repeat the same blind spot at higher cost.
+      - id: b
+        text: Give the evaluator external evidence to check against, such as code that verifies each claim's quote appears in the notes, and feed those specific failures back.
+        correct: true
+        rationale: Yes. Research on self-correction finds it works far better with external feedback than from the model's own judgment.
+      - id: c
+        text: Ask the drafter to rate its own confidence and stop when it says 9 out of 10.
+        rationale: Self-reported confidence is a weak signal (Studio 1, lesson 9), and it becomes a stopping rule the model can satisfy without improving.
+    explanation: >-
+      Self-Refine reported gains when a model critiqued and revised its own outputs, but Huang and colleagues (2023)
+      found that intrinsic self-correction, with no external feedback, often fails on reasoning and can make answers
+      worse. Evaluator-optimizer works best when the criteria are clear and at least part of the evaluation is grounded:
+      code checks, retrieved evidence, tests, or a separately calibrated judge.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Five patterns, one question each
+
+Lesson 1 drew the line between workflows and agents. This lesson stays on the workflow side, where your code owns the control flow, and works through the five patterns in Anthropic's "Building effective agents". They are worth learning as a set because most production LLM features are one of them, or two of them composed. Each pattern answers a different question about your task.
+
+**Prompt chaining**: can the task be split into fixed steps that each get easier? **Routing**: do inputs fall into categories that deserve different handling? **Parallelization**: are there independent parts, or would several independent attempts raise confidence? **Orchestrator-workers**: are the parts real but impossible to know until you see the input? **Evaluator-optimizer**: are the quality criteria clear enough that feedback reliably improves a draft?
+
+The running example is the one this studio builds toward: a PM workflow that turns raw meeting notes into a status update. For each pattern you will see when it fits, a short code sketch, and the **check** that keeps it honest. Every sketch uses one small helper, below. Anthropic's cookbook has fuller reference notebooks for these patterns (MIT license); the sketches here are written fresh in this course's style.
+</Listen>
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+
+def ask(prompt, system="You are a precise assistant for a product team.",
+        model="claude-opus-5-5", effort="medium", output_format=None):
+    """One model call. Returns the text of the reply, or raises if it stopped early."""
+    extra = {"format": output_format} if output_format else {}
+    response = client.messages.create(
+        model=model,
+        max_tokens=16000,
+        system=system,
+        output_config={"effort": effort, **extra},
+        messages=[{"role": "user", "content": prompt}],
+    )
+    if response.stop_reason in ("refusal", "max_tokens"):
+        raise RuntimeError(f"stopped early: {response.stop_reason}")
+    # Current models may return thinking blocks first; take the text block.
+    return next(block.text for block in response.content if block.type == "text")
+```
+
+<Callout type="note" title="About the helper">
+No `temperature`: current Claude models reject sampling parameters, and you steer them with instructions and the `effort` setting instead. The helper checks `stop_reason` before trusting the text, and skips non-text blocks, because current models can return thinking blocks before the answer. `output_format` passes a JSON Schema through `output_config.format`, the structured outputs feature from Studio 1, so steps that feed code get schema-valid JSON.
+</Callout>
+
+<Listen>
+## Prompt chaining: fixed steps with a gate
+
+**Prompt chaining** breaks a task into a sequence of calls where each step processes the previous step's output. The Anthropic post says it fits when a task decomposes cleanly into fixed subtasks, and frames the trade explicitly: you spend latency (several calls instead of one) to buy accuracy (each call has an easier job). Its examples: write marketing copy and then translate it; write an outline, check that it meets criteria, then write the document.
+
+That middle step is the important part. Between any two calls you can insert a **gate**: plain code that checks the intermediate output and stops the chain if it fails. Gates are where chaining earns its keep, because they catch an error at the step that made it, before later steps dress it up in fluent prose. For meeting notes, the first call extracts decisions and action items with a verbatim quote for each; the gate checks every quote is really in the notes (the evidence check from Studio 1, lesson 9); only then does the second call write the update, from verified facts rather than from the raw notes.
+
+The check for this pattern is the gate itself, plus one habit: log every intermediate output. When the final update is wrong, you want to know whether extraction or drafting failed, and a chain makes that question answerable in a way a single long prompt does not.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of prompt chaining. Meeting notes go to call 1, extract facts with quotes. A code gate checks every quote appears in the notes. If it fails, stop and report. If it passes, call 2 drafts the status update from the verified facts."
+  caption="Prompt chaining with a gate. The gate is ordinary code, not another model call."
+  chart={`flowchart LR
+  N["Meeting notes"] --> C1["Call 1: extract facts + quotes"]
+  C1 --> G{"Gate (code): every quote in the notes?"}
+  G -->|"no"| X["Stop: report failing items"]
+  G -->|"yes"| C2["Call 2: draft update from verified facts"]
+  C2 --> U["Status update"]`}
+/>
+
+```python
+import json
+
+FACTS_SCHEMA = {"type": "json_schema", "schema": {
+    "type": "object", "additionalProperties": False, "required": ["items"],
+    "properties": {"items": {"type": "array", "items": {
+        "type": "object", "additionalProperties": False,
+        "required": ["kind", "text", "quote"],
+        "properties": {"kind": {"type": "string", "enum": ["decision", "action", "risk"]},
+                       "text": {"type": "string"}, "quote": {"type": "string"}}}}}}}
+
+def status_update(notes):
+    facts = json.loads(ask(f"<notes>\n{notes}\n</notes>\nList every decision, action item, and risk. "
+                           "quote must be copied word for word from the notes.", output_format=FACTS_SCHEMA))
+    bad = [f for f in facts["items"] if not f["quote"].strip() or f["quote"] not in notes]
+    if bad:  # the gate
+        raise ValueError(f"unsupported items, not drafting: {bad}")
+    return ask(f"Write a five-sentence status update from these verified facts:\n{json.dumps(facts)}")
+```
+
+<Listen>
+## Routing: classify, then specialize
+
+**Routing** classifies an input and sends it to a specialized follow-up. The post says it fits when there are distinct categories that are better handled separately, and when classification can be done accurately, by a model or by conventional code. Its examples: sending different kinds of customer-service queries (general questions, refunds, technical support) to different processes, and sending easy questions to smaller, cheaper models and hard ones to more capable models.
+
+That second example is the model-selection theme of this program in one pattern. A router lets you spend frontier-model money only where it buys something. For a PM team's intake channel, a request for a quick status line goes to `claude-haiku-5-5` at a fraction of the cost, while a request to draft a client-facing escalation goes to `claude-opus-5-5`. At the prices on Anthropic's pricing page today, Haiku 5.5's input tokens cost one fortieth of Opus 5.5's ($0.10 versus $4 per million for prompts under 100,000 tokens; check the page before you rely on this). Whether the cheap route is good enough is an empirical question, answered by an eval per route, never by assumption.
+
+Routing has a specific failure mode: the classifier says something your code doesn't expect, such as "Billing." with a capital letter and a period, or "probably a bug". The check is a **strict parser** with an explicit fallback. Normalize obvious formatting, accept only known labels, and send anything else to a safe default (a general handler, or a human queue), logging it so you can see how often the router is confused. Structured outputs with an enum remove most formatting problems, but you still need a fallback for the input that genuinely fits no category. Then measure the router alone: build a labeled set of inputs and report its accuracy and confusion matrix, because a misroute silently sends a request down the wrong specialized path.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of routing. A request goes to a cheap classifier. A strict parser maps the label to one of three routes: quick status line handled by a small model, team update handled by a mid-size model, client escalation handled by a large model. Unknown labels go to a fallback queue."
+  caption="Routing. The parser and the fallback are where reliability lives."
+  chart={`flowchart LR
+  R["Request"] --> CL["Classifier (small model)"]
+  CL --> P{"Strict parser"}
+  P -->|"status_line"| H1["Small model"]
+  P -->|"team_update"| H2["Mid-size model"]
+  P -->|"client_escalation"| H3["Large model + human review"]
+  P -->|"anything else"| FB["Fallback queue, logged"]`}
+/>
+
+```python
+ROUTES = {
+    "status_line": ("claude-haiku-5-5", "Write one sentence of status."),
+    "team_update": ("claude-sonnet-5-5", "Write a detailed update for the project team."),
+    "client_escalation": ("claude-opus-5-5", "Draft a careful, external-safe escalation note."),
+}
+
+def route(request):
+    raw = ask(f"Classify this request as exactly one of {sorted(ROUTES)}. Reply with the label only.\n\n{request}",
+              model="claude-haiku-5-5", effort="low")
+    label = raw.strip().strip(".").lower()
+    if label not in ROUTES:
+        log_unroutable(request, raw)          # measure how often this happens
+        return send_to_human_queue(request)
+    model, instruction = ROUTES[label]
+    return ask(f"{instruction}\n\n{request}", model=model)
+```
+
+<Listen>
+## Parallelization: sectioning and voting
+
+**Parallelization** runs several calls at the same time and combines their outputs in code. The post names two variations that solve different problems.
+
+**Sectioning** splits a task into independent subtasks that run side by side. It fits when the parts are known in advance and don't depend on each other, and it buys speed: wall-clock time is the slowest call, not the sum. The post adds a subtler benefit: models tend to do better when each consideration gets its own focused call. Its examples include running a guardrail check in one call while another answers the user, and evaluating different aspects of a model's output in separate calls. For a product spec, you might review security, legal, and accessibility concerns as three parallel calls rather than one long prompt asking for all three.
+
+**Voting** runs the same task several times, or with several prompts, to get diverse outputs and aggregate them. It fits when you want higher confidence than one sample gives. The post's examples: several prompts each reviewing code for vulnerabilities, flagging it if any finds a problem; or several evaluations of whether content is inappropriate, with a vote threshold that trades false positives against false negatives. The research root is self-consistency (Wang and colleagues, 2022), which sampled several reasoning paths and took the majority answer, and improved accuracy on reasoning benchmarks.
+
+The check for voting is in the aggregator, and it is easy to get wrong. Decide the denominator (all attempts, including unparseable ones), the threshold, and what happens below it. "No clear majority" is information: send it to a person. And know the limit: votes from the same model and prompt share the same blind spots, so agreement measures consistency, not truth. Diverse prompts or models make votes more independent; checks against evidence make them more trustworthy.
+</Listen>
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+LENSES = ["security and privacy", "legal and contractual", "accessibility"]
+
+def review_spec(spec):  # sectioning: known, independent parts
+    with ThreadPoolExecutor() as pool:
+        reviews = pool.map(lambda lens: ask(f"Review this spec only for {lens} issues:\n{spec}"), LENSES)
+    return dict(zip(LENSES, reviews))
+
+def flags_risk(update, n=3):  # voting: same question, several independent samples
+    with ThreadPoolExecutor() as pool:
+        votes = list(pool.map(lambda _: ask(
+            f"Does this update hide a schedule risk? Answer risk or no_risk only.\n{update}",
+            model="claude-sonnet-5-5", effort="low").strip().lower(), range(n)))
+    return aggregate(votes, threshold=2 / 3)   # you write aggregate() below
+```
+
+<Predict
+  title="Wall-clock time of sectioning"
+  code={`latencies = {"security": 4.0, "legal": 6.5, "accessibility": 3.0}
+sequential = sum(latencies.values())
+parallel = max(latencies.values())
+print(sequential, parallel)`}
+  options={["13.5 6.5", "13.5 4.5", "6.5 13.5", "4.5 4.5"]}
+  answer={0}
+>
+Run in sequence, the three reviews take the sum of their latencies. Run in parallel, they take as long as the slowest one. The token cost is the same either way: parallelization buys time, not savings. Rate limits are the practical ceiling on how wide you can go.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s4-w1-router-and-votes"
+  title="Build a strict router and a voting aggregator"
+  starter={`from collections import Counter
+
+LABELS = {"billing", "bug", "feature_request"}
+
+
+def fake_classifier(ticket):
+    """Stands in for a cheap model. Like a real one, its formatting varies."""
+    t = ticket.lower()
+    if "invoice" in t or "charge" in t:
+        return " Billing.\\n"
+    if "crash" in t or "error" in t:
+        return "bug"
+    if "would be great" in t:
+        return "Feature_Request"
+    return "I'm not sure, maybe billing or a bug?"
+
+
+def parse_label(raw):
+    """Normalize raw classifier text and return a label from LABELS, or None.
+    Allowed normalization: strip whitespace, strip trailing periods, lowercase.
+    Anything that is not then exactly a known label returns None."""
+    # TODO
+    pass
+
+
+def route(ticket, classify, handlers):
+    """Classify the ticket, parse the label, and call the matching handler.
+    handlers maps each label to a function, plus a "fallback" key.
+    Return (label_or_None, handler_result). Unknown labels use handlers["fallback"]."""
+    # TODO
+    pass
+
+
+def aggregate(votes, threshold):
+    """votes: raw strings from several samples (some may be unparseable, or None).
+    Parse each with parse_label-style normalization, but against the vote labels
+    {"risk", "no_risk"}. Return the winning label if its count divided by the
+    TOTAL number of votes is >= threshold and it is not tied for first.
+    Otherwise return "escalate"."""
+    # TODO
+    pass`}
+  tests={`assert parse_label(" Billing.\\n") == "billing", "strip whitespace and the trailing period, then lowercase"
+assert parse_label("Feature_Request") == "feature_request"
+assert parse_label("I'm not sure, maybe billing or a bug?") is None, "a hedge is not a label, even if it mentions one"
+assert parse_label("bugs") is None, "near misses are not labels"
+
+seen = []
+handlers = {
+    "billing": lambda t: "finance queue",
+    "bug": lambda t: "engineering queue",
+    "feature_request": lambda t: "product backlog",
+    "fallback": lambda t: seen.append(t) or "human triage",
+}
+assert route("Duplicate charge on my invoice", fake_classifier, handlers) == ("billing", "finance queue")
+assert route("App crash on export", fake_classifier, handlers) == ("bug", "engineering queue")
+label, result = route("Something odd happened", fake_classifier, handlers)
+assert label is None and result == "human triage", "unparseable labels must go to the fallback"
+assert seen == ["Something odd happened"], "the fallback should receive the original ticket"
+
+assert aggregate(["risk", "Risk.", "no_risk"], 2 / 3) == "risk", "2 of 3 meets a 2/3 threshold"
+assert aggregate(["risk", "no_risk", "risk", None, "no_risk"], 0.6) == "escalate", "a tie never wins"
+assert aggregate(["risk", "garbage", "garbage"], 0.5) == "escalate", "unparseable votes still count in the denominator"
+assert aggregate(["no_risk"] * 4 + ["risk"], 0.75) == "no_risk"
+assert aggregate([], 0.5) == "escalate", "no votes means no decision"`}
+  solution={`def _normalize(raw):
+    if raw is None:
+        return None
+    return raw.strip().rstrip(".").strip().lower()
+
+
+def parse_label(raw):
+    label = _normalize(raw)
+    return label if label in LABELS else None
+
+
+def route(ticket, classify, handlers):
+    label = parse_label(classify(ticket))
+    handler = handlers[label] if label is not None else handlers["fallback"]
+    return label, handler(ticket)
+
+
+def aggregate(votes, threshold):
+    if not votes:
+        return "escalate"
+    valid = [v for v in (_normalize(v) for v in votes) if v in {"risk", "no_risk"}]
+    if not valid:
+        return "escalate"
+    ranked = Counter(valid).most_common()
+    top_label, top_count = ranked[0]
+    if len(ranked) > 1 and ranked[1][1] == top_count:
+        return "escalate"
+    return top_label if top_count / len(votes) >= threshold else "escalate"`}
+>
+Write `parse_label`, `route`, and `aggregate`. The fake classifier behaves like a real small model: usually right, inconsistently formatted, and sometimes hedging. Your router must never guess from a hedge. Your aggregator must count unparseable votes in the denominator and escalate ties and weak majorities. These two functions are where routing and voting get their reliability, so they are worth unit tests of their own in any real system.
+</PyRunner>
+
+<Listen>
+## Orchestrator-workers: when the parts depend on the input
+
+In **orchestrator-workers**, a central model reads the input, decides what subtasks are needed, hands each to a worker call, and then synthesizes the results. The post says it fits complex tasks where you cannot predict the subtasks in advance. Its examples: coding changes where the number of files and the nature of each change depend on the task, and search tasks that gather and analyze information from several sources. Structurally it resembles sectioning; the difference is that the subtasks are not predefined, so a model is now making a planning decision.
+
+For the PM example: "Prepare the Monday portfolio review" might need one subtask per project that changed last week, plus one for a cross-project dependency, and the orchestrator can only know which by reading the inputs. Have the orchestrator return its plan as structured output, so your code can validate it (a maximum number of subtasks, each with a clear goal and expected output format) before spending money on workers. Workers can often run on a cheaper model, which is a routing decision inside the pattern.
+
+Anthropic described this pattern in production in "How we built our multi-agent research system" (June 2025): a lead agent plans and spawns subagents that search in parallel. Their internal evaluation found the multi-agent setup far outperformed a single agent on research tasks. They also reported the cost: agents used about four times the tokens of chat interactions, and multi-agent systems about fifteen times. And they listed where the pattern fits poorly: tasks where every worker needs the same context, tasks with many dependencies between workers (they note most coding tasks have fewer truly parallel parts than research), and tasks whose value doesn't justify the tokens.
+
+The checks: validate the plan before running it, cap the number of workers, give each worker a specific objective and output format (their post describes vague delegation producing duplicated work), and check the synthesis against the workers' outputs, since the synthesizer can drop or invent findings just like any other summarizer.
+</Listen>
+
+```python
+PLAN_SCHEMA = {"type": "json_schema", "schema": {
+    "type": "object", "additionalProperties": False, "required": ["subtasks"],
+    "properties": {"subtasks": {"type": "array", "items": {
+        "type": "object", "additionalProperties": False, "required": ["goal", "inputs", "output_format"],
+        "properties": {"goal": {"type": "string"}, "inputs": {"type": "string"},
+                       "output_format": {"type": "string"}}}}}}}
+
+def portfolio_review(material, max_workers=6):
+    plan = json.loads(ask(f"Plan the subtasks needed for a portfolio review of:\n{material}",
+                          output_format=PLAN_SCHEMA))
+    subtasks = plan["subtasks"]
+    if not 0 < len(subtasks) <= max_workers:      # validate the plan before spending on workers
+        raise ValueError(f"plan has {len(subtasks)} subtasks; expected 1 to {max_workers}")
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        results = list(pool.map(lambda s: ask(
+            f"Goal: {s['goal']}\nInputs: {s['inputs']}\nReturn: {s['output_format']}",
+            model="claude-sonnet-5-5"), subtasks))
+    return ask("Synthesize these findings. Cite which finding supports each point.\n\n"
+               + "\n\n".join(f"[{i}] {r}" for i, r in enumerate(results)))
+```
+
+<Listen>
+## Evaluator-optimizer: draft, critique, revise
+
+In **evaluator-optimizer**, one call generates a response and another evaluates it and returns feedback, in a loop. The post says it fits when there are clear evaluation criteria and iterative refinement provides measurable value, and gives two signs of fit: a person's feedback would demonstrably improve the output, and a model can provide similar feedback. Its examples are literary translation, where an evaluator catches nuances the first pass missed, and complex search that needs several rounds.
+
+The research is encouraging with a catch. Self-Refine (Madaan and colleagues, 2023) had one model generate, critique, and revise its own output, and reported improvements of around 20 percentage points on average across seven tasks. But Huang and colleagues (2023) examined **intrinsic** self-correction, where the model reviews its answers with no external feedback, and found that on reasoning tasks models struggled to correct themselves and sometimes made answers worse. The reconciling lesson for engineers: the loop works when the evaluator has something the generator didn't, such as explicit criteria, evidence, test results, or a different vantage point.
+
+So build the evaluator in layers. First, **code checks** that are cheap and certain: word limits per audience, every action item's owner named, no internal-only terms in a client update. Then a **model evaluator** for what code can't judge (tone, clarity, whether a risk is buried), with a rubric of specific questions rather than "is this good?", ideally calibrated against human labels as in Studio 3. Feed the specific failures back to the generator. And cap the rounds. If the draft still fails after the cap, return it marked as not approved and route it to a person: a loop that cannot converge should end in a review queue, not in silence.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of evaluator-optimizer. The generator drafts. Code checks run first, then a model evaluator with a rubric. If both pass, return the approved draft. If not, and rounds remain, feed the specific problems back to the generator. If the round limit is reached, return the draft marked for human review."
+  caption="Evaluator-optimizer. Code checks first, a rubric second, a round limit always."
+  chart={`flowchart TD
+  G["Generator: draft"] --> C{"Code checks pass?"}
+  C -->|"yes"| E{"Model evaluator: rubric pass?"}
+  C -->|"no"| L{"Rounds left?"}
+  E -->|"yes"| A["Return approved draft"]
+  E -->|"no"| L
+  L -->|"yes"| F["Feed specific problems back"] --> G
+  L -->|"no"| H["Return draft, flagged for human review"]`}
+/>
+
+```python
+def refine_update(facts, audience, max_rounds=3):
+    feedback, draft = "", ""
+    for round_no in range(1, max_rounds + 1):
+        draft = ask(f"Write a status update for {audience} from these facts:\n{facts}\n{feedback}")
+        problems = code_checks(draft, facts, audience)          # deterministic, cheap
+        if not problems:
+            verdict = json.loads(ask(f"Rubric review for a {audience} update:\n{draft}",
+                                     model="claude-sonnet-5-5", output_format=VERDICT_SCHEMA))
+            problems = verdict["problems"]
+        if not problems:
+            return {"draft": draft, "approved": True, "rounds": round_no}
+        feedback = "Fix these problems from the last draft:\n- " + "\n- ".join(problems)
+    return {"draft": draft, "approved": False, "rounds": max_rounds}   # a person decides
+```
+
+<Callout type="pitfall" title="An evaluator that can never say no">
+The quiet failure of evaluator-optimizer is an evaluator that approves everything, usually because it shares the generator's prompt, model, and blind spots, or because its rubric is vague. Test the evaluator by itself before trusting the loop: feed it drafts you know are bad (a missing owner, a hidden slip, a client update that mentions an internal codename) and confirm it rejects them. If it approves your known-bad cases, the loop is only adding cost. The same rule applies to the gate in a chain and the parser in a router: test the check with inputs that should fail.
+</Callout>
+
+<Listen>
+## Combining patterns, and choosing among them
+
+Real features compose these patterns. The lab for this week does: a router picks the audience (exec, team, or client) and with it the model and format; a chain extracts facts, gates them, and drafts; an evaluator-optimizer loop polishes the draft against audience-specific checks. Each piece is still a workflow, because your code chooses every step. That is what keeps it testable: you will write offline tests for every branch with a fake client, before spending a cent.
+
+When choosing, ask the five questions from the start of the lesson in order, and stop at the first pattern that fits. Fixed steps suggest a chain. Distinct categories suggest a router. Independent parts or a need for confidence suggest parallelization. Input-dependent parts suggest orchestrator-workers, with its extra cost. Clear criteria and measurable gains from feedback suggest evaluator-optimizer. And if a single well-prompted call with the right context already meets your bar on an eval, none of them is needed. Lesson 3 makes that last option, and its reasons, concrete.
+</Listen>
+
+<LabLink path="labs/studio-4/01-workflow-patterns" title="Lab 01: Workflow patterns for a status update" needs={["Anthropic API key (optional; offline tests need none)"]} minutes={75}>
+Build the pipeline from this lesson: a Haiku router picks the audience with a safe fallback, a chain extracts facts with quotes and gates them in code, and an evaluator-optimizer loop runs deterministic checks before a Sonnet rubric review, with a round limit. Offline tests use a fake client with scripted replies, so you can verify every branch before spending anything.
+</LabLink>
+
+<GoDeeper title="Patterns in other courses and frameworks">
+Microsoft's "AI Agents for Beginners" covers planning (lesson 7) and multi-agent design patterns (lesson 8) with framework code, and is useful once you have written the patterns by hand. Andrew Ng's four patterns from lesson 1 map onto these: his reflection is evaluator-optimizer, his planning is close to orchestrator-workers, and his multi-agent collaboration is the general case of both. The names differ across sources; the questions they answer are the same.
+
+One design detail from Anthropic's research-system post is worth knowing before week 2: they found that how the orchestrator writes delegation instructions mattered a great deal, and that teaching it to scale effort to the query's complexity (fewer workers for simple questions) avoided wasted spend. Both are prompt-level changes you can evaluate, like any other.
+</GoDeeper>

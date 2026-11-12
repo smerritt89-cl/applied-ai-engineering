@@ -1,0 +1,324 @@
+---
+id: capstone-w1-l1
+studio: capstone
+week: 1
+order: 1
+title: Scoping a capstone that proves something
+summary: Choosing a problem with a real user, writing success and failure metrics, measuring a baseline, building the eval set before the system, and running a premortem into a risk register, so that six weeks of work ends in evidence rather than a demo.
+estMinutes: 50
+reviewed: 2026-11-11
+objectives:
+  - Choose a capstone problem with a named user, a checkable output, and only public or synthetic data
+  - Write product success and failure metrics with targets, separate from model metrics
+  - Pick a baseline that a reviewer would accept as the honest comparison, and measure it in week 1
+  - Explain why the eval set comes before the system, and draft one with tagged cases and a sealed held-out split
+  - Run a premortem and turn it into a risk register ranked by exposure, with owners and mitigations
+sources:
+  - { id: google-ml-problem-framing, use: adapted, where: "Ideal outcome; success and failure metrics" }
+  - { id: zinkevich-rules-of-ml, use: summarized, where: "Rules 1, 2, and 13" }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Start early with 20 to 50 tasks from real failures" }
+  - { id: hamel-evals-faq, use: summarized, where: "Dev and test splits; binary labels" }
+  - { id: anthropic-effective-agents, use: summarized, where: "Start with the simplest solution" }
+  - { id: ubl-2020-design-docs, use: summarized, where: "Goals and non-goals" }
+  - { id: google-tw-documents, use: adapted, where: "Scope and non-scope" }
+  - { id: klein-2007-premortem, use: summarized }
+  - { id: nist-ai-rmf, use: linked }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 1, planning AI applications" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      It is the end of capstone week 1. You have a promising prototype that answers instructional designers'
+      questions over a set of open courseware, and you are excited to add a second tool. You have no eval set yet,
+      and you haven't run anything simpler for comparison. What is the best next step?
+    options:
+      - id: a
+        text: Add the second tool now while you have momentum, and build the eval set in week 4 when the system is stable.
+        rationale: This is the demo-ware path. By week 4 your eval cases will be shaped by what the system already does well, and you will have no week-1 baseline to compare against.
+      - id: b
+        text: Pause features, write at least 100 tagged eval cases with expected outcomes (including should-abstain cases), seal a held-out split, and run a baseline on it.
+        correct: true
+        rationale: Yes. The eval set defines what "works" means before the system can bias it, and the baseline tells you whether the prototype is adding anything at all.
+      - id: c
+        text: Ask three designers whether they like the prototype, and use their answers as the success metric.
+        rationale: Talking to users is valuable for framing, but "liked it" on a few unscripted tries is not a metric you can compare across versions or defend with an interval.
+    explanation: >-
+      Evals get harder to write the longer you wait, because your sense of the task drifts toward what you have
+      built. Writing cases first keeps them tied to the user's job, and running the simplest credible alternative on
+      them gives every later number something to be compared with.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      You are scoping an RFP compliance-matrix builder for a proposal team. Which of these is a **product success
+      metric** in the sense used by Google's problem-framing course, rather than a model metric?
+    options:
+      - id: a
+        text: Requirement-extraction F1 of at least 0.85 on the labeled RFPs.
+        rationale: That is a model or system evaluation metric. It matters, but it is a means to the product outcome, not the outcome.
+      - id: b
+        text: The judge's true positive rate on requirement classification.
+        rationale: That measures your measuring instrument, not the user's outcome.
+      - id: c
+        text: A proposal writer produces a complete, checked compliance matrix in under one hour, versus about four hours today, with no missed mandatory requirements on held-out RFPs.
+        correct: true
+        rationale: Yes. It is stated in the user's terms, has a target and a comparison with today, and names the failure that matters most.
+      - id: d
+        text: The agent uses no more than five tool calls per RFP.
+        rationale: A useful budget or constraint, but not a measure of whether the user is better off.
+    explanation: >-
+      Product metrics say what changes for the user; model metrics say how well a component performs. You need
+      both, and you should check that improving the model metric would actually move the product metric. Pair each
+      success metric with a failure metric (here, any missed mandatory requirement) so the gap between them is clear.
+  - id: kc3
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      risks = [
+          {"id": "scope", "likelihood": 4, "impact": 5},
+          {"id": "labels", "likelihood": 4, "impact": 4},
+          {"id": "cost", "likelihood": 2, "impact": 3},
+          {"id": "inject", "likelihood": 3, "impact": 4},
+      ]
+      ranked = sorted(risks, key=lambda r: -r["likelihood"] * r["impact"])
+      print([r["id"] for r in ranked][:2])
+    options:
+      - id: a
+        text: "`['scope', 'labels']`"
+        correct: true
+        rationale: Exposures are 20, 16, 6, and 12. Sorting by negative exposure puts 20 and 16 first.
+      - id: b
+        text: "`['cost', 'inject']`"
+        rationale: That would be ascending order. The minus sign makes the sort descending.
+      - id: c
+        text: "`['scope', 'inject']`"
+        rationale: Injection has exposure 12, below labels at 16.
+    explanation: >-
+      Likelihood times impact (each on a 1 to 5 scale) is a crude but useful exposure score. Its job is to make you
+      spend week 1 on the risks at the top, not to be precise. Scope creep is at the top of almost every capstone
+      register, which is why the scope doc has a non-goals section.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## A capstone is an argument, not a feature list
+
+Every studio project so far came with a problem already chosen. The capstone doesn't, and that is the hardest part. Most weak capstones fail in week 1, not week 5: they pick a technology ("I want to build a multi-agent system with MCP") and then look for a user, or they pick a problem so broad ("help instructional designers") that no amount of testing could show it works.
+
+Think of the capstone as an **argument** you will make to a skeptical reviewer: for this user, doing this job, my system beats the honest alternative by this much, at this cost, with these known risks. Every scoping decision this week either makes that argument possible or makes it impossible. You can't argue "beats" without a baseline. You can't argue "by this much" without an eval set and metrics. You can't argue "known risks" without having looked for them.
+
+This lesson walks through the five decisions that set up the argument: the problem, the metrics, the baseline, the eval set, and the risk register. None of them needs code, and all of them should be finished before you write any system code. That ordering feels slow. It is the reason the remaining five weeks go fast, because every later decision ("should I add hybrid search?", "is the cheaper model good enough?") becomes a measurement instead of a debate.
+</Listen>
+
+<Listen>
+## Choosing the problem
+
+Good capstone problems share four properties.
+
+**A named user with a job.** Not "educators" but "an instructional designer checking a course page against WCAG before handoff." Google's problem-framing course asks you to state the ideal outcome independently of any model: what the product should do for the user, before you think about how. If you can't describe the outcome without saying "AI," you haven't found the problem yet.
+
+**A current process you can describe with a number.** How long does it take today, and how often does it go wrong? Your own experience in course development and delivery is a legitimate source here, as long as you describe patterns rather than clients. The number doesn't have to be precise, but it anchors your success metric and makes the write-up land with non-engineers.
+
+**Checkable outputs.** Retrieval, extraction, compliance, and status questions have answers you can label: the requirement is in the document or it isn't, the citation supports the claim or it doesn't. Open-ended generation ("write a better course description") is much harder to evaluate in six weeks. If you can't imagine writing 100 test cases with expected outcomes, narrow the problem until you can.
+
+**Public or synthetic data only.** The repo is public, so client documents, learner records, contracts, and internal trackers are off the table, including in screenshots and traces. Public standards, open courseware, government RFPs, and synthetic corpora you generate (and label as synthetic) all work. Check each source's license and record it.
+
+Finally, choose the simplest architecture that could work. Anthropic's guidance on effective agents recommends starting with the simplest solution and adding agentic autonomy only when it demonstrably helps. The capstone requires an agent with tools, so find the part of the job that genuinely needs judgment about what to do next, and keep the rest as a fixed workflow.
+</Listen>
+
+<Listen>
+## Success metrics, failure metrics, and non-goals
+
+A metric turns "it works" into something you can compare. Google's problem-framing course makes a distinction worth adopting: **product success metrics** describe what changes for the user (time saved, errors avoided, tasks completed) and are separate from **model metrics** such as accuracy or recall. You need both, and you should check that improving the model metric would actually move the product metric. If better retrieval recall wouldn't change whether the designer trusts the output, recall isn't your headline.
+
+The same course recommends defining a **failure metric** alongside success, with targets for both, so the space between them is small and explicit. For a compliance-matrix builder: success is a complete matrix in under an hour with no missed mandatory requirements on held-out RFPs; failure is any missed mandatory requirement, or a matrix that takes longer to check than to write by hand. Writing the failure condition down in week 1 protects you from redefining success in week 6.
+
+Martin Zinkevich's Rules of Machine Learning, written from Google's production experience, puts metrics second only to "don't be afraid to launch without machine learning," and recommends a simple, observable, attributable first objective. For a capstone, that means one headline metric you can compute on every eval case, plus a small number of guard metrics (cost per task, p95 latency, attack success rate, wrong-abstention rate) that must not get worse.
+
+Then write the **non-goals**. Malte Ubl's description of design docs at Google treats non-goals (things that could reasonably be goals but that you are deliberately excluding) as a core section, and Google's Technical Writing One course gives the same advice for any document: state the scope and the non-scope. "Does not support scanned PDFs." "Does not send email; drafts only." "English only." Each non-goal is a feature you have already said no to, which makes the next request to add it easy to decline.
+</Listen>
+
+<Callout type="tip" title="Your scope doc, on one page">
+User and job. Current process, with a number. Ideal outcome in one sentence, with no mention of AI. Headline success metric and target. Failure metric. Guard metrics. Baseline. Non-goals. Data sources and licenses. The top five risks. If it doesn't fit on one page, the scope is too big.
+</Callout>
+
+<Listen>
+## The baseline: the comparison a reviewer will accept
+
+A number without a comparison can't be defended. "81 percent task success" invites the obvious question: compared with what? The baseline is your answer, and choosing it is a judgment call that a reviewer will check.
+
+A good baseline is the **simplest credible alternative** the user could have instead. Usually that is one of three things. The current manual process, measured on a sample (how long it takes and how many errors a careful person makes). A non-AI tool: keyword search, a linter, a spreadsheet filter. Or a single model call with no retrieval, no tools, and no verification, which tells you what your architecture adds on top of the raw model.
+
+Pick the one that a skeptical reviewer would consider the real competition, and if two are plausible, run both. Run the baseline on the same eval cases with the same graders as your system, so you can report **paired** differences, the method from Studio 3. The baseline also protects you. If it already meets your success target, you have learned that in week 1 rather than week 6, and you can move to a harder slice of the problem where your system has room to prove itself.
+</Listen>
+
+<Listen>
+## The eval set comes before the system
+
+The most important ordering rule in the capstone: build the eval set before you build the system. There are two reasons.
+
+The first is bias. Once a system exists, you unconsciously write test cases it can handle, because those are the cases you have been looking at. Cases written first describe the user's job; cases written later describe your system. Anthropic's guide to agent evals makes the same practical point from the other side: evals get harder to build the longer you wait, and you don't need hundreds of tasks to start. It suggests that 20 to 50 tasks drawn from real failures is a good beginning, and that the manual checks you already run during development are a natural source.
+
+The second reason is that the eval set **is** the specification. Writing 100 cases with expected outcomes forces decisions you would otherwise defer: what counts as a correct answer, when the system should abstain, which mistakes are worse than others.
+
+For the capstone, aim for at least 100 cases in week 1 and grow it through week 4. Tag each by source: realistic cases written from the user's job, synthetic cases generated for coverage (and spot-checked), **should-abstain** cases the system must decline, and **adversarial** cases such as injected instructions. Split it into dev and a sealed held-out set of at least a quarter of the cases, as Hamel Husain's evals FAQ and Studio 3 describe, and decide now how rarely you will run held-out (end of weeks 2, 4, and 6 is a good rule). Prefer binary pass or fail labels with a written reason, because they are faster to label consistently and easier to put an interval on.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put the week-1 scoping steps in a sensible order"
+  items={[
+    "Name the user and the job, and state the ideal outcome without mentioning AI",
+    "Measure how the job is done today, with at least one number",
+    "Write success and failure metrics with targets, plus guard metrics",
+    "Draft tagged eval cases with expected outcomes, and seal a held-out split",
+    "Run the baseline on the eval set and log the result",
+    "Run a premortem and turn it into a ranked risk register",
+    "Start building the system",
+  ]}
+  explanation="Outcome before metrics, metrics before cases, cases before the baseline (which needs them), and all of it before system code. The premortem works best once there is a concrete plan to imagine failing, though you can run it earlier and revisit it. Real scoping loops: a surprising baseline result often sends you back to narrow the problem."
+/>
+
+<Listen>
+## The premortem and the risk register
+
+Gary Klein's premortem, described in the Harvard Business Review in 2007, is a simple exercise with a useful twist. Instead of asking "what could go wrong?", you assume the project has **already failed** and ask each person to write down why. Klein's argument is that starting from the failure makes it easier for people with doubts to voice them during planning, when they are still cheap to act on.
+
+For a solo capstone, run it on yourself and, if you can, with a peer or mentor. Imagine it is week 6 and the defense went badly. Why? Typical answers: the labels turned out to be wrong; the corpus license didn't allow redistribution; the agent worked on dev and collapsed on held-out; costs were ten times the estimate; a reviewer hid an instruction in a retrieved document and the agent followed it; you ran out of time because the scope grew.
+
+Turn each reason into a row in a **risk register**: the risk, likelihood and impact (1 to 5 each), exposure (their product), an owner (you, for most), a mitigation, and a trigger that tells you the risk is materializing ("held-out score more than 10 points below dev"). NIST's AI Risk Management Framework is a good reference for the wider set of risks AI systems carry, from validity and reliability to security and privacy; you don't need its full process for a capstone, but skim its categories so your register isn't only technical.
+
+Rank by exposure and spend week 1 mitigating the top three. Revisit the register at each milestone, and publish its final state in your write-up: reviewers trust a project more when it shows the risks it looked for and what happened to each.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="capstone-scope-risk-scorer"
+  title="Build a scope and risk checker"
+  starter={`def scope_problems(scope):
+    """Return a list of problems with a capstone scope, in this order:
+      "no named user"            scope["user"] is blank
+      "no success metric"        scope["success_metric"] is blank
+      "no failure metric"        scope["failure_metric"] is blank
+      "no baseline"              scope["baseline"] is blank
+      "eval set under 100"       scope["eval_cases"] < 100
+      "held-out under 25%"       scope["held_out"] / scope["eval_cases"] < 0.25
+      "no should-abstain cases"  scope["should_abstain"] == 0
+      "too many tools"           more than 5 tools
+      "eval time under 40%"      scope["eval_hours"] / scope["total_hours"] < 0.40
+    Treat None and whitespace-only strings as blank.
+    """
+    # TODO
+    pass
+
+def rank_risks(risks):
+    """Return (ranked_ids, flags).
+    ranked_ids: risk ids sorted by exposure (likelihood * impact), highest first; break ties by id ascending.
+    flags: list of (id, problem) in ranked order, where problem is
+      "no owner"       if the owner is blank (check this first)
+      "no mitigation"  if exposure >= 12 and the mitigation is blank
+    """
+    # TODO
+    pass
+
+SCOPE = {
+    "user": "Proposal writer at an education-services firm",
+    "success_metric": "Complete, checked compliance matrix in under 1 hour (today about 4)",
+    "failure_metric": "",
+    "baseline": "Single long-context model call, no retrieval or checks",
+    "eval_cases": 80,
+    "held_out": 16,
+    "should_abstain": 0,
+    "tools": ["search_rfp", "search_capabilities", "classify", "export_xlsx", "email_team", "web_search", "calendar"],
+    "eval_hours": 18,
+    "total_hours": 70,
+}
+
+RISKS = [
+    {"id": "cost", "risk": "Long RFPs make each run expensive", "likelihood": 2, "impact": 3, "owner": "me", "mitigation": ""},
+    {"id": "inject", "risk": "Instructions hidden in an RFP steer the agent", "likelihood": 3, "impact": 4, "owner": "", "mitigation": "Injection suite in CI"},
+    {"id": "labels", "risk": "Hand labels are inconsistent", "likelihood": 4, "impact": 4, "owner": "me", "mitigation": "Second labeler on 30 cases"},
+    {"id": "license", "risk": "Some RFPs can't be redistributed", "likelihood": 2, "impact": 5, "owner": "me", "mitigation": ""},
+    {"id": "scope", "risk": "Features added without cuts", "likelihood": 4, "impact": 5, "owner": "me", "mitigation": "  "},
+]
+
+print(scope_problems(SCOPE))
+print(rank_risks(RISKS))
+`}
+  tests={`probs = scope_problems(SCOPE)
+assert probs is not None, "scope_problems returned None"
+assert probs == ["no failure metric", "eval set under 100", "held-out under 25%", "no should-abstain cases", "too many tools", "eval time under 40%"], f"got {probs}"
+good = dict(SCOPE, failure_metric="Any missed mandatory requirement", eval_cases=120, held_out=30, should_abstain=12,
+            tools=["search_rfp", "search_capabilities", "export_xlsx"], eval_hours=30)
+assert scope_problems(good) == [], "a complete scope has no problems"
+assert "no named user" in scope_problems(dict(good, user="   ")), "whitespace-only counts as blank"
+assert "no baseline" in scope_problems(dict(good, baseline=None)), "None counts as blank"
+assert "held-out under 25%" not in scope_problems(dict(good, eval_cases=100, held_out=25)), "exactly 25% is fine"
+ranked, flags = rank_risks(RISKS)
+assert ranked == ["scope", "labels", "inject", "license", "cost"], f"ranked by exposure: got {ranked}"
+assert flags == [("scope", "no mitigation"), ("inject", "no owner")], f"got {flags}"
+tie, _ = rank_risks([{"id": "b", "likelihood": 2, "impact": 2, "owner": "me", "mitigation": "x"},
+                     {"id": "a", "likelihood": 4, "impact": 1, "owner": "me", "mitigation": "x"}])
+assert tie == ["a", "b"], "ties are broken by id"`}
+  solution={`def _blank(value):
+    return value is None or not str(value).strip()
+
+def scope_problems(scope):
+    problems = []
+    if _blank(scope.get("user")):
+        problems.append("no named user")
+    if _blank(scope.get("success_metric")):
+        problems.append("no success metric")
+    if _blank(scope.get("failure_metric")):
+        problems.append("no failure metric")
+    if _blank(scope.get("baseline")):
+        problems.append("no baseline")
+    n = scope.get("eval_cases", 0)
+    if n < 100:
+        problems.append("eval set under 100")
+    if n == 0 or scope.get("held_out", 0) / n < 0.25:
+        problems.append("held-out under 25%")
+    if scope.get("should_abstain", 0) == 0:
+        problems.append("no should-abstain cases")
+    if len(scope.get("tools", [])) > 5:
+        problems.append("too many tools")
+    if scope.get("eval_hours", 0) / scope["total_hours"] < 0.40:
+        problems.append("eval time under 40%")
+    return problems
+
+def rank_risks(risks):
+    def exposure(r):
+        return r["likelihood"] * r["impact"]
+    ordered = sorted(risks, key=lambda r: (-exposure(r), r["id"]))
+    flags = []
+    for r in ordered:
+        if _blank(r.get("owner")):
+            flags.append((r["id"], "no owner"))
+        elif exposure(r) >= 12 and _blank(r.get("mitigation")):
+            flags.append((r["id"], "no mitigation"))
+    return [r["id"] for r in ordered], flags`}
+>
+Write `scope_problems` and `rank_risks`, then press **Check my answer**. The thresholds encode this capstone's requirements; in a real team you would set your own. Notice what the checker can't see: it confirms a failure metric exists, not that it is the right one. That judgment stays with you and your reviewer.
+</PyRunner>
+
+<Callout type="pitfall" title="Scoping by ambition">
+The most common week-1 mistake is choosing scope by what would be impressive rather than what can be measured in six weeks. Seven tools, three user types, and a web UI look like a stronger project in a proposal and produce a weaker one at the defense, because none of it gets evaluated properly. A good test: for every feature, name the eval cases that cover it. A feature with no cases is a feature you can't defend, so cut it or write the cases now.
+</Callout>
+
+<Listen>
+## Model selection starts in week 1, too
+
+Scoping is also where you set up the evidence for model choices. Your eval set and baseline let you answer questions that otherwise turn into opinion: does the frontier model beat a cheaper tier on this task, does an open-weight model running locally meet the bar for a privacy-sensitive user, does a long-context call do as well as retrieval? Write down the candidates you expect to compare (for example, two tiers from one provider and one model from another provider or an open model), and the guard metrics that would decide between them, such as cost per task and p95 latency.
+
+Don't run that comparison yet. The point in week 1 is that you will be **able** to run it later, on the same cases, with paired statistics, instead of picking a model because it is the one you used last. That is the habit a working team needs most: a standing eval set that turns "should we switch models?" from a meeting into a one-command run.
+</Listen>
+
+<GoDeeper title="Proxy metrics and Goodhart's problem">
+Many capstones can't measure the product outcome directly in six weeks: you can't observe a real proposal team for a month. So you measure a **proxy** (requirement recall on labeled RFPs) and argue it predicts the outcome (fewer missed requirements in real bids). Google's problem-framing course notes that no proxy is perfect and suggests choosing the one with the fewest drawbacks. Be explicit about the gap in your write-up: state the proxy, why you believe it tracks the outcome, and what evidence would show it doesn't. And watch for optimizing the proxy at the outcome's expense, for example raising recall by flagging every sentence as a requirement, which a good guard metric (precision, or time to check the output) will catch. For a longer treatment of planning AI applications, including setting expectations and milestones, see chapter 1 of Chip Huyen's *AI Engineering*.
+</GoDeeper>
+
+<Listen>
+## What you should have by Friday
+
+By the end of week 1: a one-page scope doc, a risk register ranked by exposure with the top three mitigated or in progress, an eval set of at least 100 tagged cases with a sealed held-out split, a baseline run logged against it, and a repo whose CI runs on every commit even though there is barely any code. That last item matters more than it looks: when every later change runs through CI from the start, quality checks become routine rather than a cleanup job in week 5. Next week you build retrieval, and you will measure it against this baseline from the first run.
+</Listen>

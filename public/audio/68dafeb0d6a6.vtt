@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.240
+The toolbox, from cheap to expensive.
+
+2
+00:00:02.520 --> 00:00:07.064
+Think of four tiers, and route documents to the cheapest tier that handles them well.
+
+3
+00:00:07.344 --> 00:00:11.568
+Text-layer parsers (pypdf and similar) read the embedded characters.
+
+4
+00:00:11.848 --> 00:00:15.155
+Use them for born-digital, single-column documents.
+
+5
+00:00:15.435 --> 00:00:21.451
+Cost is near zero, so run them on everything first and use their output to decide what needs more.
+
+6
+00:00:21.731 --> 00:00:25.528
+Layout-aware parsers run layout models to recover structure.
+
+7
+00:00:25.808 --> 00:00:47.227
+Docling, started at IBM Research Zurich and now hosted by the LF AI and Data Foundation, parses PDF, DOCX, PPTX, XLSX, HTML, images, and more; recovers reading order, table structure, code, and formulas; runs OCR for scanned pages; and exports Markdown or lossless JSON.
+
+8
+00:00:47.507 --> 00:00:52.477
+It is MIT licensed and runs locally, which matters for sensitive documents.
+
+9
+00:00:52.757 --> 00:01:08.587
+Unstructured partitions documents into typed elements (titles, narrative text, tables) with metadata; note that its own docs describe the open-source library as suited to prototyping, with stronger table extraction in its paid API.
+
+10
+00:01:08.867 --> 00:01:17.613
+These tools turn “a stream of characters” into “headings, paragraphs, and tables”, which the structure-aware chunking in lesson 5 depends on.
+
+11
+00:01:17.893 --> 00:01:22.096
+OCR engines such as Tesseract turn page images into text.
+
+12
+00:01:22.376 --> 00:01:31.464
+They are local and cheap but struggle with complex layouts, and they introduce character errors (an “l” read as “1”) that a text layer would not have.
+
+13
+00:01:31.744 --> 00:01:34.603
+Vision-capable models read the rendered page.
+
+14
+00:01:34.883 --> 00:01:46.573
+Claude’s PDF support converts each page to an image and also passes the extracted text, so the model sees both; Gemini and OpenAI document inputs work similarly.
+
+15
+00:01:46.853 --> 00:01:54.533
+They handle charts, handwriting, and messy layouts that defeat rule-based tools, and they can transcribe a page into clean Markdown.
+
+16
+00:01:54.813 --> 00:02:03.133
+They are also the most expensive tier per page, they have request limits, and, like any model output, a transcription can be fluent and wrong.

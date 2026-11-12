@@ -1,0 +1,354 @@
+---
+id: s6-w2-l6
+studio: s6
+week: 2
+order: 6
+title: Latency engineering
+summary: Where a wait comes from (time to first token, output speed, number of calls, time outside the model), streaming UX, output length as the main driver, parallel calls, smaller models and fast mode, precomputation, and how to measure p50, p95, and p99 against a service level objective.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Decompose a task's wall-clock time into calls, time to first token, output tokens over output speed, and time outside the model, and use it to pick the lever that matters
+  - Distinguish time to first token, time to first visible output, and time to finish, and design a streaming UX around them
+  - Explain why output length usually dominates latency and apply output shaping, effort, and fewer calls
+  - Use parallel calls, smaller models, fast mode, and precomputation where each fits, including what each costs
+  - Compute latency percentiles, explain how many samples each needs, and check a sample against a service level objective
+sources:
+  - { id: claude-latency-cookbook, use: summarized, where: "Task-time decomposition and measured lever effects" }
+  - { id: claude-reduce-latency-docs, use: summarized }
+  - { id: claude-streaming-docs, use: summarized }
+  - { id: claude-fast-mode-docs, use: summarized }
+  - { id: claude-thinking-docs, use: summarized, where: "Thinking display settings" }
+  - { id: claude-parallel-tool-use, use: summarized }
+  - { id: claude-prompt-caching-docs, use: summarized, where: "Pre-warming; entries readable once the first response starts" }
+  - { id: openai-latency-guide, use: summarized }
+  - { id: sre-book-slo-chapter, use: summarized }
+  - { id: dean-barroso-2013-tail, use: summarized }
+  - { id: efron-1979-bootstrap, use: linked }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 9, Inference optimization" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      Your voice assistant's complaint is the silence before it starts speaking. A teammate proposes fast mode. What
+      does Anthropic's fast mode documentation say it speeds up?
+    options:
+      - id: a
+        text: Time to first token, by prioritizing the request in the queue.
+        rationale: The docs say the benefit is focused on output tokens per second, not time to first token.
+      - id: b
+        text: Output tokens per second (up to about 2.5 times), not time to first token, at premium pricing.
+        correct: true
+        rationale: Yes. For silence before the first word, look at prompt length and caching, thinking before the first output, and what the user hears while waiting.
+      - id: c
+        text: Both equally, at no extra cost.
+        rationale: Fast mode is priced at a multiple of standard rates (2 times on Opus 5.5 at the time of writing).
+    explanation: >-
+      Match the lever to the term it moves. Fast mode shortens the output term of the wait, which helps long answers.
+      Silence before the first word is time to first token plus any thinking before the first visible output, so the
+      levers are a cached prefix, less thinking up front (effort), and a status or holding phrase while the model works.
+  - id: kc2
+    type: predict-output
+    prompt: Using the nearest-rank definition, what does this print?
+    code: |
+      import math
+      def percentile(values, p):
+          s = sorted(values)
+          return s[math.ceil(p / 100 * len(s)) - 1]
+
+      waits = [1.2, 0.9, 1.1, 8.0, 1.0, 1.3, 0.8, 1.4, 1.0, 1.2]
+      print(percentile(waits, 50), percentile(waits, 90), round(sum(waits) / len(waits), 2))
+    options:
+      - id: a
+        text: "`1.1 1.4 1.79`"
+        correct: true
+        rationale: Sorted, the 5th value is 1.1 and the 9th is 1.4. The single 8-second outlier pulls the mean to 1.79, above every value except itself.
+      - id: b
+        text: "`1.1 8.0 1.79`"
+        rationale: With 10 values, the 90th percentile is the 9th smallest (ceil of 9.0), not the largest.
+      - id: c
+        text: "`1.79 1.4 1.1`"
+        rationale: The printed values follow the order of the print call, which is p50, then p90, then the mean.
+    explanation: >-
+      The mean describes no actual request here. Percentiles do: half the waits are at or under 1.1 seconds, and 90
+      percent are at or under 1.4. Notice also that the p90 of ten samples is decided by a single value, which is why
+      high percentiles need many samples.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      Your agent's median task takes 6 seconds, but users complain about the slow ones, and your p95 is 31 seconds.
+      You have a timing log with per-call timestamps and usage for 2,000 tasks. What do you do first?
+    options:
+      - id: a
+        text: Switch the whole service to fast mode, since it cuts waits by about half.
+        rationale: That might help, at double the price, but you don't yet know whether the slow tasks are slow because of output, extra calls, slow tools, or retries.
+      - id: b
+        text: Pull the slowest 5 percent of tasks and decompose them (calls, output tokens including thinking, tool time, retries) against the typical task, then pick the lever that moves the term that differs.
+        correct: true
+        rationale: Yes. The tail and the median often have different causes. With 2,000 tasks you have about 100 beyond the p95, enough to see a pattern.
+      - id: c
+        text: Lower effort everywhere, since less thinking means faster tasks.
+        rationale: Effort is a capability trade, and it often moves the median more than the tail. Diagnose before you trade.
+    explanation: >-
+      Slow outliers usually have a specific cause: an extra tool round, a rate-limit retry, a compaction on the user's
+      path, a runaway answer. Find it in the log first; the right fix (a per-task limit, a prefetch, a retry setting, a
+      shorter output shape) follows from it.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## What a wait is made of
+
+A latency complaint is not one number. Four measurements name where a wait comes from:
+
+- **Time to first token (TTFT):** from sending the request until the response starts. It covers the network, queueing, and reading whatever part of the prompt isn't cached.
+- **Time to first visible output:** until the first text or tool call a person or program can use. When the model thinks first, this comes only after the thinking, so it can be many seconds after TTFT. Many people say "TTFT" when they mean this one, so check which your logs actually measure.
+- **Time to finish:** until the response is complete. For an agent, the wait that matters is the whole task: every call in the loop plus everything between them.
+- **Output speed (OTPS):** tokens per second between the first token and the last, thinking included.
+
+Anthropic's latency cookbook ties these together with a first-order equation for a task:
+
+> task time is about calls times TTFT, plus output tokens divided by output speed, plus everything outside the model
+
+"Everything outside" means tool execution, network hops, queues, retries after rate limits, and your own processing. The equation gives you five ways to shorten a task: **fewer calls**, **shorter TTFT**, **fewer output tokens** (thinking included), **faster output**, and **less time outside the model**. It sets the order in which to look; only measurement says which lever wins on your workload.
+
+Anthropic's own reducing-latency page adds a warning worth taping to your monitor: engineer a prompt that works well first, then reduce latency. Optimizing too early can stop you from discovering what top performance looks like.
+</Listen>
+
+<Predict
+  title="Which term dominates?"
+  code={`calls = 4
+ttft_s = 0.8
+output_tokens = 1200       # across all calls, thinking included
+tokens_per_s = 80
+tool_time_s = 2.5          # time spent running tools between calls
+
+total = calls * ttft_s + output_tokens / tokens_per_s + tool_time_s
+print(round(total, 1), round(output_tokens / tokens_per_s / total, 2))`}
+  options={["20.7 0.72", "6.5 0.5", "20.7 0.15", "15.0 1.0"]}
+  answer={0}
+>
+Four calls contribute 3.2 seconds of TTFT, the tools 2.5, and generation 1200 / 80 = 15 seconds: 20.7 in all, 72 percent of it output. Halving output saves 7.5 seconds; halving TTFT saves 1.6. In most LLM features the output term is the one to attack first.
+</Predict>
+
+<Listen>
+## Output length is the main driver
+
+Because output tokens are generated one at a time, their count usually dominates. OpenAI's latency guide puts the asymmetry in numbers: cutting output tokens by half may cut latency by about half, while cutting input tokens by half may improve it by only 1 to 5 percent. Anthropic's latency cookbook measured the input side directly on its sample agent: about a quarter of a second of TTFT per 100,000 extra input tokens.
+
+The levers on output, roughly from least to most risky:
+
+- **Shape the answer.** Ask for a specific format with an example ("two lines: decision, then reason"), or return structured fields instead of prose. In the cookbook, asking for a two-line decision format cut one decision from 46.4 seconds to 4.9, and its thinking tokens from 2,083 to 296. Anthropic's page also notes that asking for a number of sentences or paragraphs works better than a word count, because the model counts in tokens.
+- **Remove commentary between tool calls**, where the agent narrates what it is about to do.
+- **Lower effort** on routine routes. In the cookbook, `low` effort cut median task time by 13 percent with a small accuracy drop; `high` added 7 percent to the median and 12 percent to the p90.
+- **Turn thinking off** where the model allows it. This is the steepest capability trade; in the cookbook's Haiku run, accuracy fell from 97.5 to 73.5 percent while the median wait fell only from 4.9 to 3.7 seconds.
+
+Every one of these changes what the model writes, so each needs your eval before you keep it. A shorter answer that drops a required caveat is a regression, not an optimization.
+</Listen>
+
+<Listen>
+## Streaming changes the wait people feel
+
+Streaming sends the response as server-sent events while it is generated. It doesn't shorten time to finish, but for a person watching, it moves the felt wait from "until done" to "until the first useful words." Anthropic's latency page lists streaming as one of three core strategies, and OpenAI's guide calls it the most effective way to make users wait less.
+
+Three details make streaming work in practice. **Thinking comes first.** On current Claude models the thinking display defaults to omitted, so a streamed response can show a long silence before text while the model reasons; you can request summarized thinking, or show a status line ("checking your order history...") driven by tool-call events. **Measure the right timestamps.** Log the time you sent the request, the `message_start` event (a client-side stand-in for TTFT), the first text delta (first visible output), and the end. **Keep the final message.** The SDK's streaming helper still gives you the complete message and its `usage` at the end, so you lose nothing for cost accounting.
+</Listen>
+
+```python
+import time
+import anthropic
+
+client = anthropic.Anthropic()
+
+def timed_stream(**params):
+    sent = time.perf_counter()
+    marks = {"ttft": None, "first_text": None}
+    with client.messages.stream(**params) as stream:
+        for event in stream:
+            now = time.perf_counter() - sent
+            if event.type == "message_start" and marks["ttft"] is None:
+                marks["ttft"] = now
+            elif (event.type == "content_block_delta" and event.delta.type == "text_delta"
+                  and marks["first_text"] is None):
+                marks["first_text"] = now
+        message = stream.get_final_message()
+    marks["total"] = time.perf_counter() - sent
+    return message, marks   # log marks beside message.usage and the task id
+```
+
+<Listen>
+## Fewer calls, and calls that overlap
+
+The first term of the equation multiplies TTFT by the number of calls, and in an agent each call also adds the time spent between calls. Two families of fixes:
+
+**Fewer calls.** Combine sequential steps into one prompt when the model can do them together. **Prefetch** what your application already knows the agent will need (the customer's account, the order) and put it in the first request instead of waiting for a tool call. Make list tools return more per page. In the cookbook, prefetching cut calls per task from 3.5 to 2.4 and median time by 13 percent; bigger pages cut it by 10 percent.
+
+**Overlap the calls you keep.** Claude can request several tool calls in one turn. Run independent, read-only tools concurrently, and return all the results together in a single user message (splitting them across messages teaches the model to stop calling in parallel). Run independent subtasks as concurrent requests, each with its own model and effort: the cookbook's parallel Haiku subagents cut one task from 9.5 to 5.7 seconds with the same decisions. Two cautions: concurrency raises cost when each subtask rereads its own context, and parallel requests with identical prefixes don't share a cache until the first one has started responding, so fire one, wait for it to start streaming, then fire the rest.
+</Listen>
+
+```python
+import asyncio
+import anthropic
+
+aclient = anthropic.AsyncAnthropic()
+
+async def summarize(section: str) -> str:
+    msg = await aclient.messages.create(
+        model="claude-haiku-5-5",
+        max_tokens=2000,
+        output_config={"effort": "low"},
+        messages=[{"role": "user", "content": f"Summarize in three bullet points:\n\n{section}"}],
+    )
+    return next((b.text for b in msg.content if b.type == "text"), "")
+
+async def summarize_all(sections: list[str]) -> list[str]:
+    # Independent subtasks: total time is roughly the slowest one, not the sum.
+    return await asyncio.gather(*(summarize(s) for s in sections))
+```
+
+<Listen>
+## Faster models, fast mode, and precomputation
+
+**Smaller models** generate faster per token. The cookbook measured output speed on its workload at about 581 tokens per second for Haiku, 236 for Sonnet, and 153 for Opus. But per-task time is what matters, and it measured Sonnet's median task at 3.5 seconds and Haiku's at 4.0, because the smaller model wrote more tokens and accuracy fell. A faster model is not automatically a faster task, and switching models is a migration: re-run the eval.
+
+**Fast mode** runs the same model with a faster inference configuration. Anthropic's docs list up to 2.5 times higher output tokens per second, focused on output speed rather than TTFT, on Claude Opus 5.5 (generally available) and a few other models, at a premium (8 and 40 dollars per million input and output tokens on Opus 5.5 at the time of writing, twice the standard rate). It has its own rate limit, isn't available with the Batch API, and requests at different speeds don't share cached prefixes, so falling back to standard speed on a 429 is also a cache miss. In the cookbook it cut median and p90 task time by 53 to 59 percent at every effort level, at roughly double the cost. When you report a paid lever like this, always show beside it what the no-cost changes achieved on their own.
+
+**Precompute** whatever doesn't need to happen while the user waits. OpenAI's guide ends its list with "don't default to an LLM": hard-coded responses, precomputed outputs, and ordinary caching where they fit. In practice: generate summaries and classifications in a nightly batch job (half price, lesson 5) and serve them from your database; cache final answers in your own application keyed by a normalized input, with an expiry and an invalidation rule; and pre-warm the prompt cache before traffic arrives. Anthropic's caching docs describe sending a request with `max_tokens` set to 0, which writes the cache without generating output; the cookbook measured a first turn on a 146,000-token prompt falling from 1.0 to 0.8 seconds this way. Pre-warming costs a cache write, so it pays only when the first request's latency is user-visible and the prefix is large.
+</Listen>
+
+<Callout type="pitfall" title="Comparing against yesterday's number">
+Service speed drifts by the hour, so a change measured today against a baseline measured last week tells you nothing. Time the current setup and the change **in the same run**, on the same tasks, interleaved (A, B, B, A), from a client in the same region as production, with the cache warmed the way production warms it. Run the baseline twice: the gap between its two runs is your noise floor, and a difference smaller than that is "can't tell," not "no change." And keep quality in the same table: a faster configuration that fails more tasks is slower per completed task.
+</Callout>
+
+<Listen>
+## Measure percentiles, not averages
+
+Latency distributions are skewed: most requests are quick and a few are very slow. The Google SRE book's chapter on service level objectives makes the case directly: an average can hide the tail and changes in it, while the median shows the typical case and high percentiles (the 99th, the 99.9th) show a plausible worst case. Report **p50, p95, and p99** (the values below which 50, 95, and 99 percent of requests fall).
+
+The same chapter gives the vocabulary for targets. A **service level indicator** (SLI) is a carefully defined measure, such as the time to first visible output of chat responses. A **service level objective** (SLO) is a target for it, such as "99 percent of chat responses show text within 2 seconds." A **service level agreement** is a contract with consequences for missing an SLO. The chapter suggests stacking targets at several percentiles to capture the shape of the curve, which suits LLM features well: one target for the typical wait and one for the tail.
+
+Two pieces of math matter. **Sample size:** the p99 of 100 samples is decided by the one or two largest values, so you need roughly ten observations beyond a percentile before it means much: on the order of 20 samples for p50, 200 for p95, and 1,000 for p99. Repeated runs of the same task don't count as new samples of your traffic. **Fan-out:** Dean and Barroso's "The Tail at Scale" (2013) argued that rare slow events, harmless in small systems, come to dominate as a request depends on more components. If each call in an agent has a 1 percent chance of being very slow, a task with 10 calls hits at least one slow call with probability 1 minus 0.99 to the 10th, about 9.6 percent. Agents turn a call-level p99 into a task-level p90. The paper's tail-tolerant techniques include hedged requests (sending a backup copy of a slow request); with LLMs a hedge bills a second attempt and must never duplicate a side effect, so reserve it for idempotent, read-only calls with high variance.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s6-w2-latency-slo"
+  title="Compute latency percentiles and check an SLO"
+  starter={`import math
+
+def percentile(values, p):
+    """Nearest-rank percentile: the smallest value such that at least p percent
+    of the values are less than or equal to it. 0 < p <= 100. Raise ValueError
+    on an empty list."""
+    # TODO
+    pass
+
+def required_samples(p):
+    """Rough minimum sample count to read percentile p: about ten observations
+    beyond it. Return math.ceil(1000 / (100 - p)); for p = 100 return None."""
+    # TODO
+    pass
+
+def check_slo(samples, slo):
+    """slo maps a percentile label like "p95" to a target in seconds.
+    Return {"n": ..., "mean": ..., "all_ok": ..., "results": {label: {"value", "target",
+    "ok", "reliable"}}} where ok means value <= target and reliable means
+    len(samples) >= required_samples(p). all_ok is True only if every target
+    is met (reliability is reported, not enforced)."""
+    # TODO
+    pass
+
+# 200 chat responses: time to first visible output, in seconds.
+SAMPLES = [round(1.5 + (i % 16) * 0.1, 1) for i in range(190)] + [15.0] * 10
+SLO = {"p50": 2.5, "p95": 4.0, "p99": 10.0}
+
+report = check_slo(SAMPLES, SLO)
+if report:
+    print("n", report["n"], "mean", round(report["mean"], 2), "all_ok", report["all_ok"])
+    for label, r in report["results"].items():
+        print(label, r)
+`}
+  tests={`assert percentile([3, 1, 2], 50) == 2, "sort first; p50 of three values is the middle one"
+assert percentile([1, 2, 3, 4], 100) == 4
+assert percentile([5.0], 99) == 5.0
+try:
+    percentile([], 50)
+    raise AssertionError("an empty sample must raise ValueError")
+except ValueError:
+    pass
+assert percentile(SAMPLES, 50) == 2.3
+assert percentile(SAMPLES, 95) == 3.0, "nearest rank: the 190th of 200 sorted values"
+assert percentile(SAMPLES, 99) == 15.0
+assert required_samples(50) == 20 and required_samples(95) == 200 and required_samples(99) == 1000
+rep = check_slo(SAMPLES, SLO)
+assert rep is not None, "check_slo returned None"
+assert rep["n"] == 200 and abs(rep["mean"] - 2.8805) < 1e-9
+res = rep["results"]
+assert res["p50"]["ok"] and res["p95"]["ok"], "the typical and p95 waits meet their targets"
+assert not res["p99"]["ok"] and res["p99"]["value"] == 15.0, "the tail misses"
+assert rep["all_ok"] is False
+assert res["p95"]["reliable"] is True and res["p99"]["reliable"] is False, "200 samples can't support a p99"`}
+  solution={`def percentile(values, p):
+    if not values:
+        raise ValueError("no samples")
+    s = sorted(values)
+    k = math.ceil(p / 100 * len(s))
+    return s[max(k, 1) - 1]
+
+def required_samples(p):
+    if p >= 100:
+        return None
+    return math.ceil(1000 / (100 - p))
+
+def check_slo(samples, slo):
+    results = {}
+    for label, target in slo.items():
+        p = float(label.lstrip("p"))
+        value = percentile(samples, p)
+        need = required_samples(p)
+        results[label] = {
+            "value": value,
+            "target": target,
+            "ok": value <= target,
+            "reliable": need is not None and len(samples) >= need,
+        }
+    return {
+        "n": len(samples),
+        "mean": sum(samples) / len(samples),
+        "all_ok": all(r["ok"] for r in results.values()),
+        "results": results,
+    }`}
+>
+Implement the three functions, then press **Check my answer**. Look at what the report says when it passes. The mean (2.88 seconds) sounds fine and the p95 meets its target, yet one response in twenty takes 15 seconds, and with only 200 samples the p99 is a hint rather than a measurement. A dashboard that showed only the mean would have reported a healthy service.
+</PyRunner>
+
+<Mermaid
+  alt="Flowchart for latency work: define the SLI and SLO for the wait users feel; log per-call timestamps and usage per task; compute p50, p95, and p99 with enough samples; decompose slow tasks into calls, TTFT, output tokens, and outside time; pick the lever that moves the largest term; test the change against the current setup in the same run with the eval; keep it only if quality holds and the wait falls beyond the noise; otherwise revert; then re-check the SLO."
+  caption="Latency work as a loop. Diagnose with percentiles, change one thing, and keep it only when both the eval and the timing agree."
+  chart={`flowchart TD
+  S["Define SLI and SLO for the wait users feel"] --> L["Log timestamps + usage per call, per task"]
+  L --> P["p50 / p95 / p99 with enough samples"]
+  P --> D["Decompose slow tasks: calls, TTFT, output tokens, outside time"]
+  D --> C["Change one lever that moves the largest term"]
+  C --> T{"Same-run comparison: quality held and wait fell beyond noise?"}
+  T -- "yes" --> K["Keep it, re-check SLO"]
+  T -- "no" --> R["Revert and record why"]
+  K --> P
+  R --> D`}
+/>
+
+<GoDeeper title="Percentile definitions and confidence intervals">
+There is more than one definition of a sample percentile. Nearest rank (used above) always returns an observed value; linear interpolation, the default in NumPy, returns a weighted average of the two values around the rank. On large samples they agree closely; on small samples they can differ noticeably, so state which one your dashboard uses and don't compare numbers computed different ways.
+
+To say how sure you are of a percentile, bootstrap it (Efron, 1979): resample your measurements with replacement many times, compute the percentile on each resample, and take the middle 95 percent of those values as an interval. For comparing two configurations, resample paired tasks and look at the ratio. Anthropic's latency cookbook uses a bootstrap test of this kind and counts a change as real only when the difference clears it. Chip Huyen's *AI Engineering* (chapter 9) covers the serving-side picture: the inference metrics, and how batching and hardware choices trade throughput against per-request latency.
+</GoDeeper>
+
+<LabLink path="labs/studio-6/02-cost-latency" title="Lab: measure a baseline, add caching, compare" needs={["Anthropic API key (optional for offline tests)"]} minutes={75}>
+The lab's harness records time to first token, first text, and total time for every request with the timing code from this lesson, then reports percentiles beside cost so you can see what prompt caching does to each.
+</LabLink>
+
+<Listen>
+## What to carry forward
+
+Decompose the wait before you change anything: calls times TTFT, plus output over speed, plus time outside the model. Attack output first, with shapes, less commentary, and measured effort. Stream for people who watch, and log the right timestamps. Cut and overlap calls, precompute what can wait, and reserve fast mode for when the no-cost levers are exhausted, reporting its price beside its gain. Measure p50, p95, and p99 with enough samples, against an SLO, comparing within one run. Next week you'll put these measurements on a dashboard with tracing.
+</Listen>

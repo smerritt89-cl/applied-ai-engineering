@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.109
+The CI gate.
+
+2
+00:00:01.389 --> 00:00:07.320
+A gate turns the harness into a guardrail: a change that makes quality measurably worse doesn’t merge.
+
+3
+00:00:07.600 --> 00:00:11.056
+Design it in two tiers, because judges cost money and time.
+
+4
+00:00:11.336 --> 00:00:13.640
+On every pull request: the fast suite.
+
+5
+00:00:13.920 --> 00:00:27.680
+Deterministic graders only, on a small set: retrieval metrics on the dev set (no generation needed if you cache or rerun only retrieval), citation-format checks, and the regression cases with exact checks.
+
+6
+00:00:27.960 --> 00:00:37.944
+The evals FAQ recommends deterministic assertions for CI for exactly this reason, and feeding each new production failure into the CI dataset.
+
+7
+00:00:38.224 --> 00:00:41.659
+Regression cases should pass at or near 100%.
+
+8
+00:00:41.939 --> 00:00:52.691
+Anthropic’s guide makes the same split: capability evals start low and give you something to climb, regression evals stay near 100% and guard against backsliding.
+
+9
+00:00:52.971 --> 00:00:57.024
+Nightly, or when prompts, models, or the judge change: the full suite.
+
+10
+00:00:57.304 --> 00:01:02.872
+Generation plus judges on the dev set, with the paired comparison against the stored baseline.
+
+11
+00:01:03.152 --> 00:01:07.355
+The held-out set runs only when you are deciding whether to ship a candidate.
+
+12
+00:01:07.635 --> 00:01:08.403
+The rule.
+
+13
+00:01:08.683 --> 00:01:10.304
+Write it down before you need it.
+
+14
+00:01:10.584 --> 00:01:22.531
+Lesson 8’s non-inferiority gate is the baseline: must-pass cases first, then fail if the lower confidence bound on the paired difference falls below minus a margin chosen in advance.
+
+15
+00:01:22.811 --> 00:01:39.813
+On a small RAG set that bound is often wide, so a three-way version can work better for a team: block if any regression case fails, or if the whole paired 95% interval is below zero (a clear regression); send the change to human review, rather than blocking it,
+
+16
+00:01:40.093 --> 00:01:47.176
+if the interval includes a drop larger than your tolerance (say 2 points) but isn’t clearly negative; pass otherwise.
+
+17
+00:01:47.456 --> 00:01:51.957
+Blocking on noise trains people to ignore the gate, and so does never blocking.
+
+18
+00:01:52.237 --> 00:02:01.709
+Lesson 8’s advice on replaying cached responses for pull-request runs applies here too, since it makes the fast suite deterministic and nearly free.
+
+19
+00:02:01.989 --> 00:02:04.400
+On GitHub, this is a workflow file in.
+
+20
+00:02:04.680 --> 00:02:21.427
+github/workflows/ that runs on pull requests, installs dependencies, reads the API key from a repository secret (never from the code), runs the suite, uploads the report as an artifact, and exits non-zero when the rule says block.
+
+21
+00:02:21.707 --> 00:02:28.939
+Put a spending cap in the harness itself (a maximum number of model calls per run), so a bug in a loop can’t run up a bill.

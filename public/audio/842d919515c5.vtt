@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.088
+Reading a trace.
+
+2
+00:00:01.368 --> 00:00:09.667
+Diagnosis needs data, and the data has to be logged at the time, because you can’t reconstruct what the retriever returned last Tuesday.
+
+3
+00:00:09.947 --> 00:00:26.160
+For each question, a trace should record: the query as received and as rewritten; the ranked candidates from each retriever with scores; what the reranker kept; the exact passage ids (and token counts) that went into the prompt; the answer, its citations,
+
+4
+00:00:26.440 --> 00:00:29.256
+and the verifier’s results; and whether it abstained.
+
+5
+00:00:29.536 --> 00:00:36.384
+With a labeled question (one where you know the gold passage ids), the diagnosis is a walk down the pipeline.
+
+6
+00:00:36.664 --> 00:00:38.413
+Is there a gold passage at all?
+
+7
+00:00:38.693 --> 00:00:41.531
+If not, the only correct outcome was abstention.
+
+8
+00:00:41.811 --> 00:00:44.051
+Did the answer cite an outdated passage?
+
+9
+00:00:44.331 --> 00:00:46.549
+Was the gold passage among the candidates?
+
+10
+00:00:46.829 --> 00:00:48.301
+Did it rank above the cutoff?
+
+11
+00:00:48.581 --> 00:00:49.861
+Did it reach the prompt?
+
+12
+00:00:50.141 --> 00:00:53.683
+If it reached the prompt and the answer is still wrong, it’s synthesis.
+
+13
+00:00:53.963 --> 00:00:57.291
+The first stage that lost the gold passage owns the failure.
+
+14
+00:00:57.571 --> 00:01:09.240
+You’ll implement exactly this walk in the exercise, and in Studio 3 you’ll run it over hundreds of logged questions to get a failure histogram, which tells you where your next week of work should go.
+
+15
+00:01:09.520 --> 00:01:27.163
+Barnett and colleagues draw a lesson from their case studies that applies directly: a RAG system can only be fully validated while it runs, because realistic questions arrive only once real users do, and robustness is something you build up over time rather than design in up front.
+
+16
+00:01:27.443 --> 00:01:30.365
+That’s an argument for logging traces from the first day.

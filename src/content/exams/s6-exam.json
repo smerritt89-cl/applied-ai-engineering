@@ -1,0 +1,1400 @@
+{
+  "id": "s6-exam",
+  "studio": "s6",
+  "title": "Studio 6 exam: Shipping to Production",
+  "draw": 20,
+  "timeLimitMinutes": 40,
+  "passing": 0.8,
+  "questions": [
+    {
+      "id": "s6x-w1-01",
+      "type": "scenario",
+      "prompt": "Your research-assistant agent makes 10 to 40 tool calls per task. Logged runs show a median of 2 minutes and a 99th percentile of 9 minutes. It is deployed as a serverless function with a 300-second limit and streams progress to the browser. What should you change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Raise the SDK timeout to 15 minutes.",
+          "rationale": "The platform kills the function at 300 seconds regardless of the SDK's timeout."
+        },
+        {
+          "id": "b",
+          "text": "Move the run to a background job: the endpoint enqueues it and returns a job id; a worker (for example in a container) runs the agent and publishes progress the client can poll or subscribe to.",
+          "rationale": "Right. Work that outlives the request limit belongs off the request path.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Switch to a smaller model so every run finishes under 5 minutes.",
+          "rationale": "Maybe some runs speed up, but this trades quality for a platform constraint without an eval, and the tail can still exceed the limit."
+        },
+        {
+          "id": "d",
+          "text": "Stream more frequently so the platform sees activity.",
+          "rationale": "The duration limit counts streaming time; activity doesn't extend it."
+        }
+      ],
+      "explanation": "Choose the architecture from the slow end of measured durations. When the tail exceeds the host's request limit, a queue plus a worker removes the limit from the user's path and makes failures recoverable. Keep the side effects at the end of the job idempotent, since jobs can run twice.",
+      "week": 1,
+      "tags": [
+        "architecture",
+        "jobs",
+        "hosting"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w1-02",
+      "type": "scenario",
+      "prompt": "You launch a feature to all users at 9:00. Within a minute, many requests fail with 429s, although your per-minute averages are well under your published rate limits. What is the best response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Add a client-side concurrency limit or token bucket in front of model calls, honor retry-after, and ramp future launches gradually.",
+          "rationale": "Right. Limits can be enforced over short intervals, and sharp usage jumps can hit acceleration limits.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Set max_retries to 10 so requests eventually get through.",
+          "rationale": "More retries during a burst add load to an exhausted bucket and lengthen every user's wait."
+        },
+        {
+          "id": "c",
+          "text": "Request a higher tier; averages under the limit prove the limits are wrong.",
+          "rationale": "The docs say a per-minute limit may be enforced per second, and sudden increases can trigger acceleration limits, so averages can mislead."
+        },
+        {
+          "id": "d",
+          "text": "Switch every request to the fallback model permanently.",
+          "rationale": "A permanent swap changes product quality to fix a traffic-shape problem."
+        }
+      ],
+      "explanation": "Anthropic's rate-limits docs describe token-bucket enforcement, the possibility of shorter enforcement intervals, and acceleration limits on sharp increases. Smooth your own traffic before the provider does, and watch the rate-limit response headers so you see the wall before you hit it.",
+      "week": 1,
+      "tags": [
+        "rate-limits"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w1-03",
+      "type": "scenario",
+      "prompt": "During a week of intermittent overloads, your service quietly served 30 percent of chat traffic from the fallback model. Nobody noticed until satisfaction scores dropped. Which changes would have caught it? Pick the best single answer.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Remove the fallback, so users see errors instead.",
+          "rationale": "Availability matters too. The failure was invisibility, not the fallback itself."
+        },
+        {
+          "id": "b",
+          "text": "Record the model that served each request, alert when the fallback share crosses a threshold, and know the fallback's quality from an eval run before relying on it.",
+          "rationale": "Yes. A fallback is a behavior change that must be visible and measured.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Use a more capable model as the fallback.",
+          "rationale": "That might be fine, but without logging and alerting you still wouldn't know how often it ran."
+        },
+        {
+          "id": "d",
+          "text": "Lower the circuit breaker threshold.",
+          "rationale": "That makes the service fall back more often, not more visibly."
+        }
+      ],
+      "explanation": "Graceful degradation needs observability: log which model answered and why (the lab's `model` and `notes`), alert on fallback and degraded rates, and evaluate the fallback model on your test set so you know what it costs in quality.",
+      "week": 1,
+      "tags": [
+        "fallbacks",
+        "observability"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w1-04",
+      "type": "scenario",
+      "prompt": "Each night you need to re-label about 50,000 of the day's support tickets for an analytics dashboard. Results are needed by 8:00 the next morning. What design fits best?",
+      "options": [
+        {
+          "id": "a",
+          "text": "A loop of synchronous calls from a cron job, as fast as the rate limit allows.",
+          "rationale": "It works, but pays full price and spends your rate limit on work that can wait."
+        },
+        {
+          "id": "b",
+          "text": "Submit a Message Batch (one request per ticket, custom_id = ticket id), join results by custom_id, and re-submit or report errored and expired items.",
+          "rationale": "Right. Batch is half price for work that can wait, and the join must be by id.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Stream each ticket's label so the dashboard updates live.",
+          "rationale": "Nobody is watching overnight; streaming adds complexity for no benefit."
+        },
+        {
+          "id": "d",
+          "text": "One huge request containing all 50,000 tickets.",
+          "rationale": "That exceeds sensible context and output sizes and makes one failure lose everything."
+        }
+      ],
+      "explanation": "The Message Batches API runs ordinary Messages requests asynchronously at 50 percent of standard prices, usually within an hour. Results can arrive in any order, and each one is succeeded, errored, canceled, or expired, so count and handle each kind.",
+      "week": 1,
+      "tags": [
+        "batch",
+        "architecture"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6x-w1-05",
+      "type": "scenario",
+      "prompt": "An internal assistant for your security team, running on `claude-opus-5-5` through the Claude API, sometimes gets `stop_reason: \"refusal\"` on legitimate questions about vulnerabilities in your own code. What should the service do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Retry the same request on the same model with backoff.",
+          "rationale": "The refusal docs note that re-sending a refused request to the same model usually earns another refusal."
+        },
+        {
+          "id": "b",
+          "text": "Opt into server-side fallbacks (`fallbacks: \"default\"` with the `server-side-fallback-2026-07-01` beta), log the refusal category and the model that served the reply, and show a clear message if the whole chain still declines.",
+          "rationale": "Right. The default mode retries on the model recommended for that category, inside the same call.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Count refusals as failures in the circuit breaker so traffic moves to another model.",
+          "rationale": "That lets a few prompts take the primary offline for everyone."
+        },
+        {
+          "id": "d",
+          "text": "Treat the refusal as an HTTP error and return 500.",
+          "rationale": "A refusal is a normal response from a healthy service; a 500 misleads users and your dashboards."
+        }
+      ],
+      "explanation": "Refusals are answers, not outages. Route them to another model (server-side fallbacks where available, your own chain otherwise), keep them out of breaker counts, and log `stop_details.category` so you can see which kinds of requests are affected.",
+      "week": 1,
+      "tags": [
+        "refusals",
+        "fallbacks"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w1-06",
+      "type": "mcq",
+      "prompt": "According to Vercel's Functions limits page on the review date, what does a function's maximum duration include?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Only CPU time spent executing your code.",
+          "rationale": "That describes how Active CPU is billed, not the duration limit."
+        },
+        {
+          "id": "b",
+          "text": "Time spent processing the request and sending the response, including streamed responses.",
+          "rationale": "Yes. A long stream counts against the limit.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Only the time before the first byte of the response.",
+          "rationale": "That resembles the Edge runtime's 25-second rule for starting a response, which is a separate limit."
+        },
+        {
+          "id": "d",
+          "text": "Nothing for streamed responses, which are unlimited.",
+          "rationale": "Streams are exempt from the 4.5 MB body limit, not from the duration limit."
+        }
+      ],
+      "explanation": "Different platforms limit different clocks: Vercel Functions cap duration including streaming, Cloudflare Workers cap CPU time, and Cloud Run caps request time. Fit your request deadline, with margin, inside the clock your platform actually enforces.",
+      "week": 1,
+      "tags": [
+        "hosting",
+        "streaming"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w1-07",
+      "type": "predict-output",
+      "prompt": "A retry helper waits `max(jittered, retry_after)` when the error carries `retry_after`, and gives up instead of sleeping if the wait would reach the deadline. What does this print?",
+      "code": "def wait_or_give_up(now, deadline, jittered, retry_after):\n    delay = jittered if retry_after is None else max(jittered, retry_after)\n    if now + delay >= deadline:\n        return \"give up\"\n    return round(delay, 2)\n\nprint(wait_or_give_up(10.0, 60.0, 0.8, None),\n      wait_or_give_up(10.0, 60.0, 0.8, 5.0),\n      wait_or_give_up(50.0, 60.0, 1.2, 20.0))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.8 5.0 give up`",
+          "rationale": "Yes: no retry-after, then retry-after as the minimum, then a wait that would pass the deadline.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`0.8 0.8 1.2`",
+          "rationale": "The second call has a retry-after of 5 seconds, which wins over 0.8."
+        },
+        {
+          "id": "c",
+          "text": "`0.8 5.0 20.0`",
+          "rationale": "Sleeping 20 seconds from second 50 would end at second 70, past the 60-second deadline."
+        },
+        {
+          "id": "d",
+          "text": "`give up give up give up`",
+          "rationale": "The first two waits fit easily inside the deadline."
+        }
+      ],
+      "explanation": "`retry-after` is the server's estimate of when a retry can succeed, so treat it as a floor. The deadline is the caller's limit, so it is a ceiling: when the two conflict, give up early (and fall back or degrade) rather than retrying after the caller has stopped waiting.",
+      "week": 1,
+      "tags": [
+        "retries",
+        "deadlines"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w1-08",
+      "type": "code-reading",
+      "prompt": "This classifier decides which errors the service retries. Which real response does it get wrong?",
+      "code": "def is_transient(err):\n    if isinstance(err, anthropic.APIConnectionError):\n        return True\n    if isinstance(err, anthropic.APIStatusError):\n        return err.status_code == 429 or err.status_code >= 500\n    return False",
+      "options": [
+        {
+          "id": "a",
+          "text": "A 429 for reaching the monthly spend cap, which carries no retry-after and keeps failing until access resumes.",
+          "rationale": "Yes. It is classified as transient because of its status code alone.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "A 529 overloaded_error.",
+          "rationale": "529 is at least 500, so it is correctly transient."
+        },
+        {
+          "id": "c",
+          "text": "An APITimeoutError.",
+          "rationale": "In the Python SDK, APITimeoutError is a subclass of APIConnectionError, so it is correctly transient."
+        },
+        {
+          "id": "d",
+          "text": "A 400 invalid_request_error.",
+          "rationale": "It returns False for 400, which is correct."
+        }
+      ],
+      "explanation": "Status codes get you most of the way. The rate-limits docs describe the spend-cap 429's error details (`enforced_spend_limit_reached`) so you can tell it apart. This function also skips 408 and 409, which the SDK itself treats as retryable. Test classifiers against constructed SDK exceptions, as the lab does.",
+      "week": 1,
+      "tags": [
+        "error-handling",
+        "rate-limits"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6x-w1-09",
+      "type": "multi",
+      "prompt": "Which responsibilities belong in your back end rather than in browser code calling a model API directly? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Holding the model API key",
+          "rationale": "Anything shipped to the browser can be read by its users.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Per-user rate limits and spend caps",
+          "rationale": "Only the server can enforce them; a browser can be modified.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The system prompt and prompt assembly",
+          "rationale": "Users could edit a prompt that lives in their browser.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Rendering streamed text as it arrives",
+          "rationale": "That is the browser's job, using the events your server sends."
+        }
+      ],
+      "explanation": "Anthropic's authentication docs say to call the API from your own back end because anyone can read a key in page code. The same position is where you enforce quotas, keep prompts tamper-proof, validate outputs, and log requests. The browser renders.",
+      "week": 1,
+      "tags": [
+        "architecture",
+        "secrets"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6x-w1-10",
+      "type": "mcq",
+      "prompt": "In the Python SDK, `client.with_options(timeout=20.0).messages.stream(...)` is used to stream a long reply. What does the 20-second value bound?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The total duration of the stream.",
+          "rationale": "With the HTTPX timeout model, a single float sets per-operation timeouts, not a total."
+        },
+        {
+          "id": "b",
+          "text": "Each wait for data, including the gap between chunks, so a stream that keeps producing chunks can run much longer than 20 seconds.",
+          "rationale": "Right. The read timeout bounds the wait for each chunk.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Only the time to establish the connection.",
+          "rationale": "A float sets connect, read, write, and pool timeouts together."
+        },
+        {
+          "id": "d",
+          "text": "Nothing; streaming requests ignore timeouts.",
+          "rationale": "Timeouts still apply, just per read rather than in total."
+        }
+      ],
+      "explanation": "The Python SDK's HTTP client follows HTTPX's model: connect, read, write, and pool timeouts, with the read timeout measuring the wait for each chunk. To cap a stream's total time, check a deadline between chunks in your own code and close the stream when it passes.",
+      "week": 1,
+      "tags": [
+        "timeouts",
+        "streaming"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6x-w2-01",
+      "type": "scenario",
+      "prompt": "Finance asks what the new drafting assistant will cost per user per month. Your logs give an average of $0.03 per request. What do you present?",
+      "options": [
+        {
+          "id": "a",
+          "text": "$0.03 times the average number of requests per user, as a single figure.",
+          "rationale": "Per-request cost hides retries and failed tasks, and a single average hides heavy users."
+        },
+        {
+          "id": "b",
+          "text": "Cost per completed task (all spend, including retries and failures, divided by drafts that passed the outcome check) times tasks per user, shown as mean, median, and heavy-user figures, plus non-user costs such as eval runs, with a dated price table and a sensitivity range.",
+          "correct": true,
+          "rationale": "Yes. That number survives questions: it is tied to outcomes, shows the skew, and states its assumptions."
+        },
+        {
+          "id": "c",
+          "text": "The list price per million tokens for the model, since that is what the provider charges.",
+          "rationale": "Token prices don't say how many tokens a task uses or how often tasks fail."
+        },
+        {
+          "id": "d",
+          "text": "Last month's invoice divided by the number of users.",
+          "rationale": "A blended total includes other projects on the same key and says nothing about the distribution or what drives it."
+        }
+      ],
+      "explanation": "Connect engineering's unit (cost per completed task) to finance's unit (cost per user per month) with multiplication you can show, and present the distribution, not just the mean. Reconcile the total against the provider's usage and cost reports before you present it.",
+      "week": 2,
+      "tags": [
+        "cost",
+        "unit-economics"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w2-02",
+      "type": "scenario",
+      "prompt": "Your agent's cache read fraction is about 30 percent, well below the healthy loops in Anthropic's guidance. Investigation shows the tool list is built per user from their permissions, so users see different subsets of 40 tools. What is the best fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Raise the cache lifetime to one hour.",
+          "rationale": "Lifetime doesn't help when prefixes differ; it only makes each write cost more."
+        },
+        {
+          "id": "b",
+          "text": "Send one deterministic tool list (sorted by name) to everyone and enforce permissions in the tool handlers, returning a clear error result when a user isn't allowed to run a tool.",
+          "correct": true,
+          "rationale": "Yes. Tools render first, so a stable tool list restores a shared prefix. Authorization belongs in code that runs the tool, which is safer anyway."
+        },
+        {
+          "id": "c",
+          "text": "Put a breakpoint on every tool definition.",
+          "rationale": "Requests are limited to four breakpoints, and a different subset still changes the bytes."
+        },
+        {
+          "id": "d",
+          "text": "Move the tool list to the end of the messages.",
+          "rationale": "Tool definitions have a fixed render position; you can't reorder them after the messages."
+        }
+      ],
+      "explanation": "A per-user tool set is one of the classic silent invalidators. The fix has a security bonus: the model's view of which tools exist is not a permission boundary, so checks in the handler were needed regardless.",
+      "week": 2,
+      "tags": [
+        "caching",
+        "invalidators",
+        "tools"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6x-w2-03",
+      "type": "scenario",
+      "prompt": "In your internal assistant, users often reply 10 to 30 minutes after the previous answer, and each conversation carries a 40,000-token shared prefix. Log analysis shows about a third of gaps fall in that range. Which cache lifetime should you test first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Five minutes, because it has the cheaper write.",
+          "rationale": "Gaps longer than five minutes turn each reply into a fresh write, so the cheaper write is paid again and again."
+        },
+        {
+          "id": "b",
+          "text": "One hour, chosen when the conversation starts, then confirm with a TTL walk over logged timestamps and with the cache meters after rollout.",
+          "correct": true,
+          "rationale": "Yes. Anthropic's guidance favors the one-hour lifetime when about one gap in twenty falls between five minutes and an hour; here it's one in three."
+        },
+        {
+          "id": "c",
+          "text": "No caching, since the gaps make hits unlikely.",
+          "rationale": "The one-hour lifetime covers these gaps, so hits are likely."
+        },
+        {
+          "id": "d",
+          "text": "Alternate lifetimes per request to hedge.",
+          "rationale": "Mixing lifetimes adds complexity and ordering constraints for no benefit; pick from the gap distribution."
+        }
+      ],
+      "explanation": "Choose the lifetime from the distribution of start-to-start gaps, not their average. Simulating hits on your real timestamps is free, and the usage fields after rollout tell you whether the estimate held.",
+      "week": 2,
+      "tags": [
+        "caching",
+        "ttl"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w2-04",
+      "type": "scenario",
+      "prompt": "To cut p99 latency, a teammate wants to hedge every agent call: if a response hasn't started in 3 seconds, send an identical request and use whichever answers first. Some calls in the loop issue refunds through a tool. What is your response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Approve it everywhere; hedging is a standard tail-latency technique.",
+          "rationale": "The technique is standard, but a duplicate attempt here could duplicate a side effect, and every fired hedge is billed."
+        },
+        {
+          "id": "b",
+          "text": "Reject hedging entirely.",
+          "rationale": "Hedging can be appropriate for idempotent, read-only calls with high variance."
+        },
+        {
+          "id": "c",
+          "text": "First find out why the slow tasks are slow from the logs; consider hedging only for read-only, idempotent calls, never for turns that can trigger the refund tool, and count the extra cost of fired hedges in cost per task.",
+          "correct": true,
+          "rationale": "Yes. Diagnose the tail first, and scope any hedge to calls where a duplicate can't cause harm."
+        },
+        {
+          "id": "d",
+          "text": "Hedge only the refund calls, since those matter most to customers.",
+          "rationale": "That's the one place a duplicate could pay a refund twice."
+        }
+      ],
+      "explanation": "Tail-tolerant techniques from distributed systems carry over to LLM calls with two adjustments: each duplicate attempt costs tokens, and agents have side effects. Diagnose first, then scope.",
+      "week": 2,
+      "tags": [
+        "latency",
+        "tail",
+        "safety"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6x-w2-05",
+      "type": "scenario",
+      "prompt": "Your latency-critical summarizer uses fast mode on Opus 5.5 with a cached 20,000-token prefix. Under load you start getting 429 errors from the fast mode rate limit, and you add a fallback that retries at standard speed. What should you expect, and plan for?",
+      "options": [
+        {
+          "id": "a",
+          "text": "No change in cost, since the fallback reuses the cached prefix.",
+          "rationale": "The fast mode docs say requests at different speeds don't share cached prefixes."
+        },
+        {
+          "id": "b",
+          "text": "The fallback request is slower and is a cache miss, so it pays a cache write at standard speed; keep a warm standard-speed prefix if fallbacks are frequent, and track fallback rate beside latency and cost.",
+          "correct": true,
+          "rationale": "Yes. A fallback changes both speed and cache state. Measure how often it happens and what it costs."
+        },
+        {
+          "id": "c",
+          "text": "Batch the requests instead to avoid rate limits.",
+          "rationale": "Batch doesn't support fast mode and isn't suitable for a latency-critical path."
+        },
+        {
+          "id": "d",
+          "text": "Disable retries entirely so users get errors quickly.",
+          "rationale": "Users then get failures instead of slightly slower answers."
+        }
+      ],
+      "explanation": "Paid speed levers come with operational edges: a separate rate limit and a separate cache. Design the fallback deliberately and put its rate on the dashboard.",
+      "week": 2,
+      "tags": [
+        "fast-mode",
+        "caching",
+        "resilience"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6x-w2-06",
+      "type": "scenario",
+      "prompt": "You plan an effort sweep (low, medium, high) for your claims-triage agent on Opus 5.5 to see whether a lower setting holds quality. Which design gives a trustworthy answer?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Change effort mid-conversation on live traffic and compare the turns.",
+          "rationale": "A top-level effort change mid-conversation invalidates the message cache and mixes conditions."
+        },
+        {
+          "id": "b",
+          "text": "Run a fixed eval set that includes known hard cases at each level in separate sessions, identical requests except effort, with repeat trials where results are close, and read pass rate and cost per completed task together.",
+          "correct": true,
+          "rationale": "Yes. Same inputs, one variable, hard cases included, and enough repeats to see beyond noise."
+        },
+        {
+          "id": "c",
+          "text": "Try each level on a single representative example.",
+          "rationale": "One example can't separate a real difference from run-to-run variation, and curves are flattest on easy cases."
+        },
+        {
+          "id": "d",
+          "text": "Pick low, because Anthropic's coding results show low is cheapest per task.",
+          "rationale": "Curves differ by workload; on coding, low also solved noticeably fewer tasks."
+        }
+      ],
+      "explanation": "Effort is the first trade after the free wins. Its value is a property of your workload, so the sweep has to be fair (one variable, separate sessions) and representative (hard cases included).",
+      "week": 2,
+      "tags": [
+        "effort",
+        "evaluation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w2-07",
+      "type": "mcq",
+      "prompt": "According to Google's Gemini Batch API documentation, how are context-cache hits billed inside a batch request?",
+      "options": [
+        {
+          "id": "a",
+          "text": "At the batch discount, stacked on top of the caching discount.",
+          "rationale": "That is how Anthropic describes stacking on the Claude API, not how Google's batch page describes cache hits."
+        },
+        {
+          "id": "b",
+          "text": "Cache hits are not possible in batch mode.",
+          "rationale": "The page says context caching works with batch requests."
+        },
+        {
+          "id": "c",
+          "text": "At standard context caching rates, not the batch discount.",
+          "correct": true,
+          "rationale": "Yes, per the Gemini batch docs on the review date."
+        },
+        {
+          "id": "d",
+          "text": "Free of charge.",
+          "rationale": "Cache hits are discounted, not free."
+        }
+      ],
+      "explanation": "Discount rules differ by provider and change over time. When you compare providers, model the exact interaction of caching and batch from each provider's current page.",
+      "week": 2,
+      "tags": [
+        "batch",
+        "caching",
+        "providers"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w2-08",
+      "type": "predict-output",
+      "prompt": "A one-hour cache write costs 2 times base input and a read 0.05 times. What does this print for a prefix that is sent only twice in an hour?",
+      "code": "write_1h, read = 2.0, 0.05\nn = 2\ncached = write_1h + (n - 1) * read\nuncached = n * 1.0\nprint(cached, cached < uncached)",
+      "options": [
+        {
+          "id": "a",
+          "text": "`2.05 False`",
+          "correct": true,
+          "rationale": "2.05 base-input units cached against 2.0 uncached: with only one read, the one-hour write doesn't pay for itself."
+        },
+        {
+          "id": "b",
+          "text": "`2.05 True`",
+          "rationale": "2.05 is greater than 2.0."
+        },
+        {
+          "id": "c",
+          "text": "`1.3 True`",
+          "rationale": "That uses the five-minute write multiplier (1.25)."
+        },
+        {
+          "id": "d",
+          "text": "`4.1 False`",
+          "rationale": "Only the first send writes; the second reads."
+        }
+      ],
+      "explanation": "The one-hour lifetime needs at least three sends to break even (two reads), and the five-minute lifetime needs two. That is why it should be chosen from the real gap distribution.",
+      "week": 2,
+      "tags": [
+        "caching",
+        "ttl"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w2-09",
+      "type": "code-reading",
+      "prompt": "This code processes a finished Message Batch. What is wrong with it?",
+      "code": "requests = build_requests(tickets)          # list of Request(custom_id=..., params=...)\nbatch = client.messages.batches.create(requests=requests)\n# ... poll until processing_status == \"ended\" ...\nfor ticket, result in zip(tickets, client.messages.batches.results(batch.id)):\n    msg = result.result.message\n    save_label(ticket.id, msg.content[0].text)",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; results come back in request order.",
+          "rationale": "The batch docs say results can arrive in any order."
+        },
+        {
+          "id": "b",
+          "text": "It pairs results with tickets by position instead of by `custom_id`, and it assumes every result succeeded and that the first content block is text.",
+          "correct": true,
+          "rationale": "Yes. Key by `custom_id`, branch on `result.result.type` (succeeded, errored, canceled, expired), and find the text block by type."
+        },
+        {
+          "id": "c",
+          "text": "Batches can't be polled; you must wait 24 hours.",
+          "rationale": "Most batches finish within an hour, and polling the status is the documented approach."
+        },
+        {
+          "id": "d",
+          "text": "`batches.results` only works for batches under 1,000 requests.",
+          "rationale": "No such limit; results are streamed for batches of any size."
+        }
+      ],
+      "explanation": "The position bug is silent: every label gets saved, many to the wrong ticket. A test that shuffles a fake result stream before processing would catch it.",
+      "week": 2,
+      "tags": [
+        "batch",
+        "code-reading"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w2-10",
+      "type": "multi",
+      "prompt": "In the task-time decomposition, which of these belong to the \"everything outside the model\" term? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "A database query a tool runs between two model calls",
+          "correct": true,
+          "rationale": "Tool execution happens outside the model."
+        },
+        {
+          "id": "b",
+          "text": "Waiting out a `retry-after` delay after a 429",
+          "correct": true,
+          "rationale": "Retry waits are time the user waits that the model doesn't spend generating."
+        },
+        {
+          "id": "c",
+          "text": "Generating 900 thinking tokens",
+          "rationale": "Thinking tokens are output tokens, in the output term."
+        },
+        {
+          "id": "d",
+          "text": "Your service's own post-processing and validation of the answer",
+          "correct": true,
+          "rationale": "Application processing is outside the model."
+        },
+        {
+          "id": "e",
+          "text": "Reading an uncached 100,000-token prompt",
+          "rationale": "Reading the prompt is part of time to first token."
+        }
+      ],
+      "explanation": "The outside term is often where agent latency hides: slow tools, retries, network hops, and your own code. Instrument it per task, or the decomposition will blame the model for time it didn't spend.",
+      "week": 2,
+      "tags": [
+        "latency"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w3-01",
+      "type": "scenario",
+      "prompt": "An agent sometimes takes three minutes on a task that usually takes twenty seconds. You have one trace of a slow run: the root span is 180 s, its eleven `chat` child spans sum to 40 s, and its `execute_tool` spans sum to 25 s. What does this tell you, and where do you look next?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The model is slow; switch to a faster model.",
+          "rationale": "Model calls account for only 40 of 180 seconds."
+        },
+        {
+          "id": "b",
+          "text": "About 115 s is the root span's self time, spent in your own code between steps (queues, sleeps, retries without spans); add spans around those parts.",
+          "correct": true,
+          "rationale": "Yes. Time not covered by any child is time your instrumentation can't see yet."
+        },
+        {
+          "id": "c",
+          "text": "The trace is corrupt, because children should sum to the parent's duration.",
+          "rationale": "Children rarely sum to the parent; the gap is self time, and that gap is the finding."
+        },
+        {
+          "id": "d",
+          "text": "The tools are the bottleneck.",
+          "rationale": "25 seconds of tool time is the smallest of the three components."
+        }
+      ],
+      "explanation": "Self time (a span's duration minus its children's) points at uninstrumented work. Common culprits in agents are backoff sleeps after rate limits, waiting on a queue, and slow serialization of large tool results. Add spans or span events there, and record retries as their own spans or events.",
+      "week": 3,
+      "tags": [
+        "tracing",
+        "agents"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w3-02",
+      "type": "mcq",
+      "prompt": "Under the OpenTelemetry GenAI semantic conventions, what is the recommended name for the span of a chat call to `claude-sonnet-5-5`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "`llm.call`",
+          "rationale": "A generic name loses the operation and model, which the convention puts in the name."
+        },
+        {
+          "id": "b",
+          "text": "`anthropic claude-sonnet-5-5`",
+          "rationale": "The provider goes in `gen_ai.provider.name`, not the span name."
+        },
+        {
+          "id": "c",
+          "text": "`chat claude-sonnet-5-5`",
+          "correct": true,
+          "rationale": "Yes: `{gen_ai.operation.name} {gen_ai.request.model}`."
+        },
+        {
+          "id": "d",
+          "text": "`execute_tool claude-sonnet-5-5`",
+          "rationale": "`execute_tool` is the prefix for tool spans, followed by the tool name."
+        }
+      ],
+      "explanation": "The conventions (Development status, in the semantic-conventions-genai repository since June 2026) name inference spans by operation and requested model, tool spans `execute_tool {gen_ai.tool.name}`, and agent spans by operation and agent name. Frameworks may document different names, and the conventions may still change, so pin versions.",
+      "week": 3,
+      "tags": [
+        "semantic-conventions"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6x-w3-03",
+      "type": "scenario",
+      "prompt": "Security asks you to turn on full prompt and response capture in traces for a month to investigate a suspected prompt-injection campaign. Traces go to a hosted vendor with 400-day retention that the whole engineering org can read. What do you propose?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Turn it on as asked; security approved it.",
+          "rationale": "Approval of the purpose doesn't settle where the content goes, who reads it, or how long it stays."
+        },
+        {
+          "id": "b",
+          "text": "Refuse; content must never be captured.",
+          "rationale": "Content capture is legitimate with the right controls; the conventions explicitly support it."
+        },
+        {
+          "id": "c",
+          "text": "Capture content only on the affected routes, redacted, into a separate content store with a short time-to-live and a named access list, with spans holding a reference; keep the vendor on metadata only.",
+          "correct": true,
+          "rationale": "Yes. This is the external-storage pattern the semantic conventions recommend for production."
+        },
+        {
+          "id": "d",
+          "text": "Capture it but rely on the vendor's ZDR.",
+          "rationale": "Observability vendors don't offer provider-style ZDR on data you deliberately store with them."
+        }
+      ],
+      "explanation": "The GenAI conventions list three content patterns: none (default), on span attributes (suited to pre-production or compliant storage), and external storage with references (recommended for production because it allows separate access control). Scope, redaction, retention, and access are the four knobs; set all four on purpose.",
+      "week": 3,
+      "tags": [
+        "privacy",
+        "tracing"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w3-04",
+      "type": "code-reading",
+      "prompt": "This helper pseudonymizes user ids before logging. What is the problem?",
+      "code": "import hashlib\n\ndef user_token(email: str) -> str:\n    return hashlib.sha256(email.lower().encode()).hexdigest()[:16]",
+      "options": [
+        {
+          "id": "a",
+          "text": "SHA-256 is too slow for logging.",
+          "rationale": "Speed is not the concern; it's fast."
+        },
+        {
+          "id": "b",
+          "text": "Anyone with a list of candidate emails can hash them and match the tokens, so the mapping is easy to reverse; use HMAC with a secret key.",
+          "correct": true,
+          "rationale": "Yes. Emails are low-entropy and guessable, so an unkeyed hash is a lookup table away from the original."
+        },
+        {
+          "id": "c",
+          "text": "Truncating to 16 hex characters makes collisions likely for a few million users.",
+          "rationale": "64 bits makes collisions very unlikely at that scale; it isn't the main issue."
+        },
+        {
+          "id": "d",
+          "text": "Lowercasing loses information.",
+          "rationale": "Normalizing case is deliberate, so the same person maps to one token."
+        }
+      ],
+      "explanation": "A keyed hash (HMAC-SHA256 with a key in your secrets manager) keeps re-identification in your hands. Either way the output is pseudonymous, not anonymous: GDPR recital 26 treats data that can be re-attributed with additional information as personal data.",
+      "week": 3,
+      "tags": [
+        "privacy",
+        "pseudonymization"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w3-05",
+      "type": "multi",
+      "prompt": "Which of these are realistic false negatives for a regex redactor that covers emails, North American and E.164 phone numbers, and `sk-` prefixed keys? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "\"I'm Priya Natarajan, account manager in Leeds\"",
+          "correct": true,
+          "rationale": "Names and places have no pattern; they need entity recognition, and even that is imperfect."
+        },
+        {
+          "id": "b",
+          "text": "`priya@example.com`",
+          "rationale": "A well-formed email is exactly what the pattern catches."
+        },
+        {
+          "id": "c",
+          "text": "\"my number is 020 7946 0958\"",
+          "correct": true,
+          "rationale": "A UK national-format number doesn't match North American or E.164 patterns."
+        },
+        {
+          "id": "d",
+          "text": "A Postgres connection string containing a password",
+          "correct": true,
+          "rationale": "No `sk-` prefix, no email shape: it passes untouched, and connection strings shouldn't be logged at all."
+        },
+        {
+          "id": "e",
+          "text": "\"I was diagnosed last week and need leave\"",
+          "correct": true,
+          "rationale": "Sensitive meaning (health information) without any sensitive token."
+        }
+      ],
+      "explanation": "Regex redaction reduces the sensitive data in logs; it doesn't remove it. Presidio's own documentation says there is no guarantee it finds all sensitive information. Measure recall per entity type on labeled lines, and protect the content store as if the redactor missed things, because it does.",
+      "week": 3,
+      "tags": [
+        "redaction",
+        "privacy"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w3-06",
+      "type": "scenario",
+      "prompt": "A healthcare customer requires that no prompt content is retained by the model provider. Your app uses the Claude Messages API with the code execution tool and the Files API. Your organization has a ZDR arrangement. What should you tell the customer's security reviewer?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ZDR covers everything we send to Anthropic.",
+          "rationale": "ZDR covers only eligible features; Anthropic's table marks code execution and the Files API as not eligible."
+        },
+        {
+          "id": "b",
+          "text": "Messages calls are covered, but code execution containers (retained up to 30 days) and uploaded files are outside ZDR, and for health data the relevant arrangement is HIPAA readiness with a BAA; we need to remove or replace those features or change the commitment.",
+          "correct": true,
+          "rationale": "Yes. Feature eligibility is part of the arrangement, and health data points to HIPAA readiness rather than ZDR."
+        },
+        {
+          "id": "c",
+          "text": "We'll switch to a different model; ZDR is model-independent.",
+          "rationale": "Some models require 30-day retention and are unavailable under ZDR, so the model does matter, and it doesn't fix the feature issue."
+        },
+        {
+          "id": "d",
+          "text": "Redaction makes retention irrelevant.",
+          "rationale": "Redaction is imperfect, and the customer's requirement is about retention, not masking."
+        }
+      ],
+      "explanation": "Answer data-retention questions at the level of features and arrangements, with the date you checked the policy. Anthropic's retention page lists which features are ZDR- and HIPAA-eligible; using a non-eligible feature under ZDR is a choice to step outside it for that data.",
+      "week": 3,
+      "tags": [
+        "privacy",
+        "retention",
+        "claude"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6x-w3-07",
+      "type": "predict-output",
+      "prompt": "A dashboard computes cost per completed task. What does this print?",
+      "code": "runs = [\n    {\"cost\": 0.010, \"completed\": True},\n    {\"cost\": 0.012, \"completed\": False},\n    {\"cost\": 0.011, \"completed\": True},\n    {\"cost\": 0.017, \"completed\": False},\n]\nper_task = sum(r[\"cost\"] for r in runs) / sum(r[\"completed\"] for r in runs)\nprint(round(per_task, 3))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.0105`",
+          "rationale": "That's the mean cost of completed runs only, which ignores what failures cost."
+        },
+        {
+          "id": "b",
+          "text": "`0.0125`",
+          "rationale": "That's cost per run (0.05 / 4), not per completed task."
+        },
+        {
+          "id": "c",
+          "text": "`0.025`",
+          "correct": true,
+          "rationale": "Total cost 0.050 divided by 2 completed tasks."
+        },
+        {
+          "id": "d",
+          "text": "`0.05`",
+          "rationale": "That's the total cost, not divided by anything."
+        }
+      ],
+      "explanation": "Failed runs still cost money, so cost per completed task is total spend over successes. A cheaper model with a lower completion rate can be more expensive on this measure, which is why it is the number to compare when you route or downgrade models.",
+      "week": 3,
+      "tags": [
+        "cost",
+        "metrics"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6x-w3-08",
+      "type": "scenario",
+      "prompt": "You serve about 1,500 requests a day and want an online estimate of answer quality within about plus or minus 3 points (pass rate near 0.9, 95 percent confidence). Judging costs about $0.004 per trace. What plan fits?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Judge a 2 percent daily sample and report daily.",
+          "rationale": "That's 30 traces a day, far too few for plus or minus 3 points."
+        },
+        {
+          "id": "b",
+          "text": "Judge every request and report daily.",
+          "rationale": "It meets the target daily, but at about $6 a day (roughly $180 a month); a weekly sample of about 400 meets the stated target for under $2 a week. Judge everything only if you need daily resolution."
+        },
+        {
+          "id": "c",
+          "text": "Judge a uniform random sample of about 400 traces per week (roughly 4 percent of traffic) and report weekly, corrected for the judge's TPR and TNR.",
+          "correct": true,
+          "rationale": "Yes. About 1.96^2 x 0.9 x 0.1 / 0.03^2 = 384 judged traces per window, at under $2 a week."
+        },
+        {
+          "id": "d",
+          "text": "Judge only thumbs-down traces, since those are the failures.",
+          "rationale": "That sample is enriched with failures; its pass rate says nothing about overall quality."
+        }
+      ],
+      "explanation": "Size the sample from the precision you need, then pick the window that traffic allows. Keep the measurement sample uniform and separate from targeted samples, and correct the judge's raw rate with its measured error rates.",
+      "week": 3,
+      "tags": [
+        "online-evals",
+        "statistics"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s6x-w3-09",
+      "type": "mcq",
+      "prompt": "Which of these should page an on-call engineer, under the SRE guidance that pages be urgent, actionable, and about symptoms?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Hourly spend is 20 times the budgeted rate over both the last hour and the last five minutes.",
+          "correct": true,
+          "rationale": "Runaway cost (an agent loop, a retry storm, abuse) is urgent, user-visible in the bill, and actionable now."
+        },
+        {
+          "id": "b",
+          "text": "One sampled answer scored 2 out of 10 by the judge.",
+          "rationale": "A single noisy sample is review-queue material, not an emergency."
+        },
+        {
+          "id": "c",
+          "text": "Average input length rose 15 percent this month.",
+          "rationale": "Drift worth a ticket and a look, not a page."
+        },
+        {
+          "id": "d",
+          "text": "The provider announced a model deprecation for next quarter.",
+          "rationale": "Plan it; nothing needs doing tonight."
+        }
+      ],
+      "explanation": "Pages are for symptoms that need a person now: availability and latency SLO burn, and for LLM systems, cost burn. Quality, drift, and planned changes go to tickets and dashboards. Every page that doesn't need action lowers the precision of your alerting and trains people to ignore it.",
+      "week": 3,
+      "tags": [
+        "alerting"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6x-w3-10",
+      "type": "scenario",
+      "prompt": "After your team upgraded the online judge to a newer model, the corrected pass rate jumped from 0.84 to 0.91 overnight. No product change shipped. Users' thumbs-down rate is unchanged. How do you interpret this?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Quality improved; celebrate and raise the target.",
+          "rationale": "Nothing in the product changed, and the independent signal (feedback) didn't move."
+        },
+        {
+          "id": "b",
+          "text": "Likely judge drift: the new judge has different TPR and TNR, so the old correction no longer applies. Re-measure the new judge on human labels before comparing numbers across the upgrade.",
+          "correct": true,
+          "rationale": "Yes. The measuring instrument changed; recalibrate it and mark the discontinuity on the dashboard."
+        },
+        {
+          "id": "c",
+          "text": "Roll back the judge upgrade permanently.",
+          "rationale": "The new judge may be better; you can't tell until you measure it."
+        },
+        {
+          "id": "d",
+          "text": "Average the old and new judge scores.",
+          "rationale": "Averaging two uncalibrated instruments doesn't produce a calibrated one."
+        }
+      ],
+      "explanation": "Your evaluator is a model, and models drift when they change. Treat a judge upgrade like any other measurement change: calibrate it against fresh human labels, annotate the dashboard, and only then compare across the boundary.",
+      "week": 3,
+      "tags": [
+        "online-evals",
+        "drift",
+        "judges"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w4-q1",
+      "type": "scenario",
+      "prompt": "A hospital system wants a policy classifier on patient messages before they reach the assistant. Policy forbids sending message text to any third-party API. Which approach fits best?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Use a hosted moderation endpoint, since it's free and well tested.",
+          "rationale": "It sends the text to a third party, which the policy forbids."
+        },
+        {
+          "id": "b",
+          "text": "Self-host an open safety model (for example Llama Guard or ShieldGemma) or a small open model with your own policy prompt, and measure recall and false-positive rate on labeled messages from your own traffic.",
+          "rationale": "Yes. Open weights keep the data in house, and vendor benchmarks don't replace measuring on your messages.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Skip classification and rely on the main model's refusals.",
+          "rationale": "Refusals cover the provider's policy, not your product's policy, and the main model call also has to meet the data rule."
+        }
+      ],
+      "explanation": "Model selection for guards includes data constraints, not just accuracy. Open safety models exist largely for this case. Their reported recall is well below 100 percent on their own test sets, so measure them on yours and keep other layers.",
+      "week": 4,
+      "tags": [
+        "guardrails",
+        "model-selection"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w4-q2",
+      "type": "scenario",
+      "prompt": "An assistant summarizes a user's inbox and has a `send_email` tool so it can draft replies. A security review flags it. What is the most effective change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Add an injection classifier on every email body before summarizing.",
+          "rationale": "Helpful as a layer, but classifiers miss adaptive attacks, and the exfiltration channel remains."
+        },
+        {
+          "id": "b",
+          "text": "Tell the model in the system prompt never to send emails to unknown addresses.",
+          "rationale": "A prompt can be overridden by the injected instructions it is meant to resist."
+        },
+        {
+          "id": "c",
+          "text": "Remove autonomous sending: the tool creates drafts only, and a person approves each send.",
+          "rationale": "Yes. The system has private data and untrusted content; removing the unapproved outbound channel breaks the lethal trifecta.",
+          "correct": true
+        }
+      ],
+      "explanation": "When a feature combines private data, untrusted content, and external communication, remove or gate one leg in code before relying on filters. Human approval for irreversible actions is the standard OWASP LLM06 control.",
+      "week": 4,
+      "tags": [
+        "security",
+        "excessive-agency"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w4-q3",
+      "type": "scenario",
+      "prompt": "Your A/B test assigns each incoming chat message randomly to prompt A or B. Users complain that the assistant's tone keeps changing mid-conversation, and the results look noisy. What should you change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Randomize by user (or by conversation), so each person consistently sees one variant.",
+          "rationale": "Yes. Consistent assignment avoids a confusing experience and contamination between arms.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Keep per-message randomization but run the test twice as long.",
+          "rationale": "More data doesn't fix the contaminated design or the user experience."
+        },
+        {
+          "id": "c",
+          "text": "Switch to comparing this week (B) with last week (A).",
+          "rationale": "Before-and-after comparisons are confounded by time, which is why canaries and A/B tests run arms concurrently."
+        }
+      ],
+      "explanation": "The unit of randomization should match the unit of experience. Decide the primary metric and guardrail metrics before starting, and size the test for the smallest effect you care about.",
+      "week": 4,
+      "tags": [
+        "ab-testing",
+        "rollout"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w4-q4",
+      "type": "scenario",
+      "prompt": "At 2 a.m. a spend alert fires: the assistant's cost over the last hour is eight times normal, driven by a handful of accounts sending very long inputs in tight loops. You're on call. What do you do first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Investigate which prompt change caused the increase before touching anything.",
+          "rationale": "Mitigate first. The cost keeps accruing while you investigate."
+        },
+        {
+          "id": "b",
+          "text": "Apply the pre-built mitigation: tighten per-user quotas and input size caps (or block the abusing accounts), confirm spend drops, then investigate and write it up.",
+          "rationale": "Yes. Declare, mitigate, then investigate. This is OWASP LLM10 (unbounded consumption) in practice.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Switch the whole service to the cheapest model.",
+          "rationale": "It lowers the rate of spend but leaves the abuse running and degrades every user's answers."
+        }
+      ],
+      "explanation": "Runaway cost is an incident like any other. The mitigations (quotas, size caps, loop caps, a spend limit, a kill switch) should exist and be tested before launch, so the on-call engineer flips a setting rather than writing code at 2 a.m.",
+      "week": 4,
+      "tags": [
+        "incident-response",
+        "cost"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6x-w4-q5",
+      "type": "scenario",
+      "prompt": "Your RAG index will start ingesting posts from a public community forum alongside staff-written articles. Which risk from the OWASP Top 10 for LLM Applications should you plan for first, and how?",
+      "options": [
+        {
+          "id": "a",
+          "text": "LLM10 Unbounded consumption: cap the number of forum posts.",
+          "rationale": "Volume isn't the main new risk; who can write the content is."
+        },
+        {
+          "id": "b",
+          "text": "LLM04 Data and model poisoning (with indirect injection): track provenance per document, keep forum content in a lower trust tier, and test retrieval with planted adversarial posts in staging.",
+          "rationale": "Yes. Anyone who can post can write content designed to be retrieved and to carry instructions.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "LLM07 System prompt leakage: add a canary string.",
+          "rationale": "Useful in general, but unrelated to the new data source."
+        }
+      ],
+      "explanation": "Every new source of text in the model's context is a new trust boundary. Record where each chunk came from, let trusted sources win conflicts, and add poisoned-document tests to your red-team set.",
+      "week": 4,
+      "tags": [
+        "security",
+        "rag",
+        "poisoning"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w4-q6",
+      "type": "mcq",
+      "prompt": "In STRIDE, which security property does a **repudiation** threat violate, and what is a typical control in an LLM feature?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Confidentiality; encrypt the prompt.",
+          "rationale": "Confidentiality maps to information disclosure."
+        },
+        {
+          "id": "b",
+          "text": "Availability; add rate limits.",
+          "rationale": "Availability maps to denial of service."
+        },
+        {
+          "id": "c",
+          "text": "Accountability; keep tamper-resistant logs of who requested which action and what the model did, with versions.",
+          "rationale": "Yes. Repudiation is someone denying they did something; audit trails answer it.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Authorization; scope tool permissions.",
+          "rationale": "Authorization maps to elevation of privilege."
+        }
+      ],
+      "explanation": "STRIDE pairs each threat with a property: spoofing and authentication, tampering and integrity, repudiation and accountability, information disclosure and confidentiality, denial of service and availability, elevation of privilege and authorization. For agents that take actions, audit logs of tool calls are the repudiation control.",
+      "week": 4,
+      "tags": [
+        "threat-modeling"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w4-q7",
+      "type": "code-reading",
+      "prompt": "A reporting feature asks a model for a customer name, then runs this. Which OWASP risk does it illustrate, and what's the fix?",
+      "code": "name = model_reply.strip()\nrows = db.execute(f\"SELECT * FROM bookings WHERE customer = '{name}'\")",
+      "options": [
+        {
+          "id": "a",
+          "text": "LLM09 Misinformation; ask the model to double-check the name.",
+          "rationale": "The danger isn't a wrong name, it's executing model text as SQL."
+        },
+        {
+          "id": "b",
+          "text": "LLM05 Improper output handling; use a parameterized query and validate the value against expected formats.",
+          "rationale": "Yes. Model output is untrusted input to the database; a prompt-injected reply could contain SQL.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "LLM03 Supply chain; pin the database driver version.",
+          "rationale": "Pinning is good practice but doesn't address injecting model output into SQL."
+        }
+      ],
+      "explanation": "Treat the model like any other user: encode or parameterize its output for each destination (HTML, SQL, shell, file paths, email). A reply such as `x' OR '1'='1` would return every booking.",
+      "week": 4,
+      "tags": [
+        "output-handling",
+        "security"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6x-w4-q8",
+      "type": "predict-output",
+      "prompt": "This redaction loop uses spans found on the original text. What does it print?",
+      "code": "text = \"a@b.co and c@d.co\"\nspans = [(0, 6), (11, 17)]   # both emails, found on the original text\nfor s, e in spans:\n    text = text[:s] + \"[EMAIL]\" + text[e:]\nprint(text)",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[EMAIL] and [EMAIL]`",
+          "rationale": "That's the intended output, which you get by replacing from the end of the string backward."
+        },
+        {
+          "id": "b",
+          "text": "`[EMAIL] and[EMAIL]o`",
+          "rationale": "Yes. The first replacement is one character longer than the email, so the second span is off by one and cuts the wrong characters.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It raises an `IndexError`",
+          "rationale": "Slicing past the end of a string never raises in Python."
+        }
+      ],
+      "explanation": "Replacing left to right shifts every later offset. Replace from the last span to the first, or rebuild the string in one pass. Then test the redactor with adjacent and repeated findings, because a broken redactor can leave half an email address in your logs.",
+      "week": 4,
+      "tags": [
+        "pii",
+        "debugging"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s6x-w4-q9",
+      "type": "multi",
+      "prompt": "Which practices make rollback of an LLM feature a fast configuration change? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Store prompts, model ids, guard thresholds, and index versions as versioned configuration behind flags",
+          "rationale": "Yes. Then rollback is pointing a flag at the previous version.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Record the active versions on every trace",
+          "rationale": "Yes. You need them to know what to roll back and to confirm the rollback worked.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Know the deprecation date of the previous model you might roll back to",
+          "rationale": "Yes. After retirement, rollback to that model is impossible.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Keep the prompt as a string literal in the handler so every change goes through code review and a deploy",
+          "rationale": "Review is good, but tying the prompt to deploys makes rollback as slow as your pipeline."
+        }
+      ],
+      "explanation": "Behavior in an LLM system comes from code plus prompts, models, guard settings, and data. Version all of them, record them per request, and rehearse the rollback before launch.",
+      "week": 4,
+      "tags": [
+        "launch",
+        "rollback"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s6x-w4-q10",
+      "type": "mcq",
+      "prompt": "Before moving a feature to a new model, you run the new model in shadow mode on production traffic. What is the main advantage and the main cost?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Advantage: users get the better answers sooner. Cost: none.",
+          "rationale": "In shadow mode users still see the old behavior."
+        },
+        {
+          "id": "b",
+          "text": "Advantage: it replaces offline evals. Cost: slower releases.",
+          "rationale": "It complements offline evals on real inputs; it doesn't replace the gate."
+        },
+        {
+          "id": "c",
+          "text": "Advantage: real production inputs, compared pairwise with the current model, with no user exposure. Cost: paying for two model calls per sampled request while it runs.",
+          "rationale": "Yes. Paired comparisons on the same inputs are statistically tighter, and nobody sees the new outputs until you decide.",
+          "correct": true
+        }
+      ],
+      "explanation": "Shadow mode is the safest first stage for a prompt or model change: offline evals first, then shadow on real traffic, then a canary with real users, then a ramp, each with written success criteria.",
+      "week": 4,
+      "tags": [
+        "rollout",
+        "model-selection"
+      ],
+      "difficulty": 1
+    }
+  ]
+}

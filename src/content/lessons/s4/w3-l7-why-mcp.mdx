@@ -1,0 +1,390 @@
+---
+id: s4-w3-l7
+studio: s4
+week: 3
+order: 7
+title: Why MCP, and how it works
+summary: >-
+  The integration problem MCP solves, the host-client-server architecture, the three server primitives and who
+  controls each, the client features in the current revision, the two transports, and which applications speak
+  the protocol. Includes what changed in the stateless 2026-07-28 revision, so older tutorials don't mislead you.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Explain the N-by-M integration problem and when a shared protocol is worth it compared with plain tool use
+  - Describe the roles of host, client, and server, and the isolation the architecture is designed to give
+  - Distinguish tools, resources, and prompts by who controls them, and name the client features of the current revision
+  - Choose between stdio and Streamable HTTP for a given server and say what each implies for security
+  - Recognize what the stateless 2026-07-28 revision changed, so you can read older material critically
+sources:
+  - { id: anthropic-mcp-announcement, use: summarized }
+  - { id: mcp-docs-intro, use: summarized }
+  - { id: mcp-spec-2026, use: summarized, where: "Overview; Key details; Security and trust and safety" }
+  - { id: mcp-spec-architecture, use: summarized, where: "Core components; Design principles; Capability negotiation" }
+  - { id: mcp-spec-changelog-2026, use: summarized, where: "Major changes; Deprecated" }
+  - { id: mcp-docs-server-concepts, use: summarized, where: "Core server features table; user interaction models" }
+  - { id: mcp-spec-tools-2026, use: summarized, where: "Error handling" }
+  - { id: mcp-spec-resources, use: summarized, where: "User interaction model" }
+  - { id: mcp-spec-prompts, use: summarized, where: "User interaction model" }
+  - { id: mcp-spec-elicitation, use: summarized, where: "Form mode and URL mode" }
+  - { id: mcp-spec-sampling, use: summarized }
+  - { id: mcp-spec-roots, use: summarized }
+  - { id: mcp-spec-transports, use: summarized }
+  - { id: mcp-python-sdk-v2-release, use: summarized }
+  - { id: claude-code-mcp-docs, use: summarized, where: "Adding servers; scopes" }
+  - { id: claude-connectors-building, use: linked }
+  - { id: openai-mcp-docs, use: summarized }
+  - { id: gemini-cli-mcp-docs, use: summarized }
+  - { id: vscode-mcp-docs, use: linked }
+  - { id: yt-anthropic-mcp, use: embedded }
+  - { id: yt-murag-mcp-workshop, use: embedded }
+  - { id: hf-mcp-course, use: linked, where: "Unit 1, key concepts" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: A server offers a `weekly_report` prompt, a `tracker://summary` resource, and a `create_ticket` tool. Under the MCP specification's interaction models, who is meant to decide when each one is used?
+    options:
+      - id: a
+        text: The model decides for all three; the categories only differ in their return types.
+        rationale: The categories exist precisely because the deciding party differs.
+      - id: b
+        text: "Prompt: the user. Resource: the host application. Tool: the model."
+        correct: true
+        rationale: Yes. Prompts are user-controlled, resources application-driven, tools model-controlled.
+      - id: c
+        text: "Prompt: the model. Resource: the user. Tool: the server."
+        rationale: Servers never decide to call their own tools; a client calls them, usually because the model asked.
+    explanation: >-
+      The spec defines prompts as user-controlled (often surfaced as slash commands), resources as application-driven
+      (the host decides what context to attach, possibly via a picker), and tools as model-controlled, with a human
+      able to deny calls. Knowing who decides tells you where to put review: a tool can fire without the user asking,
+      so tools are where approval gates belong.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      You are wrapping your company's internal wiki search so that colleagues can use it from Claude Code, Claude
+      Desktop, and VS Code. The wiki lives on an internal server and needs per-user access control. Which transport
+      fits best?
+    options:
+      - id: a
+        text: stdio, because it is simpler and every host supports it.
+        rationale: Each colleague would run a local process holding a credential, and you would ship updates to every laptop.
+      - id: b
+        text: Streamable HTTP, deployed once, with the specification's OAuth-based authorization so each request carries the user's token.
+        correct: true
+        rationale: Yes. One deployment, patched in one place, with per-user identity on every request.
+      - id: c
+        text: The HTTP+SSE transport, because it streams results.
+        rationale: That older transport is deprecated. Streamable HTTP can stream responses too.
+    explanation: >-
+      stdio suits servers that need the local machine (files, local tools). A shared service that many people use
+      with their own permissions is the case Streamable HTTP and the authorization section are designed for. The MCP
+      docs' local-server guidance makes the same point from the other side: if a server needs nothing from your
+      machine, prefer the remote version.
+  - id: kc3
+    type: multi
+    prompt: Which statements are true of the 2026-07-28 revision of the MCP specification? Select all that apply.
+    options:
+      - id: a
+        text: Every request carries its protocol version and client capabilities in `_meta`, instead of relying on an initialize handshake.
+        correct: true
+        rationale: The handshake was removed; requests are self-contained.
+      - id: b
+        text: When a server needs input from the client mid-request, it returns an `input_required` result and the client retries the original request with the answers.
+        correct: true
+        rationale: This is the multi round-trip request pattern that replaced server-initiated requests.
+      - id: c
+        text: Sampling and roots were deprecated, with a deprecation window of at least twelve months.
+        correct: true
+        rationale: They still work during the window, but new implementations should not adopt them.
+      - id: d
+        text: Elicitation was removed in favor of tool arguments.
+        rationale: Elicitation remains an active client feature; it is how a server asks the user for input.
+    explanation: >-
+      The revision made MCP stateless and replaced server-to-client requests with a retry pattern. The SDKs hide most
+      of this (the Python SDK v2 serves clients of both eras from one server), but it changes how you read older
+      tutorials, videos, and logs that show an initialize handshake.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The integration problem
+
+In Studio 1 you gave a model tools by writing function definitions into your own application. That works well for one application. Now picture a team that uses four AI applications (a chat assistant, a coding agent, an IDE plugin, an internal bot) and wants each to reach six systems (the issue tracker, the wiki, the CRM, the data warehouse, the calendar, the file share). If every application writes its own connector to every system, that is 4 times 6, or 24 integrations, each with its own auth handling, bugs, and maintenance. Add a seventh system and you write four more.
+
+This is the **N-by-M problem**, and it is what Anthropic named when it introduced the Model Context Protocol in November 2024: every new data source needed its own custom implementation, so connected systems were hard to scale. A shared protocol turns the product into a sum. Each application implements the client side once, each system implements a server once, and any pair can talk: 4 plus 6, or 10 pieces of work.
+
+The specification says it took inspiration from the Language Server Protocol, which did the same thing for programming-language support across editors. The MCP docs use a hardware analogy, a USB-C port for AI applications.
+
+Hold the arithmetic loosely. A protocol makes connections possible, not good. Servers still vary in quality, hosts support different subsets of the protocol, and models differ in how well they use tools. MCP removes duplicated plumbing; it does not remove the need to test each combination you depend on.
+</Listen>
+
+<Predict
+  title="Counting integrations"
+  code={`apps, systems = 5, 8
+point_to_point = apps * systems
+with_protocol = apps + systems
+print(point_to_point, with_protocol, point_to_point - with_protocol)`}
+  options={["40 13 27", "13 40 -27", "40 40 0", "64 13 51"]}
+  answer={0}
+>
+Five applications times eight systems is 40 custom connectors; with a shared protocol it is 5 client implementations plus 8 servers. The gap grows with both N and M, which is why the case for a protocol gets stronger as an organization adds AI tools. For one application and two systems, the saving is zero, and plain tool use is simpler.
+</Predict>
+
+<Listen>
+## Hosts, clients, and servers
+
+MCP has three roles, and the names are precise.
+
+The **host** is the AI application the user works in: Claude Code, Claude Desktop, an IDE. It owns the conversation and the model calls. It creates and manages connections, enforces security policies and consent, and decides what context reaches the model.
+
+A **client** is a connector inside the host. Each client talks to exactly one server, so a host connected to five servers runs five clients. That one-to-one rule is a security boundary: the host, not the servers, decides what flows between them.
+
+A **server** is a program that exposes capabilities: tools to call, resources to read, prompts to offer. It can be a local process on your machine or a remote service.
+
+The specification's design principles are worth knowing because they explain the shape of everything else. Servers should be extremely easy to build, with the host absorbing orchestration complexity. Servers should be composable, each focused on one job. And servers should not be able to read the whole conversation, nor see into other servers: the full history stays with the host, and each server receives only what it needs. When you hear "MCP gave the agent access to X," the precise version is "the host connected a client to a server that exposes X, and the model can ask the host to call it."
+
+Messages are JSON-RPC 2.0: requests with a method name and parameters, responses with a result or an error.
+</Listen>
+
+<Mermaid
+  alt="Architecture diagram. A host application (for example Claude Code) contains the model and three MCP clients. Client 1 connects over stdio to a local issue-tracker server, which reads a local JSON file. Client 2 connects over stdio to a local filesystem server, which reads a project folder. Client 3 connects over Streamable HTTP to a remote wiki server on the internet, which calls the wiki's API using an OAuth access token. Each client connects to exactly one server, and servers cannot see each other or the conversation."
+  caption="One host, one client per server. The host keeps the conversation; each server sees only the requests sent to it."
+  chart={`flowchart LR
+  subgraph H["Host (e.g. Claude Code)"]
+    M["Model + conversation"]
+    C1["Client 1"]
+    C2["Client 2"]
+    C3["Client 3"]
+    M --- C1
+    M --- C2
+    M --- C3
+  end
+  subgraph L["Your machine"]
+    S1["Issue tracker server"] --- D1[("issues.json")]
+    S2["Filesystem server"] --- D2[("project folder")]
+  end
+  subgraph R["Internet"]
+    S3["Wiki server"] --- D3[("Wiki API")]
+  end
+  C1 -- "stdio" --> S1
+  C2 -- "stdio" --> S2
+  C3 -- "Streamable HTTP + OAuth token" --> S3`}
+/>
+
+<Video id="CQywdSdi5iA" title="The Model Context Protocol (MCP)" channel="Anthropic" minutes={20} source="https://modelcontextprotocol.io">
+Theo Chu, David Soria Parra (one of MCP's creators), and Alex Albert on how MCP started, its core components, and tips for getting started. Watch the first segment, on the core components, and the tips near the end. It was published in June 2025, before the 2026-07-28 revision covered below, so treat any protocol mechanics it mentions as historical.
+</Video>
+
+<Listen>
+## Three server primitives, three different deciders
+
+Servers offer three kinds of capability. The MCP docs organize them by **who controls them**, and that is the most useful way to remember them.
+
+**Tools** are model-controlled. They are functions with a name, a description, and a JSON Schema for inputs, discovered with `tools/list` and invoked with `tools/call`. The model decides when to call one, based on the conversation. Tools can read or write: search flights, send a message, create a calendar event. Because a model can fire a tool without the user asking, the tools page says there should always be a human able to deny tool invocations, with clear indicators when tools run and confirmation prompts for operations.
+
+**Resources** are application-driven. They are data identified by URIs, such as `file:///reports/q3.md` or `tracker://summary`, and a server can publish URI templates for families of resources. The host decides how to use them: a picker the user browses, search, or automatic inclusion. Resources are context, not actions.
+
+**Prompts** are user-controlled. They are reusable templates with arguments that the user picks explicitly, typically as slash commands. The server writes the template; the user decides when to use it. A good prompt packages a workflow ("triage this issue using these tools") so users don't have to rediscover it.
+
+Two details matter in practice. First, many hosts support tools far better than resources or prompts, so check what your target host actually surfaces before designing around a primitive. Second, the control model tells you where risk lives. A resource the user attaches is the user's choice. A tool call is the model's choice, so tools are where your validation and approval effort goes.
+</Listen>
+
+<Listen>
+## Client features: what a server can ask of the host
+
+The relationship also runs the other way. In the current revision, a server that needs something from the user or the host while handling a request can ask for it.
+
+**Elicitation** is the active one. A server asks the client to collect information from the user. **Form mode** sends a message and a flat JSON Schema, and the client renders a form, letting the user review, edit, decline, or cancel. **URL mode** sends the user to a web page for interactions that must not pass through the client, such as signing in to a third-party service or making a payment. The specification is strict here: servers must not use form mode to request passwords, API keys, access tokens, or payment credentials, and must use URL mode for those. Elicitation is how a well-built server gets a real human decision, which you will use in lesson 9.
+
+**Sampling** let a server ask the host's model for a completion, so the server could use an LLM without its own API key. **Roots** let a client tell a server which directories are in scope (informational guidance, not access control). Both are **deprecated** as of 2026-07-28. They keep working for at least twelve months, but new implementations should not adopt them. The suggested migrations are telling: call an LLM provider's API directly instead of sampling, and pass directories through tool parameters, resource URIs, or server configuration instead of roots. You will still meet both in existing servers and older tutorials.
+</Listen>
+
+<Listen>
+## What changed in 2026-07-28: MCP became stateless
+
+The revision current on this lesson's review date is **2026-07-28**, and it changed the protocol's foundations. If you learned MCP from material written in 2025, three changes matter.
+
+**No more handshake.** Earlier revisions opened every connection with an `initialize` exchange that fixed the protocol version and capabilities for the session. Now every request carries its protocol version and the client's capabilities in its `_meta` field, under keys such as `io.modelcontextprotocol/protocolVersion`. A server accepts or rejects each request on its own; an unsupported version gets an error listing the versions it does support. Servers must also implement `server/discover`, which a client may call first to learn versions and capabilities up front.
+
+**No server-initiated requests.** Earlier servers could send requests to the client in the middle of a call (to elicit, sample, or list roots). Now a server that needs input returns a result with `resultType` set to `input_required`, listing what it needs. The client gathers the answers and retries the original request with them attached. The changelog calls this the multi round-trip request pattern. Every result now carries a `resultType`, normally `complete`.
+
+**No protocol sessions on HTTP.** The `Mcp-Session-Id` header is gone; servers that need state across calls mint explicit handles and pass them as ordinary tool arguments.
+
+You rarely write this plumbing yourself. The official Python SDK's v2 release (July 2026) supports the new revision and still serves 2025-era clients from the same server object. But you will read logs, debug with the Inspector, and evaluate third-party servers, and knowing which era you are looking at saves confusion.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the steps of a tool call that needs the user's input, under the 2026-07-28 revision"
+  items={[
+    "The model asks the host to call a tool, and the host routes it to that server's client",
+    "The client sends tools/call with the protocol version and its capabilities in _meta",
+    "The server returns a result with resultType input_required, containing an elicitation request",
+    "The host shows the user a form and collects the answer",
+    "The client retries the original tools/call with the answer attached",
+    "The server finishes the work and returns a complete result",
+    "The host hands the tool result to the model as context for its next step",
+  ]}
+  explanation="Because the protocol is stateless, the server never calls the client. It answers 'I need more input' and the client asks again with the input included. Each request stands on its own, which is what makes servers easier to scale behind load balancers."
+/>
+
+<Listen>
+## Two transports
+
+A transport defines how messages travel; the message meanings are identical on both standard transports.
+
+**stdio.** The host launches the server as a child process and exchanges newline-delimited JSON-RPC messages over its standard input and output. Nothing listens on a port, and the server runs with your user account's privileges on your machine. One rule follows directly: **a stdio server must never write anything else to stdout**, because stdout is the protocol channel. A stray `print()` corrupts the stream and the host drops the connection. Log to stderr. For credentials, the authorization section says stdio servers should not use the OAuth flow and should take credentials from the environment instead.
+
+**Streamable HTTP.** Each message is an HTTP POST to a single MCP endpoint, and the reply arrives as a JSON object or as a stream of server-sent events scoped to that request. This is the transport for remote and shared servers. It is where the specification's OAuth 2.1-based authorization applies, which lesson 9 covers. The older HTTP+SSE transport is deprecated; Claude Code's docs, for example, recommend HTTP and fall back to SSE only for servers that need it.
+
+The choice is usually clear from what the server needs. Reading your project files or driving a local tool means stdio. Wrapping a shared internal service that many people use with their own permissions means Streamable HTTP, deployed once and patched in one place.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s4-w3-stateless-dispatch"
+  title="A stateless MCP request handler, in miniature"
+  starter={`SUPPORTED = ["2026-07-28"]
+VERSION_KEY = "io.modelcontextprotocol/protocolVersion"
+CAPS_KEY = "io.modelcontextprotocol/clientCapabilities"
+
+TOOLS = {
+    "get_issue": {
+        "description": "Get one issue by id, such as HAR-101.",
+        "inputSchema": {"type": "object", "properties": {"issue_id": {"type": "string"}},
+                        "required": ["issue_id"]},
+    }
+}
+ISSUES = {"HAR-101": "SSO login loops back to the sign-in page"}
+
+
+def error(req_id, code, message, data=None):
+    err = {"code": code, "message": message}
+    if data is not None:
+        err["data"] = data
+    return {"jsonrpc": "2.0", "id": req_id, "error": err}
+
+
+def result(req_id, body):
+    return {"jsonrpc": "2.0", "id": req_id, "result": {"resultType": "complete", **body}}
+
+
+def handle(request):
+    """Return the JSON-RPC response for one request dict.
+
+    1. params._meta must contain VERSION_KEY and CAPS_KEY, else error -32602.
+    2. A version not in SUPPORTED gets error -32022 with
+       data = {"supported": SUPPORTED, "requested": <version>}.
+    3. tools/list -> result with "tools": a list of {"name", "description", "inputSchema"}.
+    4. tools/call with an unknown tool name -> error -32602 (a protocol error).
+    5. tools/call get_issue:
+       - missing or unknown issue_id -> result with isError True and a helpful text message
+       - found -> result with isError False and content [{"type": "text", "text": <title>}]
+    6. Any other method -> error -32601 (method not found).
+    """
+    # TODO
+    pass
+
+
+req = {"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+       "params": {"_meta": {VERSION_KEY: "2026-07-28", CAPS_KEY: {}}}}
+print(handle(req))
+`}
+  tests={`meta = {VERSION_KEY: "2026-07-28", CAPS_KEY: {}}
+def req(method, params=None, i=1):
+    p = {"_meta": dict(meta)}
+    p.update(params or {})
+    return {"jsonrpc": "2.0", "id": i, "method": method, "params": p}
+
+r = handle(req("tools/list"))
+assert r is not None, "handle returned None"
+assert r["id"] == 1 and r["result"]["resultType"] == "complete", "results carry resultType complete"
+assert r["result"]["tools"][0]["name"] == "get_issue", "tools/list should list get_issue with its name"
+assert "inputSchema" in r["result"]["tools"][0], "each tool needs its inputSchema"
+
+old = req("tools/list")
+old["params"]["_meta"][VERSION_KEY] = "2025-06-18"
+r = handle(old)
+assert r["error"]["code"] == -32022, "an unsupported version is error -32022"
+assert r["error"]["data"] == {"supported": SUPPORTED, "requested": "2025-06-18"}, "say what is supported and what was asked"
+
+bare = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+assert handle(bare)["error"]["code"] == -32602, "a request without the required _meta fields is malformed (-32602)"
+
+r = handle(req("tools/call", {"name": "delete_everything", "arguments": {}}, 3))
+assert r["error"]["code"] == -32602 and r["id"] == 3, "an unknown tool is a protocol error, not a tool result"
+
+r = handle(req("tools/call", {"name": "get_issue", "arguments": {"issue_id": "HAR-999"}}, 4))
+assert "result" in r and r["result"]["isError"] is True, "a bad argument is a tool execution error the model can read"
+assert r["result"]["content"][0]["text"], "tell the model what went wrong"
+
+r = handle(req("tools/call", {"name": "get_issue", "arguments": {}}, 5))
+assert r["result"]["isError"] is True, "a missing argument is also an execution error here"
+
+r = handle(req("tools/call", {"name": "get_issue", "arguments": {"issue_id": "HAR-101"}}, 6))
+assert r["result"]["isError"] is False and "SSO" in r["result"]["content"][0]["text"]
+
+assert handle(req("resources/frobnicate"))["error"]["code"] == -32601, "unknown methods get -32601"`}
+  solution={`def handle(request):
+    req_id = request.get("id")
+    params = request.get("params") or {}
+    meta = params.get("_meta") or {}
+    if VERSION_KEY not in meta or CAPS_KEY not in meta:
+        return error(req_id, -32602, "Missing required _meta fields")
+    version = meta[VERSION_KEY]
+    if version not in SUPPORTED:
+        return error(req_id, -32022, "Unsupported protocol version",
+                     {"supported": SUPPORTED, "requested": version})
+    method = request.get("method")
+    if method == "tools/list":
+        tools = [{"name": n, **spec} for n, spec in TOOLS.items()]
+        return result(req_id, {"tools": tools})
+    if method == "tools/call":
+        name = params.get("name")
+        if name not in TOOLS:
+            return error(req_id, -32602, f"Unknown tool: {name}")
+        issue_id = (params.get("arguments") or {}).get("issue_id")
+        if issue_id not in ISSUES:
+            text = f"No issue {issue_id!r}. Known ids: {', '.join(ISSUES)}."
+            return result(req_id, {"content": [{"type": "text", "text": text}], "isError": True})
+        return result(req_id, {"content": [{"type": "text", "text": ISSUES[issue_id]}], "isError": False})
+    return error(req_id, -32601, f"Method not found: {method}")`}
+>
+Implement `handle` so it answers one request with no memory of earlier ones, the way a 2026-07-28 server must. Notice the two kinds of failure the tools spec distinguishes: **protocol errors** (unknown tool, malformed request) come back as JSON-RPC errors the host handles, while **tool execution errors** (a bad issue id) come back as a normal result with `isError` true, so the model can read the message and try again. This is a teaching subset; real servers also check capabilities, mirror headers on HTTP, and return identity in `_meta`. The SDK does all of it for you in lesson 8.
+</PyRunner>
+
+<Callout type="pitfall" title="Following a 2025 tutorial as if it were current">
+MCP moved fast. Material from 2025, including good material, shows an `initialize` handshake, session ids, server-initiated sampling requests, the HTTP+SSE transport, and a Python class called `FastMCP`. On the review date, the current revision is stateless, sampling and roots are deprecated, and the Python SDK's v2 class is `MCPServer`. Before you copy a pattern, check the date on the page and the protocol revision it targets, then check the current specification's changelog. The same habit applies to anything AI-related that is less than two years old: date your sources.
+</Callout>
+
+<Listen>
+## Who speaks MCP
+
+The protocol's value depends on adoption, so check it against official pages rather than announcements.
+
+**Claude Desktop** connects to local stdio servers listed in a `claude_desktop_config.json` file; the MCP site's server tutorial walks through it. **Claude Code** adds servers with `claude mcp add`, over HTTP (recommended for remote servers) or stdio, at three scopes: local (just you, this project), project (shared with your team through a `.mcp.json` file in the repository, which Claude Code asks you to approve before use in interactive sessions), and user (all your projects). Claude's apps also connect to remote MCP servers as connectors. Outside Anthropic, OpenAI documents MCP servers for ChatGPT and for its Responses API, where an MCP tool takes an allowed-tools list and an approval setting. Google's Gemini CLI reads MCP servers from its settings file and supports stdio and Streamable HTTP. VS Code and Cursor configure servers in project files. The MCP introduction lists more.
+
+For model selection, this is the practical consequence: **one server can serve hosts backed by different models**. That makes MCP a fair way to compare models on your real tools. Connect the same server to two hosts, run the same tasks, and read the transcripts. Tool-use quality differs between models and versions, and the protocol guarantees only that the calls arrive well formed.
+
+When is MCP the wrong choice? If one application you own calls a tool only it needs, a plain function tool from Studio 1 is simpler: no extra process, no protocol layer, nothing to install. Reach for MCP when several hosts need the same capability, when you want an off-the-shelf host like Claude Code to use your internal system, or when a team should share one maintained integration.
+</Listen>
+
+<Callout type="tip" title="See it in your own setup">
+Run `claude mcp list` in a terminal to see every server your Claude Code knows about and whether each is connected, then `/mcp` inside a session for details. Note which scope each came from. In lesson 9 you will review that list with a security checklist.
+</Callout>
+
+<GoDeeper title="The workshop, and the longer story">
+Mahesh Murag of Anthropic ran a two-hour MCP workshop at the AI Engineer conference in early 2025: the motivation, building servers and clients, and where agents fit. It predates the stateless revision, so watch it for the design reasoning rather than the wire details.
+
+<Video id="kQmXtrmQ5Zg" title="Building Agents with Model Context Protocol - Full Workshop with Mahesh Murag of Anthropic" channel="AI Engineer" minutes={104} />
+
+For structured practice, the Hugging Face MCP Course (Apache 2.0) works through the concepts and builds clients and servers in Python. As with any course, check which protocol revision and SDK version an exercise targets before copying its code.
+</GoDeeper>
+
+<Listen>
+## What to carry into the next lesson
+
+Five ideas. A protocol turns N-by-M integrations into N plus M, which matters once several AI applications need the same systems. The host owns the conversation and runs one client per server; servers are isolated from each other by design. Tools are the model's choice, resources the application's, prompts the user's, and that tells you where to put review. The current revision is stateless and asks the user for input through elicitation. And stdio is for servers that need your machine, Streamable HTTP for shared services. Next, you build a server.
+</Listen>

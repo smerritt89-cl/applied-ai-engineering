@@ -1,0 +1,359 @@
+---
+id: capstone-project
+studio: capstone
+title: "Capstone: a production AI system with retrieval, agents, and evals"
+summary: >-
+  Over six weeks, scope, build, evaluate, harden, and ship one AI system for a real user and problem: retrieval over
+  a corpus, an agent with tools (ideally behind an MCP server you wrote), structured outputs verified in code, a
+  calibrated eval suite with confidence intervals, guardrails tested against injection, and tracing with cost. You
+  finish with a public write-up, a recorded demo, and a defense of your decisions.
+estHours: 70
+repoName: capstone
+requirements:
+  - { id: r1, text: "A one-page scope doc written in week 1, before system code: the user, the job they need done, what they do today, success and failure metrics with targets, the baseline you will beat, non-goals, and a risk register" }
+  - { id: r2, text: "An eval set of at least 100 cases built in week 1 and versioned in the repo, tagged by source (real or realistic, synthetic, should-abstain, adversarial), with a dev split and a sealed held-out split of at least 25 percent" }
+  - { id: r3, text: "A measured baseline: the simplest credible alternative (today's manual process, keyword search, or a single model call with no retrieval or tools) run on the same eval set and reported with the same metrics" }
+  - { id: r4, text: "Retrieval over a public, licensed, or synthetic corpus: an ingestion script, a chunking choice you justify, hybrid search or a measured reason not to use it, and recall@k with an interval on a labeled subset" }
+  - { id: r5, text: "An agent with two to five tools defined with schemas, a step limit, a spending cap, and explicit stop conditions; at least one tool served from an MCP server you wrote, or a written reason why MCP is the wrong fit" }
+  - { id: r6, text: "Structured outputs for every result the system acts on or shows as fact, validated against a schema, with citations or evidence checked in deterministic code and failures routed to retry, abstention, or a person" }
+  - { id: r7, text: "Code graders with unit tests (retrieval metrics, citation validity, abstention, task-specific checks) and at least one LLM judge with a binary verdict, a reason, structured output, and its model id and prompt version pinned" }
+  - { id: r8, text: "Judge calibration on at least 60 human labels held apart from judge tuning, with TPR and TNR reported and judge-based rates shown both raw and corrected" }
+  - { id: r9, text: "Every reported metric has n and a 95 percent interval; comparisons against the baseline and between versions are paired, with bootstrap intervals; at least two improvement iterations each have a hypothesis logged before the run" }
+  - { id: r10, text: "Guardrails: tools split into read and write tiers, writes or external sends gated by confirmation, input and output checks where the risk register calls for them, and a written lethal-trifecta analysis of your agent" }
+  - { id: r11, text: "An injection test suite of at least 20 cases (direct, and indirect through retrieved documents and tool results), reported as attack success rate with an interval, run in CI" }
+  - { id: r12, text: "Tracing: one trace per request with spans for retrieval, each model call, and each tool call, recording tokens, cost, latency, model id, and prompt version; secrets and personal data kept out of logs" }
+  - { id: r13, text: "Cost and latency reported per task (mean cost, p50 and p95 latency) on the eval set, plus a projection at a realistic monthly volume, with the spending cap enforced in code" }
+  - { id: r14, text: "Deployed, or runnable with one command in a container: secrets from the environment, timeouts and retries with backoff, a health check, and CI that runs the offline tests and the fast eval gate on every pull request" }
+  - { id: r15, text: "A public write-up using the report template on this page, a README with setup and an architecture diagram, and a design doc with alternatives considered; nothing confidential anywhere in the repo or the write-up" }
+  - { id: r16, text: "A disclosure of how you used AI assistants: which tools, for which parts (code, data generation, judge prompts, writing), and what you checked or corrected" }
+  - { id: s1, text: "A model comparison on your eval set across at least two providers or tiers, including one open-weight model, with quality, cost, and latency, and a recommendation you would defend", required: false }
+  - { id: s2, text: "A small user test: three to five people from the target role use the system on realistic tasks; you report what they tried, where it failed, and what you changed", required: false }
+  - { id: s3, text: "Automated red-teaming with a published tool (for example promptfoo, garak, or PyRIT) on top of your hand-written injection suite, with new findings added to the suite", required: false }
+milestones:
+  - id: m1
+    title: Scoping and the eval set
+    week: 1
+    deliverables:
+      - "Scope doc (one page): user, job, current process, success and failure metrics with targets, non-goals"
+      - "Risk register with likelihood, impact, owner, and mitigation for each risk, including the data and licensing risks"
+      - "Eval set v1: at least 100 tagged cases with dev and held-out splits, reviewed by the person acting as domain expert"
+      - "Baseline defined and run on the eval set, with first numbers in the experiment log"
+      - "Repo skeleton with CI running an empty test suite, so every later commit is checked"
+  - id: m2
+    title: Retrieval
+    week: 2
+    deliverables:
+      - "Ingestion script for the corpus, with source and license recorded for every document"
+      - "Chunking and search configuration chosen with a measured comparison (at least two configurations)"
+      - "Retrieval metrics (recall@k, MRR) with intervals on the labeled subset, logged against the baseline"
+      - "Answers or outputs with citations, and a citation checker with unit tests"
+  - id: m3
+    title: Agent and tools
+    week: 3
+    deliverables:
+      - "Two to five tools with schemas, error messages written for the model, and unit tests with a fake client"
+      - "An MCP server exposing at least one tool, tested with the MCP Inspector or a client you control"
+      - "The agent loop with step limit, spending cap, stop conditions, and a trace for every run"
+      - "End-to-end run on the dev split, with failures read and sorted into a first error taxonomy"
+  - id: m4
+    title: Evals and iteration
+    week: 4
+    deliverables:
+      - "Code graders with tests and an LLM judge with pinned model and prompt version"
+      - "Judge calibration on held-apart labels, with TPR, TNR, and corrected rates"
+      - "Two improvement iterations, each with a logged hypothesis, a paired comparison on dev, and a held-out check"
+      - "Updated error taxonomy and eval set v2 with new failure cases added, provenance recorded"
+  - id: m5
+    title: Production hardening
+    week: 5
+    deliverables:
+      - "Guardrails and tool permission tiers implemented, with the lethal-trifecta analysis written up"
+      - "Injection suite of at least 20 cases running in CI, with attack success rate reported"
+      - "Deployment or container, secrets from the environment, timeouts, retries, and a health check"
+      - "Cost and latency report from traces, with the monthly projection and the spending cap tested"
+      - "A fast eval gate on pull requests and a fuller judged run on demand"
+  - id: m6
+    title: Write-up, demo, and defense
+    week: 6
+    deliverables:
+      - "Final held-out run on a tagged commit, with the one command that reproduces it"
+      - "Public write-up following the report template, read by at least one person outside engineering"
+      - "Recorded demo of 5 to 8 minutes following the script outline"
+      - "Written answers to the likely reviewer questions, and the defense checklist complete"
+rubric:
+  - id: framing
+    criterion: Problem framing and scope
+    levels:
+      1: "A technology looking for a problem; no named user; success is undefined or is 'it works'."
+      2: "A plausible user and problem, but metrics are vague or model-only, there is no baseline, or the scope grew without a decision."
+      3: "A named user and job, product success and failure metrics with targets, a measured baseline, written non-goals, and scope changes recorded with reasons."
+      4: "Level 3, plus evidence the problem is real (interviews, a current-process measurement, or public data), and a scope cut made on purpose to protect the evaluation."
+  - id: design
+    criterion: System design
+    levels:
+      1: "Components chosen by fashion; an agent where a fixed workflow would do; no diagram."
+      2: "A working design with a diagram, but choices are asserted rather than compared, and the agent's autonomy is not justified."
+      3: "A design doc with alternatives considered; retrieval and agent choices backed by measurements; tool boundaries and the MCP decision explained."
+      4: "Level 3, plus at least one decision reversed because of evidence, and a design a reviewer could extend without asking the author."
+  - id: evaluation
+    criterion: Quality and evaluation rigor
+    levels:
+      1: "A few hand-picked examples; numbers without n or intervals; an uncalibrated judge reported as fact."
+      2: "An eval set and metrics, but no held-out split, no baseline comparison, or judge checked only by eye."
+      3: "At least 100 tagged cases, a sealed held-out split, a calibrated judge with corrected rates, paired comparisons with intervals, and two logged iterations."
+      4: "Level 3, plus results by slice, run-to-run variation measured, the number of variants tried disclosed, and changed outputs read and characterized."
+  - id: safety
+    criterion: Safety and checks
+    levels:
+      1: "Model output is trusted; tools can write or send without checks; no injection testing."
+      2: "Schema validation and a few guardrails, but no injection suite or no permission tiers."
+      3: "Verified citations and fields, read and write tool tiers with confirmation, a lethal-trifecta analysis, and an injection suite in CI with attack success rate reported."
+      4: "Level 3, plus indirect injection through every untrusted input path, a fix made because of a found attack, and a review sample of accepted outputs."
+  - id: production
+    criterion: Production readiness
+    levels:
+      1: "Runs only on the author's machine, by hand; keys in code."
+      2: "Runs with one command, but without timeouts, retries, tracing, or CI."
+      3: "Deployed or containerized, secrets in the environment, timeouts and retries, per-request traces, and CI with an eval gate."
+      4: "Level 3, plus a runbook for the top failure modes, alerts or a dashboard on cost and error rate, and a tested rollback or kill switch."
+  - id: economics
+    criterion: Cost and latency
+    levels:
+      1: "Cost and latency unknown."
+      2: "Logged but not analyzed or projected."
+      3: "Cost per task and p50 and p95 latency from traces, a monthly projection, a spending cap in code, and a justified model choice."
+      4: "Level 3, plus a measured cost or latency improvement (routing, caching, a smaller or open model) at equal quality within an interval."
+  - id: communication
+    criterion: Communication and defense
+    levels:
+      1: "No write-up, or a feature list; the demo shows only the happy path."
+      2: "A write-up and demo that describe what was built, but results lack intervals, limitations are thin, or hard questions go unanswered."
+      3: "A decision-first report following the template, honest results with intervals, a 5 to 8 minute demo that includes a failure, and written answers to the reviewer questions."
+      4: "Level 3, and a non-engineer and an engineer who read it could each explain what it does, how well, at what cost, and where it should not be used."
+defense:
+  - { id: d1, text: "Written report following the template on this page, published publicly (repo or blog), with no confidential data" }
+  - { id: d2, text: "Eval results table: baseline and final system on dev and held-out, every metric with n and a 95 percent interval, paired differences, judge-based rates corrected" }
+  - { id: d3, text: "Recorded demo of 5 to 8 minutes following the script outline, including one failure or abstention, with captions" }
+  - { id: d4, text: "Architecture diagram with a caption that states the takeaway, plus a smaller diagram of the agent loop or the request path if needed" }
+  - { id: d5, text: "Limitations and risks section: known failures with examples, the final state of the risk register, and uses you would advise against" }
+  - { id: d6, text: "Written answers to every question in the likely reviewer questions list on this page" }
+  - { id: d7, text: "A tagged commit and one command that reproduces the headline numbers, with the run's cost" }
+  - { id: d8, text: "Cost and latency summary at a realistic monthly volume, with the assumptions stated" }
+  - { id: d9, text: "Peer or mentor feedback, if available: who reviewed it, what they asked, and what you changed as a result" }
+sources:
+  - { id: google-ml-problem-framing, use: summarized, where: "Success and failure metrics" }
+  - { id: zinkevich-rules-of-ml, use: summarized, where: "Rules 1, 2, and 13" }
+  - { id: ubl-2020-design-docs, use: summarized }
+  - { id: google-tw-documents, use: adapted, where: "Scope, audience, key points up front" }
+  - { id: google-tw-illustrations, use: adapted, where: "Caption first, overview before detail" }
+  - { id: klein-2007-premortem, use: summarized }
+  - { id: anthropic-effective-agents, use: summarized, where: "Workflows versus agents; start simple" }
+  - { id: anthropic-demystifying-evals, use: linked }
+  - { id: hamel-field-guide, use: linked }
+  - { id: hamel-llm-judge, use: summarized, where: "TPR and TNR against human labels" }
+  - { id: miller-2024-error-bars, use: summarized }
+  - { id: rogan-gladen-1978, use: linked }
+  - { id: willison-lethal-trifecta, use: summarized }
+  - { id: owasp-llm01, use: linked }
+  - { id: mcp-docs-build-server, use: linked }
+  - { id: mcp-security-best-practices, use: linked }
+  - { id: otel-genai-semconv, use: linked }
+  - { id: mitchell-2019-model-cards, use: summarized, where: "Intended use, out-of-scope uses, caveats" }
+  - { id: sre-launch-checklist, use: linked }
+---
+
+## The brief
+
+Each studio project proved one skill in isolation: verified extraction, cited retrieval, a calibrated eval harness, a guarded agent, a fine-tuned or open model, a production service. The capstone asks a harder question: **can you put them together for a real user, and prove the result is good enough to use?**
+
+You will build one system that combines retrieval, an agent with tools, and an eval suite, then harden it for production and defend it. The defense is the part most portfolio projects skip. A reviewer (a hiring manager, a staff engineer, a client) will not ask "does it run?" They will ask how you know it works, compared with what, how sure you are, what it costs, and what happens when someone attacks it. Your write-up and demo should answer those questions before they are asked.
+
+The deliverable is not the most impressive demo. It is the most **convincing evidence**: a modest system with a sealed held-out set, a calibrated judge, and honest intervals beats an ambitious one that only works on the examples in the video.
+
+## What makes a strong capstone
+
+**A real user with a real job.** Pick someone whose work you understand well enough to tell a good output from a plausible one. Your PM and education-services background is an advantage here: course-development teams, instructional designers, proposal writers, and delivery leads all have repetitive, document-heavy work where retrieval and agents can help and where errors have visible costs. The strongest capstones start from a task someone does today, by hand, and can say how long it takes and how often it goes wrong.
+
+**No confidential data, anywhere.** The repo and write-up are public. Use public corpora (open courseware, published standards such as WCAG, public RFPs from government procurement portals, open-licensed style guides), or build a **synthetic** corpus that mirrors the shape of real work without any real client, learner, contract, or employee information. If you build on your own work experience, describe the pattern, never the client. When in doubt, leave it out, and say in the write-up how the data was made.
+
+**A problem that rewards measurement.** Good capstone problems have answers that can be checked: a requirement is either in the RFP or not, a citation supports the claim or doesn't, a task was created with the right owner or wasn't. If you can't imagine writing 100 test cases with expected outcomes, the problem is too vague for six weeks.
+
+**A baseline worth beating.** Google's Rules of Machine Learning open with the advice not to be afraid of launching without machine learning, and to design metrics first. Apply both: measure the simplest credible alternative (the manual process, keyword search, or one model call with no retrieval or tools) on your eval set in week 1. If the baseline is already good enough, you have learned something valuable cheaply, and you should pick a harder slice of the problem.
+
+## Scope guidance
+
+Six weeks at about 12 hours a week is roughly 70 hours. That is enough for **one user, one core job, two to five tools, and a corpus of a few hundred to a few thousand documents**. It is not enough for a platform, a multi-tenant product, or three user types.
+
+- **Narrow the job, not the rigor.** If you are behind, cut features, never the held-out split, the judge calibration, or the injection suite.
+- **Prefer a workflow where it works.** Anthropic's guidance on building effective agents recommends the simplest solution that works and adding agentic autonomy only when it pays for itself. Your agent should earn its loop: if a fixed sequence of calls does the job, build that, and use the agent only for the part that needs judgment about which tool to call next.
+- **Write non-goals down.** Ubl's account of design docs at Google treats non-goals (things that could reasonably be goals but you are deliberately excluding) as a core section. They are your defense against scope creep.
+- **Budget the evaluation.** Plan for evals, iteration, and write-up to take at least 40 percent of your hours. Week 4 and week 6 are not slack.
+
+## Example projects at the right size
+
+Each of these is sized for six weeks and uses only public or synthetic data. Treat them as starting points; your own idea is better if it meets the criteria above.
+
+1. **Accessibility reviewer for course pages.** Retrieval over WCAG 2.2 success criteria and an open-licensed style guide. The agent fetches an HTML course page, runs deterministic checks (alt text, heading order, link text, contrast where computable), and asks the model only for what code can't judge, citing the success criterion for each finding. Eval: 100 or more pages or fragments with expert-labeled findings. Success metric: findings an instructional designer agrees with, per page, versus a linter-only baseline.
+2. **RFP compliance matrix builder.** Over public RFPs from government procurement portals, extract every requirement with a verbatim evidence quote, classify it (mandatory, desirable, informational), and map it to a synthetic capability library through a search tool, flagging gaps. Eval: requirements labeled by hand on a set of RFPs. Baseline: a single long-context call with no retrieval or verification.
+3. **Outcome alignment checker for a syllabus.** Over open courseware (for example MIT OpenCourseWare or OpenStax materials, respecting their licenses), retrieve a course's stated outcomes and its assessments, and judge whether each assessment measures an outcome, with the evidence. The judge is the product here, so calibration against your own labels carries the project.
+4. **Course-build status assistant.** A synthetic project tracker (tasks, owners, due dates, dependencies) for a fictional course-development program, exposed through an MCP server with read tools and one write tool behind confirmation. The agent answers "what is late and why" questions, computes slippage in code, and drafts (never sends) a status note. Eval: questions with computed ground truth from the synthetic data, plus should-abstain questions.
+5. **Meeting-to-tracker agent.** Extends your Studio 1 project: public meeting transcripts (for example, published city council or board meetings) or synthetic ones, extraction with verified evidence, owner resolution through a directory tool, and task creation in a sandbox tracker through MCP, with every write confirmed. Eval: labeled commitments, plus injection cases hidden in transcripts.
+
+<Callout type="tip" title="The one-sentence test">
+Before week 1 ends, finish this sentence: "For [user], who today [current process, with a number], my system [does the job], and I will know it works when [metric] beats [baseline] on held-out data by [margin]." If you can't fill every bracket, keep scoping.
+</Callout>
+
+## Reference architecture
+
+<Mermaid
+  alt="Reference architecture. A user request enters an API or interface layer with input guardrails. An agent loop with a step limit and spending cap calls a model with structured outputs and chooses among tools: a retrieval tool over a hybrid index built by an ingestion pipeline from a public or synthetic corpus, read tools, and write tools that require confirmation. Some tools are served from an MCP server. Outputs pass through verification (schema, citation, and field checks) and output guardrails before reaching the user, or are routed to abstention or human review. Every step emits trace spans with tokens, cost, and latency to a trace store. Offline, an eval suite with code graders, a calibrated LLM judge, and an injection suite reads the versioned eval set, runs the system, computes paired statistics, writes an experiment log, and gates pull requests in CI."
+  caption="One reasonable design. The eval loop at the bottom is not optional: it is what lets you change everything above it safely."
+  chart={`flowchart TD
+  U["User request"] --> G1["API + input guardrails"]
+  G1 --> AG["Agent loop: step limit, spending cap, stop conditions"]
+  AG <--> M["Model call: structured outputs"]
+  AG --> RT["retrieval tool"]
+  AG --> RD["read tools"]
+  AG --> WR["write tools: confirmation required"]
+  subgraph MCP["MCP server you wrote"]
+    RD
+    WR
+  end
+  ING["ingestion: public or synthetic corpus"] --> IDX[("hybrid index")]
+  RT --> IDX
+  AG --> VER{"verify: schema, citations, fields"}
+  VER -- "pass" --> G2["output guardrails"] --> OUT["Answer with citations"]
+  VER -- "fail" --> HR["abstain or human review"]
+  AG -.-> TR[("traces: tokens, cost, latency")]
+  subgraph EVAL["Offline and CI"]
+    DS[("eval set v1, v2: dev + held-out")] --> RUN["runner"]
+    RUN --> GR["code graders + calibrated judge + injection suite"]
+    GR --> ST["paired stats, intervals"] --> LOG[("experiment log")]
+    ST --> GATE{"CI gate"}
+  end
+  RUN -.-> G1`}
+/>
+
+You will notice the diagram is busy. Google's Technical Writing Two course advises showing an overview first and then a separate, more detailed drawing for each subsystem. Do the same in your write-up: one overview diagram like this, then a smaller one for whichever part a reviewer most needs to understand (usually the agent loop or the verification path).
+
+## Likely reviewer questions
+
+Write a short answer to each in your repo (`DEFENSE.md`) before you record the demo. If an answer is "I don't know," that is a finding: say so, and say how you would find out.
+
+1. Who is the user, and what did they do before your system existed? How do you know?
+2. What is the baseline, and by how much does the final system beat it on held-out data, with what interval?
+3. Why an agent rather than a fixed workflow? What would break if you removed the loop?
+4. How was the eval set built, by whom, and how do you know it resembles real use? How many variants did you try against dev?
+5. How well does your judge agree with human labels, and how did you correct for its errors?
+6. What is the smallest improvement your eval set can detect?
+7. What happens when a retrieved document contains instructions? Show the test.
+8. Which tool could cause the most damage if misused, and what stops it?
+9. What does one task cost, what is p95 latency, and what would it cost at a realistic monthly volume?
+10. Where does it fail, and what would you tell a user not to use it for?
+11. If you had two more weeks, what would you change first, and why that?
+12. What did AI assistants write, and how did you check it?
+
+## Pitfalls
+
+<Callout type="pitfall" title="Scope creep">
+The usual capstone failure is not a bad system but an unfinished one: week 5 arrives with three half-built features and no held-out run. The cause is almost always additions that felt small. Keep a non-goals list in the scope doc, and treat every addition as a trade: name what you are cutting to make room, and log the decision. If a feature isn't covered by your eval set, it doesn't exist for the defense.
+</Callout>
+
+<Callout type="pitfall" title="Demo-ware without evals">
+A polished demo on five examples you chose proves that five examples work. Reviewers who have shipped AI systems know this and will discount it. Build the eval set in week 1, before the system, so the examples you demo are drawn from it rather than the other way round. Show at least one failure or abstention in the demo, and point to the eval table for how often that happens.
+</Callout>
+
+<Callout type="pitfall" title="No baseline">
+"82 percent correct" means nothing without a comparison. If a single model call with no retrieval gets 78 percent, your retrieval and agent bought 4 points (and maybe an interval that includes zero) at several times the cost. Measure the baseline first, on the same cases, with the same graders, and report every result as a paired difference against it.
+</Callout>
+
+<Callout type="pitfall" title="Tuning on the held-out set">
+Every time you look at held-out results and then change something, the held-out set becomes a little more like dev. Run it at milestones only (end of weeks 2, 4, and 6), log each run, and report the count in your write-up.
+</Callout>
+
+## Constraints
+
+- Public repo. No confidential, client, learner, or employee data, including in commit history, test fixtures, traces, and screenshots. Synthetic data is labeled as synthetic.
+- Corpus documents must be public, licensed for your use, or written by you; record the source and license of each in the ingestion manifest.
+- Official SDKs for model calls; keys from environment variables locally and repository secrets in CI.
+- The offline test suite (graders, statistics, verification, tool logic) runs without an API key, using recorded outputs or a fake client.
+- A full judged run over dev and held-out should cost under $15 at current prices. Log it.
+
+## Report template
+
+Put this in `REPORT.md`, and publish it (repo README link, GitHub Pages, or a blog). Aim for four to six pages plus appendices. Google's Technical Writing One course recommends stating scope and audience and putting key points first, because readers may stop after the first paragraph; the template is built that way.
+
+```markdown
+# [System name]: [one-line description of what it does for whom]
+
+## Summary (read this first)
+One paragraph for a non-engineer: the user and job, what the system does, how well it does it compared with
+the baseline (in plain words and with a range: "about N in 100 ..."), what one task costs, the biggest
+remaining risk, and whether you would recommend using it, for what, and not for what.
+
+## The problem
+- User and job: who, what they do today, how long it takes, how often it goes wrong (and how you know)
+- Success and failure metrics, with targets set in week 1
+- Baseline: what it is and why it is the right comparison
+- Non-goals
+
+## The system
+- Architecture diagram (caption states the takeaway)
+- Retrieval: corpus, ingestion, chunking, search, and the measurements behind each choice
+- Agent and tools: why an agent, the tools and their permission tiers, the MCP server, limits and stop conditions
+- Verification: schemas, citation and field checks, abstention, and what goes to a person
+- Alternatives considered, and why you rejected them
+
+## Evaluation
+- Eval set: size, composition by tag, how it was built and labeled, by whom, dev and held-out split,
+  how many times held-out was run
+- Graders: one line per metric, code or judge, how each was validated
+- Judge calibration: model and prompt version, labeled set size, TPR and TNR with intervals, raw and corrected rates
+- Smallest detectable difference, and how you worked it out
+
+## Results
+| System | Task success | Faithfulness (corrected) | Recall@k | Abstention right / wrong | Attack success | Cost / task | p95 latency |
+|---|---|---|---|---|---|---|---|
+| Baseline | | | | | | | |
+| Final, dev | | | | | | | |
+| Final, held-out | | | | | | | |
+
+Every number with n and a 95% interval. Paired differences against the baseline. Results by slice where it matters.
+
+## What changed along the way
+Each iteration: the hypothesis (as logged before the run), the change, the paired result, what you saw when you
+read the changed outputs. Include changes that didn't help, and how many variants you tried.
+
+## Safety and production
+Guardrails, the lethal-trifecta analysis, the injection suite and its results, deployment, tracing,
+cost at a realistic monthly volume, and the spending cap.
+
+## Limitations and risks
+Known failures with examples, the final risk register, uses you would advise against, and what you would
+measure next.
+
+## How I used AI assistants
+Which tools, for which parts, and what you checked or corrected.
+
+## Appendix
+How to reproduce the headline numbers (tagged commit, one command, cost of the run), metric definitions,
+an experiment log excerpt, and answers to the reviewer questions (or a link to DEFENSE.md).
+```
+
+## Demo video script outline
+
+Five to eight minutes, recorded with captions. Write the script before you record, rehearse it once, and record in a fresh environment so nothing depends on state you forgot about.
+
+1. **The user and the problem (45 seconds).** Who, what they do today, and the number that makes it painful. No architecture yet.
+2. **The result first (30 seconds).** The headline from your eval table: final versus baseline on held-out, with the interval, and cost per task.
+3. **A real task, end to end (2 minutes).** One case drawn from the eval set, not a hand-picked showcase. Narrate what the agent decides and why, and show the citations being checked.
+4. **A failure or abstention (1 minute).** A case where the system says it doesn't know, or gets it wrong. Say how often this happens, from the eval table.
+5. **An attack (45 seconds).** One injection case from your suite (for example, instructions hidden in a retrieved document) and what stops it.
+6. **Under the hood (1 to 1.5 minutes).** The architecture overview, one trace with its cost and latency, and the CI gate catching a regression.
+7. **Limits and next steps (30 seconds).** What you would not use it for, and what you would build next.
+
+<GoDeeper title="Why a defense, and not just a write-up">
+Design review is where engineering teams catch cross-cutting problems while change is still cheap, which is how Ubl describes the purpose of design doc review at Google. The defense checklist below plays the same role at the end of the project: a reviewer reading your report and watching your demo should be able to reconstruct your evidence without you in the room. The limitations section borrows from model cards (Mitchell and colleagues, 2019), which ask authors to state intended uses, uses that are out of scope, and caveats, so that readers can decide whether a system fits their situation. If you can find a peer or mentor to play reviewer, give them the reviewer questions and the rubric, and record what they asked that you hadn't anticipated.
+</GoDeeper>
+
+When you finish, score yourself with the rubric below (ideally a day later), complete the defense checklist, paste your repo and write-up links, and mark the project submitted.

@@ -1,0 +1,225 @@
+---
+id: s6-project
+studio: s6
+title: "Take your best project live"
+summary: >-
+  Deploy your strongest earlier project as a public service with streaming, resilience, tracing, redacted logs,
+  measured guardrails, a cost and latency dashboard, an online eval on sampled traffic, and a launch checklist with
+  evidence, then show it working in a public demo.
+estHours: 20
+repoName: doc-qa-rag
+requirements:
+  - { id: r1, text: "Deploys one earlier studio project (default: the Studio 2 Q&A system with its Studio 3 eval harness) at a public HTTPS URL, with the choice and the reasons stated in the write-up" }
+  - { id: r2, text: "Streams responses to the user, with per-request timeouts, retries with backoff and jitter on rate limits and server errors, and a tested degraded mode when the model provider is unavailable" }
+  - { id: r3, text: "Handles every stop reason the feature can produce, including refusal (partial output discarded, fixed message, refusal rate tracked) and max_tokens truncation" }
+  - { id: r4, text: "Emits one trace per request with spans for guards, retrieval or tools, and the model call, recording model id, prompt version, guard decisions, tokens, cost, and latency per stage" }
+  - { id: r5, text: "Redacts personal data and secrets before anything reaches logs or traces, with unit tests that feed known PII and key formats through the logging path" }
+  - { id: r6, text: "Input guards (size limits, per-user rate limits, PII redaction, injection heuristics, and a topic or policy classifier) and output guards (schema or citation checks, PII the user did not supply, untrusted links, a system-prompt canary), each logged with a reason" }
+  - { id: r7, text: "A red-team set of at least 40 labeled cases covering every input channel in your threat model (including at least 10 benign but tricky requests), run in CI, with block rate and false-positive rate reported by category" }
+  - { id: r8, text: "A threat model: data flow diagram with trust boundaries, a walk of the OWASP Top 10 for LLM Applications and STRIDE, and a risk table with a response and owner for each threat; no secrets in prompts or code, and model output escaped for every destination" }
+  - { id: r9, text: "A cost and latency dashboard (hosted or a generated page) showing requests, p50 and p95 latency, cost per request and per day, refusal rate, and guard block rate, plus at least one alert (for example, daily spend over budget) that you have triggered on purpose" }
+  - { id: r10, text: "An online eval: a grader from Studio 3, with its calibration on file, scores a random sample of production traffic on a schedule, and results appear on the dashboard with n and an interval" }
+  - { id: r11, text: "A completed launch checklist (the lesson 12 template) with linked evidence for every item, including a tested rollback by configuration flag and a kill switch, and a one-page incident runbook" }
+  - { id: r12, text: "A demo video (3 to 5 minutes) and a write-up using the template on this page, including how you used AI assistants" }
+  - { id: s1, text: "A staged rollout or A/B comparison of two configurations (for example two models or two prompts) on real or simulated traffic, with a primary metric, guardrail metrics, and intervals", required: false }
+  - { id: s2, text: "A trained or hosted safety classifier (for example Llama Guard, Prompt Guard, or a moderation endpoint) compared with your own classifier on your red-team set, on recall, false-positive rate, latency, and cost", required: false }
+  - { id: s3, text: "A recorded tabletop incident drill for one AI-specific failure (data leak, runaway cost, harmful output, or silent quality drop), with the timeline and a blameless postmortem that produced at least one new test", required: false }
+rubric:
+  - id: reliability
+    criterion: Reliability
+    levels:
+      1: "The service fails or hangs under provider errors, slow responses, or long inputs."
+      2: "Streaming and retries work on the happy path; timeouts, refusals, or provider outages are unhandled or untested."
+      3: "Timeouts, retries with backoff, refusal and truncation handling, and a degraded mode all work, each demonstrated with a test that simulates the failure."
+      4: "Level 3, plus a load or soak test with results, and evidence the service stays within its latency target and degrades gracefully past it."
+  - id: observability
+    criterion: Observability
+    levels:
+      1: "Print statements or raw logs only; no way to follow one request."
+      2: "Traces exist but miss stages, versions, or guard decisions, or logs contain unredacted personal data."
+      3: "Every request has a trace with versions, guard decisions, tokens, cost, and per-stage latency; logs are redacted and the redaction is tested; an online eval runs on sampled traffic."
+      4: "Level 3, plus you can answer 'which conversations did guard X block in the last 7 days, and on which prompt version' in minutes, demonstrated in the write-up."
+  - id: economics
+    criterion: Cost and latency control
+    levels:
+      1: "Cost per request is unknown."
+      2: "Cost and latency are logged but not monitored, budgeted, or explained."
+      3: "A dashboard shows cost per request and per day and p50 and p95 latency; a spend alert has fired in a test; quotas or limits stop runaway use; a projection at 10x traffic is in the write-up."
+      4: "Level 3, plus at least one measured optimization (caching, routing, batching, or a cheaper model) with its effect on cost, latency, and eval quality reported with intervals."
+  - id: safety
+    criterion: Safety and security
+    levels:
+      1: "No guards, or guards that have never been tested."
+      2: "Guards exist and block a few examples by eye; no threat model; secrets or PII handling is ad hoc."
+      3: "Layered input and output guards measured on a red-team set of 40 or more cases with block rate and false-positive rate; a threat model with trust boundaries and an OWASP walk; no secrets in prompts or code; output escaped."
+      4: "Level 3, plus at least one leg of any lethal trifecta removed by design, automated red-teaming (garak, PyRIT, or promptfoo) folded into CI, and every successful attack kept as a regression case."
+  - id: operations
+    criterion: Operational readiness
+    levels:
+      1: "No launch checklist, rollback, or plan for incidents."
+      2: "A checklist exists but items lack evidence; rollback needs a redeploy."
+      3: "Every checklist item links to evidence; rollback by configuration flag and a kill switch are tested; a runbook names owners, mitigations for each AI failure type, and how to revoke keys."
+      4: "Level 3, plus a staged rollout or drill actually run, with the decision at each stage recorded and a postmortem that added tests."
+  - id: communication
+    criterion: Communication
+    levels:
+      1: "No demo or write-up, or the URL doesn't work."
+      2: "A demo and write-up describe what was built, but not the evidence that it's ready or the risks that remain."
+      3: "A clear 3 to 5 minute demo that shows the feature, a guard firing, the dashboard, and a rollback; a write-up that leads with the launch decision and the evidence."
+      4: "Level 3, and a non-engineering stakeholder could read the summary and say what the system does, what it costs, the main remaining risk, and what would trigger turning it off."
+milestones:
+  - { id: m1, title: "Deployed and resilient", week: 1, deliverables: ["Public URL serving the chosen project with streaming", "Timeout, retry, and degraded-mode tests passing"] }
+  - { id: m2, title: "Costed", week: 2, deliverables: ["Cost per request measured and budgeted", "Quotas and a spend alert configured"] }
+  - { id: m3, title: "Observable", week: 3, deliverables: ["Traces with versions and per-stage latency", "Redacted logs with tests", "Online eval on sampled traffic"] }
+  - { id: m4, title: "Guarded and launched", week: 4, deliverables: ["Guards and red-team set in CI", "Threat model", "Launch checklist with evidence", "Demo video and write-up"] }
+defense:
+  - { id: d1, text: "Walk through one request end to end in your traces, naming every guard decision and what it cost in latency." }
+  - { id: d2, text: "Which leg of the lethal trifecta does your system have, and what stops an injected instruction from using it?" }
+  - { id: d3, text: "Show the rollback. How long does it take, and what exactly changes?" }
+  - { id: d4, text: "What is your guard's false-positive rate, and how did you decide it was acceptable?" }
+sources:
+  - { id: owasp-llm-top10, use: summarized }
+  - { id: owasp-threat-modeling-cheatsheet, use: linked }
+  - { id: sre-launch-checklist, use: linked }
+  - { id: sre-canarying, use: linked }
+  - { id: sre-incident-response, use: linked }
+  - { id: sre-postmortem-culture, use: linked }
+  - { id: claude-refusals-fallback, use: linked }
+  - { id: garak-repo, use: linked }
+  - { id: promptfoo-red-team, use: linked }
+---
+
+## The brief
+
+Every studio so far ended with something that works on your machine. This one ends with something that works for other people, keeps working when things go wrong, and tells you when it doesn't. You will take your strongest earlier project and run it the way a team runs a product: deployed at a public URL, streamed, resilient, traced, costed, guarded, monitored with an online eval, and launched against a checklist where every item has evidence attached.
+
+The deliverable is not the deployment. It's the **launch decision**: a write-up that says "this is ready for users, here is the evidence, here is what it costs, here is the main remaining risk, and here is what would make us turn it off", plus a demo that shows the evidence is real.
+
+## Which project, and which repository
+
+Deploy in the repository of the project you choose, so its history, tests, and evals come with it. The suggested repository name is **`doc-qa-rag`** because the Studio 2 question-answering system is the best default for most learners: it already has a versioned eval set, code graders, and a calibrated judge from Studio 3 (`rag-eval-harness`), which gives you the online eval and the launch gate almost for free, and retrieval over a public corpus gives you real trust boundaries to model.
+
+Other good choices, if you'd rather:
+
+- **Studio 1, `transcript-action-items`**: small and well tested; the guards are mostly about PII and evidence verification. You'll need to build an online eval from its gold set.
+- **Studio 4, the PM workflow agent**: the richest security story (tools with side effects, approvals, injection through tool results). Choose it if you want lesson 11 to matter most, and budget extra time for the threat model.
+- **Studio 5, the fine-tuned model**: serving your own model adds hosting and capacity work. Choose it if deployment and cost are what you want to learn.
+
+Whichever you pick, keep that project's repository name and say why you picked it in the write-up.
+
+## What you get
+
+- **Week 1** (deployment): streaming, timeouts, retries, and degraded modes. Its lab gives you a resilient service skeleton.
+- **Week 2** (cost and latency): budgets, caching, batching, and routing.
+- **Week 3** (observability): tracing, redacted logging, dashboards, and the pieces for an online eval.
+- **Week 4** (this week): lab 04's guard pipeline and red-team runner, lesson 11's threat model and OWASP walk, and lesson 12's launch checklist and incident table.
+
+Hosting is your choice. A serverless platform, a container service, or a small virtual machine are all fine; check its request timeout against your longest streamed response, and keep secrets in the platform's secret store.
+
+## Suggested architecture
+
+<Mermaid
+  alt="Production architecture. A user's browser connects over HTTPS to an API service on a hosting platform. The API service applies rate limits and input guards, then calls the chosen project's core (retrieval and generation, an agent, or an extractor), which calls the model provider with streaming, timeouts, and retries. Output guards check the result before it streams back to the browser. Configuration flags hold the prompt, model id, guard settings, and index version, plus kill switches. Every request writes a trace with redacted logs to an observability store. A scheduled job samples traces and runs a calibrated grader as an online eval. A dashboard shows cost, latency, refusal rate, block rate, and online eval results, and alerts notify the on-call owner. CI runs unit tests, the red-team set, and the offline eval gate before deploys."
+  caption="One reasonable design. Change it if you have a reason, and explain the reason."
+  chart={`flowchart TD
+  U["Browser"] --> API["API service: auth, rate limits"]
+  API --> IG["Input guards"]
+  IG --> CORE["Project core: RAG, agent, or extractor"]
+  CORE --> LLM["Model provider: streaming, timeouts, retries"]
+  LLM --> OG["Output guards"]
+  OG --> U
+  FL[("Config flags: prompt, model, guards, index, kill switches")] -.-> API
+  FL -.-> CORE
+  API -.-> TR[("Traces + redacted logs")]
+  TR --> OE["Scheduled online eval on sampled traces"]
+  TR --> DASH["Dashboard: cost, latency, refusals, blocks, eval"]
+  OE --> DASH
+  DASH --> AL["Alerts to on-call owner"]
+  CI["CI: unit tests, red-team set, eval gate"] -.-> API`}
+/>
+
+<Callout type="tip" title="Write the checklist first">
+Copy the launch checklist from lesson 12 into `LAUNCH.md` on day one, and treat each unchecked item as a task. It doubles as your project plan: the items you can't attach evidence to yet are exactly what's left to build, and the order of the sections is a sensible order to build them in.
+</Callout>
+
+## Pitfalls
+
+<Callout type="pitfall" title="A demo, not a deployment">
+A public URL that works when you click it isn't the bar. If the provider returns 529s for ten minutes, if someone sends a 200 KB message, or if a script hits the endpoint 10,000 times overnight, what happens? Simulate each of these with a fake client or a test harness, and keep the tests.
+</Callout>
+
+<Callout type="pitfall" title="An open endpoint and an open wallet">
+A public LLM endpoint without per-user limits and a spend cap is an invitation to unbounded consumption (OWASP LLM10). Put quotas in front of the model call, set a provider spend limit, and use a separate API key for this deployment so you can revoke it without breaking anything else.
+</Callout>
+
+<Callout type="pitfall" title="Guards measured only on attacks">
+A guard that blocks every attack in your red-team set might also block a fifth of your real users. Always report the false-positive rate on benign cases next to the block rate, and include benign messages that look like attacks.
+</Callout>
+
+<Callout type="pitfall" title="Logging what you promised to protect">
+Traces that store raw prompts and outputs will collect personal data and, eventually, a pasted secret. Redact before the log sink, test the redaction, set a retention period, and check that your dashboard queries still work on redacted data.
+</Callout>
+
+<Callout type="pitfall" title="A rollback you've never run">
+If rolling back means a code change and a redeploy, it will be slow when you need it fast. Version prompts, model ids, guard settings, and index versions as configuration behind flags, and rehearse the rollback on camera for the demo.
+</Callout>
+
+## Constraints
+
+- Use official SDKs for model calls, with keys in the hosting platform's secret store. No keys in the repository, the prompt, or the logs.
+- The offline test suite (guards, redaction, red-team runner with a fake client, failure simulations) must run in CI without an API key.
+- Set a hard monthly spend limit for the deployment's key and state it in the write-up. Keep the public demo cheap: a small daily request quota per user is fine.
+- If your project uses data about real people, use only data you have the right to use, and say how you handle it.
+
+## Write-up template
+
+Put this in `WRITEUP.md` and fill it in. Aim for two pages, plus the checklist and runbook as appendices.
+
+```markdown
+# <Project name> in production: write-up
+
+## Launch decision (read this first)
+One paragraph for a non-engineer: what the service does and for whom, whether it is ready and why,
+what it costs per user and per month at expected traffic, the main remaining risk, and what would make you
+turn it off. Public URL and demo video link.
+
+## What I deployed, and why this project
+Which earlier project, which repository, and why it was the strongest candidate. Hosting choice and why.
+
+## Architecture
+Diagram, with trust boundaries marked. Where streaming, retries, guards, tracing, and flags sit.
+
+## Evidence
+| Area | Claim | Evidence (link) |
+|---|---|---|
+| Reliability | Survives provider errors and timeouts | Failure-simulation tests, load test |
+| Quality | Offline eval passes the gate; online eval on sampled traffic | Eval run, dashboard panel (n, interval) |
+| Safety | Guards block X% of attacks at Y% false positives | Red-team report by category |
+| Security | Threat model and OWASP walk; no secrets in prompts or code | THREAT_MODEL.md, secret scanning |
+| Cost and latency | $ per request, p50 and p95, budget and alert | Dashboard, alert screenshot |
+| Operations | Rollback and kill switch tested | Demo timestamp, runbook |
+
+## Guards and red-team results
+Each guard: what it catches, block rate and false-positive rate, latency and cost it adds.
+The misses you accepted, and why.
+
+## Threat model summary
+The top five risks, the response to each (mitigate, eliminate, transfer, accept), and the owner.
+
+## Costs and latency
+Measured cost per request and per day, p50 and p95, projection at 10x traffic, and any optimization you measured.
+
+## Incidents and drills
+Any real or drilled incident: timeline, mitigation, and the tests it left behind.
+
+## Limitations and next steps
+What isn't covered, what you would build next, and what would change your launch decision.
+
+## How I used AI assistants
+Which tools, for what, and what you had to check or correct.
+
+## Appendices
+LAUNCH.md (checklist with evidence), RUNBOOK.md (one page), THREAT_MODEL.md.
+```
+
+When you finish, score yourself with the rubric below (ideally a day later), paste your repo link and public URL, and mark the project submitted.

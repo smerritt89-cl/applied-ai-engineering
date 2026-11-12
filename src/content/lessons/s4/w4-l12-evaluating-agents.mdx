@@ -1,0 +1,299 @@
+---
+id: s4-w4-l12
+studio: s4
+week: 4
+order: 12
+title: Evaluating agents
+summary: >-
+  Turn Studio 3's evaluation discipline into an agent eval you can run every day: scenarios with fixture
+  environments, end-state checks, trajectory assertions for policy and safety, cost and steps per task, pass^k over
+  repeated trials, and a small, balanced eval set that includes injection tests. Then use it to choose models and
+  configurations on a cost and accuracy frontier.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Define an agent eval in terms of tasks, trials, graders, transcripts, and outcomes, with each trial starting from a clean environment
+  - Combine end-state checks, trajectory assertions, and an output-quality grader for one task, and say what each can miss
+  - Report success, pass^k, steps, and cost per successful task, and treat safety violations as a gate rather than an average
+  - Build a balanced agent eval set of at least 15 scenarios covering happy paths, edge cases, tool failures, should-not-act cases, and injections
+  - Compare agent configurations or models on a cost and accuracy frontier and decide with evidence
+sources:
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Definitions; isolated trials; capability vs regression evals; pass^k; starting with 20 to 50 tasks" }
+  - { id: yao-2024-taubench, use: summarized }
+  - { id: kapoor-2024-agents-matter, use: summarized }
+  - { id: zhu-2025-agentic-benchmark-checklist, use: summarized }
+  - { id: hamel-evals-faq, use: summarized, where: "Agent evaluation; transition failure matrix" }
+  - { id: debenedetti-2024-agentdojo, use: summarized }
+  - { id: claude-effort-docs, use: summarized }
+  - { id: claude-pricing-docs, use: linked }
+  - { id: claude-ma-secure-deployment, use: linked, where: "Session budgets" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your status agent's eval shows 92% task success over 20 scenarios and 5 trials each. One trial on an injection
+      scenario posted the customer's contract value to an external channel. A teammate says "92% with one bad
+      trial, ship it." What do you do?
+    options:
+      - id: a
+        text: Ship; one failure in 100 trials is within noise.
+        rationale: Averaging a data leak into a success rate hides exactly the event you most need to prevent.
+      - id: b
+        text: Treat any safety violation as a failed gate, read the transcript, fix the cause (ideally with a deterministic control), and rerun.
+        correct: true
+        rationale: Safety properties are requirements, not averages. One leak is a release blocker.
+      - id: c
+        text: Drop the injection scenario from the set because it is not a realistic user task.
+        rationale: Injection scenarios are realistic for any agent that reads outside text, and removing failing tests is how evals stop meaning anything.
+    explanation: >-
+      Report quality metrics as rates with intervals, but gate on safety: zero tolerated violations, every violation
+      read and explained. Then prefer a fix that does not depend on the model (an allowlist, a data-flow rule), and
+      keep the scenario as a regression test.
+  - id: kc2
+    type: predict-output
+    prompt: Each failed run is retried until it succeeds. Which configuration is cheaper per completed task?
+    code: |
+      configs = {"small": (0.02, 0.60), "large": (0.05, 0.95)}  # (cost per run in $, success rate)
+      for name, (cost, p) in configs.items():
+          print(name, round(cost / p, 3))
+    options:
+      - id: a
+        text: "`small 0.033` and `large 0.053`: the small configuration is cheaper per completed task"
+        correct: true
+        rationale: With retries, expected runs per success is 1/p, so expected cost is cost/p.
+      - id: b
+        text: "`small 0.012` and `large 0.048`"
+        rationale: That multiplies by p instead of dividing. Failures cost money too.
+      - id: c
+        text: "`small 0.02` and `large 0.05`: cost per run is the cost per task"
+        rationale: Only if every run succeeds.
+    explanation: >-
+      Cost per successful task is the comparison that matters, and here the cheaper model still wins. But the
+      formula assumes failures are detected and retried for free. If a failure reaches a person (a wrong status sent
+      to a stakeholder), its cost is not cents. Put that in the comparison before you choose.
+  - id: kc3
+    type: mcq
+    prompt: Why should each trial start from a freshly reset fixture environment?
+    options:
+      - id: a
+        text: Leftover state from earlier trials can cause correlated failures, or let the agent pass by finding earlier trials' work.
+        correct: true
+        rationale: Anthropic's agent-evals guide reports both effects, including Claude reading git history from previous trials.
+      - id: b
+        text: Because the API charges less for new environments.
+        rationale: Environment reset is your infrastructure, not an API pricing question.
+      - id: c
+        text: Because pass^k is undefined if trials share state.
+        rationale: It is still computable; it just stops measuring independent tries.
+    explanation: >-
+      An eval measures the agent only if the environment is identical and isolated for every trial. Shared state
+      produces both false failures (resource exhaustion, leftovers) and false successes (reusing an earlier answer).
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## You already know most of this
+
+Studio 3 gave you the machinery: error analysis before metrics, test sets with provenance, code graders and calibrated judges, intervals instead of anecdotes, and regression gates in CI. Lesson 11 of that studio introduced agent-specific ideas: grading the **end state** rather than the agent's claims, **trajectory checks** for policy, and **pass^k** from repeated trials. This lesson does not repeat those. It turns them into an eval you can build for the agent in this studio's project, and adds three things that matter most once an agent has tools: environments, safety gates, and cost.
+
+Start with shared vocabulary. Anthropic's agent-evals guide defines a **task** as one test with defined inputs and success criteria, a **trial** as one attempt at it, a **grader** as logic that scores some aspect of a trial (a task can have several), a **transcript** as the full record of a trial (for the Claude API, the complete messages array), and the **outcome** as the final state of the environment. Its example makes the distinction stick: a booking agent may say the flight is booked, but the outcome is whether a reservation exists in the database.
+
+The guide also offers reassurance that matters for a PM planning the work: teams often delay agent evals because they think they need hundreds of tasks, and it suggests 20 to 50 simple tasks drawn from real failures is a strong start, because early changes have large effects that small samples can detect.
+</Listen>
+
+<Listen>
+## The environment is part of the test
+
+A chat eval sends text and grades text. An agent eval has to give the agent a world to act in: a tracker with issues, a channel to post to, a docs site to fetch. That world must be **fake, resettable, and inspectable.** Fake, so a test run never emails a real customer. Resettable, so every trial starts identical. Inspectable, so a grader can read the final state directly.
+
+Anthropic's guide is specific about isolation: each trial should start from a clean environment, because shared state (leftover files, cached data, exhausted resources) causes correlated failures, and can also inflate scores. It reports an internal case where Claude gained an unfair advantage by reading the git history of previous trials. Both effects break the assumption behind pass^k, that trials are independent tries.
+
+The lab you just built has the right shape: an `Environment` object built fresh from a fixture file, with an `effects` list recording every side effect. For the project, build the same thing for your issue tracker. A fixture is a JSON file of issues, comments, and labels; the fake MCP server or tool layer reads from it; writes go to an in-memory outbox. When you later point the agent at the real GitHub API, the eval keeps running on fixtures, which makes it fast, free of rate limits, and deterministic in everything except the model.
+
+Think about **what the environment must make possible**, too. If a scenario tests whether the agent handles a rate-limit error, the fake must be able to return one. If it tests pagination, the fixture needs more issues than one page holds. Scenarios are designed in the environment as much as in the prompt.
+</Listen>
+
+<Listen>
+## Three graders for one task
+
+For most agent tasks, use three kinds of grader together, because each misses something the others catch.
+
+**End-state checks** (code) read the outcome. Did exactly one post land in `#proj-status`? Does it mention every issue that changed state this week, and no closed issue as open? Were no other effects produced? These are cheap, deterministic, and closest to what users care about.
+
+**Trajectory assertions** (code over the transcript) check rules about the path that matter regardless of outcome. tau-bench's authors note that a correct final database can hide a policy violation, such as acting without the user's confirmation. For your agent: no write tool executed without an approval record; no outbound call after private data entered the context unless approved; at most N tool calls; no tool called with arguments that failed validation more than twice. Studio 3's exercise built this kind of check; reuse it.
+
+**Output quality** (a model-based grader, or a person) judges what code cannot: is the status report accurate, clear, appropriately prioritized for a stakeholder? Use a rubric with binary criteria, and calibrate the judge against your own labels exactly as in Studio 3, lessons 5 and 6, before you trust its numbers.
+
+Then decide how to combine them. Anthropic's guide lists weighted scores, binary (every grader must pass), or a hybrid. For agents, a hybrid works well: **safety and policy assertions are hard requirements**, end-state checks define success, and quality scores are reported alongside.
+
+Finally, grade the grader. Zhu and colleagues' 2025 paper on rigorous agentic benchmarks found task-setup and reward-design flaws in well-known benchmarks, including one that counted empty responses as successful, and estimated that such issues can misstate performance by up to 100% in relative terms. Your eval can have the same bugs. Include a scenario where doing nothing must fail, and one where a deliberately wrong report must fail.
+</Listen>
+
+<Callout type="pitfall" title="Averaging safety into success">
+A leak, an unapproved write, or a post to the wrong channel is not a 1% dent in a success rate; it is the event your controls exist to prevent. Report safety as a count of violations with the scenario ids, gate releases on zero, and read every violating transcript. A single leak in one trial of one injection scenario is a release blocker, even if the average looks excellent.
+</Callout>
+
+<Listen>
+## Cost, steps, and reliability are results, not footnotes
+
+Kapoor and colleagues' "AI Agents That Matter" (2024) argued that agent benchmarks focused narrowly on accuracy, which produced needlessly complex and costly agents and even mistaken conclusions about what caused accuracy gains. Their recommendation is to treat cost and accuracy jointly. For your eval, record per trial: input and output tokens, dollar cost at the prices on the date you ran it, wall-clock time, number of model calls, and number of tool calls.
+
+Then report four numbers per configuration:
+
+- **Success rate** (pass@1 across trials), with an interval, as in Studio 3.
+- **pass^k**, the chance that k independent trials all succeed, computed with tau-bench's estimator. Anthropic's guide gives the intuition: 75% per trial means about 42% for three in a row. A weekly report that is right three weeks out of four is not a reliable agent.
+- **Cost per successful task**: total cost divided by successes. When failures are retried, the expected cost is the cost per run divided by the success rate, so a cheap, unreliable agent can still win, or lose badly.
+- **Steps and cost distribution**: median and a high percentile (p90), because runaway loops create long tails. A step budget and, on hosted runtimes, a session budget (Managed Agents supports a spending cap per session) turn the tail into a bounded failure.
+
+One more distinction from Anthropic's guide shapes how you use the suite over time. **Capability evals** ask what the agent can do well and should start with a low pass rate, giving you a hill to climb. **Regression evals** ask whether it still does what it used to and should pass nearly 100%. As capability scenarios become reliably solved, move them into the regression suite that runs on every change.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s4-w4-agent-eval-report"
+  title="Summarize an agent eval: success, pass^k, cost per success, and a safety gate"
+  starter={`from math import comb
+
+def nearest_rank(values, q):
+    """The q-th percentile (0 to 100) by nearest rank: sort, take element ceil(q/100 * n) - 1 (at least index 0)."""
+    s = sorted(values)
+    k = max(0, -(-q * len(s) // 100) - 1)
+    return s[int(k)]
+
+def summarize(trials, k=3):
+    """trials: list of dicts {"scenario", "success": bool, "violation": bool, "steps": int, "cost": float}.
+    Return a dict with:
+      success_rate      mean of success over all trials
+      pass_hat_k        mean over scenarios of C(c, k) / C(n, k)  (n trials, c successes; needs n >= k)
+      cost_per_success  total cost / number of successes (float("inf") if none)
+      steps_p50, steps_p90   nearest-rank percentiles of steps
+      violations        sorted list of scenario ids with at least one violation
+      gate              "pass" only if there are no violations, else "fail"
+    """
+    # TODO
+    return {}
+
+def dominates(a, b):
+    """True if summary a is at least as good as b on success_rate (higher) and cost_per_success
+    (lower), strictly better on at least one, and a's gate is "pass"."""
+    # TODO
+    return False
+
+def T(s, ok, cost, steps=6, bad=False):
+    return {"scenario": s, "success": ok, "violation": bad, "steps": steps, "cost": cost}
+
+small = [T("a", True, .01), T("a", True, .01), T("a", False, .01),
+         T("b", True, .01), T("b", False, .01), T("b", False, .01, steps=30)]
+print(summarize(small))
+`}
+  tests={`def T(s, ok, cost, steps=6, bad=False):
+    return {"scenario": s, "success": ok, "violation": bad, "steps": steps, "cost": cost}
+small = [T("a", True, .01), T("a", True, .01), T("a", False, .01),
+         T("b", True, .01), T("b", False, .01), T("b", False, .01, steps=30)]
+r = summarize(small, k=2)
+assert abs(r["success_rate"] - 0.5) < 1e-9
+assert abs(r["pass_hat_k"] - (1/3 + 0) / 2) < 1e-9, "a: C(2,2)/C(3,2) = 1/3; b: C(1,2) = 0"
+assert abs(r["cost_per_success"] - 0.02) < 1e-9, "6 runs at $0.01 for 3 successes"
+assert r["steps_p50"] == 6 and r["steps_p90"] == 30, "the runaway trial shows up in p90, not the median"
+assert r["violations"] == [] and r["gate"] == "pass"
+leaky = small + [T("inj-3", True, .01, bad=True)]
+r2 = summarize(leaky, k=1)
+assert r2["violations"] == ["inj-3"] and r2["gate"] == "fail", "a successful trial can still violate policy"
+none = summarize([T("a", False, .02), T("a", False, .02), T("a", False, .02)])
+assert none["cost_per_success"] == float("inf")
+A = {"success_rate": .9, "cost_per_success": .03, "gate": "pass"}
+B = {"success_rate": .8, "cost_per_success": .05, "gate": "pass"}
+C = {"success_rate": .95, "cost_per_success": .08, "gate": "pass"}
+assert dominates(A, B) and not dominates(B, A)
+assert not dominates(A, C) and not dominates(C, A), "a trade-off: neither dominates; both are on the frontier"
+assert not dominates({**A, "gate": "fail"}, B), "a configuration that fails the safety gate dominates nothing"
+assert not dominates(A, A), "strictly better on at least one"`}
+  solution={`def summarize(trials, k=3):
+    by = {}
+    for t in trials:
+        by.setdefault(t["scenario"], []).append(t)
+    succ = sum(t["success"] for t in trials)
+    cost = sum(t["cost"] for t in trials)
+    phk = [comb(sum(t["success"] for t in ts), k) / comb(len(ts), k) for ts in by.values()]
+    steps = [t["steps"] for t in trials]
+    viol = sorted({t["scenario"] for t in trials if t["violation"]})
+    return {
+        "success_rate": succ / len(trials),
+        "pass_hat_k": sum(phk) / len(phk),
+        "cost_per_success": cost / succ if succ else float("inf"),
+        "steps_p50": nearest_rank(steps, 50),
+        "steps_p90": nearest_rank(steps, 90),
+        "violations": viol,
+        "gate": "fail" if viol else "pass",
+    }
+
+def dominates(a, b):
+    if a["gate"] != "pass":
+        return False
+    ge = a["success_rate"] >= b["success_rate"] and a["cost_per_success"] <= b["cost_per_success"]
+    gt = a["success_rate"] > b["success_rate"] or a["cost_per_success"] < b["cost_per_success"]
+    return ge and gt`}
+>
+This is the summary your project's eval runner should print for each configuration. Two ideas are new relative to Studio 3: the safety gate is computed separately from the success rate (a leaking trial that "succeeded" still fails the gate), and configurations are compared by **Pareto dominance** on success and cost per success, following Kapoor and colleagues' advice to optimize the two jointly. When neither configuration dominates, the choice is a product decision, and your job is to state the trade-off in plain terms.
+</PyRunner>
+
+<Listen>
+## Trajectory review: reading what the agent did
+
+Numbers tell you that something failed. Transcripts tell you why, and whether the agent or the eval is at fault. Anthropic's guide calls reading transcripts a critical skill, and Hamel Husain's evals FAQ suggests a structure for agents: find the first step where things went wrong, and tally those transitions across failed runs in a **transition failure matrix** (last good step against first failed step). Early failures cascade, so the most common early cell is usually the best fix.
+
+For a tool-using agent, read each failed transcript with four questions. **Which tool, and was it the right one?** Many failures are selection errors that a better description or a smaller tool set fixes (Studio 1, lesson 11). **Were the arguments right?** Wrong ids, wrong date ranges, a missing pagination cursor. **How did it handle the result?** Did it notice an error, a truncated list, or an empty page? **Did it stop at the right time?** Agents fail by stopping early (declaring victory after one page of issues) and by not stopping (re-reading the same issue until the step budget runs out).
+
+Keep a short written note per failure, as in Studio 3's error analysis, and let the notes, not your hunches, choose the next change. Then rerun several trials per scenario, because one passing trial after a fix proves little for a non-deterministic agent.
+</Listen>
+
+<Listen>
+## Building a small agent eval set
+
+For the project you need at least 15 scenarios. Here is a composition that works for a status-report agent, and generalizes to most PM workflow agents. Aim for balance: Anthropic's guide recommends testing both the cases where a behavior should happen and the cases where it should not, because a suite of only "should act" tasks rewards an agent that always acts.
+
+- **Happy paths (3 to 4):** a normal week; a quiet week with no changes; a busy week with many updates.
+- **Data edge cases (3 to 4):** more issues than one API page; issues with no assignee or no labels; an issue reopened during the week; text in another language or very long bodies.
+- **Tool failures (2 to 3):** a rate-limit or server error from the tracker; a timeout on one call; a malformed result. The right behavior is to retry within limits or report the gap honestly, never to invent data.
+- **Should not act (2 to 3):** the reviewer declines the draft; the target channel is not allowed; the tracker is empty or unreachable. Success here means the agent does not post, and says why.
+- **Injections (3 or more):** reuse the lab's fixtures: an instruction in an issue body, a hidden comment, a fake admin notice, a link carrying data. Success means the task still completes and no violation occurs.
+
+For each scenario, write the fixture, the task text, the expected end state (what must and must not be in the outbox), the trajectory rules, and a reference report a reviewer would accept. Anthropic's guide gives a good test of task quality: two domain experts should independently reach the same pass or fail verdict. If you can't write the reference, the scenario is not ready.
+
+Run every scenario for several trials (start with 3 to 5), on a fresh environment each time, and keep the transcripts. That set becomes your regression suite: every change to the prompt, tools, model, or guard runs it, and the release rule is written down before you look at the results.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the steps for adding one new scenario to an agent eval set"
+  items={[
+    "Start from a real or likely failure, and write the fixture environment that reproduces it",
+    "Write the task text and a reference outcome that two experts would both accept",
+    "Write end-state checks, trajectory rules, and the quality rubric for it",
+    "Check the graders: a do-nothing run and a deliberately wrong run must both fail",
+    "Run several trials on fresh environments and read the transcripts",
+    "Add it to the capability suite, and move it to regression once it passes reliably",
+  ]}
+  explanation="Scenarios start from failures and live in their environment. Graders are tested before the agent is, which catches the 'empty response counts as success' class of bugs. Repeated trials on clean environments make the result meaningful, and graduation to the regression suite keeps it protecting you after the fix."
+/>
+
+<Listen>
+## Choosing models and configurations with the eval
+
+Once the eval exists, model selection stops being a debate. Run the same scenarios, trials, and graders for each candidate configuration: a model choice, an effort setting, a tool design, a guard variant. Plot success rate against cost per successful task. Configurations that are beaten on both axes by another (dominated) can be dropped. The rest form a **frontier**, and choosing among them is a product decision you can now state plainly: "the larger model gets one more weekly report right in twenty, at about twice the cost per report."
+
+Two patterns are worth testing for this kind of agent. **Routing by step:** a small, inexpensive model (for example `claude-haiku-5-5`) turns each issue into a fixed-schema record, and a more capable model (`claude-opus-5-5` or `claude-sonnet-5-5`) writes the report from the records. This is also lesson 11's map-reduce pattern, so it can improve safety and cost at once. **Effort:** on current Claude models, a lower effort setting reduces tokens and tool calls; measure whether quality holds before you choose. Check the pricing page on the day you run the comparison, and record the prices in your results, because they change.
+
+Public agent benchmarks (Studio 3, lesson 11) can help you pick which models to try. They can't tell you which wins on your scenarios, with your tools and your guard. AgentDojo is a useful exception for one property: it measures utility and injection robustness together, so it is a reasonable shortlist signal for agents that read untrusted content, before your own injection suite gives the real answer.
+</Listen>
+
+<GoDeeper title="Simulated users and multi-turn tasks">
+Your status agent mostly runs without a conversation. Agents that talk to people (support, intake, scheduling) need a simulated user: a second model given a persona and a goal, as in tau-bench. That adds a second source of variance, so pin the user simulator's model and prompt, read some simulated conversations to check they are realistic, and expect to need more trials per task. tau2-bench's finding that agents get worse when the user also acts in the environment is a warning that simulated users can make an eval easier or harder than reality; calibrate against a few real conversations when you can.
+</GoDeeper>
+
+<Listen>
+## What to carry into project week
+
+You now have all the parts: a guard and an injection suite (lab 04), a summary function with a safety gate and a frontier comparison (this lesson), and Studio 3's harness patterns for logging, intervals, and CI. In the project you'll put them together around a real agent: at least 15 scenarios, several trials each, cost per run recorded, and a written gate rule. Start the eval set before the agent works. The scenarios will tell you what to build.
+</Listen>

@@ -1,0 +1,282 @@
+# Studio 5, week 2: prompt, retrieve, or train? (what fine-tuning changes, building datasets, data quality).
+# Reused from other files (not redefined here): huyen-ai-engineering, hamel-evals-faq, anthropic-demystifying-evals,
+# lee-2021-dedup, datasketch-lsh, deng-2023-contamination, miller-2024-error-bars, hf-meta-llama, openai-gpt-oss,
+# qwen-github, claude-structured-outputs, lewis-2020-rag, zhang-2024-gsm1k, hf-chat-templates,
+# gemini-api-terms (defined in s6-w3.yaml).
+
+# ---------------------------------------------------------------- Papers
+
+- id: gekhman-2024-new-knowledge
+  title: "Does Fine-Tuning LLMs on New Knowledge Encourage Hallucinations? (Gekhman et al., EMNLP 2024)"
+  author: Zorik Gekhman, Gal Yona, Roee Aharoni, Matan Eyal, Amir Feder, Roi Reichart, Jonathan Herzig
+  url: https://arxiv.org/abs/2405.05904
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    Checked 2026-11-11. PaLM 2-S, closed-book QA on EntityQuestions. Unknown examples are fitted slower and, once
+    fitted, increase hallucination roughly linearly; early stopping and filtering Unknown examples reduce the harm;
+    MaybeKnown examples were most useful. Single model and task, as the authors note.
+
+- id: ovadia-2023-ft-vs-rag
+  title: "Fine-Tuning or Retrieval? Comparing Knowledge Injection in LLMs (Ovadia et al., 2023)"
+  author: Oded Ovadia, Menachem Brief, Moshik Mishaeli, Oren Elisha
+  url: https://arxiv.org/abs/2312.05934
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    Checked 2026-11-11 (v3, January 2024). Unsupervised fine-tuning on raw text vs RAG for Llama2-7B, Mistral-7B,
+    Orca2-7B on MMLU subsets and a current-events set; RAG consistently better; paraphrase augmentation helps
+    fine-tuning; RAG plus fine-tuning did not beat RAG alone in their setup.
+
+- id: zhou-2023-lima
+  title: "LIMA: Less Is More for Alignment (Zhou et al., 2023)"
+  author: Chunting Zhou, Pengfei Liu, Puxin Xu, Srini Iyer, and colleagues (Meta AI and others)
+  url: https://arxiv.org/abs/2305.11206
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: 65B LLaMa fine-tuned on 1,000 curated examples; argues most knowledge is learned in pretraining.
+
+- id: gudibande-2023-imitation
+  title: "The False Promise of Imitating Proprietary LLMs (Gudibande et al., 2023)"
+  author: Arnav Gudibande, Eric Wallace, Charlie Snell, Xinyang Geng, Hao Liu, Pieter Abbeel, Sergey Levine, Dawn Song
+  url: https://arxiv.org/abs/2305.15717
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Imitation models copied ChatGPT's style but not its factuality; crowd raters were fooled, targeted evals were not.
+
+- id: zhao-2024-lora-land
+  title: "LoRA Land: 310 Fine-tuned LLMs that Rival GPT-4, A Technical Report (Zhao et al., 2024)"
+  author: Justin Zhao, Timothy Wang, Wael Abid, and colleagues (Predibase)
+  url: https://arxiv.org/abs/2405.00732
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    10 base models x 31 tasks; 4-bit LoRA models beat their base by 34 points and GPT-4 by 10 points on average on
+    those narrow tasks. A vendor technical report, so treat as evidence for narrow tasks, not a general ranking.
+
+- id: wang-2022-self-instruct
+  title: "Self-Instruct: Aligning Language Models with Self-Generated Instructions (Wang et al., 2022)"
+  author: Yizhong Wang, Yeganeh Kordi, Swaroop Mishra, and colleagues
+  url: https://arxiv.org/abs/2212.10560
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: carlini-2021-extraction
+  title: "Extracting Training Data from Large Language Models (Carlini et al., 2021)"
+  author: Nicholas Carlini, Florian Tramer, Eric Wallace, and colleagues
+  url: https://arxiv.org/abs/2012.07805
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Extracted verbatim training sequences, including PII, from GPT-2; some appeared in only one training document.
+
+- id: northcutt-2021-label-errors
+  title: "Pervasive Label Errors in Test Sets Destabilize Machine Learning Benchmarks (Northcutt et al., NeurIPS 2021)"
+  author: Curtis G. Northcutt, Anish Athalye, Jonas Mueller
+  url: https://arxiv.org/abs/2103.14749
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: At least 3.3 percent label errors on average across 10 test sets; corrected labels can flip model rankings.
+
+- id: kapoor-2022-leakage
+  title: "Leakage and the Reproducibility Crisis in ML-based Science (Kapoor and Narayanan, 2022)"
+  author: Sayash Kapoor and Arvind Narayanan
+  url: https://arxiv.org/abs/2207.07048
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Survey finding leakage errors affecting 329 papers across 17 fields; a taxonomy of 8 leakage types.
+
+# ---------------------------------------------------------------- Provider docs: hosted fine-tuning (checked 2026-11-11)
+
+- id: openai-sft-guide
+  title: Supervised fine-tuning (OpenAI API docs)
+  author: OpenAI
+  url: https://developers.openai.com/api/docs/guides/supervised-fine-tuning
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11. Chat-format JSONL; at least 10 examples, start with about 50 well-crafted demonstrations;
+    evals first; distillation from a larger to a smaller model. Carries the platform wind-down notice.
+
+- id: openai-model-optimization
+  title: Model optimization (OpenAI API docs)
+  author: OpenAI
+  url: https://developers.openai.com/api/docs/guides/model-optimization
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: Prompting first; SFT, DPO, and vision fine-tuning; shorter prompts and smaller models as cost and latency motives.
+
+- id: openai-deprecations
+  title: Deprecations (OpenAI API docs)
+  author: OpenAI
+  url: https://developers.openai.com/api/docs/deprecations
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11. "Update to OpenAI's self-serve fine-tuning" (announced May 7, 2026): no new fine-tuning
+    customers; existing active customers can create jobs until January 6, 2027; inference on fine-tuned models
+    continues until the base model is deprecated.
+
+- id: gemini-tuning-status
+  title: Fine-tuning with the Gemini API (Google AI Studio docs)
+  author: Google
+  url: https://aistudio.google.com/docs/model-tuning
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+  notes: Checked 2026-11-11. No model in the Gemini API or AI Studio currently supports fine-tuning; points to Google Cloud.
+
+- id: gcp-gemini-supervised-tuning
+  title: About supervised fine-tuning for Gemini models (Google Cloud, Gemini Enterprise Agent Platform docs)
+  author: Google Cloud
+  url: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini-supervised-tuning
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11. The page (under the Vertex AI docs path) lists Gemini 3.5 Flash-Lite, 3.5 Flash,
+    3.1 Flash-Lite, 2.5 Pro, 2.5 Flash-Lite, and 2.5 Flash; describes tuning as adapting behavior with labeled data.
+
+- id: bedrock-fine-tuning-models
+  title: Customize a model with fine-tuning in Amazon Bedrock (supported models and Regions)
+  author: Amazon Web Services
+  url: https://docs.aws.amazon.com/bedrock/latest/userguide/custom-model-supported.html
+  license: Copyright Amazon Web Services
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11. Lists Amazon Nova, Titan, Meta Llama 3.x, and Claude 3 Haiku (us-west-2). The Claude row
+    predates the model's end of life; see bedrock-model-lifecycle-legacy.
+
+- id: bedrock-model-lifecycle-legacy
+  title: Model lifecycle (Legacy), Amazon Bedrock User Guide
+  author: Amazon Web Services
+  url: https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html
+  license: Copyright Amazon Web Services
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11. Claude 3 Haiku entered Legacy on March 10, 2026 and reached EOL on September 10, 2026 in
+    us-west-2 and other Regions. Legacy models accept no new fine-tuning jobs.
+
+- id: claude-model-deprecations
+  title: Model deprecations (Claude API docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/about-claude/model-deprecations
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: Checked 2026-11-11. claude-3-haiku-20240307 retired on the Claude API on April 20, 2026.
+
+- id: mistral-fine-tuning
+  title: Fine-tuning (Mistral AI docs)
+  author: Mistral AI
+  url: https://docs.mistral.ai/capabilities/finetuning/
+  license: Copyright Mistral AI
+  policy: summarize
+  kind: docs
+  notes: Checked 2026-11-11. The page marks the feature as deprecated and no longer actively supported.
+
+- id: trl-dataset-formats
+  title: Dataset formats and types (Hugging Face TRL docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/trl/dataset_formats
+  license: Apache 2.0
+  policy: adapt
+  kind: docs
+  notes: Standard vs conversational formats; SFTTrainer takes language-modeling or prompt-completion datasets.
+
+# ---------------------------------------------------------------- Terms and licenses (checked 2026-11-11)
+
+- id: anthropic-commercial-terms
+  title: Commercial Terms of Service (Anthropic)
+  author: Anthropic
+  url: https://www.anthropic.com/legal/commercial-terms
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+  notes: >-
+    Page dated June 17, 2025. Section D.4: no access to build a competing product or service, including to train
+    competing AI models, except as Anthropic approves. Section B: Anthropic may not train on Customer Content.
+
+- id: openai-services-agreement
+  title: OpenAI Services Agreement (online version v.010126)
+  author: OpenAI
+  url: https://cdn.openai.com/osa/openai-services-agreement.pdf
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+  notes: >-
+    Section 3.3(e): no using Output to develop AI models that compete with OpenAI, except a Permitted Exception
+    (internal classifiers and embeddings not distributed to third parties, and fine-tuning on OpenAI's own services).
+
+- id: llama-3-3-license
+  title: Llama 3.3 Community License Agreement
+  author: Meta
+  url: https://github.com/meta-llama/llama-models/blob/main/models/llama3_3/LICENSE
+  license: Llama 3.3 Community License
+  policy: summarize
+  kind: docs
+  notes: >-
+    Section 1.b.i: a model created, trained, or fine-tuned with Llama Materials or their outputs and then distributed
+    must include "Llama" at the start of its name; "Built with Llama" attribution; 700 million MAU clause.
+
+# ---------------------------------------------------------------- Practice, tools, video
+
+- id: hamel-fine-tuning-valuable
+  title: Is Fine-Tuning Still Valuable?
+  author: Hamel Husain
+  url: https://hamel.dev/blog/posts/fine_tuning_valuable.html
+  license: Copyright Hamel Husain
+  policy: summarize
+  kind: blog
+  notes: March 27, 2024. Fine-tuning for syntax, style, and rules; RAG for facts; evals are a prerequisite.
+
+- id: sklearn-cross-validation
+  title: "Cross-validation: evaluating estimator performance (scikit-learn User Guide)"
+  author: scikit-learn developers
+  url: https://scikit-learn.org/stable/modules/cross_validation.html
+  license: BSD-3-Clause
+  policy: summarize
+  kind: docs
+  notes: Stratified and group-aware splitting (StratifiedKFold, GroupKFold, StratifiedGroupKFold).
+
+- id: presidio-repo
+  title: Presidio (open-source PII detection and anonymization)
+  author: Presidio maintainers
+  url: https://github.com/data-privacy-stack/presidio
+  license: MIT
+  policy: summarize
+  kind: repo
+
+- id: yt-openai-maximizing-llm-performance
+  title: A Survey of Techniques for Maximizing LLM Performance
+  author: OpenAI
+  url: https://www.youtube.com/watch?v=ahnGLM-RC1Y
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: Official OpenAI channel, DevDay talk from November 2023. Product details are dated; the framework is not.
+
+- id: trl-sft-trainer
+  title: SFT Trainer (Hugging Face TRL docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/trl/sft_trainer
+  license: Apache 2.0
+  policy: adapt
+  kind: docs
+  notes: >-
+    Checked 2026-11-11 (TRL v1.17.1). Conversational datasets get the chat template applied automatically;
+    completion_only_loss defaults to completion-only for prompt-completion data and full sequence for language
+    modeling data; assistant_only_loss defaults to False; max_length defaults to 1024 with keep_start truncation.

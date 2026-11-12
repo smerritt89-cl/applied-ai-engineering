@@ -1,0 +1,252 @@
+---
+id: s6-w4-l12
+studio: s6
+week: 4
+order: 12
+title: Launch checklist and incident response
+summary: How to decide an LLM feature is ready, roll it out in stages with A/B comparisons, and respond when it fails in AI-specific ways (harmful output, data leaks, runaway cost, silent quality drops), then turn every incident into evals. Sets up the studio project.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Write a production readiness checklist for an LLM feature, with evidence for each item
+  - Make rollback a configuration change by versioning prompts, model ids, guard settings, and indexes
+  - Plan a staged rollout (internal, shadow, canary, ramp) and an A/B test with a primary metric and guardrail metrics
+  - Run an incident for an AI-specific failure using incident command roles, mitigation first, and a living incident document
+  - Write a blameless postmortem whose action items include new eval and red-team cases
+sources:
+  - { id: sre-launch-checklist, use: summarized }
+  - { id: sre-canarying, use: summarized, where: "Population, duration, per-population metrics, pitfalls" }
+  - { id: sre-incident-response, use: summarized, where: "Incident command roles, declare early, mitigate first" }
+  - { id: sre-postmortem-culture, use: summarized, where: "Blameless postmortems, triggers, review" }
+  - { id: pagerduty-incident-response, use: linked }
+  - { id: ai-incident-database, use: linked }
+  - { id: claude-streaming-refusals, use: summarized, where: "Refusals are responses, not errors" }
+  - { id: owasp-llm10-consumption, use: summarized }
+  - { id: owasp-llm02-sensitive, use: linked }
+  - { id: owasp-secrets-cheatsheet, use: linked }
+  - { id: miller-2024-error-bars, use: linked }
+  - { id: hamel-evals-faq, use: linked }
+  - { id: nist-ai-rmf, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: A canary serves 5% of traffic and fails 20% of its requests; the control fails 0.5%. What overall failure rate does a whole-service dashboard show?
+    code: |
+      canary_share, canary_fail, control_fail = 0.05, 0.20, 0.005
+      overall = canary_share * canary_fail + (1 - canary_share) * control_fail
+      print(round(overall * 100, 2))
+    options:
+      - id: a
+        text: "`1.48`"
+        correct: true
+        rationale: 0.05 times 0.20 is 0.01, plus 0.95 times 0.005 is about 0.0048, for about 1.48 percent.
+      - id: b
+        text: "`20.0`"
+        rationale: That's the canary's own rate, which the blended dashboard dilutes.
+      - id: c
+        text: "`10.25`"
+        rationale: That averages the two rates without weighting by traffic share.
+    explanation: >-
+      A disastrous canary looks like a small bump on a whole-service graph. Google's SRE workbook makes this point
+      and recommends breaking metrics down by population. Compare canary against control, side by side.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      At 9 p.m. a user posts a screenshot of your assistant giving another customer's booking details. You can
+      reproduce it with a similar prompt. What do you do first?
+    options:
+      - id: a
+        text: Start the root-cause analysis so the fix is right the first time.
+        rationale: Root cause comes after impact stops. Every minute of analysis is more possible exposure.
+      - id: b
+        text: Declare an incident, then mitigate immediately (disable the booking tool or the feature with its flag), and only then investigate.
+        correct: true
+        rationale: Yes. Declare early, mitigate first. A kill switch or tool flag stops the leak while you work out why.
+      - id: c
+        text: Add an instruction to the system prompt telling the model never to show other customers' bookings.
+        rationale: A prompt isn't an access control, and shipping a prompt change under pressure without evals can break other things.
+    explanation: >-
+      Data exposure is a security incident: stop the impact with a pre-built mitigation, involve whoever owns privacy
+      and security, preserve the evidence (traces of the affected conversations), and fix the access control in code
+      before re-enabling the tool.
+  - id: kc3
+    type: multi
+    prompt: Which belong in the action items of a postmortem for an LLM incident? Select all that apply.
+    options:
+      - id: a
+        text: The triggering inputs, added to the eval or red-team set with the expected safe behavior
+        correct: true
+      - id: b
+        text: A monitor or alert that would have detected the failure sooner
+        correct: true
+      - id: c
+        text: The name of the engineer who shipped the change, so it doesn't happen again
+        rationale: Postmortems are blameless by design. Blame makes people hide problems; fix the system and process instead.
+      - id: d
+        text: The control that failed or was missing, with an owner and a date
+        correct: true
+    explanation: >-
+      The postmortem for an LLM incident should leave behind three things: a test that fails if the problem returns, a
+      signal that would catch it faster, and a fixed or added control, each with an owner.
+---
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Launch is a decision you make with evidence
+
+By now your system streams, retries, routes models by cost, emits traces, and sits behind guards you've measured. None of that answers the question your stakeholders will ask: is it ready? Google's SRE book includes a launch coordination checklist that covers architecture, capacity, failure and failover, monitoring, security, automation, external dependencies, and rollout planning. Its value isn't the specific questions; it's the habit of answering each one with evidence before launch, in writing, so the launch is a decision rather than a hope.
+
+LLM features need that checklist plus a few items specific to models. The output is probabilistic, so "it works" means "the evals pass at a stated rate." The failures are often semantic, so an error-rate dashboard can be green while the feature says something harmful or wrong. A third party controls a critical dependency (the model), and it can change behavior, refuse, or be deprecated. And costs scale with usage in a way that can surprise you within hours.
+
+The checklist below is what this studio has built toward. Each item names the evidence you attach. If you can't attach the evidence, the item isn't done.
+</Listen>
+
+```markdown
+# Launch checklist: <feature name>    Owner: <name>    Target date: <date>
+
+## Quality
+- [ ] Offline evals pass the written gate on the held-out set (link to the run: metric, interval, n)
+- [ ] Regression and red-team suites pass in CI on the release commit (link)
+- [ ] Online eval ready: a calibrated grader runs on a sample of production traffic (sampling rate, judge version)
+
+## Safety and security
+- [ ] Guards measured on the red-team set: block rate and false-positive rate by category (link)
+- [ ] Threat model reviewed: trust boundaries, OWASP LLM Top 10 walk, accepted risks with owners
+- [ ] No secrets in prompts, code, or logs; secret scanning on; keys split by environment
+- [ ] Model output escaped for every destination (HTML, SQL, shell, email)
+
+## Reliability and operations
+- [ ] Timeouts, retries with backoff, and a degraded mode when the provider is down (tested)
+- [ ] Dashboards: latency p50 and p95, error rate, refusal rate, guard block rate, cost per request (link)
+- [ ] Alerts with owners: error rate, latency, refusal or block-rate jumps, spend over budget
+- [ ] Rollback is a config change: prompt, model id, guard config, and index versions behind flags (tested)
+- [ ] Kill switch for the feature and for each tool with side effects (tested)
+
+## Cost
+- [ ] Cost per request and per active user measured; monthly projection at expected and 10x traffic
+- [ ] Provider spend limits and per-user quotas set; alert at 50% and 80% of budget
+
+## People
+- [ ] Human escalation path in the product (how a user reaches a person, and how fast)
+- [ ] On-call owner and runbook: how to disable, roll back, revoke keys, and who to call for privacy or legal
+- [ ] Rollout plan: stages, success criteria per stage, and who decides to proceed
+```
+
+<Listen>
+## Make rollback a config change
+
+The most valuable item on that list is the one teams skip: rollback that takes seconds and needs no deploy. In an LLM system, behavior is determined by more than code. The prompt, the model id, the effort setting, the guard thresholds, the retrieval index version, and the tool list all change what users see. If any of them can only be changed by shipping code, your rollback is as slow as your deploy pipeline, at the moment you can least afford it.
+
+So version all of them as configuration, record the active versions on every trace (week 3), and put them behind flags. A rollback then means pointing the flag at the previous version. Two details bite in practice. First, keep the previous model available: if you migrated because the old model is being deprecated, know its retirement date, because after it you can't roll back to it. Second, test the rollback before launch. A rollback path that has never been exercised is a hypothesis.
+
+Pair rollback with **kill switches**: a flag that disables the whole feature (showing a static message or routing to a person) and a flag per tool with side effects. Mitigation in an incident is often "turn off the booking tool" rather than "turn off the assistant", and you want that to be one click, not a code change.
+</Listen>
+
+<Listen>
+## Staged rollouts: shadow, canary, ramp
+
+Don't move from zero users to all users. Common stages for an LLM feature:
+
+**Internal use.** Your own team uses it on real work. You'll find embarrassing failures quickly and cheaply.
+
+**Shadow mode.** The new version runs on real traffic, but users still see the old behavior (or nothing). You compare outputs offline with your graders. This is the safest way to test a new prompt or model on production inputs, at the cost of paying for two calls per request during the shadow period.
+
+**Canary.** A small share of real users get the new version. Google's SRE workbook describes how to do this well: the canary must be large enough and run long enough to be representative, including peak load; compare canary against a control group running the old version at the same time, rather than comparing before and after (time of day and day of week confound that); break metrics down by population, because a bad canary hides in whole-service averages; prefer metrics tied to what users experience; and run one canary at a time so the signals don't mix.
+
+**Ramp.** Increase the share in steps, with written success criteria at each step and a named person who decides whether to proceed. If canary metrics diverge from control, pause and roll back first, then investigate.
+
+For LLM features, add semantic metrics to the canary comparison: online eval pass rate on sampled traffic, refusal rate, guard block rate, escalation-to-human rate, thumbs-down rate, and cost per conversation. Several of these move when quality changes even though nothing errors.
+</Listen>
+
+<Predict
+  title="Is the canary bad, or is it noise?"
+  code={`import math
+
+# Online eval on sampled traffic: share of sampled answers the calibrated judge passes
+control_pass, control_n = 0.91, 400
+canary_pass, canary_n = 0.87, 400
+
+diff = canary_pass - control_pass
+se = math.sqrt(control_pass * (1 - control_pass) / control_n
+               + canary_pass * (1 - canary_pass) / canary_n)
+low, high = diff - 1.96 * se, diff + 1.96 * se
+print(round(low, 3), round(high, 3))`}
+  options={["-0.083 0.003", "-0.04 -0.04", "-0.022 0.062", "0.003 0.083"]}
+  answer={0}
+>
+The difference is minus 4 points, with a 95 percent interval from about minus 8.3 to plus 0.3. The interval barely includes zero, so you can't call it a regression with confidence, and you also can't call it safe: a drop as large as 8 points is consistent with the data. The right move is to hold the ramp, keep collecting samples (or raise the sampling rate), and read the failing answers. Studio 3 covered these intervals and why paired comparisons on the same inputs are tighter when you can get them, for example in shadow mode.
+</Predict>
+
+<Listen>
+## A/B tests for AI features
+
+A canary asks "is the new version broken?" An **A/B test** asks "is it better?" Both compare randomized groups at the same time, and the same discipline applies with a few additions.
+
+**Randomize by user, not by request.** A user who gets a different assistant on every message has an incoherent experience, and their behavior in one arm contaminates the other.
+
+**Choose one primary metric before you start**, tied to the outcome the feature exists for: tickets resolved without a human, tasks completed, time to answer. Then list **guardrail metrics** that must not get worse even if the primary metric improves: refusal rate, guard false-positive rate, escalations, cost per conversation, p95 latency, complaint rate. A variant that resolves more tickets by confidently inventing policies will show up in the guardrails long before it shows up in revenue.
+
+**Size the test.** Decide the smallest effect worth detecting and estimate the sample size you need for it, using the interval reasoning from Studio 3. Small differences on noisy metrics take far more traffic than intuition suggests.
+
+**Watch for novelty and learning effects.** Users react to anything new at first, and they adapt to a model's quirks over time. Run long enough to see past the first days.
+
+**Use online evals alongside behavior.** Users' clicks tell you what they did; a calibrated grader on sampled traffic tells you whether the answers were right. You need both, because users often can't tell when an answer is wrong.
+</Listen>
+
+<Listen>
+## When it goes wrong: AI-specific incidents
+
+Your incident process can borrow almost everything from SRE practice. Google's workbook describes incident command roles (an **incident commander** who coordinates and holds any role not delegated, a **communications lead** who keeps stakeholders updated, and an **operations lead** who applies the fixes), and two rules worth memorizing: **declare early** (a managed incident resolves faster than an unmanaged one) and **mitigate first** (stop the impact before you understand the cause). Once several people are involved, keep a living incident document with the timeline, working theories, and what has been ruled out.
+
+What's different for LLM systems is how incidents are detected and what mitigation looks like. Semantic failures don't raise errors, so they're often found by users, support staff, or social media. Refusals return HTTP 200, so error-rate alerts miss refusal spikes; track refusal rate on its own. And the causes include things outside your code: a provider model update, a change in the traffic mix, a newly indexed document, a new attack technique.
+
+Five failure types cover most AI incidents. For each, have the mitigation built and tested before launch.
+</Listen>
+
+| Failure | How you find out | First mitigation (pre-built) | Follow-up |
+|---|---|---|---|
+| Harmful or offensive output | User report, output guard alerts, online eval on samples | Tighten the output guard for the route; disable the feature if needed | Add the inputs to red-team set; review guard thresholds and prompt |
+| Data leak (another user's data, secrets, PII) | User report, output PII alerts, log scanning | Kill switch for the tool or feature; revoke and rotate any exposed key | Fix access control in code; involve privacy and legal; assess who was affected from traces |
+| Runaway cost | Spend alert, cost-per-request dashboard, rate-limit hits | Lower quotas, cap loop iterations, route to a cheaper model, or pause the feature | Find the cause (abuse, a loop, a prompt that grew); add a budget test |
+| Prompt injection exploited | Red-team or user report, unusual tool calls in traces | Disable the affected tool or data source; tighten scopes | Remove a leg of the lethal trifecta; add the attack to the regression set |
+| Silent quality drop | Online eval pass rate, thumbs-down rate, escalation rate | Roll back the prompt, model, or index version by flag | Find what changed (including the provider's model); add failing cases to evals |
+
+<DragOrder
+  client:visible
+  prompt="Put the incident steps for a confirmed data leak in order"
+  items={[
+    "Declare the incident and name an incident commander",
+    "Mitigate: flip the kill switch for the leaking tool and revoke any exposed credential",
+    "Communicate: tell stakeholders, including privacy and security owners, what is known and what was done",
+    "Investigate with traces: what changed, which conversations were affected, what data was exposed",
+    "Fix the control in code and verify it with the reproducing input before re-enabling",
+    "Write the blameless postmortem and add the triggering inputs to the eval and red-team sets",
+  ]}
+  explanation="Declare, mitigate, communicate, investigate, fix, learn. Mitigation comes before investigation because every minute the leak stays open can expose more data. Communication is early because privacy and legal owners may have their own obligations and deadlines."
+/>
+
+<Callout type="pitfall" title="An incident you can't measure">
+The first questions in any LLM incident are "how many users saw this?" and "since when?". If your traces don't record the output (redacted), the guard decisions, and the active prompt, model, and index versions per request, you can't answer them, and the honest answer becomes "we don't know." Decide before launch what you log and for how long, redact personal data before it reaches the log store, and test that you can run the query "all conversations where this guard fired, last 7 days" in minutes.
+</Callout>
+
+<Listen>
+## After the incident: postmortems that leave tests behind
+
+Google's SRE book describes **blameless postmortems**: written records of an incident, its impact, the actions taken, the contributing causes, and follow-up actions, written on the assumption that everyone acted in good faith with the information they had. Blame makes people hide problems, so the focus is fixing systems and processes. It also recommends agreeing on triggers in advance, such as user-visible degradation past a threshold, any data loss, on-call intervention like a rollback, or a monitoring failure that meant a problem was found by hand.
+
+For LLM incidents, add three items to every postmortem's action list. **A test:** the inputs that triggered the failure, and close variants, go into the eval set or the red-team set with the expected safe behavior, so the failure can't return silently. **A signal:** the monitor or alert that would have caught it sooner, whether an online eval, a guard alert, or a cost threshold. **A control:** the guard, access check, or limit that was missing or failed, with an owner and a date. Then rerun the full eval suite against the fix, because a fix for one failure often shifts behavior elsewhere.
+
+Public incident collections, such as the AI Incident Database, are useful reading when you write your threat model: they show how real AI systems have failed in public, and which of those failures your own launch checklist would have caught.
+</Listen>
+
+<GoDeeper title="Incident response as a practiced skill">
+Incident response is a skill teams practice, not a document they write once. PagerDuty publishes its incident response process openly, with pages on roles such as the incident commander and scribe, severity levels, and incident call etiquette, and it's a good template to adapt. The SRE workbook's incident response chapter includes case studies of incidents that went well and badly, including one where waiting to declare cost weeks. A useful exercise before launch: run a 30-minute tabletop drill where someone describes one of the five failure types above, and the team walks through who does what, which flag they flip, and how they find the affected users. Every gap you find in a drill is one you don't find at 9 p.m.
+</GoDeeper>
+
+<Listen>
+## The studio project
+
+The project asks you to take your strongest earlier project live and run it like a product. You'll deploy it with streaming and resilience from week 1, cost and latency controls from week 2, tracing, redacted logs, and an online eval on sampled traffic from week 3, and the guards, threat model, launch checklist, and incident runbook from this week. The deliverables are a public URL, a short demo video, and a write-up that shows the evidence for each checklist item.
+
+Pick the project that gives you the most to work with. For most learners that's the Studio 2 question-answering system, because it already has the Studio 3 eval harness, which makes the online eval and the launch gate straightforward. Read the project brief for the requirements and rubric, and start with the threat model and the checklist: they tell you what to build.
+</Listen>

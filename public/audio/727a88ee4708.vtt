@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.752
+Retrieval can only find what ingestion kept.
+
+2
+00:00:03.032 --> 00:00:07.107
+Week 1 gave you embeddings and similarity search over clean strings.
+
+3
+00:00:07.387 --> 00:00:19.461
+Real knowledge lives in PDFs exported from slide decks, scanned contracts, wiki pages wrapped in navigation menus, spreadsheets, and the same policy saved in four places.
+
+4
+00:00:19.741 --> 00:00:30.259
+Ingestion is everything between “a file exists” and “clean text with metadata is ready to chunk”: parsing, cleaning, attaching metadata, and removing duplicates.
+
+5
+00:00:30.539 --> 00:00:34.635
+It deserves a whole lesson because it sets a ceiling on everything after it.
+
+6
+00:00:34.915 --> 00:00:39.779
+If the parser dropped a table, no embedding model will retrieve the number that was in it.
+
+7
+00:00:40.059 --> 00:00:46.331
+If a scanned page came back empty, the document silently does not exist as far as search is concerned.
+
+8
+00:00:46.611 --> 00:00:55.315
+If a navigation menu was kept, every chunk from that site shares the same twenty words of noise, and similarity scores drift toward boilerplate.
+
+9
+00:00:55.595 --> 00:01:02.037
+Teams that debug retrieval quality by swapping embedding models often find the problem was upstream.
+
+10
+00:01:02.317 --> 00:01:05.752
+Before building any of this, ask whether you need retrieval at all.
+
+11
+00:01:06.032 --> 00:01:25.296
+Anthropic’s Contextual Retrieval post makes a point worth repeating: if the whole knowledge base fits in the prompt (it suggests a rough threshold of 200,000 tokens, about 500 pages), you can often skip retrieval and send everything, using prompt caching to keep it affordable.
+
+12
+00:01:25.576 --> 00:01:32.979
+Ingestion still matters in that case, since the model reads whatever your parser produced, but chunking and vector stores may not.
+
+13
+00:01:33.259 --> 00:01:42.517
+This lesson works through the formats in order of difficulty, then covers the three things you add on the way out: cleaning checks, metadata, and deduplication.
+
+14
+00:01:42.797 --> 00:01:47.320
+The lab at the end of the week builds the whole pipeline on a small fictional corpus.

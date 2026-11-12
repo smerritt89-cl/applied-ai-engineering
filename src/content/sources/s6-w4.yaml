@@ -1,0 +1,381 @@
+# Studio 6, week 4 (guardrails, security, launch and incident response) sources
+# not already defined in other source files. All URLs checked with curl on 2026-11-11.
+# Reused from elsewhere: owasp-llm-top10, owasp-llm01, owasp-excessive-agency, owasp-llm08-vector,
+# claude-mitigate-injection, claude-refusals-fallback, claude-structured-outputs, presidio-docs,
+# owasp-secrets-cheatsheet, owasp-logging-cheatsheet, mcp-security-best-practices, greshake-2023-indirect-injection,
+# willison-lethal-trifecta, zheng-2023-llm-judge, hamel-llm-judge, promptfoo-docs.
+
+# ---------- Moderation and safety classifiers ----------
+- id: openai-moderation-guide
+  title: Moderation (OpenAI API docs)
+  author: OpenAI
+  url: https://developers.openai.com/api/docs/guides/moderation
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+
+- id: openai-safety-best-practices
+  title: Safety best practices (OpenAI API docs)
+  author: OpenAI
+  url: https://developers.openai.com/api/docs/guides/safety-best-practices
+  license: Copyright OpenAI
+  policy: summarize
+  kind: docs
+
+- id: llama-guard-4-card
+  title: Llama Guard 4 12B model card
+  author: Meta
+  url: https://huggingface.co/meta-llama/Llama-Guard-4-12B
+  license: Llama 4 Community License (model); card copyright Meta
+  policy: summarize
+  kind: docs
+
+- id: llama-prompt-guard-2-card
+  title: Llama Prompt Guard 2 86M model card
+  author: Meta
+  url: https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M
+  license: Llama 4 Community License (model); card copyright Meta
+  policy: summarize
+  kind: docs
+
+- id: inan-2023-llama-guard
+  title: "Llama Guard: LLM-based Input-Output Safeguard for Human-AI Conversations"
+  author: Hakan Inan et al. (Meta)
+  url: https://arxiv.org/abs/2312.06674
+  license: arXiv (author copyright)
+  policy: summarize
+  kind: paper
+
+- id: shieldgemma-model-card
+  title: ShieldGemma model card
+  author: Google
+  url: https://ai.google.dev/gemma/docs/shieldgemma/model_card
+  license: Docs CC BY 4.0; model under Gemma terms
+  policy: summarize
+  kind: docs
+
+- id: gemini-safety-settings
+  title: Safety settings (Gemini API docs)
+  author: Google
+  url: https://aistudio.google.com/docs/safety-settings
+  license: Docs CC BY 4.0 (Google Developers site policy)
+  policy: summarize
+  kind: docs
+
+- id: azure-prompt-shields
+  title: Prompt Shields in Azure AI Content Safety
+  author: Microsoft
+  url: https://learn.microsoft.com/en-us/azure/ai-services/content-safety/concepts/jailbreak-detection
+  license: Copyright Microsoft (docs CC BY 4.0 where noted)
+  policy: summarize
+  kind: docs
+
+- id: claude-content-moderation-guide
+  title: Content moderation (Claude use case guide)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/about-claude/use-case-guides/content-moderation
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+
+- id: claude-streaming-refusals
+  title: Streaming refusals (Claude docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/handle-streaming-refusals
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+
+- id: claude-reduce-prompt-leak
+  title: Reduce prompt leak (Claude docs)
+  author: Anthropic
+  url: https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-prompt-leak
+  license: Copyright Anthropic
+  policy: summarize
+  kind: docs
+
+- id: anthropic-constitutional-classifiers
+  title: "Constitutional Classifiers: Defending against universal jailbreaks"
+  author: Anthropic
+  url: https://www.anthropic.com/research/constitutional-classifiers
+  license: Copyright Anthropic
+  policy: summarize
+  kind: blog
+
+- id: sharma-2025-constitutional-classifiers
+  title: "Constitutional Classifiers: Defending against Universal Jailbreaks across Thousands of Hours of Red Teaming"
+  author: Mrinank Sharma et al. (Anthropic)
+  url: https://arxiv.org/abs/2501.18837
+  license: arXiv (author copyright)
+  policy: summarize
+  kind: paper
+
+- id: yt-anthropic-defending-jailbreaks
+  title: Defending against AI jailbreaks
+  author: Anthropic
+  url: https://www.youtube.com/watch?v=BaNXYqcfDyo
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: Official Anthropic channel, about 74 minutes. Verified with oEmbed on 2026-11-11.
+
+# ---------- Guardrail frameworks ----------
+- id: nemo-guardrails-docs
+  title: NeMo Guardrails documentation
+  author: NVIDIA
+  url: https://docs.nvidia.com/nemo/guardrails/latest/index.html
+  license: Apache 2.0 (library); docs copyright NVIDIA
+  policy: summarize
+  kind: docs
+
+- id: rebedea-2023-nemo-guardrails
+  title: "NeMo Guardrails: A Toolkit for Controllable and Safe LLM Applications with Programmable Rails"
+  author: Traian Rebedea et al. (NVIDIA)
+  url: https://arxiv.org/abs/2310.10501
+  license: arXiv (author copyright)
+  policy: summarize
+  kind: paper
+
+- id: guardrails-ai-repo
+  title: Guardrails (guardrails-ai on GitHub)
+  author: Guardrails AI
+  url: https://github.com/guardrails-ai/guardrails
+  license: Apache 2.0
+  policy: summarize
+  kind: repo
+
+# ---------- OWASP Top 10 for LLM Applications (2025) entries not defined elsewhere ----------
+- id: owasp-llm02-sensitive
+  title: "LLM02:2025 Sensitive Information Disclosure"
+  author: OWASP GenAI Security Project
+  url: https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: report
+  notes: Summarized rather than adapted (ShareAlike).
+
+- id: owasp-llm03-supply-chain
+  title: "LLM03:2025 Supply Chain"
+  author: OWASP GenAI Security Project
+  url: https://genai.owasp.org/llmrisk/llm032025-supply-chain/
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: report
+  notes: Summarized rather than adapted (ShareAlike).
+
+- id: owasp-llm04-poisoning
+  title: "LLM04:2025 Data and Model Poisoning"
+  author: OWASP GenAI Security Project
+  url: https://genai.owasp.org/llmrisk/llm042025-data-and-model-poisoning/
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: report
+  notes: Summarized rather than adapted (ShareAlike).
+
+- id: owasp-llm05-output-handling
+  title: "LLM05:2025 Improper Output Handling"
+  author: OWASP GenAI Security Project
+  url: https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: report
+  notes: Summarized rather than adapted (ShareAlike).
+
+- id: owasp-llm07-prompt-leakage
+  title: "LLM07:2025 System Prompt Leakage"
+  author: OWASP GenAI Security Project
+  url: https://genai.owasp.org/llmrisk/llm072025-system-prompt-leakage/
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: report
+  notes: Summarized rather than adapted (ShareAlike).
+
+- id: owasp-llm09-misinformation
+  title: "LLM09:2025 Misinformation"
+  author: OWASP GenAI Security Project
+  url: https://genai.owasp.org/llmrisk/llm092025-misinformation/
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: report
+  notes: Summarized rather than adapted (ShareAlike).
+
+- id: owasp-llm10-consumption
+  title: "LLM10:2025 Unbounded Consumption"
+  author: OWASP GenAI Security Project
+  url: https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: report
+  notes: Summarized rather than adapted (ShareAlike).
+
+- id: yt-ibm-owasp-llm-top10
+  title: "OWASP's Top 10 Ways to Attack LLMs: AI Vulnerabilities Exposed"
+  author: IBM Technology
+  url: https://www.youtube.com/watch?v=gUNXZMcd2jU
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: Official IBM Technology channel, published 2026-03-07, about 25 minutes. Verified with oEmbed on 2026-11-11.
+
+# ---------- Application security references ----------
+- id: owasp-xss-cheatsheet
+  title: Cross Site Scripting Prevention Cheat Sheet
+  author: OWASP Cheat Sheet Series
+  url: https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: docs
+
+- id: owasp-llm-injection-cheatsheet
+  title: LLM Prompt Injection Prevention Cheat Sheet
+  author: OWASP Cheat Sheet Series
+  url: https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: docs
+
+- id: owasp-threat-modeling-cheatsheet
+  title: Threat Modeling Cheat Sheet
+  author: OWASP Cheat Sheet Series
+  url: https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html
+  license: CC BY-SA 4.0
+  policy: summarize
+  kind: docs
+
+- id: python-html-docs
+  title: html (Python standard library docs)
+  author: Python Software Foundation
+  url: https://docs.python.org/3/library/html.html
+  license: PSF documentation license
+  policy: summarize
+  kind: docs
+
+- id: mitre-atlas
+  title: MITRE ATLAS (Adversarial Threat Landscape for AI Systems)
+  author: MITRE
+  url: https://atlas.mitre.org/
+  license: Copyright MITRE (see site terms)
+  policy: summarize
+  kind: docs
+
+- id: nist-ai-rmf
+  title: AI Risk Management Framework
+  author: NIST
+  url: https://www.nist.gov/itl/ai-risk-management-framework
+  license: US government work (public domain in the US)
+  policy: summarize
+  kind: report
+
+- id: hf-pickle-security
+  title: Pickle scanning (Hugging Face Hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/hub/security-pickle
+  license: Apache 2.0 (docs repository)
+  policy: summarize
+  kind: docs
+
+- id: safetensors-docs
+  title: Safetensors documentation
+  author: Hugging Face
+  url: https://huggingface.co/docs/safetensors/index
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+
+- id: github-secret-scanning
+  title: About secret scanning (GitHub docs)
+  author: GitHub
+  url: https://docs.github.com/en/code-security/secret-scanning/introduction/about-secret-scanning
+  license: CC BY 4.0 (GitHub docs content)
+  policy: summarize
+  kind: docs
+
+# ---------- Red teaming ----------
+- id: ganguli-2022-red-teaming
+  title: "Red Teaming Language Models to Reduce Harms: Methods, Scaling Behaviors, and Lessons Learned"
+  author: Deep Ganguli et al. (Anthropic)
+  url: https://arxiv.org/abs/2209.07858
+  license: arXiv (author copyright)
+  policy: summarize
+  kind: paper
+
+- id: zou-2023-universal-attacks
+  title: Universal and Transferable Adversarial Attacks on Aligned Language Models
+  author: Andy Zou, Zifan Wang, J. Zico Kolter, Matt Fredrikson
+  url: https://arxiv.org/abs/2307.15043
+  license: arXiv (author copyright)
+  policy: summarize
+  kind: paper
+
+- id: garak-repo
+  title: garak, the LLM vulnerability scanner
+  author: NVIDIA
+  url: https://github.com/NVIDIA/garak
+  license: Apache 2.0
+  policy: summarize
+  kind: repo
+
+- id: pyrit-repo
+  title: PyRIT (Python Risk Identification Tool for generative AI)
+  author: Microsoft
+  url: https://github.com/microsoft/PyRIT
+  license: MIT
+  policy: summarize
+  kind: repo
+
+- id: promptfoo-red-team
+  title: LLM red teaming (promptfoo docs)
+  author: promptfoo
+  url: https://www.promptfoo.dev/docs/red-team/
+  license: MIT (project); docs copyright promptfoo
+  policy: summarize
+  kind: docs
+
+# ---------- Launch and incident response ----------
+- id: sre-canarying
+  title: Canarying Releases (The Site Reliability Workbook, chapter 16)
+  author: Google
+  url: https://sre.google/workbook/canarying-releases/
+  license: CC BY-NC-ND 4.0
+  policy: summarize
+  kind: book
+
+- id: sre-incident-response
+  title: Incident Response (The Site Reliability Workbook, chapter 9)
+  author: Google
+  url: https://sre.google/workbook/incident-response/
+  license: CC BY-NC-ND 4.0
+  policy: summarize
+  kind: book
+
+- id: sre-postmortem-culture
+  title: "Postmortem Culture: Learning from Failure (Site Reliability Engineering, chapter 15)"
+  author: Google
+  url: https://sre.google/sre-book/postmortem-culture/
+  license: CC BY-NC-ND 4.0
+  policy: summarize
+  kind: book
+
+- id: sre-launch-checklist
+  title: Launch Coordination Checklist (Site Reliability Engineering, appendix E)
+  author: Google
+  url: https://sre.google/sre-book/launch-checklist/
+  license: CC BY-NC-ND 4.0
+  policy: summarize
+  kind: book
+
+- id: pagerduty-incident-response
+  title: Incident Response Guide (PagerDuty docs)
+  author: PagerDuty
+  url: https://docs.pagerduty.com/ops-guides/incident-response-guide
+  license: Copyright PagerDuty (see site)
+  policy: summarize
+  kind: docs
+
+- id: ai-incident-database
+  title: AI Incident Database
+  author: Responsible AI Collaborative
+  url: https://incidentdatabase.ai/
+  license: See site terms
+  policy: summarize
+  kind: docs

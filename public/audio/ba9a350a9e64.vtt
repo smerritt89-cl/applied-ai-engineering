@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.581
+Why RAG exists, and why it fails quietly.
+
+2
+00:00:02.861 --> 00:00:08.664
+The RAG paper (Lewis and colleagues, 2020) framed the problem this studio solves.
+
+3
+00:00:08.944 --> 00:00:20.272
+Language models store a lot of knowledge in their parameters, but they can’t easily show where an answer came from or update what they know, and the authors described both as open research problems.
+
+4
+00:00:20.552 --> 00:00:31.176
+Their proposal was a second, non-parametric memory: an external index (Wikipedia, in their case) that a retriever reads from and that you can update without retraining.
+
+5
+00:00:31.456 --> 00:00:34.187
+That is what your vector and keyword indexes are.
+
+6
+00:00:34.467 --> 00:00:39.565
+The catch is that RAG adds stages, and every stage can fail without raising an error.
+
+7
+00:00:39.845 --> 00:00:42.043
+A missed passage doesn’t throw an exception.
+
+8
+00:00:42.323 --> 00:00:44.328
+A truncated context doesn’t crash.
+
+9
+00:00:44.608 --> 00:00:51.093
+The model writes a fluent answer from whatever it got, and the result looks the same whether the pipeline worked or not.
+
+10
+00:00:51.373 --> 00:01:00.483
+This is why the checks from lesson 10 matter, and why this lesson’s main skill is diagnosis: given a wrong answer, find the stage that lost the truth.
