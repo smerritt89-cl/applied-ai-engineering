@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.771
+Client tools and server tools.
+
+2
+00:00:02.051 --> 00:00:06.509
+Everything above describes client tools: tools that run in your application.
+
+3
+00:00:06.789 --> 00:00:15.323
+That includes tools you define and tools whose schema Anthropic publishes but you still execute, such as the bash and text editor tools.
+
+4
+00:00:15.603 --> 00:00:21.768
+Server tools, such as web search, web fetch, and code execution, run on Anthropic’s infrastructure.
+
+5
+00:00:22.048 --> 00:00:29.579
+You declare them in the tools list by type, and their results arrive inside the same response, with no handler code on your side.
+
+6
+00:00:29.859 --> 00:00:35.853
+Server tools can bill extra on top of tokens; web search, for example, charges per search.
+
+7
+00:00:36.133 --> 00:00:39.845
+Server tools add one stop reason you should handle: pause_turn.
+
+8
+00:00:40.125 --> 00:00:48.467
+The API runs server tools in its own internal loop, and if that loop reaches its iteration limit, the response stops with pause_turn.
+
+9
+00:00:48.747 --> 00:00:58.517
+To continue, you send the conversation back as it is, including the paused assistant turn, without adding a “please continue” message, and the server resumes.
+
+10
+00:00:58.797 --> 00:01:01.400
+The distinction matters for checks and balances.
+
+11
+00:01:01.680 --> 00:01:06.011
+With client tools you hold the gate: nothing runs until your code runs it.
+
+12
+00:01:06.291 --> 00:01:20.755
+With server tools, the model’s decision to search or fetch happens on the server, so your controls are the declaration itself (whether you include the tool, and options such as allowed domains and maximum uses) and what you do with the results.

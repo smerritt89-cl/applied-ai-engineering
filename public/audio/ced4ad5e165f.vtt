@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.515
+Where latency comes from.
+
+2
+00:00:01.795 --> 00:00:13.059
+For a single response, a good first model of wall-clock time is: time to first token (TTFT), plus output tokens divided by output speed in tokens per second.
+
+3
+00:00:13.339 --> 00:00:22.064
+TTFT covers network time, queueing, reading your input, and, on reasoning models, the thinking that happens before the first visible word.
+
+4
+00:00:22.344 --> 00:00:25.821
+Output speed is how fast the model generates once it starts.
+
+5
+00:00:26.101 --> 00:00:28.107
+The second term usually dominates.
+
+6
+00:00:28.387 --> 00:00:33.784
+Suppose a model has a TTFT of one second and generates 50 tokens per second.
+
+7
+00:00:34.064 --> 00:00:37.200
+A 100-token answer takes about 3 seconds.
+
+8
+00:00:37.480 --> 00:00:40.787
+A 1,500-token answer takes about 31.
+
+9
+00:00:41.067 --> 00:00:44.160
+Nothing about the input changed; the answer got longer.
+
+10
+00:00:44.440 --> 00:00:59.117
+That is why the highest-leverage latency fixes are about output: ask for shorter answers, return structured fields instead of prose, lower the reasoning effort on routine requests, and pick a faster model for latency-critical paths.
+
+11
+00:00:59.397 --> 00:01:05.371
+Streaming (lesson 2) does not shrink total time, but it makes TTFT the number users feel.
+
+12
+00:01:05.651 --> 00:01:10.088
+Input length matters less than output length per token, but it is not free.
+
+13
+00:01:10.368 --> 00:01:16.363
+Long prompts raise TTFT and cost, and prompt caching reduces both for repeated prefixes.
+
+14
+00:01:16.643 --> 00:01:30.701
+Independent services such as Artificial Analysis measure TTFT and output speed across providers’ endpoints; its methodology averages recent measurements and counts reasoning tokens in output speed.
+
+15
+00:01:30.981 --> 00:01:40.197
+Use such numbers to shortlist, then measure on your own prompts and from your own region, because latency depends on load, prompt shape, and time of day.

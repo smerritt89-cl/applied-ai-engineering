@@ -1,0 +1,161 @@
+{
+  "id": "s1-w1",
+  "studio": "s1",
+  "week": 1,
+  "title": "Week 1 quiz: How models work, and your first calls",
+  "questions": [
+    {
+      "id": "s1w1-q1",
+      "type": "mcq",
+      "prompt": "A product manager asks the assistant in your app about a pricing change your company announced last week, and it answers confidently with the old price. What is the most likely cause?",
+      "options": [
+        { "id": "a", "text": "The temperature was set too high.", "rationale": "Sampling explains variation between runs, not a consistently outdated fact." },
+        { "id": "b", "text": "The announcement is after the model's knowledge cutoff, and nothing in the request supplied it.", "correct": true, "rationale": "Pretraining data ends at a cutoff. The model only knows newer facts if you put them in the context." },
+        { "id": "c", "text": "The context window was too small to hold the answer.", "rationale": "The answer was never in the context to begin with; window size is not the issue." },
+        { "id": "d", "text": "The API cached an old response from another user.", "rationale": "Requests are isolated. Prompt caching reuses your own prompt prefix, never another user's output." }
+      ],
+      "explanation": "Models know what was in their training data, up to a cutoff, and post-training rewards fluent, helpful-sounding answers, so a model can state an outdated fact with confidence. The fix is to supply current facts in the request (retrieval, in Studio 2) and to verify outputs that matter.",
+      "week": 1,
+      "tags": ["llm-basics", "knowledge-cutoff"],
+      "difficulty": 1
+    },
+    {
+      "id": "s1w1-q2",
+      "type": "predict-output",
+      "prompt": "Using the rough rule of about four characters per English token, what does this estimate print?",
+      "code": "text = \"Quarterly churn rose from 3.1% to 4.0%.\" * 100\nest_tokens = len(text) / 4\nprint(round(est_tokens))",
+      "options": [
+        { "id": "a", "text": "`975`", "correct": true, "rationale": "The sentence is 39 characters, so 3,900 characters in total, divided by 4 is 975." },
+        { "id": "b", "text": "`700`", "rationale": "That counts words (7 per sentence) rather than applying the characters-per-token rule." },
+        { "id": "c", "text": "`3900`", "rationale": "That is the character count. The rule divides by about four." },
+        { "id": "d", "text": "`10`", "rationale": "The string is repeated 100 times before measuring its length." }
+      ],
+      "explanation": "Characters divided by four is a back-of-envelope estimate for English text, useful for sizing. It is not a count: tokenizers differ by model family, and numbers, code, and non-English text tokenize differently. When cost or limits matter, use the provider's token counting endpoint or the usage field.",
+      "week": 1,
+      "tags": ["tokens"],
+      "difficulty": 1
+    },
+    {
+      "id": "s1w1-q3",
+      "type": "code-reading",
+      "prompt": "This chat loop answers each question well in isolation, but the model never remembers what it said in earlier turns. What is the bug?",
+      "code": "history = []\nwhile True:\n    q = input(\"> \")\n    history.append({\"role\": \"user\", \"content\": q})\n    resp = client.messages.create(\n        model=\"claude-opus-5-5\", max_tokens=16000, messages=history\n    )\n    print(\"\".join(b.text for b in resp.content if b.type == \"text\"))",
+      "options": [
+        { "id": "a", "text": "The model's replies are never appended to `history`, so each request contains only the user's turns.", "correct": true, "rationale": "The API is stateless. Your code must resend the assistant turns, too." },
+        { "id": "b", "text": "`max_tokens` is too large for a multi-turn conversation.", "rationale": "max_tokens limits the length of each response; it does not affect memory." },
+        { "id": "c", "text": "Multi-turn conversations need a `conversation_id` parameter.", "rationale": "There is no such parameter on the Messages API. History is the conversation." },
+        { "id": "d", "text": "The system prompt is missing, so the model cannot keep state.", "rationale": "A system prompt sets instructions. It does not store previous turns." }
+      ],
+      "explanation": "After each response, append `{\"role\": \"assistant\", \"content\": resp.content}` with the full list of returned blocks. Every request then carries the whole conversation, which is also why long chats get slower and more expensive turn by turn.",
+      "week": 1,
+      "tags": ["messages-api", "multi-turn"],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w1-q4",
+      "type": "multi",
+      "prompt": "A request uses prompt caching. Which `usage` fields do you add together to get the total number of input tokens the model read? Select all that apply.",
+      "options": [
+        { "id": "a", "text": "`input_tokens`", "correct": true, "rationale": "These are the uncached tokens after the last cache breakpoint." },
+        { "id": "b", "text": "`cache_creation_input_tokens`", "correct": true, "rationale": "Tokens written to the cache on this request were also read by the model." },
+        { "id": "c", "text": "`cache_read_input_tokens`", "correct": true, "rationale": "Tokens served from cache are part of the input, billed at the cache-read price." },
+        { "id": "d", "text": "`output_tokens`", "rationale": "Output tokens are what the model generated, not what it read." }
+      ],
+      "explanation": "With caching on, `input_tokens` covers only the part after your last cache breakpoint, so on its own it understates your prompt size. Total input is the sum of the three input fields, and each is billed at its own price, which is why cost code must handle all four usage fields.",
+      "week": 1,
+      "tags": ["usage", "cost", "caching"],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w1-q5",
+      "type": "scenario",
+      "prompt": "Your service asks a model to return a JSON risk assessment. About 2% of requests crash your parser with a JSONDecodeError, always on long inputs, and the HTTP status is always 200. What should you do first?",
+      "options": [
+        { "id": "a", "text": "Wrap the parser in a retry loop with exponential backoff.", "rationale": "Backoff is for transient failures. An identical request that ran out of room will usually run out again." },
+        { "id": "b", "text": "Log `stop_reason` for the failing requests; if it is `max_tokens`, raise the limit or shorten the expected output, and never parse a response that did not finish.", "correct": true, "rationale": "Truncation at your token ceiling is the classic cause of half-written JSON on a 200 response." },
+        { "id": "c", "text": "Switch to a larger model, since the small one cannot write valid JSON.", "rationale": "There is no evidence yet that the model is the problem. Diagnose with the fields you already have." },
+        { "id": "d", "text": "Strip the trailing characters and try to repair the JSON.", "rationale": "Repairing hides truncation and can silently drop fields your downstream code needs." }
+      ],
+      "explanation": "Errors and stop reasons are different channels: a truncated answer is a successful request. Check `stop_reason` on every response, treat `max_tokens` and `model_context_window_exceeded` as incomplete, and remember that thinking tokens count toward `max_tokens` too, which makes truncation more likely on long, hard inputs. Structured outputs (week 2) add a second guarantee on format.",
+      "week": 1,
+      "tags": ["stop-reason", "reliability"],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w1-q6",
+      "type": "predict-output",
+      "prompt": "This computes the upper bound of a full-jitter backoff delay for each attempt. What does it print?",
+      "code": "base, cap = 0.5, 4.0\nprint([min(cap, base * 2 ** n) for n in range(5)])",
+      "options": [
+        { "id": "a", "text": "`[0.5, 1.0, 2.0, 4.0, 4.0]`", "correct": true, "rationale": "The bound doubles from 0.5 until it reaches the 4.0 cap, then stays there." },
+        { "id": "b", "text": "`[0.5, 1.0, 2.0, 4.0, 8.0]`", "rationale": "That ignores the cap, which is what keeps waits bounded." },
+        { "id": "c", "text": "`[1.0, 2.0, 4.0, 4.0, 4.0]`", "rationale": "Attempt 0 uses 2 to the power 0, which is 1, so the first bound is the base itself." },
+        { "id": "d", "text": "`[0.0, 0.5, 1.0, 2.0, 4.0]`", "rationale": "This shifts the sequence by one attempt." }
+      ],
+      "explanation": "Exponential backoff doubles the wait each attempt up to a cap. Full jitter then picks a uniform random delay between zero and that bound, so many clients that failed together do not retry together. If the server sent `retry-after`, wait at least that long.",
+      "week": 1,
+      "tags": ["retries", "backoff"],
+      "difficulty": 1
+    },
+    {
+      "id": "s1w1-q7",
+      "type": "mcq",
+      "prompt": "Users say your report generator is slow. Measurements show a time to first token of about 1 second, output speed of about 50 tokens per second, and typical responses of 1,800 output tokens. Which change will cut wall-clock time the most?",
+      "options": [
+        { "id": "a", "text": "Moving the server closer to the API region to shave network time.", "rationale": "That trims part of the 1 second TTFT. Generation takes about 36 seconds." },
+        { "id": "b", "text": "Shortening the system prompt by half.", "rationale": "Input length mostly affects TTFT and cost. The time here is in generation." },
+        { "id": "c", "text": "Asking for a tighter output (for example, structured fields plus a short summary) so responses average 600 tokens.", "correct": true, "rationale": "Generation time falls from about 36 to about 12 seconds." },
+        { "id": "d", "text": "Turning on streaming.", "rationale": "Streaming improves perceived responsiveness, but the total time to the full report stays about the same." }
+      ],
+      "explanation": "A first-order latency model is TTFT plus output tokens divided by output speed. When responses are long, output length dominates. Shorter, structured outputs, lower effort on routine requests, or a faster model are the big levers; streaming changes when users see progress, not when the work finishes.",
+      "week": 1,
+      "tags": ["latency"],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w1-q8",
+      "type": "scenario",
+      "prompt": "A hospital client requires that patient notes never leave its own data center, and its security team will not approve any external API. You need a summarization feature. What is the best path?",
+      "options": [
+        { "id": "a", "text": "Use the strongest hosted model and promise to strip names before sending.", "rationale": "That violates the stated constraint, and de-identification of clinical notes is hard to guarantee." },
+        { "id": "b", "text": "Shortlist open-weight models whose licenses permit the use, run them on the client's infrastructure, and evaluate them on de-identified sample notes before choosing.", "correct": true, "rationale": "Open weights are the option that satisfies the constraint; the eval decides which one and whether quality is good enough." },
+        { "id": "c", "text": "Pick the open-weight model with the highest leaderboard rank and deploy it.", "rationale": "The constraint narrows the field, but a public rank says little about clinical summaries. Test first." },
+        { "id": "d", "text": "Tell the client the feature is impossible.", "rationale": "Self-hosted open-weight models exist for exactly this case. The question is whether their quality meets the bar." }
+      ],
+      "explanation": "Hard constraints such as data residency come first and can eliminate whole categories. Open-weight families such as Llama, Qwen, Mistral, and gpt-oss can run on your own hardware, under licenses that differ in what they allow. You then pay in GPUs and operations instead of per token, and you still need an eval to know if quality is acceptable.",
+      "week": 1,
+      "tags": ["model-selection", "open-weights", "privacy"],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w1-q9",
+      "type": "multi",
+      "prompt": "Which of these are documented, at the time this quiz was written, in the providers' own docs? Select all that apply.",
+      "options": [
+        { "id": "a", "text": "xAI says Grok has no knowledge of current events beyond its training data unless you enable its Web Search or X Search tools.", "correct": true, "rationale": "The xAI models page states this, and X Search runs on the Responses API." },
+        { "id": "b", "text": "Anthropic, OpenAI, and Google each list batch processing at half their standard per-token prices.", "correct": true, "rationale": "All three pricing pages list batch rates at 50 percent of standard." },
+        { "id": "c", "text": "Gemini 4 models accept audio and video input natively.", "correct": true, "rationale": "Google's models page lists text, image, audio, video, and PDF input for the Gemini 4 models." },
+        { "id": "d", "text": "Open-weight models are always free to use commercially without conditions.", "rationale": "Licenses differ: some are Apache 2.0 or MIT, others are custom licenses you must accept and read." }
+      ],
+      "explanation": "Provider docs are the right source for what a model offers: its inputs, tools, context window, and prices. They are not independent evidence of quality. Use them to build a shortlist that fits your constraints, then test.",
+      "week": 1,
+      "tags": ["model-selection", "providers"],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w1-q10",
+      "type": "scenario",
+      "prompt": "You ran 40 real support tickets through three models. Model A scored 92% on your rubric at $0.012 per ticket, model B 91% at $0.003, model C 78% at $0.0004. Your quality bar is 90%, and p95 latency is similar for A and B. Which do you ship?",
+      "options": [
+        { "id": "a", "text": "Model A, because it scored highest.", "rationale": "With 40 tickets, one point is less than a single ticket's worth of difference, and A costs four times as much as B." },
+        { "id": "b", "text": "Model B, and keep the eval set to rerun when prices or models change.", "correct": true, "rationale": "B clears the bar at a quarter of A's cost. The eval set makes the next decision cheap." },
+        { "id": "c", "text": "Model C, because it is the cheapest by far.", "rationale": "C fails the quality bar. Cheap wrong answers cost more in review and lost trust." },
+        { "id": "d", "text": "Model A, because the leaderboard ranks its family higher.", "rationale": "Your own eval on your own task is better evidence than a general ranking." }
+      ],
+      "explanation": "Decide with the bar you set before you looked: among models that pass, prefer the cheaper and faster one. With 40 examples, a single ticket is worth 2.5 points, so a one-point gap is noise: treat it as a tie. Keep the eval, look at B's failures by hand, and rerun when the landscape moves.",
+      "week": 1,
+      "tags": ["model-selection", "evals", "cost"],
+      "difficulty": 2
+    }
+  ]
+}

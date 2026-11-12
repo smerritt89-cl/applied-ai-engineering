@@ -1,0 +1,339 @@
+{
+  "id": "s1-w3",
+  "studio": "s1",
+  "week": 3,
+  "title": "Week 3 quiz: Structured outputs you can trust",
+  "questions": [
+    {
+      "id": "s1w3-q1",
+      "type": "mcq",
+      "prompt": "OpenAI offers both JSON mode and Structured Outputs. What does JSON mode guarantee that Structured Outputs goes beyond?",
+      "options": [
+        {
+          "id": "a",
+          "text": "JSON mode guarantees schema adherence; Structured Outputs adds faster responses.",
+          "rationale": "Reversed. JSON mode doesn't enforce your schema."
+        },
+        {
+          "id": "b",
+          "text": "JSON mode guarantees syntactically valid JSON only; Structured Outputs also makes the output adhere to your JSON Schema.",
+          "rationale": "Yes. OpenAI's docs draw exactly this line and recommend Structured Outputs where supported.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "JSON mode guarantees correct values; Structured Outputs guarantees correct types.",
+          "rationale": "Neither feature guarantees values are true."
+        },
+        {
+          "id": "d",
+          "text": "They are two names for the same feature.",
+          "rationale": "They behave differently: valid JSON is not the same as JSON that matches your schema."
+        }
+      ],
+      "explanation": "There are three levels to keep apart: parseable JSON (JSON mode), JSON that matches a schema (Structured Outputs, Claude's structured outputs, and equivalents), and JSON whose values are true (only your verification establishes that).",
+      "week": 3,
+      "tags": [
+        "structured-outputs",
+        "providers"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s1w3-q2",
+      "type": "predict-output",
+      "prompt": "With Pydantic's default configuration, what does this print?",
+      "code": "from pydantic import BaseModel\n\nclass Item(BaseModel):\n    task: str\n\nprint(Item.model_validate_json('{\"task\": \"Book venue\", \"owner\": \"Lee\"}'))",
+      "options": [
+        {
+          "id": "a",
+          "text": "A `ValidationError` about the extra field `owner`",
+          "rationale": "That's what happens with `extra=\"forbid\"`, which is not the default."
+        },
+        {
+          "id": "b",
+          "text": "`task='Book venue' owner='Lee'`",
+          "rationale": "Undeclared fields are not added to the model by default."
+        },
+        {
+          "id": "c",
+          "text": "`task='Book venue'`",
+          "rationale": "Yes. By default Pydantic ignores extra keys, silently dropping `owner`.",
+          "correct": true
+        }
+      ],
+      "explanation": "The default (`extra=\"ignore\"`) is friendly for APIs but hides contract drift in model output: a model that starts writing `owner` instead of the field you declared would go unnoticed. Use `ConfigDict(extra=\"forbid\")` for extraction models, which also sets `additionalProperties` to false in the generated schema.",
+      "week": 3,
+      "tags": [
+        "pydantic",
+        "validation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w3-q3",
+      "type": "code-reading",
+      "prompt": "This verifier is meant to flag items whose evidence quote is not in the transcript. Which input slips through incorrectly?",
+      "code": "def unsupported(items, transcript):\n    flagged = []\n    for item in items:\n        if item[\"evidence\"].strip() not in transcript:\n            flagged.append(item)\n    return flagged",
+      "options": [
+        {
+          "id": "a",
+          "text": "An item whose evidence is an empty string",
+          "rationale": "Yes. `\"\" in transcript` is always True, so an item with no evidence is never flagged.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "An item whose quote is a paraphrase",
+          "rationale": "A paraphrase usually isn't a substring, so it would be flagged."
+        },
+        {
+          "id": "c",
+          "text": "An item whose quote spans a line break in the transcript",
+          "rationale": "That one is wrongly flagged (a false alarm), not wrongly passed. Whitespace normalization fixes it."
+        }
+      ],
+      "explanation": "This function has two bugs. Empty evidence passes, which is the dangerous one because it fails silently. And without whitespace normalization, real quotes that wrap across lines get flagged. Test a verifier with cases that should fail, not only cases that should pass.",
+      "week": 3,
+      "tags": [
+        "verification",
+        "evidence"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w3-q4",
+      "type": "scenario",
+      "prompt": "Your transcript extractor uses Claude structured outputs with `due_date` as a required ISO date. Audits show about 3 percent of items have due dates that appear nowhere in the transcript. What is the best first change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Add \"never invent dates\" to the system prompt in capital letters.",
+          "rationale": "Prompting can reduce the rate, but the schema still forces a date on every item, so the pressure to invent remains."
+        },
+        {
+          "id": "b",
+          "text": "Switch to a larger model, which will invent fewer dates.",
+          "rationale": "Possibly, but measure first. The schema problem would remain on any model."
+        },
+        {
+          "id": "c",
+          "text": "Raise `max_tokens` so the model has room to think about dates.",
+          "rationale": "Truncation isn't the issue; the outputs are complete and valid."
+        },
+        {
+          "id": "d",
+          "text": "Make `due_date` nullable, add a verbatim `due_phrase` field, and resolve phrases like \"Friday\" to dates in deterministic code from the meeting date.",
+          "rationale": "Yes. This removes the forced guess, captures checkable evidence, and moves calendar arithmetic out of the model.",
+          "correct": true
+        }
+      ],
+      "explanation": "Under constrained decoding, a required non-nullable field must be filled, so when the source is silent the model invents. Fix the schema so silence has a legal answer, capture the source wording, and do deterministic work (date resolution) in code.",
+      "week": 3,
+      "tags": [
+        "schema-design",
+        "abstention"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w3-q5",
+      "type": "scenario",
+      "prompt": "You want a second-model check that asks, for each extracted item, \"does the evidence show the named owner committing to this task?\" Which plan is most defensible?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Use the same model and prompt that did the extraction, so the checker understands the task the same way.",
+          "rationale": "Shared training and prompting make shared errors more likely; self-enhancement bias is documented for LLM judges."
+        },
+        {
+          "id": "b",
+          "text": "Ask a model to give the whole extraction a 1 to 10 quality score and accept anything above 8.",
+          "rationale": "A holistic score hides which item is wrong and is uncalibrated."
+        },
+        {
+          "id": "c",
+          "text": "Use a model from a different family, ask the narrow yes/no/unclear question one item at a time, and measure its true positive and true negative rates against items you labeled yourself.",
+          "rationale": "Yes. Different family for more independent errors, a narrow question, and calibration against human labels.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Skip measurement; strong judge models agree with humans about 80 percent of the time.",
+          "rationale": "That figure is from a different task (chat preferences). Your checker's error rates on your task are unknown until measured."
+        }
+      ],
+      "explanation": "A checker is another model output that needs checking. Narrow the question, diversify the model family, and measure it like any classifier, reporting true positive and true negative rates separately because most items are usually fine.",
+      "week": 3,
+      "tags": [
+        "llm-judge",
+        "verification",
+        "model-selection"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s1w3-q6",
+      "type": "multi",
+      "prompt": "According to Anthropic's docs, in which situations might a Claude structured-outputs response not match your schema? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "`stop_reason` is `refusal`",
+          "rationale": "Yes. A refusal may not follow the schema.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`stop_reason` is `max_tokens`",
+          "rationale": "Yes. The output may be cut off before the JSON is complete.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The input document is long",
+          "rationale": "Length alone doesn't break the guarantee (unless it leads to truncation)."
+        },
+        {
+          "id": "d",
+          "text": "Adaptive thinking is enabled",
+          "rationale": "Thinking and structured outputs work together; thinking blocks are separate from the JSON text block."
+        }
+      ],
+      "explanation": "The guarantee covers completed, non-refused responses. Always check `stop_reason` before trusting `parsed_output`, and handle each case on purpose: raise the limit or split the input on truncation, and route refusals to a person rather than retrying blindly.",
+      "week": 3,
+      "tags": [
+        "structured-outputs",
+        "claude-api"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w3-q7",
+      "type": "mcq",
+      "prompt": "What is the core idea of self-consistency (Wang et al., 2022)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ask the model to rate its own answer, and keep it if the rating is high.",
+          "rationale": "That's self-evaluation, a different technique."
+        },
+        {
+          "id": "b",
+          "text": "Train the model to give the same answer to paraphrased questions.",
+          "rationale": "Self-consistency is a decoding strategy, not a training method."
+        },
+        {
+          "id": "c",
+          "text": "Sample several diverse reasoning paths and select the answer most of them reach.",
+          "rationale": "Yes. Correct answers tend to be reachable by many paths; errors scatter.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Use greedy decoding so the answer is the same every time.",
+          "rationale": "Self-consistency replaces greedy decoding with sampling plus a vote."
+        }
+      ],
+      "explanation": "For extraction, the analog is running the extraction several times and treating agreement as a signal. It costs N times as much and can't catch errors the model makes consistently, so use it selectively.",
+      "week": 3,
+      "tags": [
+        "self-consistency",
+        "verification"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s1w3-q8",
+      "type": "code-reading",
+      "prompt": "This function is meant to retry once with the validation error fed back. What is the most serious problem?",
+      "code": "def extract(client, doc):\n    messages = build_messages(doc)\n    while True:\n        try:\n            r = client.messages.parse(model=\"claude-opus-5-5\", max_tokens=16000,\n                                      messages=messages, output_format=Extraction)\n            return r.parsed_output\n        except Exception:\n            continue",
+      "options": [
+        {
+          "id": "a",
+          "text": "It retries forever, on every kind of exception, and never tells the model what was wrong.",
+          "rationale": "Yes. No cap, no feedback, and it swallows errors such as authentication failures that will never succeed.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "It should use `messages.create()` instead of `parse()`.",
+          "rationale": "`parse()` with a Pydantic class is the recommended path."
+        },
+        {
+          "id": "c",
+          "text": "`max_tokens` is too high for a non-streaming request.",
+          "rationale": "About 16,000 is the usual non-streaming default."
+        }
+      ],
+      "explanation": "A good retry is narrow (catch `pydantic.ValidationError`, let the SDK's own retries handle rate limits and server errors), bounded (once), informative (append the formatted errors), and it still checks `stop_reason` and never trusts output silently.",
+      "week": 3,
+      "tags": [
+        "retries",
+        "claude-api"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w3-q9",
+      "type": "mcq",
+      "prompt": "Where should the rule \"the owner must be someone on the team roster\" live?",
+      "options": [
+        {
+          "id": "a",
+          "text": "In the JSON Schema, as an enum of every employee name",
+          "rationale": "Possible for tiny teams, but it bakes changing data into the schema, inflates it, and stops the model from reporting an unknown name you'd want to see."
+        },
+        {
+          "id": "b",
+          "text": "In a separate verification function that receives the roster and flags unknown owners",
+          "rationale": "Yes. It needs outside data, should be testable on its own, and should flag rather than force a guess.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "In the system prompt only",
+          "rationale": "Instructions help, but nothing would check the result."
+        }
+      ],
+      "explanation": "Keep three layers distinct: the schema (shape), validators (internal consistency of one object), and verification functions (agreement with outside facts such as the transcript, the roster, or the calendar).",
+      "week": 3,
+      "tags": [
+        "verification",
+        "schema-design"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w3-q10",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "def normalize(t):\n    return \" \".join(t.split())\n\ntranscript = \"Lee: I'll send the deck\\nby Friday\"\nprint(normalize(\"Send the  deck\") in normalize(transcript))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`False`",
+          "rationale": "Yes. The check is case-sensitive, so the capitalized quote isn't found.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`True`",
+          "rationale": "Whitespace is normalized, but case is not: \"Send\" doesn't match \"send\"."
+        },
+        {
+          "id": "c",
+          "text": "It raises a `ValueError`",
+          "rationale": "Both are strings; `in` is a substring test."
+        }
+      ],
+      "explanation": "Exact matching after whitespace normalization is strict on purpose. If your logs show real quotes failing only on capitalization, you can add case folding, but measure whether it lets paraphrases through before you do.",
+      "week": 3,
+      "tags": [
+        "verification",
+        "evidence"
+      ],
+      "difficulty": 1
+    }
+  ]
+}

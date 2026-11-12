@@ -1,0 +1,332 @@
+---
+id: s3-w3-l7
+studio: s3
+week: 3
+order: 7
+title: Statistics for comparing models and prompts
+summary: Eval scores are estimates. Standard errors and better intervals for pass rates, the bootstrap, paired comparisons and McNemar's test, clustered questions, sample size and power, and run-to-run variance, so you can tell a real improvement from noise.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Treat an eval score as an estimate of a population quantity and compute its standard error and a 95 percent confidence interval
+  - Explain when the Wald interval fails for pass rates and use the Wilson interval instead
+  - Compute a percentile bootstrap interval, and say when the bootstrap adds something the CLT formula does not
+  - Compare two systems on the same questions with paired differences and McNemar's test, and explain why pairing shrinks the standard error
+  - Adjust for clustered questions, plan an eval's size with a power calculation, and handle run-to-run variance by resampling
+sources:
+  - { id: miller-2024-error-bars, use: summarized, where: "Sections 2 to 5: CLT and clustered standard errors, resampling, paired analysis, power analysis" }
+  - { id: anthropic-stats-evals-post, use: summarized }
+  - { id: brown-cai-dasgupta-2001, use: summarized, where: "Abstract and recommendations" }
+  - { id: efron-1979-bootstrap, use: summarized }
+  - { id: mcnemar-1947, use: summarized }
+  - { id: dietterich-1998-tests, use: summarized, where: "McNemar's test and Type I error" }
+  - { id: madaan-2024-variance, use: summarized }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Trials, pass@k and pass^k" }
+  - { id: claude-docs, use: summarized, where: "Sampling parameters on the current API version" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      Two prompts are scored on the same 300 questions. Why does a paired analysis usually give a smaller standard
+      error for the difference than treating the two score lists as independent samples?
+    options:
+      - id: a
+        text: Pairing doubles the effective sample size to 600.
+        rationale: The sample size is still 300 questions. Pairing changes the variance of each observation, not the count.
+      - id: b
+        text: Question difficulty affects both systems in the same way, so their scores are positively correlated and the covariance term cancels much of that shared variance.
+        correct: true
+        rationale: >-
+          Yes. Var(A - B) = Var(A) + Var(B) - 2 Cov(A, B). Easy questions are easy for both, hard ones hard for both,
+          so the covariance is positive and the difference varies much less than either score.
+      - id: c
+        text: The paired test assumes the two systems are equally good, which lowers the variance.
+        rationale: The null hypothesis does not reduce variance. The correlation between the systems' per-question scores does.
+    explanation: >-
+      The question-to-question spread in difficulty is usually the biggest source of variance in an eval score. In a
+      paired comparison that spread hits both systems, and subtracting removes most of it. Miller's paper recommends
+      inference on question-level paired differences for exactly this reason.
+  - id: kc2
+    type: predict-output
+    prompt: What does this print? (Round to two decimal places.)
+    code: |
+      import math
+      n_ab, n_ba = 12, 4          # A right and B wrong; B right and A wrong
+      chi2 = (n_ab - n_ba) ** 2 / (n_ab + n_ba)
+      print(chi2)
+    options:
+      - id: a
+        text: "`4.0`"
+        correct: true
+        rationale: (12 - 4) squared is 64, divided by 16 discordant questions gives 4.0.
+      - id: b
+        text: "`0.5`"
+        rationale: That is 8 divided by 16. The statistic squares the difference first.
+      - id: c
+        text: "`64.0`"
+        rationale: That is the numerator. McNemar's statistic divides by the number of discordant questions.
+    explanation: >-
+      McNemar's statistic depends only on the discordant questions. A chi-square of 4.0 on one degree of freedom gives
+      p of about 0.046, but with only 16 discordant questions the exact binomial version gives p of about 0.077. When the
+      discordant count is small, use the exact test.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      Your support-bot eval has 400 questions, written as 10 questions about each of 40 help-center articles. A
+      teammate reports a 95 percent interval of plus or minus 3.8 points using sqrt(p(1 - p) / 400). What do you say?
+    options:
+      - id: a
+        text: The interval is correct, because there are 400 independent Bernoulli trials.
+        rationale: The questions are not independent. Questions about the same article tend to succeed or fail together.
+      - id: b
+        text: The interval is probably too narrow. Compute a clustered standard error, or bootstrap by resampling articles rather than questions.
+        correct: true
+        rationale: >-
+          Yes. With 10 related questions per article, the effective sample size is closer to the number of articles than
+          to the number of questions. Resampling whole clusters respects that.
+      - id: c
+        text: The interval is too wide, because 400 is a large sample.
+        rationale: Clustering can only widen the honest interval when within-article results are positively correlated, which is the usual case.
+    explanation: >-
+      Miller's paper and Anthropic's companion post report clustered standard errors on popular evals that can be over
+      three times the naive ones. Whenever questions share a passage, a document, a conversation, or a customer, the
+      unit of randomization is the group.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## An eval score is an estimate, not a fact
+
+Last week you built graders. This week you use them to answer the question every team asks after a change: is the new prompt (or model) actually better? Suppose prompt A passes 164 of 200 questions and prompt B passes 156. The dashboard says 82 percent against 78 percent. Before anyone ships, you need to know whether a 4-point gap is a property of the prompts or an accident of which 200 questions you happened to write.
+
+Evan Miller's paper "Adding Error Bars to Evals" (Anthropic, 2024) frames this the way a statistician would: the questions in your eval are a sample from a much larger population of questions you could have written, and the quantity you care about is the expected score over that population. Your eval score is an estimate of it, with sampling error. Miller's one-line summary is that evaluations are experiments, and the eval literature has mostly ignored how other sciences analyze experiments.
+
+There are two sources of randomness to keep apart. The first is **which questions** you drew; it exists even for a perfectly deterministic model. The second is **the model's own sampling**: ask the same question twice and you can get two different answers (Studio 1, lesson 1). Both inflate the spread of your score, and they are handled differently. This lesson gives you the tools for each, in the order you'll use them: an interval for one score, an interval for a difference, then the corrections for clustered questions and repeated runs, and finally how many questions you need in the first place.
+</Listen>
+
+<Listen>
+## Standard error and a confidence interval for a pass rate
+
+If each question scores 0 or 1, the pass rate p-hat is the mean of n Bernoulli variables. By the central limit theorem it is approximately normal with standard error `SE = sqrt(p(1 - p) / n)`, which you estimate by plugging in p-hat. For prompt A: `sqrt(0.82 * 0.18 / 200)` is about 0.027, so the 95 percent interval is 0.82 plus or minus 1.96 times 0.027, or roughly 0.767 to 0.873. That is the first of Miller's recommendations: report the standard error of the mean, and an interval, with every eval score. If scores are fractional (an F1 score, a rubric average), use the sample standard deviation of the per-question scores in place of `sqrt(p(1 - p))`.
+
+That formula is the **Wald interval**, and you should know where it breaks. Brown, Cai, and DasGupta (2001) showed that its actual coverage behaves erratically, falling well below the nominal 95 percent even at sample sizes textbooks call safe, and worst when p is near 0 or 1. That is exactly where regression suites live. With 48 of 50 passing, Wald gives 0.906 to 1.014, an interval that leaves the unit interval. With 50 of 50, it gives a width of zero, claiming certainty from 50 questions. The authors recommend the **Wilson** interval (or the Jeffreys interval) for small n. Wilson inverts the score test instead of plugging p-hat into the variance, and for 48 of 50 it gives 0.865 to 0.989; for 50 of 50, 0.929 to 1.0.
+
+The practical rule: use Wilson for any single pass rate, and always for small suites or rates above about 90 percent. Keep the Wald formula in your head for quick estimates, because its structure (the error shrinks like one over the square root of n) is what drives every sample-size decision later in this lesson. Quadrupling the questions only halves the interval.
+</Listen>
+
+```python
+import math
+
+def wilson_interval(k, n, z=1.96):
+    """Wilson score interval for k successes in n trials."""
+    p = k / n
+    denom = 1 + z**2 / n
+    center = (p + z**2 / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z**2 / (4 * n**2)) / denom
+    return center - half, center + half
+
+print(wilson_interval(164, 200))   # about (0.761, 0.867)
+print(wilson_interval(48, 50))     # about (0.865, 0.989)
+```
+
+<Listen>
+## The bootstrap: when the formula runs out
+
+Bradley Efron introduced the **bootstrap** in 1979. The idea: you can't draw new samples from the population, but you can draw from your sample, which is the best estimate of the population you have. Resample your n questions with replacement, recompute the statistic, repeat a few thousand times, and the spread of the recomputed values approximates the sampling distribution. The **percentile interval** takes the 2.5th and 97.5th percentiles of those values.
+
+For a plain pass rate the bootstrap adds little. Miller notes that bootstrapping is common in the eval literature but unnecessary for a simple mean, since the CLT already applies. Your bootstrap interval for prompt A will land within a point or so of the CLT interval, which makes it a good check that your code is right.
+
+The bootstrap earns its keep when the statistic has no tidy formula, and in AI engineering that is often:
+
+- **Cost per successful task**: total spend divided by number of passes, a ratio of two random quantities.
+- **Median or 95th-percentile latency**, where the CLT for a mean doesn't apply.
+- **Agreement between a judge and human labels**, or a true positive rate on a small subset.
+- **Clustered data**, where you resample whole clusters (all questions about one document) instead of single questions.
+
+Two rules keep it honest. Resample the **unit that was randomized**: questions, or clusters of questions, never individual model runs of the same question. And when comparing two systems, resample question indices once and keep both systems' scores for each question together, which is the paired bootstrap you'll write below. Fix the random seed so that the interval in your report can be reproduced.
+</Listen>
+
+<Callout type="pitfall" title="Overlapping intervals are not a significance test">
+A common shortcut is to draw both systems' 95 percent intervals and call the difference real if they don't overlap. That test is badly underpowered: two intervals can overlap while the paired difference is clearly nonzero, because the individual intervals include the question-difficulty variance that pairing removes. The reverse error happens too. Compute an interval for the **difference** itself, using the paired methods in the next section. The same goes for leaderboards and slide decks: two scores with error bars are not a comparison, a difference with its own error bar is.
+</Callout>
+
+<Listen>
+## Paired comparisons: the most useful idea in this lesson
+
+When both systems answer the same questions, analyze the **per-question differences** `d_i = a_i - b_i`, not the two totals. The mean of d is the difference in pass rates, and its standard error is the sample standard deviation of d over the square root of n. Miller writes the same quantity in terms of the two separate standard errors: `SE_diff = sqrt(SE_A^2 + SE_B^2 - 2 * Corr(A, B) * SE_A * SE_B)`. The covariance term is the whole point. Question difficulty makes the two systems' scores positively correlated (Miller's companion post reports correlations of 0.3 to 0.7 between frontier models on real evals), and the stronger the correlation, the more of the noise cancels.
+
+Work the example. Treating A and B as independent, `SE_diff = sqrt(0.000738 + 0.000858)`, about 0.040, so the 95 percent interval for the 4-point gap is roughly minus 3.8 to plus 11.8 points. Now suppose the per-question results were: both right on 140, only A right on 24, only B right on 16, both wrong on 20. The differences are +1 on 24 questions, minus 1 on 16, and 0 on the other 160. Their standard deviation is about 0.447, so the paired SE is 0.0316 and the interval is about minus 2.2 to plus 10.2 points. Narrower, but it still includes zero. Four points looked like a win; it isn't established.
+
+Now change only the disagreements: only A right on 12, only B right on 4, the same 4-point gap. The paired SE drops to about 0.020 and the interval, 0.1 to 7.9 points, just excludes zero. Same headline numbers, different conclusion. What matters is **how often the systems disagree**, which the two totals hide. Always log per-question results so you can compute this; a pass-rate summary alone throws the information away.
+</Listen>
+
+<Listen>
+## McNemar's test
+
+The classical test for paired binary outcomes comes from Quinn McNemar's 1947 note on correlated proportions. Arrange the results in a two-by-two table. The questions both systems got right, and the ones both got wrong, carry no information about which is better. Only the **discordant** questions do: call n_AB the count where A passed and B failed, and n_BA the reverse. Under the null hypothesis that the systems are equally good, each discordant question is equally likely to go either way, so n_AB is Binomial(n_AB + n_BA, 0.5).
+
+That gives two versions. The **exact** test computes the two-sided binomial tail probability directly. The familiar large-sample version uses the statistic `(n_AB - n_BA)^2 / (n_AB + n_BA)`, compared with a chi-square distribution with one degree of freedom. For 24 against 16, the statistic is 1.6 and p is about 0.21 (exact: 0.27). For 12 against 4, the statistic is 4.0 and p is about 0.046, while the exact p is about 0.077. The two disagree about significance precisely when the discordant count is small, so prefer the exact test, which costs nothing to compute.
+
+There's also an external argument for this test. Dietterich (1998) compared approximate tests for deciding whether one learning algorithm beats another and found McNemar's test had low Type I error (it rarely declares a difference that isn't there), making it the recommended choice when each system can be run only once on a fixed test set. That's the usual situation for a prompt comparison. Report the paired difference with its interval as your main result, and the McNemar p-value as a check.
+</Listen>
+
+<Predict
+  title="Which questions does McNemar's test look at?"
+  code={`results = [  # (A passed, B passed) for 10 questions
+    (1, 1), (1, 1), (1, 0), (0, 0), (1, 1),
+    (0, 1), (1, 0), (1, 1), (0, 0), (1, 0),
+]
+n_ab = sum(1 for a, b in results if a == 1 and b == 0)
+n_ba = sum(1 for a, b in results if a == 0 and b == 1)
+print(n_ab, n_ba, n_ab + n_ba)`}
+  options={["3 1 4", "6 4 10", "3 1 10", "4 1 5"]}
+  answer={0}
+>
+Three questions favor A, one favors B, and the remaining six (four both right, two both wrong) are ignored. With four discordant questions, the exact two-sided p-value is 0.625: a 3-to-1 split is what a coin produces all the time. Ten questions can't separate two systems unless they disagree a lot and always in one direction.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s3-w3-bootstrap-paired"
+  title="Bootstrap a pass rate and a paired difference, then run McNemar"
+  starter={`import math
+import random
+
+def bootstrap_ci(values, stat, n_boot=2000, alpha=0.05, seed=0):
+    """Percentile bootstrap CI for stat(values).
+    Draw n_boot resamples of len(values) items WITH replacement (use random.Random(seed)),
+    compute stat on each, sort, and return (lo, hi) at the alpha/2 and 1 - alpha/2 positions:
+    lo = sorted_stats[int(alpha / 2 * n_boot)], hi = sorted_stats[int((1 - alpha / 2) * n_boot) - 1]."""
+    # TODO
+    pass
+
+def paired_bootstrap_diff(a, b, n_boot=2000, alpha=0.05, seed=0):
+    """a[i], b[i] are 0/1 scores of systems A and B on question i.
+    Return (observed mean(a) - mean(b), lo, hi). Resample QUESTION INDICES, so each
+    resampled question keeps both of its scores together."""
+    # TODO
+    pass
+
+def mcnemar_exact(a, b):
+    """Return (n_ab, n_ba, p): n_ab = questions A passed and B failed, n_ba the reverse,
+    p = two-sided exact binomial p-value: min(1, 2 * P(X <= min(n_ab, n_ba))) with
+    X ~ Binomial(n_ab + n_ba, 0.5). If there are no discordant questions, p = 1.0."""
+    # TODO
+    pass
+
+def mean(xs):
+    return sum(xs) / len(xs)
+
+# 200 questions: both right 140, only A right 24, only B right 16, both wrong 20.
+pairs = [(1, 1)] * 140 + [(1, 0)] * 24 + [(0, 1)] * 16 + [(0, 0)] * 20
+random.Random(7).shuffle(pairs)
+A = [p[0] for p in pairs]
+B = [p[1] for p in pairs]
+
+print("A pass rate", mean(A), "CI", bootstrap_ci(A, mean))
+print("B pass rate", mean(B), "CI", bootstrap_ci(B, mean))
+print("A - B", paired_bootstrap_diff(A, B))
+print("McNemar", mcnemar_exact(A, B))`}
+  tests={`ci = bootstrap_ci(A, mean)
+assert ci is not None, "bootstrap_ci returned None"
+lo, hi = ci
+assert lo < mean(A) < hi, "the interval should contain the observed pass rate"
+assert abs(lo - 0.767) < 0.015 and abs(hi - 0.873) < 0.015, "for 164/200 the bootstrap CI should be close to the CLT interval [0.767, 0.873]"
+assert bootstrap_ci(A, mean, seed=1) == bootstrap_ci(A, mean, seed=1), "same seed, same interval"
+res = paired_bootstrap_diff(A, B)
+assert res is not None, "paired_bootstrap_diff returned None"
+d, dlo, dhi = res
+assert mcnemar_exact(A, B) is not None, "mcnemar_exact returned None"
+assert abs(d - 0.04) < 1e-9, "observed difference is 0.82 - 0.78 = 0.04"
+assert dlo < 0 < dhi, "with 24 vs 16 discordant questions, the paired interval should include zero"
+assert abs((dhi - dlo) - 2 * 1.96 * 0.0316) < 0.02, "paired CI width should be near 2 x 1.96 x 0.0316 (the paired SE)"
+strong = [1] * 30 + [0] * 170
+weak = [0] * 200
+_, slo, _ = paired_bootstrap_diff(strong, weak)
+assert slo > 0, "a system that wins 30 questions and never loses should have a CI above zero"
+assert mcnemar_exact(A, B)[:2] == (24, 16), "count discordant questions in each direction"
+assert abs(mcnemar_exact(A, B)[2] - 0.2682) < 1e-3, "exact two-sided p for 24 vs 16 is about 0.268"
+assert mcnemar_exact([1, 0], [1, 0])[2] == 1.0, "no discordant questions means no evidence of a difference"
+assert abs(mcnemar_exact([1] * 12 + [0] * 4, [0] * 12 + [1] * 4)[2] - 0.0768) < 1e-3, "12 vs 4 gives exact p of about 0.077"`}
+  solution={`def bootstrap_ci(values, stat, n_boot=2000, alpha=0.05, seed=0):
+    rng = random.Random(seed)
+    n = len(values)
+    stats = sorted(stat([values[rng.randrange(n)] for _ in range(n)]) for _ in range(n_boot))
+    return stats[int(alpha / 2 * n_boot)], stats[int((1 - alpha / 2) * n_boot) - 1]
+
+def paired_bootstrap_diff(a, b, n_boot=2000, alpha=0.05, seed=0):
+    rng = random.Random(seed)
+    n = len(a)
+    observed = mean(a) - mean(b)
+    diffs = []
+    for _ in range(n_boot):
+        idx = [rng.randrange(n) for _ in range(n)]
+        diffs.append(sum(a[i] - b[i] for i in idx) / n)
+    diffs.sort()
+    return observed, diffs[int(alpha / 2 * n_boot)], diffs[int((1 - alpha / 2) * n_boot) - 1]
+
+def mcnemar_exact(a, b):
+    n_ab = sum(1 for x, y in zip(a, b) if x == 1 and y == 0)
+    n_ba = sum(1 for x, y in zip(a, b) if x == 0 and y == 1)
+    n = n_ab + n_ba
+    if n == 0:
+        return n_ab, n_ba, 1.0
+    k = min(n_ab, n_ba)
+    tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
+    return n_ab, n_ba, min(1.0, 2 * tail)`}
+>
+Write the three functions, then press **Check my answer**. The data reproduce the worked example: A passes 164 of 200, B passes 156, and they disagree on 40 questions (24 favor A, 16 favor B). Notice three things when it passes. The bootstrap interval for A lands near the CLT interval from earlier. The paired interval for A minus B is centered at 4 points and includes zero. And the McNemar p-value agrees with that verdict. Then try editing the data so the systems disagree on only 16 questions (12 against 4) and watch the interval move.
+</PyRunner>
+
+<Listen>
+## Clustered questions
+
+The formulas so far assume independent questions. Real evals often aren't built that way: ten questions about each of 40 documents, several turns from the same conversation, many tickets from the same customer, or several variants of one template. Questions in a group tend to succeed or fail together (a model that misreads a document gets most of its questions wrong), so 400 clustered questions carry much less information than 400 independent ones.
+
+Miller's second recommendation is to compute **clustered standard errors** whenever questions are drawn in related groups, clustering on the unit of randomization. The clustered variance adds the within-cluster covariances to the usual term: for each cluster, sum the cross products of residuals for every pair of distinct questions in it, add these over clusters, divide by n squared, and add to the squared naive SE. Positive within-cluster correlation makes the clustered SE larger. The companion post reports that on popular evals the clustered standard errors can be **more than three times** the naive ones, so an interval reported as plus or minus 2 points might honestly be plus or minus 6.
+
+The bootstrap version is easy to get right: resample whole clusters with replacement, then pool their questions and recompute the statistic. If you have 40 documents, each bootstrap replicate draws 40 documents. A useful sanity check is the design effect, the ratio of clustered to naive variance; a value near 1 says clustering doesn't matter for this eval, and a value of 4 says your 400 questions behave like about 100.
+
+Designing around it is cheaper than correcting for it. When you write an eval, prefer more groups with fewer questions each, and record the group id with every question so the analysis is possible later.
+</Listen>
+
+<Listen>
+## How many questions do you need?
+
+Power analysis turns the question around: given the smallest difference worth detecting, how many questions do you need? For a paired comparison at significance level alpha with power 1 minus beta, the standard normal-approximation answer is `n = (z_alpha/2 + z_beta)^2 * Var(d) / delta^2`, where delta is the difference you want to detect and Var(d) is the variance of the per-question difference. At alpha 0.05 and 80 percent power, the multiplier `(1.96 + 0.84)^2` is about 7.85.
+
+For 0/1 scores, Var(d) is roughly the **discordance rate** (the fraction of questions on which the systems disagree) minus delta squared. Plug in numbers you'll actually see:
+
+- Two prompts that disagree on 10 percent of questions, and you want to detect a 3-point difference: about 860 questions.
+- The same, but you'll accept detecting only 5 points: about 310.
+- Two different model families that disagree on 20 percent of questions, 3 points: about 1,700.
+
+Miller's paper works an example with the same alpha and power, a 3-point difference, and an assumed variance of the per-question means, and arrives at about 970 questions, and concludes that new evals should contain at least about 1,000 questions if they are meant to separate frontier models. Read the same formula backward for your own suite: with 200 questions and 20 percent discordance, the minimum detectable effect is about 9 points. A 50-question golden set is a fine smoke test and a poor instrument for choosing between two good prompts.
+
+Run the calculation **before** you collect results, and write down delta. Deciding the threshold after seeing the data invites you to choose one that makes your preferred answer significant.
+</Listen>
+
+<Listen>
+## Run-to-run variance
+
+The second source of randomness is the model. Ask each question once and your score includes the luck of each sample; ask again and the score moves even though nothing changed. On the current Claude API you can't remove that by setting temperature to zero, because requests that set sampling parameters are rejected, and other providers' reasoning models restrict them too. Even where you can set them, Miller's advice is not to change sampling settings just to reduce eval variance, since that changes the system you're measuring.
+
+The fix is to **resample**: run each question K times and use the per-question mean as that question's score. This removes part of the within-question variance; Miller's worked example shows the variance of the eval mean falling by a third at K = 2 and by half at K = 4, with diminishing returns after that, because the between-question variance doesn't shrink no matter how often you repeat. Two warnings follow:
+
+- **Don't pool K times n answers as if they were independent.** Repeated answers to the same question are correlated, and treating them as fresh questions understates the standard error. Average within each question first, then compute the SE across the n questions.
+- **Decide what "pass" means for your product.** Anthropic's guide to agent evals distinguishes pass@k (at least one of k trials succeeds) from pass^k (all k succeed). At a 75 percent per-trial rate, pass^3 is about 42 percent. A customer-facing agent that must work every time should be judged on consistency, not on its best attempt.
+
+Variance also comes from places you don't sample on purpose: provider-side changes behind a model alias, retries, tool timeouts, and nondeterministic harness code. Madaan and colleagues (2024) measured how much benchmark scores vary across models trained from different random seeds and urged practitioners to account for that variance before ranking similar models. The general lesson transfers: rerun your baseline from time to time to see how much it moves when nothing changes. That spread is the floor under every difference you'll claim.
+</Listen>
+
+<GoDeeper title="Trying many prompts and keeping the best one">
+Prompt iteration is a search, and searching inflates false positives. If you test 20 prompt variants against a baseline at alpha 0.05 and none is truly better, the chance that at least one looks significant is 1 minus 0.95 to the 20th power, about 64 percent (treating the tests as independent). The winner's score is also biased upward, because you selected it for being high. Three habits help. Split your questions into a development set for iterating and a held-out test set you score once, at the end, for the final candidate only. Correct for multiplicity when you do report many comparisons (the Bonferroni correction divides alpha by the number of tests; Holm's step-down procedure is uniformly more powerful and just as simple). And treat a surprising win as a hypothesis to confirm on fresh questions. Miller's paper adds a further variance-reduction tool for evals without chain-of-thought: use the model's next-token probabilities on the answer instead of a sampled 0/1, when the provider exposes them.
+</GoDeeper>
+
+<Listen>
+## What to put in every comparison report
+
+Write your results so a skeptical colleague can check them. For each system: the pass rate, n, and a Wilson (or clustered bootstrap) interval. For the comparison: the mean paired difference with its 95 percent interval, the discordant counts, and the exact McNemar p-value. State how many trials per question you ran, whether questions are clustered and how you handled it, and the smallest difference your eval was powered to detect. Keep the per-question results in a file next to the report, versioned with the prompt, the model id, and the dataset.
+
+Then decide like an engineer. If the interval for the difference excludes zero and the gain is larger than the smallest change that matters to users, you have evidence. If it includes zero, the honest statement is "no detectable difference at this sample size," and the cheaper or simpler system usually wins. If the decision matters and the eval can't resolve it, the next step is more questions, not a closer look at the same ones. Lesson 8 turns these numbers into a gate that runs automatically, and lesson 9 applies them to choosing between providers.
+</Listen>

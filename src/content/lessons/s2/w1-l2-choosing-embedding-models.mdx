@@ -1,0 +1,333 @@
+---
+id: s2-w1-l2
+studio: s2
+week: 1
+order: 2
+title: Choosing and testing an embedding model
+summary: The provider and open embedding models worth knowing, what actually differs between them, how to read the MTEB leaderboard without being misled, Matryoshka dimensions, cost and privacy trade-offs, and the habit that matters most, testing candidates on a small labeled set from your own domain.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Compare provider embedding APIs (Voyage AI, OpenAI, Gemini, Cohere) and open models (Sentence Transformers, BGE, E5, Nomic) on the properties that matter for a project
+  - Read the MTEB leaderboard critically, naming at least three reasons its ranking may not predict performance on your data
+  - Use Matryoshka (truncated) embeddings correctly, including renormalization, and measure what truncation costs
+  - Build a small labeled retrieval set from your domain and compute recall@k and MRR for competing models
+  - Compare two models per query rather than only by averages, and recognize when a test set is too small to decide
+sources:
+  - { id: claude-embeddings-docs, use: summarized, where: "Before implementing embeddings; Available models; FAQ" }
+  - { id: voyage-embeddings-docs, use: summarized, where: "Models, input_type, output_dimension, output_dtype" }
+  - { id: voyage-4-blog, use: summarized, where: "Compatible embeddings across the voyage-4 family" }
+  - { id: openai-embeddings-guide, use: summarized, where: "Embedding models; Reducing embedding dimensions" }
+  - { id: gemini-embeddings-docs, use: summarized, where: "Models, task types, output dimensionality" }
+  - { id: cohere-embed-docs, use: summarized }
+  - { id: sbert-docs, use: summarized }
+  - { id: hf-all-minilm-l6-v2, use: summarized }
+  - { id: hf-e5-base-v2, use: summarized, where: "Usage: query and passage prefixes" }
+  - { id: hf-bge-small-en-v15, use: summarized, where: "Query instruction" }
+  - { id: hf-nomic-embed-v15, use: summarized, where: "Task prefixes; Matryoshka dimensions" }
+  - { id: xiao-2023-cpack-bge, use: summarized }
+  - { id: nussbaum-2024-nomic-embed, use: summarized }
+  - { id: muennighoff-2022-mteb, use: summarized }
+  - { id: enevoldsen-2025-mmteb, use: summarized }
+  - { id: chung-2025-maintaining-mteb, use: summarized, where: "Section 5.1, assessing zero-shot levels" }
+  - { id: mteb-leaderboard, use: linked }
+  - { id: thakur-2021-beir, use: summarized }
+  - { id: kusupati-2022-matryoshka, use: summarized }
+  - { id: hamel-evals, use: summarized, where: "Looking at your data" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You are choosing an embedding model for search over a hospital network's internal policy documents. The model at
+      the top of the MTEB leaderboard's overall average is 7 billion parameters; a 335 million parameter model sits 2
+      points lower. What do you do first?
+    options:
+      - id: a
+        text: Pick the top model. Two points on a benchmark of hundreds of datasets is a real difference.
+        rationale: The average spans tasks you don't care about (clustering, classification), domains unlike yours, and possibly datasets the model trained on.
+      - id: b
+        text: Shortlist both (plus one provider model your data rules allow), run them on a labeled set of real staff questions and the policies that answer them, and weigh recall and MRR against latency, cost, and where the data can go.
+        correct: true
+        rationale: Yes. The leaderboard narrows the field; your own labeled set decides.
+      - id: c
+        text: Pick the smaller model, because smaller models generalize better.
+        rationale: Sometimes true, often not. It's a hypothesis to test, not a rule.
+    explanation: >-
+      MTEB's own authors found no single method dominates across tasks, BEIR showed out-of-domain performance can differ
+      sharply from in-domain results, and the MTEB maintainers report that top legacy-leaderboard models got there partly
+      by training on benchmark tasks. A one-afternoon evaluation on your own queries is the evidence that counts.
+  - id: kc2
+    type: predict-output
+    prompt: "A Matryoshka model returns this unit vector. You keep the first two dimensions. What does this print?"
+    code: |
+      import math
+      v = [0.5, 0.5, 0.5, 0.5]
+      short = v[:2]
+      print(round(math.sqrt(sum(x * x for x in short)), 3))
+    options:
+      - id: a
+        text: "`1.0`"
+        rationale: Truncation keeps a prefix; it doesn't rescale it.
+      - id: b
+        text: "`0.707`"
+        correct: true
+        rationale: The square root of 0.25 plus 0.25 is about 0.707. The truncated vector is no longer unit length.
+      - id: c
+        text: "`0.5`"
+        rationale: That's one coordinate, not the norm of two.
+    explanation: >-
+      Truncated vectors must be renormalized before you use the dot product as cosine similarity. OpenAI's guide and
+      Voyage's FAQ both say so for vectors you truncate yourself; Gemini's docs say the same for `gemini-embedding-001`.
+      Requesting the shorter size from the API (a `dimensions` or `output_dimension` parameter) is safer.
+  - id: kc3
+    type: multi
+    prompt: Which of these are good reasons to prefer an open model you run yourself over a provider embedding API? Select all that apply.
+    options:
+      - id: a
+        text: Policy forbids sending the documents to a third party.
+        correct: true
+        rationale: Running the model on your own hardware keeps the text in-house.
+      - id: b
+        text: You need the vectors to stay reproducible for years, independent of a provider retiring a model version.
+        correct: true
+        rationale: Pinned open weights don't get deprecated out from under your index.
+      - id: c
+        text: Open models are always more accurate on retrieval.
+        rationale: Not established in general; it varies by model, task, and domain. Measure it.
+      - id: d
+        text: You embed huge volumes and have spare GPU capacity, so local inference may cost less than per-token pricing.
+        correct: true
+        rationale: At high volume the economics can favor self-hosting, though you then own the operations.
+    explanation: >-
+      The choice is usually decided by constraints (data location, cost at volume, operational capacity, reproducibility)
+      as much as by accuracy. Provider APIs buy you strong models with no infrastructure; open models buy control. Your
+      labeled set tells you whether the quality gap, if any, matters.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The decision, and why it is sticky
+
+Choosing an embedding model feels like a small configuration choice. It isn't, for one reason from lesson 1: vectors from different models are not comparable. Every document in your index was embedded by one model, and every query must be embedded by the same model. Switching later means re-embedding the whole corpus, rebuilding the index, and re-running your evaluations. (One exception is worth knowing and verifying: Voyage AI says the models in its voyage-4 family produce compatible embeddings, so documents embedded with one can be searched with queries from another. That is a vendor claim about one family, not a general property.)
+
+Anthropic, notably, does not make an embedding model. Its embeddings guide says so directly, points to Voyage AI as one provider with a wide range of models, and also tells you to assess several vendors for your use case. The same advice holds whichever LLM you use for generation: the embedding model and the generator are independent choices, and mixing providers is normal.
+
+This lesson gives you the landscape, then the method. The landscape will age (model names change every few months); the method won't.
+</Listen>
+
+<Listen>
+## The landscape at the time of writing
+
+**Provider APIs.** You send text and get vectors back, priced per input token.
+
+- **Voyage AI** (now part of MongoDB): general models `voyage-4-large`, `voyage-4`, and `voyage-4-lite` (quality to cost, in that order), domain models for code, law, and finance, plus multimodal and "contextualized chunk" models. Defaults to 1,024 dimensions with 256, 512, and 2,048 available, and a 32,000-token context. It also publishes an open-weight model, `voyage-4-nano`, under Apache 2.0.
+- **OpenAI**: `text-embedding-3-small` (1,536 dimensions) and `text-embedding-3-large` (3,072), both with a `dimensions` parameter to shorten vectors and an 8,192-token input limit.
+- **Google Gemini**: `gemini-embedding-2` (multimodal: text, images, video, audio, PDF) and the text-only `gemini-embedding-001`. Both default to 3,072 dimensions and support 128 to 3,072; the docs recommend 768, 1,536, or 3,072.
+- **Cohere**: `embed-v5.0-pro`, with over 100 languages, sizes from 256 to 2,048, image inputs, and several compressed output types.
+
+**Open models.** You download weights (usually from Hugging Face) and run them with a library such as Sentence Transformers, on a laptop CPU for small jobs or a GPU for large ones. Families you'll see often: `all-MiniLM-L6-v2` (small and fast, 384 dimensions, English, Apache 2.0); BGE from the Beijing Academy of AI (Xiao and colleagues, 2023); E5 from Microsoft, including multilingual variants; and Nomic Embed, notable for publishing its training data and code so the model can be reproduced (Nussbaum and colleagues, 2024).
+
+Everything in this list should be rechecked against the providers' pages before you rely on it. The structure of the choice is what lasts.
+</Listen>
+
+<Listen>
+## What actually differs between models
+
+Retrieval quality is one axis. When you shortlist, check these too, because each has broken real systems.
+
+- **Input length and silent truncation.** Limits range from 256 word pieces for `all-MiniLM-L6-v2` (its model card says longer input is truncated by default) to 32,000 tokens for Voyage's current models. A model that silently drops the second half of a long chunk can't retrieve it by anything said there. Week 2's chunking decisions depend on this number.
+- **Query and document roles.** Many retrieval models are trained asymmetrically and expect you to say which input is which. Voyage takes `input_type="query"` or `"document"` and prepends a short instruction for each; its docs say not to omit it for retrieval. Gemini's `gemini-embedding-001` takes task types such as `RETRIEVAL_QUERY` and `RETRIEVAL_DOCUMENT`, and `gemini-embedding-2` uses text prefixes instead. Cohere has `search_query` and `search_document`. Open models use prefixes: E5 expects `query: ` and `passage: `, Nomic expects `search_query: ` and `search_document: `, and BGE adds an instruction before queries. Getting this wrong rarely errors; it just quietly lowers quality.
+- **Languages and modalities.** If your users ask in Spanish about English documents, you need a model trained for cross-lingual retrieval, and you need Spanish queries in your test set.
+- **Dimensions and output types.** Size drives storage and search cost. Several providers also offer int8 or binary outputs, which Voyage's docs describe as reducing storage by 4x and 32x relative to 32-bit floats.
+- **Cost, latency, rate limits.** Indexing is a one-time (or per-update) cost; query embedding sits on your request path, so its latency adds to every search.
+- **Data handling and lifecycle.** Provider APIs see your text; check their data retention and training terms against your policy. Providers also retire models, which forces a re-embed. Open weights you pin don't change.
+</Listen>
+
+<Listen>
+## Reading the MTEB leaderboard without being misled
+
+The **Massive Text Embedding Benchmark** (MTEB; Muennighoff and colleagues, 2022) was built because embedding models were often evaluated on a narrow set of tasks. The original release covered 8 task types (retrieval, reranking, clustering, classification, semantic similarity, and others) over 58 datasets and 112 languages. Its headline finding is still the most useful one: no single embedding method dominated across all tasks. MMTEB (Enevoldsen and colleagues, 2025) expanded it to over 500 tasks in more than 250 languages, and found that the best publicly available model on its multilingual benchmark was `multilingual-e5-large-instruct`, at 560 million parameters, ahead of far larger LLM-based models.
+
+The public leaderboard is the best starting point for a shortlist. Treat it as that, for four reasons.
+
+1. **Averages hide your task.** The overall score blends task types. For search, look at the retrieval columns, for your languages.
+2. **Domain mismatch.** Benchmarks are mostly public web, Wikipedia, and academic text. BEIR (Thakur and colleagues, 2021) showed how much retrieval quality can drop out of domain. Your support tickets, contracts, or clinical policies are a different distribution.
+3. **Training on the test distribution.** The MTEB maintainers (Chung and colleagues, 2025) report that the highest-ranking models on the legacy English leaderboard achieved their scores partly by training on benchmark tasks, while some lower-ranked models may generalize better. They now ask model authors to disclose training data and compute a "zero-shot score" from how many benchmark datasets a model trained on. Check it, and know it only captures disclosed overlap.
+4. **Size and latency aren't in the score.** A model a few points higher that is twenty times larger may be the wrong trade for a latency budget or a CPU-only deployment.
+</Listen>
+
+<Callout type="claim" title="Vendor benchmark numbers">
+Providers publish their own evaluations, and they are useful signals, not neutral facts. OpenAI's embeddings guide lists MTEB averages for its models (64.6 percent for `text-embedding-3-large`, 62.3 percent for `text-embedding-3-small` on the review date). Voyage AI's voyage-4 announcement reports results on a different benchmark, RTEB, plus its own domain tests, and doesn't cite MTEB. Different benchmarks, different task mixes, and self-selected comparisons mean you can't line these numbers up against each other. **Evidence for:** both are reproducible in principle on public data. **Evidence against:** each vendor chooses what to report. Your own test set is the tiebreaker.
+</Callout>
+
+<Listen>
+## Matryoshka embeddings: shorter vectors on purpose
+
+Matryoshka Representation Learning (Kusupati and colleagues, 2022) trains a model so that the leading coordinates of its vector are themselves a good embedding: the first 256 dimensions work as a coarse representation, the first 512 as a finer one, and so on, like nested dolls. The paper reports up to 14 times smaller embeddings at the same accuracy on an image classification benchmark, and corresponding speedups for large-scale retrieval.
+
+You will meet this as a size option. OpenAI's `dimensions` parameter, Voyage's `output_dimension`, Gemini's `output_dimensionality`, and Nomic Embed v1.5's documented dimensions all rely on it. OpenAI's guide gives an example where `text-embedding-3-large` cut to 256 dimensions still beat the older `text-embedding-ada-002` at its full 1,536 on MTEB.
+
+Two practical rules. First, **renormalize after truncating**: a prefix of a unit vector is shorter than 1, so the dot product stops equaling cosine (the Predict question in this lesson's knowledge check shows the arithmetic). Asking the API for the smaller size avoids the problem; if you truncate stored vectors yourself, both OpenAI and Voyage tell you to normalize again. Second, **measure the loss on your data**: run your labeled set at full size and at the truncated size. If recall@10 barely moves, you have just cut your storage by a factor of four.
+</Listen>
+
+<Listen>
+## The main lesson: test on your own labeled set
+
+Everything above narrows the field. What decides it is a small evaluation set from your own domain, and building one takes an afternoon.
+
+**Collect real queries.** Pull 30 to 100 questions from search logs, support tickets, or interviews with the people who will use the system. Hamel Husain's evaluation guidance applies directly: look at your actual data before inventing test cases. If you must generate queries with an LLM, read every one, and watch for questions that copy the document's exact wording, which flatters keyword-like matching and hides paraphrase failures.
+
+**Label relevant documents.** For each query, mark which documents (or chunks) actually answer it. Some queries have several. Include the hard cases you know exist: exact codes, synonyms, other languages, near-duplicate articles that differ in one crucial detail.
+
+**Pick metrics.** Two cover most needs. **Recall@k** is the share of a query's relevant documents that appear in the top k, averaged over queries; it asks whether the answer made it into the context you'll pass the model. **MRR** (mean reciprocal rank) is the average of 1 divided by the rank of the first relevant result (0 if none appears); it rewards putting the answer near the top. (Some tools report "hit rate at k," whether at least one relevant item appears; for single-answer queries it equals recall@k.)
+
+**Compare per query, not just on averages.** With 40 queries, one query is 2.5 percentage points of recall. Two models whose averages differ by 3 points may differ on a single question. List the queries each model wins and read them; the pattern (one model fails every Spanish query, another fails on error codes) is more informative than the means and tells you what to fix.
+
+**Freeze the set and keep it.** It becomes the regression test for every later change: chunking in week 2, hybrid search and reranking in week 3, and a model upgrade a year from now.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s2-w1-model-eval"
+  title="Score two embedding models on a labeled set"
+  starter={`def recall_at_k(ranked, relevant, k):
+    """Share of the relevant ids that appear in ranked[:k]. Raise ValueError if relevant is empty."""
+    # TODO
+    pass
+
+def reciprocal_rank(ranked, relevant):
+    """1 / (1-based position of the first relevant id in ranked), or 0.0 if none appears."""
+    # TODO
+    pass
+
+def evaluate(run, labels, k):
+    """run maps query -> ranked doc ids; labels maps query -> set of relevant ids.
+    Return {"recall@k": mean recall@k, "mrr": mean reciprocal rank}, each rounded to 3 places,
+    where the first key uses the actual k, for example "recall@3"."""
+    # TODO
+    pass
+
+def compare(run_a, run_b, labels):
+    """Per query, compare reciprocal ranks. Return (wins_a, wins_b, ties)."""
+    # TODO
+    pass
+
+# A tiny labeled set for a fictional online store's help center.
+LABELS = {
+    "refund for double charge": {"refunds"},
+    "package never arrived": {"late-delivery", "lost-package"},
+    "error E-417 at checkout": {"e417"},
+    "change my shipping address": {"change-address"},
+    "cancel subscription": {"cancel-plan"},
+    "is the site down": {"status-page"},
+    "download last month's invoice": {"invoices"},
+    "reembolso por cobro duplicado": {"refunds"},   # Spanish: refund for a duplicate charge
+}
+
+# Top-3 results from two candidate models (made up for this exercise).
+RUNS = {
+    "api-model": {
+        "refund for double charge": ["refunds", "invoices", "cancel-plan"],
+        "package never arrived": ["lost-package", "late-delivery", "change-address"],
+        "error E-417 at checkout": ["e416", "checkout-help", "e417"],
+        "change my shipping address": ["change-address", "late-delivery", "invoices"],
+        "cancel subscription": ["cancel-plan", "refunds", "invoices"],
+        "is the site down": ["status-page", "e416", "checkout-help"],
+        "download last month's invoice": ["invoices", "refunds", "cancel-plan"],
+        "reembolso por cobro duplicado": ["refunds", "invoices", "cancel-plan"],
+    },
+    "local-model": {
+        "refund for double charge": ["refunds", "cancel-plan", "invoices"],
+        "package never arrived": ["late-delivery", "change-address", "status-page"],
+        "error E-417 at checkout": ["e417", "e416", "checkout-help"],
+        "change my shipping address": ["change-address", "invoices", "late-delivery"],
+        "cancel subscription": ["refunds", "cancel-plan", "invoices"],
+        "is the site down": ["status-page", "checkout-help", "e416"],
+        "download last month's invoice": ["invoices", "cancel-plan", "refunds"],
+        "reembolso por cobro duplicado": ["status-page", "e416", "late-delivery"],
+    },
+}
+
+for name, run in RUNS.items():
+    print(name, evaluate(run, LABELS, 1), evaluate(run, LABELS, 3))
+print("wins (api, local, ties):", compare(RUNS["api-model"], RUNS["local-model"], LABELS))
+`}
+  tests={`assert recall_at_k(["a", "b", "c"], {"b", "z"}, 2) == 0.5, "one of two relevant ids is in the top 2"
+assert recall_at_k(["a"], {"a"}, 10) == 1.0, "k larger than the list is fine"
+try:
+    recall_at_k(["a"], set(), 3)
+    assert False, "empty relevant set should raise ValueError"
+except ValueError:
+    pass
+assert reciprocal_rank(["x", "y", "a"], {"a"}) == 1 / 3, "first relevant at position 3 gives 1/3"
+assert reciprocal_rank(["x", "y"], {"a"}) == 0.0, "no relevant result gives 0.0"
+api = evaluate(RUNS["api-model"], LABELS, 3)
+assert api == {"recall@3": 1.0, "mrr": 0.917}, f"api-model at k=3: got {api}"
+local1 = evaluate(RUNS["local-model"], LABELS, 1)
+assert local1 == {"recall@1": 0.688, "mrr": 0.812}, f"local-model at k=1: got {local1}"
+assert compare(RUNS["api-model"], RUNS["local-model"], LABELS) == (2, 1, 5), "api wins 2, local wins 1, 5 ties"`}
+  solution={`def recall_at_k(ranked, relevant, k):
+    if not relevant:
+        raise ValueError("a labeled query needs at least one relevant id")
+    return len(set(ranked[:k]) & set(relevant)) / len(relevant)
+
+def reciprocal_rank(ranked, relevant):
+    for position, doc_id in enumerate(ranked, start=1):
+        if doc_id in relevant:
+            return 1 / position
+    return 0.0
+
+def evaluate(run, labels, k):
+    recalls = [recall_at_k(run[q], labels[q], k) for q in labels]
+    rrs = [reciprocal_rank(run[q], labels[q]) for q in labels]
+    return {f"recall@{k}": round(sum(recalls) / len(recalls), 3), "mrr": round(sum(rrs) / len(rrs), 3)}
+
+def compare(run_a, run_b, labels):
+    wins_a = wins_b = ties = 0
+    for q in labels:
+        a, b = reciprocal_rank(run_a[q], labels[q]), reciprocal_rank(run_b[q], labels[q])
+        if a > b:
+            wins_a += 1
+        elif b > a:
+            wins_b += 1
+        else:
+            ties += 1
+    return wins_a, wins_b, ties`}
+>
+Implement the four functions and press **Check my answer**. Then read the results the way you would at work. The API model looks clearly better on the averages, but per query it wins only 2 of 8 and loses 1. Its biggest advantage is a single Spanish query, while the local model is better on the exact error code. Is the gap real? With 8 queries you can't tell. What you can tell is what to test next: more multilingual queries (if your users write in Spanish) and more error-code lookups (where week 3's keyword search may beat both).
+</PyRunner>
+
+<DragOrder
+  client:visible
+  prompt="Put the steps of an embedding model bake-off in order"
+  items={[
+    "Collect real queries from logs, tickets, or users, including known hard cases",
+    "Label which documents or chunks answer each query",
+    "Shortlist candidates from the leaderboard's retrieval scores and your constraints (languages, data location, latency, cost)",
+    "Embed the corpus with each candidate, using the right query and document roles",
+    "Compute recall@k and MRR, and compare the models query by query",
+    "Read the losing queries, decide, and freeze the set as a regression test",
+  ]}
+  explanation="Start from your data, not the leaderboard: the queries and labels define what good means. The leaderboard only narrows the candidates. The last step matters as much as the first, because the same set will test every later change to the pipeline."
+/>
+
+<Callout type="pitfall" title="Evaluation sets that can't fail">
+Three ways to build a test set that tells you nothing. **Queries written by reading the documents**: they reuse the documents' words, so every model (and keyword search) looks great. **Only easy queries**: if all 40 questions are answered by the top result of every model, the set can't separate candidates. **Labels from one model's results**: if you label relevance by reviewing what model A retrieved, documents model A missed never get labeled, and model B is penalized for finding them. Label from the corpus, not from a candidate's output, or pool results from every candidate before labeling.
+</Callout>
+
+<LabLink path="labs/studio-2/01-embedding-bakeoff" title="Lab: an embedding bake-off on a labeled query set" needs={["Python 3.10+", "Optional: Voyage AI or OpenAI API key", "Optional: sentence-transformers for a local model"]} minutes={60}>
+Build the evaluation harness (recall@k, MRR, per-query comparison) with offline tests, then run it on a fictional company's help-center articles with a keyword-style baseline, a local Sentence Transformers model, and a provider API model if you have a key. You'll see where each one fails and practice deciding with evidence.
+</LabLink>
+
+<GoDeeper title="How sure can you be with 40 queries?">
+Treat per-query differences as paired data. For each query, take the difference in reciprocal rank between model A and model B. A **paired bootstrap** gives a quick confidence interval: resample the queries with replacement a few thousand times, recompute the mean difference each time, and look at the 2.5th and 97.5th percentiles. If the interval comfortably includes zero, you don't have evidence of a difference, and you should pick on cost, latency, or operations, or label more queries. The same idea underlies the confidence intervals you'll compute for LLM evaluations in Studio 3.
+
+If you want to evaluate against public benchmarks too, the `mteb` Python package can run any Sentence Transformers model on selected MTEB tasks, and its contribution guide explains how to add your own dataset as a task. That is worth doing for a model you plan to publish; for choosing a model for one product, your own small set is usually enough.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+The embedding model is a sticky decision, so make it with evidence. Use the leaderboard's retrieval scores and your constraints (languages, input length, data location, latency, cost) to shortlist two or three candidates, including at least one provider model and one open model where policy allows. Set query and document roles correctly. Evaluate on 30 to 100 labeled queries from your domain with recall@k and MRR, compare query by query, and keep the set. If a Matryoshka size option exists, measure the smaller sizes too. Next lesson: once you have millions of vectors, how do you search them in milliseconds, and how do you know the fast search isn't missing things?
+</Listen>

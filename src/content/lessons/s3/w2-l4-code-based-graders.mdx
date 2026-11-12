@@ -1,0 +1,337 @@
+---
+id: s3-w2-l4
+studio: s3
+week: 2
+order: 4
+title: Code-based graders
+summary: Assertions, exact and fuzzy matching, regular expressions, schema checks, running generated code against tests, and reference-based metrics such as BLEU and ROUGE, with the case for making every check you can deterministic.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Explain why deterministic, code-based graders come first, and name the kinds of criteria they can't judge
+  - Write exact-match, normalized, regex, and schema graders, choosing normalizations deliberately
+  - Grade generated code by executing it against tests, and explain pass@k and why it needs a sandbox
+  - Describe what BLEU and ROUGE measure and summarize the evidence on their limits
+  - Test a grader against outputs you know should pass and outputs you know should fail
+sources:
+  - { id: claude-eval-criteria-docs, use: summarized, where: "Grading evals: code-based, human, and LLM-based grading" }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Types of graders" }
+  - { id: python-re-docs, use: summarized, where: "search() vs. match() vs. fullmatch()" }
+  - { id: python-difflib-docs, use: summarized, where: "SequenceMatcher.ratio" }
+  - { id: pydantic-docs, use: linked, where: "Models and validation" }
+  - { id: chen-2021-codex, use: summarized, where: "Sections 2.1 and 3 (pass@k, BLEU versus functional correctness)" }
+  - { id: papineni-2002-bleu, use: summarized }
+  - { id: lin-2004-rouge, use: summarized }
+  - { id: reiter-2018-bleu, use: summarized }
+  - { id: hamel-evals, use: linked, where: "Level 1, unit tests" }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 3, Evaluation Methodology" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      Ehud Reiter's 2018 structured review of BLEU looked at 284 reported correlations between BLEU and human
+      judgments. Which use did the review find support for?
+    options:
+      - id: a
+        text: Diagnostic evaluation of machine translation systems, the purpose BLEU was designed for.
+        correct: true
+        rationale: Yes. The review supports BLEU for comparing MT systems during development, and not much beyond that.
+      - id: b
+        text: Scoring individual generated texts, such as one summary or one support reply.
+        rationale: The review found no support for evaluating individual texts. That is exactly how BLEU is often misused in LLM evals.
+      - id: c
+        text: Any natural language generation task, as long as you have several reference texts.
+        rationale: The review did not support BLEU outside machine translation, references or not.
+    explanation: >-
+      Reference-overlap metrics answer "how many words or n-grams does this share with the reference?" For translation
+      systems compared in aggregate, that tracks quality reasonably well. For a single LLM output, a correct answer in
+      different words scores low, and a wrong answer that copies the reference's phrasing scores high.
+  - id: kc2
+    type: predict-output
+    prompt: >-
+      A model generated 4 solutions to a coding task and 2 of them pass the unit tests. What does this print? (This
+      is the unbiased pass@k estimator from Chen et al., 2021, for k = 2.)
+    code: |
+      from math import comb
+      n, c, k = 4, 2, 2
+      print(round(1 - comb(n - c, k) / comb(n, k), 2))
+    options:
+      - id: a
+        text: "`0.75`"
+        rationale: That's 1 - (1 - 0.5)^2, the plug-in estimate the paper shows is biased. Drawing without replacement from 4 samples differs from independent draws.
+      - id: b
+        text: "`0.83`"
+        correct: true
+        rationale: comb(2, 2) / comb(4, 2) = 1/6 is the chance that both drawn samples fail, so pass@2 = 5/6.
+      - id: c
+        text: "`0.5`"
+        rationale: That's pass@1, the fraction of samples that pass.
+      - id: d
+        text: "`1.0`"
+        rationale: Only if every pair contained a passing sample. One pair (the two failing samples) doesn't.
+    explanation: >-
+      pass@k asks: if you drew k of the n samples, what's the chance at least one passes? Counting pairs: there are
+      six ways to pick 2 of 4, and only one of them (both failures) has no pass. So 5/6, about 0.83.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      Your team summarizes customer calls. A colleague proposes a release gate: average ROUGE-L against last quarter's
+      human-written summaries must not drop. What is the best response?
+    options:
+      - id: a
+        text: Adopt it. ROUGE is a standard summarization metric, so it's an objective gate.
+        rationale: Standard isn't the same as valid for this use. A summary can drop a key fact and keep a high overlap score, or be better and score lower because it uses different words.
+      - id: b
+        text: Track ROUGE as a cheap trend signal if you like, but gate on deterministic checks you can state (required facts present, no invented account numbers, length limits) plus a calibrated judge for faithfulness.
+        correct: true
+        rationale: Yes. Put the criteria you actually care about into checks that measure them directly, and use overlap metrics, at most, as a diagnostic.
+      - id: c
+        text: Replace ROUGE with BLEU, which is more precise.
+        rationale: BLEU is precision-oriented and ROUGE recall-oriented, but both measure surface overlap with a reference and share the same validity problem.
+    explanation: >-
+      Overlap metrics are cheap and deterministic, which makes them tempting gates. But a gate should measure the
+      property you're protecting. Decompose "good summary" into checkable parts, write code for the parts code can
+      check, and use a model judge (calibrated in lesson 6) for the parts it can't.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## A grader is a function, so write it like one
+
+Week 1 ended with failure modes: concrete ways your system goes wrong, found by reading real outputs. A **grader** turns one of those failure modes into a function: it takes an output (and sometimes the input and a reference answer) and returns a score, usually pass or fail. An eval is a set of cases plus the graders that score them.
+
+There are three kinds of grader, and the order you reach for them matters. Anthropic's guide to building evals ranks them plainly: **code-based grading** is the fastest, most reliable, and most scalable, but lacks nuance; **human grading** is the most flexible and highest quality, but slow and expensive; **LLM-based grading** is fast and flexible but has to be tested for reliability before you scale it. Anthropic's engineering team makes the same trade-off explicit in its write-up on agent evals: code graders are cheap, objective, reproducible, and easy to debug, and their weakness is brittleness when a valid answer looks different from what the code expects.
+
+The practical rule follows: **make every check you can deterministic**, and save model judges (next lesson) for criteria code genuinely can't decide. A deterministic grader gives the same answer every run, costs nothing, and can itself be unit-tested. That last property is underrated. A grader is code that decides whether you ship, so it deserves tests as much as anything in your product.
+
+This lesson works through the toolbox from simplest to most involved: exact and normalized matching, regular expressions, fuzzy matching, schema checks, executing generated code, and reference-overlap metrics, with what each one can and can't tell you.
+</Listen>
+
+<Listen>
+## Exact match, and the normalizations you choose
+
+The simplest grader compares the output with an expected answer: `output == expected`. It fits any task whose answer space is closed: a label from a fixed set (refund, exchange, warranty), a number, a yes or no, an ID. Anthropic's sentiment-classification example does exactly this over a labeled set and reports accuracy.
+
+Raw equality is usually too strict, so you normalize first: strip surrounding whitespace, lowercase, maybe collapse internal whitespace. Each normalization is a decision about what counts as the same answer, and you should be able to say why it's safe. Lowercasing a category label is safe. Lowercasing a product code might merge two different products. Stripping punctuation from a number can turn "1,000.5" into "10005".
+
+A close cousin is the **contains** check: does the output include a required phrase ("5 to 7 business days"), or exclude a forbidden one ("guaranteed")? These are useful guardrails, with a known weakness: substring checks can't see negation or context. "We do not offer a full refund" contains "full refund."
+
+Two habits make these graders trustworthy. First, grade **one property per check** and keep the results separate (`category_correct`, `order_id_correct`, `no_promises`), rather than one blended pass. When a score drops you'll know which property broke. Second, decide in advance what the grader does with outputs it can't interpret, such as text that isn't valid JSON. Count those as a separate failure, never as a silent pass, and never "repair" them in the grader without counting how often you had to.
+</Listen>
+
+<Listen>
+## Regular expressions and fuzzy matching
+
+When the answer has a format rather than a fixed value, use a **regular expression**: order IDs like `TP-` followed by six digits, ISO dates, currency amounts, a citation marker. Python's `re` module offers three ways to apply a pattern, and graders get them wrong constantly. `search` finds the pattern anywhere in the string, `match` only at the start, and `fullmatch` requires the whole string to match. For validating a field, you almost always want `fullmatch`. With `search`, "TP-4829137" (seven digits) passes, because six of its digits match.
+
+Patterns fail in both directions, so test both. A pattern that is too strict rejects valid outputs (a date written "2026-11-04" when you expected "11/04/2026"); one that is too lenient accepts junk (a pattern where everything is optional matches the empty string). Write the cases first: three strings that must match, three that must not.
+
+**Fuzzy matching** scores similarity instead of equality. Python's `difflib.SequenceMatcher` gives a ratio between 0 and 1 based on matching subsequences; edit-distance libraries do similar work. Fuzzy matching helps when the expected answer is a name or short phrase that can be spelled or formatted slightly differently ("Tallow and Pine" versus "Tallow & Pine"). It's risky anywhere a small character change is a big meaning change: "5 days" and "15 days" are very similar strings. If you use a threshold, pick it from data. Score a handful of pairs you've labeled as same and different, and choose the cutoff that separates them, instead of guessing 0.8.
+</Listen>
+
+<Predict
+  title="search versus fullmatch"
+  code={`import re
+
+pattern = re.compile(r"TP-\\d{6}")
+ids = ["TP-482913", "TP-4829137", "Order TP-482913"]
+print([bool(pattern.search(x)) for x in ids])
+print([bool(pattern.fullmatch(x)) for x in ids])`}
+  options={[
+    "[True, True, True] then [True, False, False]",
+    "[True, False, False] then [True, False, False]",
+    "[True, True, False] then [True, False, False]",
+    "[True, True, True] then [True, True, False]",
+  ]}
+  answer={0}
+>
+`search` succeeds whenever six digits after "TP-" appear anywhere, so all three pass, including the seven-digit ID and the one with a prefix. `fullmatch` accepts only the string that is exactly the pattern. For a grader that validates a field, a lenient pattern is a silent false pass.
+</Predict>
+
+<Listen>
+## Schema checks: valid, then correct
+
+Many LLM features return structured data, and Studio 1 built extraction with schemas, validation, and evidence checks. In an eval, the same tools become graders. A **schema check** parses the output and validates it against a model of what it must look like (with Pydantic, `Model.model_validate_json(text)`), then you check field values separately.
+
+Keep three outcomes apart, because they have different causes and fixes:
+
+- **Unparseable**: not JSON at all, or wrapped in prose or code fences. With structured outputs this should be rare, so a jump in it usually means truncation, a refusal, or a broken configuration.
+- **Schema-invalid**: parses, but a required field is missing, an extra field appears, or a value has the wrong type or falls outside an allowed set.
+- **Schema-valid but wrong**: the shape is perfect and the category or date is incorrect. Only comparison with the expected answer (or a judge) catches this.
+
+Reporting these as three numbers instead of one "correct" rate is the difference between a dashboard that says "quality dropped 4 points" and one that says "4 points of outputs stopped parsing after the model change," which tells you exactly where to look.
+
+The exercise below puts these pieces together for a support-ticket triage feature: the model must return a category, the order ID mentioned in the ticket (or null), and a short reply that makes no promises the policy doesn't allow.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s3-w2-triage-graders"
+  title="Write graders for a triage feature"
+  starter={`import json
+import re
+
+CATEGORIES = {"refund", "exchange", "warranty", "cancellation", "other"}
+ORDER_ID = re.compile(r"TP-\\d{6}")
+PROMISES = re.compile(r"\\b(guarantee\\w*|full refund|no questions asked)\\b", re.IGNORECASE)
+
+def parse_output(text):
+    """Return the parsed object if text is a JSON object (a dict), else None. No repairs."""
+    # TODO
+    pass
+
+def grade(text, expected):
+    """Grade one triage output against the expected values for this case.
+
+    Return a dict of named checks, each True or False:
+      parsed       text is a JSON object
+      schema       keys are exactly {"category", "order_id", "reply"}, reply is a non-empty string,
+                   and order_id is a string or None
+      category     category, stripped and lowercased, equals expected["category"]
+      order_id     order_id equals expected["order_id"] (None when the ticket has none);
+                   a non-None value must also FULLY match ORDER_ID
+      no_promises  the reply contains none of the PROMISES phrases
+    If the text doesn't parse, every check is False.
+    """
+    # TODO
+    pass
+
+CASES = [
+    ('{"category": "refund", "order_id": "TP-482913", "reply": "Refunds take 5 to 7 business days."}',
+     {"category": "refund", "order_id": "TP-482913"}),
+    ('{"category": "Refund ", "order_id": "TP-482913", "reply": "We guarantee it arrives Friday."}',
+     {"category": "refund", "order_id": "TP-482913"}),
+    ('{"category": "exchange", "order_id": "TP-4829137", "reply": "Exchanges ship free."}',
+     {"category": "exchange", "order_id": "TP-482913"}),
+    ('\`\`\`json\\\\n{"category": "other", "order_id": null, "reply": "Let me check."}\\\\n\`\`\`',
+     {"category": "other", "order_id": None}),
+    ('{"category": "warranty", "order_id": null, "reply": "", "priority": "high"}',
+     {"category": "warranty", "order_id": None}),
+]
+
+for text, expected in CASES:
+    print(grade(text, expected))`}
+  tests={`r = [grade(t, e) for t, e in CASES]
+assert r[0] is not None, "grade returned None"
+assert all(r[0].values()), "case 0 is fully correct"
+assert set(r[0]) == {"parsed", "schema", "category", "order_id", "no_promises"}, "return exactly the five named checks"
+assert r[1]["category"] is True, "normalize category with strip() and lower() before comparing"
+assert r[1]["no_promises"] is False, "'guarantee' is a forbidden promise"
+assert r[2]["order_id"] is False, "TP-4829137 has seven digits; use fullmatch, not search"
+assert r[2]["category"] and r[2]["schema"] and r[2]["no_promises"], "case 2 is fine apart from the order id"
+assert r[3] == {k: False for k in r[0]}, "fenced JSON is not a JSON object: report it as unparsed, don't repair it silently"
+assert r[4]["parsed"] and not r[4]["schema"], "an extra key and an empty reply break the schema"
+assert r[4]["order_id"] is True and r[4]["category"] is True, "None matches an expected None"
+assert parse_output("[1, 2]") is None, "a JSON array is not an object"
+assert parse_output("not json") is None
+assert grade('{"category": "refund", "order_id": "TP-482913", "reply": "A FULL REFUND, no problem."}', {"category": "refund", "order_id": "TP-482913"})["no_promises"] is False, "match promises case-insensitively"`}
+  solution={`def parse_output(text):
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+def grade(text, expected):
+    names = ["parsed", "schema", "category", "order_id", "no_promises"]
+    obj = parse_output(text)
+    if obj is None:
+        return {n: False for n in names}
+    reply = obj.get("reply")
+    oid = obj.get("order_id")
+    cat = obj.get("category")
+    schema = (
+        set(obj) == {"category", "order_id", "reply"}
+        and isinstance(reply, str) and reply.strip() != ""
+        and (oid is None or isinstance(oid, str))
+    )
+    category = isinstance(cat, str) and cat.strip().lower() == expected["category"]
+    if oid is None:
+        order_ok = expected["order_id"] is None
+    else:
+        order_ok = isinstance(oid, str) and ORDER_ID.fullmatch(oid) is not None and oid == expected["order_id"]
+    no_promises = not (isinstance(reply, str) and PROMISES.search(reply))
+    return {"parsed": True, "schema": schema, "category": category, "order_id": order_ok, "no_promises": no_promises}`}
+>
+Implement `parse_output` and `grade`, then press **Check my answer**. Each case pairs a model output with the expected values. Notice what the cases are testing: normalization that is safe (a stray space and capital in the category), a pattern that must use `fullmatch`, fenced JSON that a lenient grader would "fix," and a schema with an extra key. Writing graders against cases like these, chosen because they should fail, is how you test the grader itself.
+</PyRunner>
+
+<Callout type="pitfall" title="The grader that passes everything">
+Graders fail silently. A regex with `search` instead of `fullmatch`, a contains-check on an empty required phrase (`"" in text` is always True), a schema check that catches the exception and returns True, a JSON repair step that turns anything into an object: each one inflates your pass rate and no test you'd naturally write will notice. Before you trust a grader, run it on an output that must pass and on outputs that must fail (an empty string, the wrong answer in the right format, the right answer wrapped in junk). If it doesn't fail the bad ones, it isn't a grader yet.
+</Callout>
+
+<Listen>
+## Executing generated code
+
+When the output is code, the strongest grader is to **run it**. Chen and colleagues at OpenAI argued this in the 2021 paper that introduced the HumanEval benchmark: match-based metrics can't account for the huge space of programs that are functionally equivalent to a reference solution, so they evaluated **functional correctness** instead, counting a sample as correct if it passes a set of unit tests. They pointed out that this mirrors how developers already judge code, through tests.
+
+The paper also introduced the standard way to report it, **pass@k**: the probability that at least one of k sampled solutions passes. To estimate it with low variance, generate n samples (n at least k), count the c that pass, and compute 1 minus C(n minus c, k) over C(n, k). The obvious shortcut, 1 minus (1 minus the pass rate) to the k, is biased, which the paper shows in an appendix.
+
+Executing model-written code is a security decision. Generated code can delete files, read secrets from your environment, open network connections, or loop forever. The HumanEval authors built a sandbox for exactly this reason. In practice, run generated code in a disposable container or a managed sandbox with no credentials, no network unless the test needs it, a CPU and memory limit, and a timeout, and grade what the run left behind (test results, files written, exit code). Anthropic's agent-evals write-up makes the same point for agents generally: grade the outcome in the environment, not the transcript's description of it.
+</Listen>
+
+<GoDeeper title="Where the pass@k estimator comes from">
+Fix one problem with n generated samples, c of which pass. Draw k distinct samples uniformly at random. The draw contains no passing sample exactly when all k come from the n minus c failures, which happens with probability C(n minus c, k) / C(n, k). So the chance of at least one pass is 1 minus that ratio, and averaging this quantity over problems gives an unbiased estimate of pass@k for samples drawn this way.
+
+Why is the shortcut biased? Write p-hat for c / n. The shortcut computes 1 minus (1 minus p-hat) to the k. The function f(p) = 1 minus (1 minus p) to the k is concave for k greater than 1, so by Jensen's inequality the expected value of f(p-hat) is at most f(p): the shortcut underestimates pass@k on average, and the gap grows with k. Chen and colleagues also give a numerically stable implementation that avoids computing huge binomial coefficients, by evaluating the ratio as a running product.
+
+For your own work, the estimator matters when you report "best of k" success, for example when a coding agent may retry. For most product evals you'll report pass@1, which is just the pass rate.
+</GoDeeper>
+
+<Listen>
+## Reference-based metrics: BLEU, ROUGE, and their limits
+
+Before LLMs, text generation was mostly scored by comparing outputs with human-written references. **BLEU** (Papineni and colleagues, 2002) was built for machine translation: it measures modified n-gram precision (how many of the candidate's word sequences appear in the references, with clipping so repeats don't count twice) and multiplies by a brevity penalty so very short outputs can't game precision. **ROUGE** (Lin, 2004) was built for summarization and is recall-oriented: ROUGE-N counts how many of the reference's n-grams the candidate recovers, and ROUGE-L uses the longest common subsequence.
+
+Both were real advances, because they made frequent, cheap evaluation possible where human review took weeks. Both measure surface overlap, and the evidence on what that tells you is sobering. Reiter's 2018 structured review of 284 correlations from 34 papers found support for BLEU as a diagnostic for machine translation systems, but not for other generation tasks, not for evaluating individual texts, and not for scientific hypothesis testing. For code, the HumanEval paper computed BLEU for correct and incorrect solutions and found the distributions overlapped heavily: functionally wrong programs often scored higher than correct ones.
+
+The failure is easy to see. A correct answer in different words ("you'll see the money in about a week") shares almost nothing with the reference "refunds arrive within 5 to 7 business days." A wrong answer that copies the reference's words ("refunds never arrive within 5 to 7 business days") scores almost perfectly. So treat overlap metrics as, at most, a cheap trend line across many outputs, never as a per-output grader or a release gate for open-ended text.
+</Listen>
+
+<Predict
+  title="Overlap rewards the wrong answer"
+  code={`from collections import Counter
+
+def unigram_recall(candidate, reference):
+    """ROUGE-1-style recall: share of reference words the candidate covers."""
+    c, r = Counter(candidate.lower().split()), Counter(reference.lower().split())
+    return sum(min(c[w], r[w]) for w in r) / sum(r.values())
+
+ref = "refunds arrive within 5 to 7 business days"
+right = "you will see the money in about a week"
+wrong = "refunds never arrive within 5 to 7 business days"
+print(unigram_recall(right, ref), unigram_recall(wrong, ref))`}
+  options={["0.0 1.0", "1.0 0.0", "0.0 0.89", "0.5 0.5"]}
+  answer={0}
+>
+The correct paraphrase shares no words with the reference, so it scores 0.0. The wrong answer contains every reference word (plus "never"), so its recall is a perfect 1.0. Real ROUGE adds refinements, but the core problem remains: overlap measures wording, not truth.
+</Predict>
+
+<Mermaid
+  alt="Decision flowchart for choosing a grader. If the answer space is closed (a label, number, or ID), use exact match after normalization. Otherwise, if the output has a required format or structure, use regex or schema checks, then compare fields to expected values. If the output is code or an action, execute it in a sandbox and check tests or end state. If the criterion is about meaning, faithfulness, or tone, first try to decompose it into checkable parts; whatever remains goes to an LLM judge calibrated against human labels. Reference-overlap metrics such as BLEU or ROUGE are shown only as an optional trend signal."
+  caption="Push every criterion as far left as it will go. What can't be checked in code goes to a calibrated judge."
+  chart={`flowchart TD
+  Q["What does this criterion check?"] --> A{"Closed answer: label, number, ID?"}
+  A -- "yes" --> EM["Exact match after deliberate normalization"]
+  A -- "no" --> B{"Required format or structure?"}
+  B -- "yes" --> RX["Regex with fullmatch, or schema validation, then field checks"]
+  B -- "no" --> C{"Code or an action?"}
+  C -- "yes" --> EX["Execute in a sandbox; check tests or end state"]
+  C -- "no" --> D["Decompose into checkable parts"]
+  D --> J["Remaining judgment goes to a calibrated LLM judge (lessons 5 and 6)"]
+  D -. "optional trend only" .-> OV["BLEU / ROUGE overlap"]`}
+/>
+
+<Listen>
+## How a working team uses code graders
+
+In a real team, code graders live in the repository next to the feature, run in CI on every change, and are reviewed like any other code. A few practices separate useful suites from noisy ones.
+
+**Start from failure modes, not from metrics.** Each grader should map to a failure you found in error analysis ("replies promise exceptions the policy doesn't allow"), so a failing check points at a known problem with a known owner. Hamel Husain describes this layer as the unit tests of an LLM product: scoped, fast assertions that run constantly.
+
+**Decompose before you delegate.** "Is this reply good?" sounds like a job for a model judge. Much of it isn't. Does the reply mention the order ID? Is it under 120 words? Does it avoid the forbidden promise list? Does every number in it appear in the policy? Each of those is code. What remains (does it actually answer the question?) is a much narrower judgment, which makes the judge in the next lesson cheaper and easier to calibrate.
+
+**Watch for brittleness.** When a code grader starts failing outputs that a person would accept, that's a grader bug, and you fix it with a new test case, not by loosening the check until the dashboard turns green.
+
+On model selection: deterministic graders are model-agnostic, which is what makes them valuable when you compare providers. Swap in a cheaper model or another provider's model, rerun the same checks, and the difference you see comes from the model, not from a judge that might prefer its own family's style.
+</Listen>

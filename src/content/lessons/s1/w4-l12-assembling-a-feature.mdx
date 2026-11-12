@@ -1,0 +1,278 @@
+---
+id: s1-w4-l12
+studio: s1
+week: 4
+order: 12
+title: "Assembling an LLM feature: from transcript to action items"
+summary: A design walkthrough for the Studio 1 project. Pipeline stages, where each check sits, which model tier each stage needs and why, a back-of-envelope cost estimate, what to log for evals, and a definition of done.
+estMinutes: 50
+reviewed: 2026-11-11
+objectives:
+  - Decompose a transcript-to-action-items feature into stages, and say which are model calls, which are tools, and which are plain code
+  - Place a verification step after every stage that produces model output
+  - Estimate per-meeting and monthly cost for different model tiers, and explain why cost alone should not decide the tier
+  - List what to log on every run so you can build evals later
+  - Write a definition of done for an LLM feature that includes accuracy, safety, and cost
+sources:
+  - { id: anthropic-effective-agents, use: summarized, where: "Workflows versus agents; start with the simplest solution" }
+  - { id: claude-docs, use: summarized, where: "Structured outputs; response request ids" }
+  - { id: claude-pricing-w4, use: summarized, where: "Model pricing and batch processing discount, read 2026-11-11" }
+  - { id: claude-batch-processing-w4, use: linked }
+  - { id: claude-adaptive-thinking-w4, use: summarized, where: "Thinking tokens are billed as output" }
+  - { id: openai-tokenizer-guide, use: summarized }
+  - { id: liu-2023-lost-middle, use: summarized }
+  - { id: hamel-evals, use: summarized }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 4, Evaluate AI Systems (model selection)" }
+  - { id: claude-mitigate-injection, use: summarized }
+  - { id: eugeneyan-llm-patterns, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      On a test set of 30 labeled meetings, your extraction stage finds 93% of real action items on the
+      largest model and 89% on a mid-tier model that costs half as much. Your product bar is 90%, and monthly
+      model spend at your volume is under $20 either way. What do you do?
+    options:
+      - id: a
+        text: Ship the mid-tier model; it is cheaper and close enough.
+        rationale: It misses the bar you set. "Close enough" is how bars quietly erode.
+      - id: b
+        text: Ship the larger model now, and keep the mid-tier option open by improving the prompt and re-running the same eval.
+        correct: true
+        rationale: Only one model meets the bar, and the cost difference is small in absolute terms. The eval makes revisiting the choice cheap.
+      - id: c
+        text: Pick the mid-tier model and lower the bar to 85%.
+        rationale: Changing the requirement to fit the result defeats the point of having one.
+    explanation: >-
+      Choose the cheapest option that meets the bar on your own data. Here only one model meets it, and the dollars
+      are small next to the cost of a missed commitment. Keep the eval, because prompts, models, and prices all change,
+      and the comparison should be one command away. Also note the sample: 30 meetings is a small set, so a
+      3 to 4 point gap may not be stable. Add examples before you make a close call permanent.
+  - id: kc2
+    type: mcq
+    prompt: Why does the pipeline verify each evidence quote against the transcript in plain code instead of asking a model whether the quote is accurate?
+    options:
+      - id: a
+        text: Models cannot read quotes.
+        rationale: They can. The point is about which check you can trust.
+      - id: b
+        text: A substring check is deterministic, free, and cannot be talked out of its answer; a model check is another model output that would itself need checking.
+        correct: true
+        rationale: Yes. Where a check can be exact, make it exact.
+      - id: c
+        text: Structured outputs already guarantee that quotes are verbatim.
+        rationale: Structured outputs guarantee the shape of the JSON, not that a string appears in the source.
+    explanation: >-
+      Use code for checks that have an exact answer (does this text occur in that text, does this email exist, is
+      this a valid date) and save model judgment for questions that need it (are these two items the same task).
+      Every model-based check adds cost, latency, and its own error rate.
+  - id: kc3
+    type: predict-output
+    prompt: Using the prices in this lesson, what does this print?
+    code: |
+      def cost(tokens_in, tokens_out, price_in, price_out):
+          return (tokens_in * price_in + tokens_out * price_out) / 1_000_000
+
+      per_meeting = cost(20_000, 2_000, 2.00, 10.00)   # mid-tier prices
+      print(round(per_meeting, 3), round(per_meeting * 500, 2))
+    options:
+      - id: a
+        text: "`0.06 30.0`"
+        correct: true
+        rationale: 20,000 times $2 per million is $0.04, plus 2,000 times $10 per million is $0.02. That is $0.06, and 500 meetings cost $30.
+      - id: b
+        text: "`0.04 20.0`"
+        rationale: That counts only the input tokens.
+      - id: c
+        text: "`60.0 30000.0`"
+        rationale: You forgot that prices are per million tokens.
+    explanation: >-
+      Output tokens usually cost several times more than input tokens, so a long answer can dominate a long prompt.
+      On models that think, thinking tokens are billed as output too, which is why you measure real usage from
+      responses instead of trusting an estimate like this one.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The feature, and the mistake to avoid
+
+The Studio 1 project is a tool that takes a meeting transcript and produces action items: what needs doing, who owns it, when it is due, and the words in the meeting that prove someone committed to it. A person reviews the list, and only approved items reach a task tracker.
+
+The tempting first version is one prompt: "Here is a transcript. List the action items as JSON." It will produce something plausible on the first try, and that is the danger. Lesson 1 warned that fluent output is not evidence of correctness. A single prompt gives you no place to check anything: if an owner is wrong, you cannot tell whether the model misheard the transcript, guessed between two people with the same first name, or invented the item entirely.
+
+This lesson lays out a design instead. Each stage has one job, produces output you can inspect, and is followed by a check. It is not the only valid design, and the project leaves the details to you. But every choice below is one you should be able to defend with the concepts from lessons 1 through 11.
+</Listen>
+
+<Listen>
+## Workflow, not agent
+
+Anthropic's "Building effective agents" post separates **workflows**, where code decides the sequence of steps and models fill in particular steps, from **agents**, where the model decides what to do next and which tools to use. It recommends starting with the simplest solution that works and adding autonomy only when the task needs it.
+
+This feature is a workflow. The steps are known in advance and always the same: read the transcript, find candidate items, check them, normalize them, merge duplicates, ask a human. Letting a model choose the order buys nothing and costs you predictability, testability, and cost control. You will still use tool calling from lessons 10 and 11, but inside a stage, with a bounded loop, for the specific job of resolving owners and dates.
+</Listen>
+
+<Mermaid
+  alt="Architecture flowchart. A transcript is ingested and chunked by speaker turn. Each chunk goes to an extraction model call that returns structured candidate items. A code step verifies that each evidence quote appears verbatim in its chunk; failures go to a rejected list with a reason. Verified items go to a normalization step that uses tools: a team directory lookup and a date resolver. Normalized items are deduplicated, then shown to a human reviewer who approves, edits, or rejects each. Approved items are written to the task tracker by a gated write. Every stage writes to a run log, which feeds a later eval set."
+  caption="One reasonable pipeline. Rounded boxes call a model; square boxes are plain code; the write happens only after human review."
+  chart={`flowchart TD
+  T["Transcript"] --> I["Ingest and chunk by speaker turn (code)"]
+  I --> X("Extract candidate items, structured output (model)")
+  X --> V["Verify evidence quote is verbatim in chunk (code)"]
+  V -- "fails" --> RJ["Rejected, with reason"]
+  V -- "passes" --> N("Normalize owner and date (model + tools: directory lookup, date resolver)")
+  N --> D["Deduplicate (code first, model only for ambiguous pairs)"]
+  D --> H["Human review: approve, edit, reject"]
+  H -- "approved" --> W["Gated write to task tracker"]
+  I -.-> L[("Run log")]
+  X -.-> L
+  V -.-> L
+  N -.-> L
+  H -.-> L
+  L -.-> E["Eval set (Studio 3)"]`}
+/>
+
+<Listen>
+## Stage by stage
+
+**Ingest and chunk (code).** Parse the transcript into speaker turns with timestamps, and keep the original text untouched so quotes can be checked against it. Current frontier models have context windows large enough for most single meetings, so chunking is not always required. It still helps: smaller chunks put the evidence close to the instruction (recall the "lost in the middle" findings from lesson 1), and they let you run chunks in parallel. If you chunk, overlap chunks slightly so a commitment split across a boundary is not lost, and expect the overlap to create duplicates that a later stage must merge.
+
+**Extract candidates (model, structured output).** This is the stage that needs judgment: telling "I'll send the deck Friday" (a commitment) from "someone should look at the deck" (not one, or an unowned item). Use the structured outputs you built in week 3 so each candidate has the same fields: a title, the owner as mentioned, the due phrase as spoken, a verbatim evidence quote, and the speaker and timestamp. Ask for the phrase as spoken ("next Friday"), not a resolved date. The model is not the right place for calendar arithmetic, and keeping the raw phrase makes the next stage checkable.
+
+**Verify evidence (code).** For each candidate, confirm the evidence quote occurs in its chunk, after normalizing whitespace and case. A candidate whose quote does not appear is either a paraphrase or an invention, and either way it is not evidence. Reject it with a reason and log it. This one check, which costs nothing, catches a whole class of confident-but-wrong output.
+
+**Normalize owners and dates (tools).** Resolve "Marcus" to a directory entry and "next Friday" to a date, measured from the meeting date. Notice the choice here. If normalization were fully deterministic, you would call these functions directly in code and skip the model. Tools earn their place when judgment is needed, such as two teammates named Marcus, where the surrounding conversation decides which one was meant, or when the right answer is "unassigned." Whichever way you go, the rules from lesson 11 apply: read-only tools, strict schemas, your own checks, instructive errors.
+
+**Deduplicate (code first).** The same commitment often appears twice: restated at the end of a meeting, or duplicated by chunk overlap. Start with a deterministic key (same owner, same due date, highly similar title) and send only the ambiguous pairs to a model, which keeps that call small and rare.
+
+**Human review, then write.** Show the reviewer each item with its evidence quote, the resolved owner and date, and anything the pipeline was unsure of. Approve, edit, or reject in one pass. Only approved items go to the tracker, through a gated, idempotent write. This is the single meaningful approval lesson 11 argued for, and the reviewer's decisions are labeled data you will use later.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put the pipeline stages in order"
+  items={[
+    "Parse the transcript into speaker turns and chunks, keeping the original text",
+    "Extract candidate items with structured output, including a verbatim evidence quote",
+    "Reject any candidate whose quote does not appear in its chunk",
+    "Resolve owners and dates with the directory lookup and date resolver",
+    "Merge duplicate items",
+    "Have a person approve, edit, or reject each item",
+    "Write approved items to the tracker",
+  ]}
+  explanation="Every model stage is followed by a check before anything depends on it, and the only write happens last, after a human has seen the evidence. Verifying quotes before normalization also means you never spend tool calls on items you are about to reject."
+/>
+
+<Callout type="pitfall" title="Checks that are not really checks">
+Three patterns look like verification but are not. Asking the same model "are you sure?" about its own output, and accepting yes. Letting structured output stand in for correctness: valid JSON with a made-up quote is still made up. And testing the whole pipeline on one transcript you wrote yourself, which proves only that it works on that transcript. Real meetings have crosstalk, people who say "I can probably look at that," and names the transcription service got wrong. Collect several real or realistic transcripts early, including messy ones.
+</Callout>
+
+<Listen>
+## Which model for which stage
+
+Different stages need different amounts of capability, and the price spread between tiers is large. On the Claude pricing page as of today, per million tokens, Claude Opus 5.5 costs $4 for input and $20 for output, Claude Sonnet 5.5 costs $2 and $10, and Claude Haiku 5.5 costs $0.10 and $0.50 (for prompts up to 100,000 tokens). The Batch API halves those prices for work that can wait. Prices change, so check the page before you rely on these.
+
+Now a back-of-envelope estimate, with every assumption stated. Assume a one-hour meeting transcript of about 9,000 words. Using OpenAI's rough rule of about three quarters of a word per token, that is about 12,000 tokens; add about 2,000 for instructions and the output schema, so 14,000 input tokens per meeting. Assume the extraction returns 20 candidates at about 75 tokens each, so 1,500 output tokens. Then one extraction call costs about 8.6 cents on Opus 5.5, 4.3 cents on Sonnet 5.5, and about 0.2 cents on Haiku 5.5. At 200 meetings a month, that is roughly $17, $8.60, and $0.43.
+
+Two cautions keep this honest. First, on current Claude models thinking tokens are billed as output, and Opus 5.5 always thinks, so real output usage can be well above 1,500 tokens. The effort setting changes how much. Measure usage from real responses (every response reports it) and replace these guesses. Second, look at what the numbers say. At this volume, the most expensive option likely costs less per month than an hour of a reviewer's time, and a missed commitment can cost far more than that. Cost is a constraint here, not the deciding factor.
+
+So decide with evidence. Label a set of transcripts with the action items a careful person would extract. Run the extraction stage on two or three candidate models, and compare recall (did it find the real items?), precision (are the items it found real?), and the quote-verification pass rate. Pick the cheapest model that meets your bar. Then do the same per stage: deduplicating ambiguous pairs is a much smaller judgment than extraction, and a small model often suffices there. The same method applies if you compare Claude with GPT, Gemini, Grok, or an open-weight model you host yourself, which some teams choose when transcripts must not leave their own infrastructure. Behavior and cost differ by family and version; your eval is what tells you which differences matter for this task.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s1-w4-tier-cost"
+  title="Price the extraction stage, then choose with evidence"
+  starter={`# USD per million tokens (input, output), from the Claude pricing page on 2026-11-11.
+# Prices change: check the page before you rely on these.
+PRICES = {
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-haiku-5-5": (0.10, 0.50),
+}
+
+
+def call_cost(model, input_tokens, output_tokens, batch=False):
+    """Dollar cost of one request. The Batch API halves both prices.
+    Raise KeyError for a model that is not in PRICES."""
+    # TODO
+    return 0.0
+
+
+def monthly_cost(model, meetings, input_tokens, output_tokens, batch=False):
+    """Cost of processing this many meetings, one extraction call each."""
+    # TODO
+    return 0.0
+
+
+def cheapest_meeting_bar(eval_results, min_recall):
+    """eval_results maps model -> {"recall": float, "cost_per_meeting": float}.
+    Return the cheapest model whose recall is at least min_recall, or None."""
+    # TODO
+    return None
+
+
+for m in PRICES:
+    print(m, round(call_cost(m, 14_000, 1_500), 5), round(monthly_cost(m, 200, 14_000, 1_500), 2))`}
+  tests={`assert abs(call_cost("claude-opus-5-5", 14_000, 1_500) - 0.086) < 1e-9, "Opus: 14k in at $4/M plus 1.5k out at $20/M is $0.086"
+assert abs(call_cost("claude-sonnet-5-5", 14_000, 1_500) - 0.043) < 1e-9, "check the Sonnet arithmetic"
+assert abs(call_cost("claude-haiku-5-5", 14_000, 1_500) - 0.00215) < 1e-9, "check the Haiku arithmetic"
+assert abs(call_cost("claude-opus-5-5", 14_000, 1_500, batch=True) - 0.043) < 1e-9, "the Batch API halves the cost"
+assert abs(monthly_cost("claude-opus-5-5", 200, 14_000, 1_500) - 17.2) < 1e-6, "200 meetings at $0.086 is $17.20"
+try:
+    call_cost("some-other-model", 1, 1)
+    raise AssertionError("an unknown model should raise KeyError, not silently cost $0")
+except KeyError:
+    pass
+results = {  # made-up eval numbers, for the exercise only
+    "claude-opus-5-5": {"recall": 0.94, "cost_per_meeting": 0.086},
+    "claude-sonnet-5-5": {"recall": 0.91, "cost_per_meeting": 0.043},
+    "claude-haiku-5-5": {"recall": 0.78, "cost_per_meeting": 0.00215},
+}
+assert cheapest_meeting_bar(results, 0.90) == "claude-sonnet-5-5", "Sonnet is the cheapest model that clears 0.90"
+assert cheapest_meeting_bar(results, 0.70) == "claude-haiku-5-5", "every model clears 0.70, so pick the cheapest"
+assert cheapest_meeting_bar(results, 0.95) is None, "no model clears 0.95: return None, don't pick the best loser"`}
+  solution={`def call_cost(model, input_tokens, output_tokens, batch=False):
+    price_in, price_out = PRICES[model]
+    cost = (input_tokens * price_in + output_tokens * price_out) / 1_000_000
+    return cost / 2 if batch else cost
+
+
+def monthly_cost(model, meetings, input_tokens, output_tokens, batch=False):
+    return meetings * call_cost(model, input_tokens, output_tokens, batch)
+
+
+def cheapest_meeting_bar(eval_results, min_recall):
+    passing = [(r["cost_per_meeting"], m) for m, r in eval_results.items() if r["recall"] >= min_recall]
+    return min(passing)[1] if passing else None`}
+>
+Implement `call_cost`, `monthly_cost`, and `cheapest_meeting_bar`. The first two reproduce the estimate above. The third is the decision rule: among models whose measured recall meets your bar, pick the cheapest, and return `None` if none qualifies (rather than settling for the best of the failures). The recall numbers in the tests are made up for the exercise; in the project, they come from your own labeled transcripts.
+</PyRunner>
+
+<Listen>
+## Log now, evaluate later
+
+In Studio 3 you will build evals, and the raw material is the record of what your system actually did. Hamel Husain's post on evals makes the case that looking at real traces is where improvement starts, and that you cannot look at traces you never saved. So decide now what every run writes down.
+
+For each run: a transcript id (and a content hash, so you know exactly what was processed), the prompt version, the model id and settings such as effort, and the request id the API returns. For each stage: the raw model output, the parsed items, validation failures with reasons, and token usage and latency. For each tool call: the name, the input, the output, and whether it was an error. For human review: what the reviewer approved, edited (and what they changed), and rejected. Those review decisions are free labels. An edited owner tells you the normalization stage was wrong; a rejected item with a verified quote tells you the extraction stage over-reached.
+
+One caution. Transcripts are sensitive: they contain names, plans, and sometimes personnel or customer information. Store logs with the same access controls as the transcripts themselves, keep only as long as you need, and remember that a transcript is also untrusted input, so treat anything in it that looks like an instruction as data (lesson 11).
+</Listen>
+
+<Listen>
+## A definition of done
+
+Write the definition of done before you build, so you are testing against something. Here is a starting point for the project; tighten it as you learn.
+
+The pipeline runs end to end on a set of realistic transcripts, including messy ones, with no unhandled errors. Every item shown to the reviewer has an evidence quote that appears verbatim in the transcript. Owners resolve to directory entries or are explicitly unassigned, never guessed; dates resolve by documented rules or are flagged. Nothing is written to the tracker without approval, writes are idempotent, and the model has no tool that can send data outside the system. On your labeled set, recall and precision meet bars you chose in advance, and you report them with the size of the set. Cost per meeting is measured from real usage, not estimated. Every run produces the log described above. And you can explain, for each model choice, what evidence led to it.
+</Listen>
+
+<GoDeeper title="Where this design goes next">
+Three extensions are worth knowing about, even if the project does not require them. **Batch processing:** if action items can arrive an hour after the meeting instead of instantly, the Batch API halves token prices. **Confidence routing:** have the extraction stage mark uncertain items, and route only those to a larger model or straight to the reviewer with a flag, which is a cheaper way to buy accuracy than running the largest model on everything. **Evaluation-driven iteration:** once the logs exist, every prompt or model change can be scored against the same labeled set before it ships. Eugene Yan's "Patterns for Building LLM-based Systems and Products" surveys these and related patterns, and Chip Huyen's *AI Engineering* covers model selection as an evaluation problem in depth.
+</GoDeeper>
+
+<Listen>
+## Your turn
+
+You now have every building block: how models generate and why they vary (week 1), prompts you can test (week 2), structured outputs you verify (week 3), and tool calls with gates (week 4). The [Studio 1 project](../../projects/s1-project/) asks you to assemble them into this feature, make your own design choices, and defend them. Start with the definition of done, collect your transcripts, and build the thinnest version that runs end to end before you improve any one stage.
+</Listen>

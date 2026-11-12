@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.259
+Reading the response.
+
+2
+00:00:01.539 --> 00:00:07.320
+The response is one assistant message with a handful of fields you should treat as part of your contract.
+
+3
+00:00:07.600 --> 00:00:10.928
+content is the list of blocks the model produced, in order.
+
+4
+00:00:11.208 --> 00:00:20.061
+On current Claude models that list can include thinking blocks as well as text, because these models reason before answering; on Claude Opus 5.
+
+5
+00:00:20.341 --> 00:00:27.317
+5, thinking is always on and its text is omitted by default, so you may see a thinking block with an empty string.
+
+6
+00:00:27.597 --> 00:00:33.549
+That is why the example loops over blocks and picks the text ones instead of reading content[0].
+
+7
+00:00:33.829 --> 00:00:39.355
+stop_reason tells you why generation ended, and it is the field beginners skip most often.
+
+8
+00:00:39.635 --> 00:00:50.067
+usage reports token counts: input_tokens, output_tokens, and, when you use prompt caching, cache_creation_input_tokens and cache_read_input_tokens.
+
+9
+00:00:50.347 --> 00:00:51.925
+Two details catch people.
+
+10
+00:00:52.205 --> 00:01:01.357
+First, with caching, input_tokens counts only the tokens after your last cache breakpoint, so total input is the sum of all three input fields.
+
+11
+00:01:01.637 --> 00:01:10.576
+Second, thinking tokens are billed as output tokens even when you never see their text, so output_tokens can be much larger than the visible answer.
+
+12
+00:01:10.856 --> 00:01:19.005
+Finally, every response carries a request id (the request-id header, exposed by the Python SDK as _request_id ).
+
+13
+00:01:19.285 --> 00:01:24.299
+Log it with every call; it is how you and the provider find a specific request later.

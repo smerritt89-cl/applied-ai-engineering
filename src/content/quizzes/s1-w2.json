@@ -1,0 +1,367 @@
+{
+  "id": "s1-w2",
+  "studio": "s1",
+  "week": 2,
+  "title": "Week 2 quiz: Prompting as engineering",
+  "questions": [
+    {
+      "id": "s1w2-q1",
+      "type": "mcq",
+      "prompt": "Anthropic suggests a quick test for whether a prompt is clear enough. What is it?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Count the words; prompts over 200 words are too long.",
+          "rationale": "Length is not the issue. A long, specific prompt often beats a short, vague one."
+        },
+        {
+          "id": "b",
+          "text": "Run it once and check that the output looks reasonable.",
+          "rationale": "One plausible output says little; outputs vary, and you need many cases."
+        },
+        {
+          "id": "c",
+          "text": "Show it to a capable colleague with little context on the task; if they would be confused, the model will be too.",
+          "rationale": "This is the test Anthropic's best-practices page recommends, alongside the brilliant-new-employee framing.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Ask the model whether the prompt is clear.",
+          "rationale": "Models can help critique prompts, but they will often say a prompt is fine while still guessing at missing details."
+        }
+      ],
+      "explanation": "The model, like a new hire, can only use what is on the page. The colleague test surfaces the assumptions you forgot to write down: audience, purpose, definitions, and format.",
+      "week": 2,
+      "tags": [
+        "prompting",
+        "clarity"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s1w2-q2",
+      "type": "multi",
+      "prompt": "You are building a contract-review assistant used for many requests. Which of these belong in the **system prompt** rather than the user turn? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The role: reviewer for a logistics company's procurement team",
+          "rationale": "Standing context that is true for every request belongs in the system prompt.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "The standing rule to flag auto-renewal clauses, with the reason",
+          "rationale": "Rules that apply to every request, with their reasons, belong there too.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The specific contract being reviewed in this request",
+          "rationale": "Per-request data goes in the user turn, ideally inside tags, before the question."
+        },
+        {
+          "id": "d",
+          "text": "The output contract: the JSON fields every review must return",
+          "rationale": "The output format is a standing requirement, so it fits the system prompt (and can be restated near the question).",
+          "correct": true
+        }
+      ],
+      "explanation": "A practical split: the system prompt holds what stays true across requests (role, context, standing rules, output contract); the user turn holds this request's documents and question. OpenAI's developer messages and Gemini's system instruction play the same role with different names.",
+      "week": 2,
+      "tags": [
+        "prompting",
+        "system-prompts"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w2-q3",
+      "type": "code-reading",
+      "prompt": "A teammate ports an old script to `claude-opus-5-5`. The request now fails with a 400 error. Which line is the problem?",
+      "code": "response = client.messages.create(\n    model=\"claude-opus-5-5\",\n    max_tokens=2048,\n    system=\"Return only JSON.\",\n    messages=[\n        {\"role\": \"user\", \"content\": ticket_prompt},\n        {\"role\": \"assistant\", \"content\": \"{\"},\n    ],\n)",
+      "options": [
+        {
+          "id": "a",
+          "text": "The final assistant message, a prefill, which current Claude models reject.",
+          "rationale": "Since the Claude 4.6 generation, a prefilled last assistant turn returns an error. Use format instructions or structured outputs.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`system=\"Return only JSON.\"`, because system prompts must be lists of blocks.",
+          "rationale": "A plain string system prompt is accepted."
+        },
+        {
+          "id": "c",
+          "text": "`max_tokens=2048`, because it is too small for this model.",
+          "rationale": "It may be tight with thinking on, but it would truncate output, not cause a 400."
+        },
+        {
+          "id": "d",
+          "text": "The model id needs a date suffix.",
+          "rationale": "Current model ids are used as-is, without date suffixes."
+        }
+      ],
+      "explanation": "Prefilling an opening brace was a common trick to force JSON. On current Claude models, replace it with an explicit output instruction, output inside named tags, or structured outputs (week 3), and validate the result in code either way.",
+      "week": 2,
+      "tags": [
+        "prompting",
+        "api",
+        "claude"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w2-q4",
+      "type": "predict-output",
+      "prompt": "This escaping function has its replacements in the wrong order. What does it print?",
+      "code": "def esc(text):\n    return text.replace(\"<\", \"&lt;\").replace(\"&\", \"&amp;\")\n\nprint(esc(\"<b>\"))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`&lt;b>`",
+          "rationale": "The `>` is never replaced, but the second replace still runs on the new `&`."
+        },
+        {
+          "id": "b",
+          "text": "`&lt;b&gt;`",
+          "rationale": "That would need a `>` replacement and the correct order."
+        },
+        {
+          "id": "c",
+          "text": "`<b>`",
+          "rationale": "The first replace does change the text."
+        },
+        {
+          "id": "d",
+          "text": "`&amp;lt;b>`",
+          "rationale": "The `&` that the first replace inserted gets escaped again by the second.",
+          "correct": true
+        }
+      ],
+      "explanation": "Replace `&` first, then `<` and `>`. Otherwise the ampersands your own escaping introduces get escaped a second time. Python's `xml.sax.saxutils.escape` does it in the right order if you'd rather not write it yourself.",
+      "week": 2,
+      "tags": [
+        "prompting",
+        "security",
+        "python"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w2-q5",
+      "type": "scenario",
+      "prompt": "Your ticket-triage prompt passes 46 of 50 test cases on one provider's model. Finance asks you to move it to a cheaper model from another provider next week. What is the best plan?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Copy the prompt over unchanged and ship; good prompts are model-independent.",
+          "rationale": "The fundamentals transfer, but behavior and API mechanics differ. A prompt tuned on one model is a hypothesis on the next."
+        },
+        {
+          "id": "b",
+          "text": "Run the same 50 cases and checks on the new model, compare pass rate, fixes, regressions, cost, and latency, then adapt the prompt one change at a time.",
+          "rationale": "Same test set, one variable changed. That is how you make a model decision with evidence.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Rewrite the prompt from scratch in the new provider's style before testing anything.",
+          "rationale": "You lose your baseline and can't tell which differences come from the model and which from the rewrite."
+        },
+        {
+          "id": "d",
+          "text": "Ask the new provider's model to rewrite the prompt for itself, then ship.",
+          "rationale": "A model-written rewrite might help, but it is still an untested change."
+        }
+      ],
+      "explanation": "Provider docs say the same thing in different words: Anthropic says to re-check techniques on your own evals, OpenAI notes even snapshots within one family behave differently. Some differences fail loudly (parameter names, rejected sampling parameters, prefill) and some quietly (verbosity, literalness). Only the test set catches the quiet ones.",
+      "week": 2,
+      "tags": [
+        "iteration",
+        "model-selection"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w2-q6",
+      "type": "mcq",
+      "prompt": "What did Lu and colleagues (2021) find about the order of few-shot examples?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Order made no measurable difference once models were large enough.",
+          "rationale": "They found the effect across model sizes, including the largest they tested."
+        },
+        {
+          "id": "b",
+          "text": "Putting the hardest example first always gave the best results.",
+          "rationale": "They found no universal rule like this, which is part of why the result matters."
+        },
+        {
+          "id": "c",
+          "text": "Reordering the same examples could swing accuracy from near state of the art to near chance, and a good order for one model did not transfer to another.",
+          "rationale": "That is the paper's central finding.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Order mattered only for generation tasks, not classification.",
+          "rationale": "Their experiments were on classification tasks."
+        }
+      ],
+      "explanation": "The models in that study were GPT-3-era, and newer instruction-tuned models are generally more robust, but the engineering conclusion holds: when results matter, test your prompt with examples in a shuffled order and see whether the score moves.",
+      "week": 2,
+      "tags": [
+        "few-shot",
+        "research"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w2-q7",
+      "type": "scenario",
+      "prompt": "Your status-update classifier labels far too many updates as `at_risk`. You notice four of your five few-shot examples are `at_risk`. What should you change first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Add a sentence telling the model not to overuse at_risk.",
+          "rationale": "A prohibition doesn't fix the signal your examples are sending, and the examples are strong evidence to the model."
+        },
+        {
+          "id": "b",
+          "text": "Rebalance the examples so each label appears, and vary their length and wording; then rerun the test set.",
+          "rationale": "Examples teach the label space and format strongly, so an unbalanced set skews outputs. Fix the cause, then measure.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Remove all examples and rely on instructions.",
+          "rationale": "That may also work, but it discards your most reliable lever for format and style; test it as a separate change if you want to know."
+        },
+        {
+          "id": "d",
+          "text": "Switch to a bigger model.",
+          "rationale": "An expensive change for a problem that is likely in your prompt."
+        }
+      ],
+      "explanation": "Anthropic's guidance asks for relevant, diverse examples; research on few-shot learning (Zhao and colleagues, 2021) found biases toward answers that are frequent in the examples. Rebalance, then rerun the whole test set and check for regressions.",
+      "week": 2,
+      "tags": [
+        "few-shot"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w2-q8",
+      "type": "predict-output",
+      "prompt": "A response from a model with thinking on is represented below as plain dicts. What does this print?",
+      "code": "content = [\n    {\"type\": \"thinking\", \"thinking\": \"\"},\n    {\"type\": \"text\", \"text\": \"billing\"},\n]\nanswer = \"\".join(b[\"text\"] for b in content if b[\"type\"] == \"text\")\nprint(repr(answer), repr(content[0].get(\"text\", \"\")))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`'billing' ''`",
+          "rationale": "Selecting by type finds the text; reading position 0 finds the (empty-text) thinking block.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`'billing' 'billing'`",
+          "rationale": "Position 0 is the thinking block, which has no text field."
+        },
+        {
+          "id": "c",
+          "text": "`'' 'billing'`",
+          "rationale": "The join keeps only text blocks, which contain 'billing'."
+        },
+        {
+          "id": "d",
+          "text": "A KeyError",
+          "rationale": "The `.get` with a default avoids the KeyError on the thinking block."
+        }
+      ],
+      "explanation": "With thinking on, thinking blocks come before the text, and on many current models their text is omitted by default. Select content blocks by type, never by position.",
+      "week": 2,
+      "tags": [
+        "reasoning",
+        "api"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s1w2-q9",
+      "type": "multi",
+      "prompt": "Your assistant reads inbound vendor emails and can draft replies. Which measures reduce the damage a successful prompt injection can do? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Require human approval before any reply is actually sent",
+          "rationale": "OWASP lists human approval for high-risk actions as a mitigation.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Validate the model's output against an expected format in code before using it",
+          "rationale": "Deterministic validation of output format is on OWASP's list.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Give the application, not the model, the credentials, with the least privilege needed",
+          "rationale": "Least privilege limits what an injected instruction can reach.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Wrap the email in triple backticks and trust that the model will treat it as data",
+          "rationale": "Delimiters help structure, but Willison demonstrated they are easy to work around. They are not a security boundary."
+        }
+      ],
+      "explanation": "OWASP says it is unclear whether fool-proof prevention exists, so design for limiting impact: constrain the task, validate outputs, use least privilege, require approval for risky actions, label external content, and test adversarially.",
+      "week": 2,
+      "tags": [
+        "security",
+        "prompt-injection"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s1w2-q10",
+      "type": "scenario",
+      "prompt": "A high-volume classifier on a large model at high effort is accurate but too slow and expensive. Labels are simple (five categories). What is the best first experiment?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Build a three-step chain with a review step for every ticket.",
+          "rationale": "Chains add calls and latency; they help when intermediate results need checking, not for a simple, already-accurate label."
+        },
+        {
+          "id": "b",
+          "text": "Switch to the smallest model immediately, since classification is easy.",
+          "rationale": "Possibly right, but unmeasured; you could silently lose accuracy on the hard cases."
+        },
+        {
+          "id": "c",
+          "text": "Add instructions telling the model to think less.",
+          "rationale": "Lowering effort is the documented control; instructions alone may not change thinking much on some models."
+        },
+        {
+          "id": "d",
+          "text": "Run your test set at lower effort, and on a smaller model at low effort, and compare accuracy, cost, and latency against the current baseline.",
+          "rationale": "Claude's effort docs recommend low effort for simple, high-volume work, but only measurement tells you whether quality holds.",
+          "correct": true
+        }
+      ],
+      "explanation": "Effort and model size are both levers on cost and latency. Change one at a time against the same test set, and judge by cost per correct label, not cost per request.",
+      "week": 2,
+      "tags": [
+        "reasoning",
+        "model-selection",
+        "cost"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

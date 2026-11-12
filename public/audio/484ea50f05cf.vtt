@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.499
+How constrained decoding works, in one paragraph of math.
+
+2
+00:00:03.779 --> 00:00:08.536
+Recall from lesson 1 that each step produces a probability for every token.
+
+3
+00:00:08.816 --> 00:00:13.957
+With a grammar, the system tracks which state of the automaton the output so far has reached.
+
+4
+00:00:14.237 --> 00:00:23.112
+At each step it sets the probability of every token that would leave the language of valid documents to zero, renormalizes the rest, and samples.
+
+5
+00:00:23.392 --> 00:00:30.944
+If your schema says the next thing must be one of “high”, “medium”, or “low”, tokens that start any other string are masked out.
+
+6
+00:00:31.224 --> 00:00:34.275
+Two consequences follow, and both matter for trust.
+
+7
+00:00:34.555 --> 00:00:40.165
+First, the output is valid by construction: you can’t get a missing brace or an unknown key.
+
+8
+00:00:40.445 --> 00:00:45.075
+Second, the model must choose among the options you allowed, even if none of them fits.
+
+9
+00:00:45.355 --> 00:00:52.203
+Masking redistributes probability over the legal tokens; it doesn’t create a “this doesn’t apply” option.
+
+10
+00:00:52.483 --> 00:01:02.723
+If the transcript never states a priority and your enum has no way to say so, the model will pick one, and the result will look exactly as confident as a real answer.
+
+11
+00:01:03.003 --> 00:01:08.443
+That’s why schema design, not just the feature, decides whether structured output is honest.

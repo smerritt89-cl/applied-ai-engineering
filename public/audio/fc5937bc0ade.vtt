@@ -1,0 +1,165 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.579
+Which model for which stage.
+
+2
+00:00:01.859 --> 00:00:07.469
+Different stages need different amounts of capability, and the price spread between tiers is large.
+
+3
+00:00:07.749 --> 00:00:12.741
+On the Claude pricing page as of today, per million tokens, Claude Opus 5.
+
+4
+00:00:13.021 --> 00:00:18.013
+5 costs $4 for input and $20 for output, Claude Sonnet 5.
+
+5
+00:00:18.293 --> 00:00:21.856
+5 costs $2 and $10, and Claude Haiku 5.
+
+6
+00:00:22.136 --> 00:00:23.693
+5 costs $0.
+
+7
+00:00:23.973 --> 00:00:25.403
+10 and $0.
+
+8
+00:00:25.683 --> 00:00:29.800
+50 (for prompts up to 100,000 tokens).
+
+9
+00:00:30.080 --> 00:00:33.451
+The Batch API halves those prices for work that can wait.
+
+10
+00:00:33.731 --> 00:00:37.315
+Prices change, so check the page before you rely on these.
+
+11
+00:00:37.595 --> 00:00:41.285
+Now a back-of-envelope estimate, with every assumption stated.
+
+12
+00:00:41.565 --> 00:00:46.088
+Assume a one-hour meeting transcript of about 9,000 words.
+
+13
+00:00:46.368 --> 00:01:03.221
+Using OpenAI’s rough rule of about three quarters of a word per token, that is about 12,000 tokens; add about 2,000 for instructions and the output schema, so 14,000 input tokens per meeting.
+
+14
+00:01:03.501 --> 00:01:11.096
+Assume the extraction returns 20 candidates at about 75 tokens each, so 1,500 output tokens.
+
+15
+00:01:11.376 --> 00:01:13.659
+Then one extraction call costs about 8.
+
+16
+00:01:13.939 --> 00:01:15.496
+6 cents on Opus 5.
+
+17
+00:01:15.776 --> 00:01:16.843
+5, 4.
+
+18
+00:01:17.123 --> 00:01:18.765
+3 cents on Sonnet 5.
+
+19
+00:01:19.045 --> 00:01:20.496
+5, and about 0.
+
+20
+00:01:20.776 --> 00:01:22.376
+2 cents on Haiku 5.
+
+21
+00:01:22.656 --> 00:01:23.424
+5.
+
+22
+00:01:23.704 --> 00:01:28.269
+At 200 meetings a month, that is roughly $17, $8.
+
+23
+00:01:28.549 --> 00:01:30.171
+60, and $0.
+
+24
+00:01:30.451 --> 00:01:31.368
+43.
+
+25
+00:01:31.648 --> 00:01:33.397
+Two cautions keep this honest.
+
+26
+00:01:33.677 --> 00:01:38.797
+First, on current Claude models thinking tokens are billed as output, and Opus 5.
+
+27
+00:01:39.077 --> 00:01:44.539
+5 always thinks, so real output usage can be well above 1,500 tokens.
+
+28
+00:01:44.819 --> 00:01:46.696
+The effort setting changes how much.
+
+29
+00:01:46.976 --> 00:01:52.608
+Measure usage from real responses (every response reports it) and replace these guesses.
+
+30
+00:01:52.888 --> 00:01:54.744
+Second, look at what the numbers say.
+
+31
+00:01:55.024 --> 00:02:04.048
+At this volume, the most expensive option likely costs less per month than an hour of a reviewer’s time, and a missed commitment can cost far more than that.
+
+32
+00:02:04.328 --> 00:02:07.421
+Cost is a constraint here, not the deciding factor.
+
+33
+00:02:07.701 --> 00:02:09.237
+So decide with evidence.
+
+34
+00:02:09.517 --> 00:02:14.253
+Label a set of transcripts with the action items a careful person would extract.
+
+35
+00:02:14.533 --> 00:02:20.933
+Run the extraction stage on two or three candidate models, and compare recall (did it find the real items?)
+
+36
+00:02:21.213 --> 00:02:23.645
+, precision (are the items it found real?)
+
+37
+00:02:23.925 --> 00:02:25.931
+, and the quote-verification pass rate.
+
+38
+00:02:26.211 --> 00:02:28.515
+Pick the cheapest model that meets your bar.
+
+39
+00:02:28.795 --> 00:02:37.520
+Then do the same per stage: deduplicating ambiguous pairs is a much smaller judgment than extraction, and a small model often suffices there.
+
+40
+00:02:37.800 --> 00:02:50.173
+The same method applies if you compare Claude with GPT, Gemini, Grok, or an open-weight model you host yourself, which some teams choose when transcripts must not leave their own infrastructure.
+
+41
+00:02:50.453 --> 00:02:57.280
+Behavior and cost differ by family and version; your eval is what tells you which differences matter for this task.

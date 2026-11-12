@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.179
+Stop reasons: the success cases you must still handle.
+
+2
+00:00:03.459 --> 00:00:08.216
+A 200 response means the request succeeded, not that the answer is usable.
+
+3
+00:00:08.496 --> 00:00:14.277
+Check stop_reason after every call and decide explicitly what each value means for your code.
+
+4
+00:00:14.557 --> 00:00:17.437
+end_turn is the normal case: the model finished.
+
+5
+00:00:17.717 --> 00:00:21.429
+max_tokens means the response hit your ceiling and is truncated.
+
+6
+00:00:21.709 --> 00:00:27.533
+If you were expecting JSON, it is probably invalid; if you show it to a user, mark it as cut off.
+
+7
+00:00:27.813 --> 00:00:34.277
+The fix is to raise max_tokens or continue the response, not to retry the identical request.
+
+8
+00:00:34.557 --> 00:00:38.013
+stop_sequence means one of your custom stop strings fired.
+
+9
+00:00:38.293 --> 00:00:43.477
+tool_use means the model wants you to run a tool and send back a result, which is week 3.
+
+10
+00:00:43.757 --> 00:00:51.693
+pause_turn appears with server-side tools such as web search when a long tool loop pauses; you send the paused turn back to continue.
+
+11
+00:00:51.973 --> 00:00:59.525
+refusal means the model declined, and it arrives as HTTP 200, so it never reaches your exception handler.
+
+12
+00:00:59.805 --> 00:01:04.285
+On current models a stop_details object names the policy category.
+
+13
+00:01:04.565 --> 00:01:11.925
+Anthropic’s guidance is to retry on a fallback model, which the API can do for you on several models, or to rephrase.
+
+14
+00:01:12.205 --> 00:01:21.656
+Treat refusals as a product event you log and review, because a pattern of refusals on legitimate traffic is a prompt or routing problem you can fix.
+
+15
+00:01:21.936 --> 00:01:27.909
+model_context_window_exceeded means the output filled the context window; treat it like truncation.

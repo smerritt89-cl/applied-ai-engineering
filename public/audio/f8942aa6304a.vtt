@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.219
+The same idea at other providers.
+
+2
+00:00:02.499 --> 00:00:06.104
+Every major API now offers schema-constrained output.
+
+3
+00:00:06.384 --> 00:00:14.085
+The names differ, and so do the subsets of JSON Schema they enforce, so read each provider’s limits before you port a schema.
+
+4
+00:00:14.365 --> 00:00:16.712
+OpenAI calls it Structured Outputs.
+
+5
+00:00:16.992 --> 00:00:25.397
+In the Responses API you set a text format of type json_schema with strict: true; the Python SDK’s responses.
+
+6
+00:00:25.677 --> 00:00:29.517
+parse() accepts a Pydantic model and returns output_parsed.
+
+7
+00:00:29.797 --> 00:00:37.157
+OpenAI distinguishes it from the older JSON mode, which guarantees valid JSON but not adherence to your schema.
+
+8
+00:00:37.437 --> 00:00:41.640
+Refusals arrive as a separate content item you check before parsing.
+
+9
+00:00:41.920 --> 00:00:50.005
+Google’s Gemini API takes a JSON Schema with an application/json MIME type; the Python examples pass Model.
+
+10
+00:00:50.285 --> 00:00:54.531
+model_json_schema() and validate with model_validate_json().
+
+11
+00:00:54.811 --> 00:01:04.965
+The docs say some keywords, such as minLength and maxLength, are ignored rather than enforced, and they warn about schema-compliant but semantically incorrect outputs.
+
+12
+00:01:05.245 --> 00:01:18.472
+xAI’s Grok API accepts a json_schema response format and Pydantic models, states that output is guaranteed to match when you use supported features, and lists other features as best effort.
+
+13
+00:01:18.752 --> 00:01:22.272
+Open models get the same capability from the serving layer.
+
+14
+00:01:22.552 --> 00:01:34.136
+vLLM, a widely used open-source inference server, supports JSON Schema, regex, fixed choices, and context-free grammars through backends such as xgrammar and guidance.
+
+15
+00:01:34.416 --> 00:01:39.920
+Libraries such as Outlines (from the Willard and Louf paper) do the same in your own process.
+
+16
+00:01:40.200 --> 00:01:48.520
+This is a real advantage of open models: you control the grammar engine and can constrain to formats a hosted API doesn’t offer.

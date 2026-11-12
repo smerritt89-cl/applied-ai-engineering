@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.709
+Require evidence, then verify it in code.
+
+2
+00:00:02.989 --> 00:00:06.893
+The single most useful check for extraction is also the simplest.
+
+3
+00:00:07.173 --> 00:00:12.080
+Add an evidence field to each item: a verbatim quote from the source that supports it.
+
+4
+00:00:12.360 --> 00:00:17.011
+Then check, in deterministic code, that the quote actually appears in the source.
+
+5
+00:00:17.291 --> 00:00:28.704
+Anthropic recommends both halves of this in its guidance on reducing hallucinations: ground answers in direct quotes, and have each claim backed by a supporting quote or retracted.
+
+6
+00:00:28.984 --> 00:00:36.771
+Asking for the quote helps the model (it has to locate support before committing), but the verification is what gives you a guarantee.
+
+7
+00:00:37.051 --> 00:00:40.507
+A model can invent a quote as fluently as it invents a date.
+
+8
+00:00:40.787 --> 00:00:46.291
+Your substring check can’t be fooled that way: either the words are in the transcript or they aren’t.
+
+9
+00:00:46.571 --> 00:00:48.235
+Make the check strict and simple.
+
+10
+00:00:48.515 --> 00:00:57.859
+Normalize whitespace on both sides (collapse runs of spaces, tabs, and newlines into one space), because transcripts wrap lines unpredictably.
+
+11
+00:00:58.139 --> 00:01:00.315
+Then require an exact substring match.
+
+12
+00:01:00.595 --> 00:01:03.240
+Resist the urge to use fuzzy matching at first.
+
+13
+00:01:03.520 --> 00:01:13.419
+Every relaxation (ignoring case, punctuation, or small word changes) lets more paraphrases through, and a paraphrase is precisely where meaning drifts.
+
+14
+00:01:13.699 --> 00:01:22.893
+If you later find real quotes failing for trivial reasons, such as curly versus straight apostrophes, add that one normalization and measure the effect.
+
+15
+00:01:23.173 --> 00:01:24.389
+Know the limit, too.
+
+16
+00:01:24.669 --> 00:01:27.101
+A verified quote proves the words exist.
+
+17
+00:01:27.381 --> 00:01:34.379
+It doesn’t prove they support the claim: “Someone should book the venue” is real text, but it isn’t a commitment by anyone.
+
+18
+00:01:34.659 --> 00:01:37.731
+That gap needs the semantic checks later in this lesson.

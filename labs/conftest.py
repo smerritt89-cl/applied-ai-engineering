@@ -31,12 +31,15 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
-@pytest.fixture(autouse=True)
-def _lab_on_path(request):
-    """Let each lab's tests `import starter` from their own folder."""
-    lab_dir = str(pathlib.Path(request.fspath).parent)
-    sys.path.insert(0, lab_dir)
-    for mod in ("starter", "solution"):
-        sys.modules.pop(mod, None)
-    yield
-    sys.path.remove(lab_dir)
+def pytest_collectstart(collector):
+    """Every lab has its own `starter.py` and `solution.py`. Before each lab's
+    test module is imported, put that lab's folder first on sys.path and forget
+    any previously imported `starter`/`solution`, so `pytest studio-1 -q` runs
+    each lab against its own code."""
+    if isinstance(collector, pytest.Module):
+        lab_dir = str(pathlib.Path(collector.path).parent)
+        for mod in ("starter", "solution"):
+            sys.modules.pop(mod, None)
+        if lab_dir in sys.path:
+            sys.path.remove(lab_dir)
+        sys.path.insert(0, lab_dir)

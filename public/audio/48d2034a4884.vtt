@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.899
+A first look at prompt injection.
+
+2
+00:00:02.179 --> 00:00:06.104
+Everything in this week assumes the text in your prompt says what you meant.
+
+3
+00:00:06.384 --> 00:00:15.941
+Prompt injection is what happens when it doesn’t: someone places instructions inside content your application sends to the model, and the model follows them.
+
+4
+00:00:16.221 --> 00:00:29.661
+Simon Willison gave the attack its name in a September 2022 post, written after Riley Goodside showed GPT-3 abandoning a translation task because the text to translate told it to.
+
+5
+00:00:29.941 --> 00:00:33.760
+Willison’s ongoing series is the best single record of the problem.
+
+6
+00:00:34.040 --> 00:00:36.643
+Anthropic’s docs describe two threat models.
+
+7
+00:00:36.923 --> 00:00:43.643
+In direct injection (closely related to jailbreaking), your own user is the adversary and types the attack.
+
+8
+00:00:43.923 --> 00:00:54.781
+In indirect injection, the user is trusted, but the model processes third-party content (a webpage, an email, a document, a tool result) that contains instructions.
+
+9
+00:00:55.061 --> 00:01:01.931
+The lab’s test set includes a mild version: a support ticket that tells the classifier to reply “APPROVED.
+
+10
+00:01:02.211 --> 00:01:02.508
+”.
+
+11
+00:01:02.788 --> 00:01:10.532
+The root cause, in Willison’s framing, is that models follow instructions found in content, which is also what makes them useful.
+
+12
+00:01:10.812 --> 00:01:20.583
+That is why the separation you practiced in lesson 4 matters: instructions in one channel, untrusted data clearly marked, tagged, and escaped in another.
+
+13
+00:01:20.863 --> 00:01:36.970
+Anthropic’s injection guidance adds concrete measures: deliver third-party content in tool results rather than in the system prompt, say where the content came from, state in the system prompt that retrieved content is data and never overrides your instructions,
+
+14
+00:01:37.250 --> 00:01:41.794
+and JSON-encode untrusted strings so they cannot break out of their container.

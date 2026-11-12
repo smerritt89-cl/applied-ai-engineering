@@ -1,0 +1,401 @@
+---
+id: s1-w1-l2
+studio: s1
+week: 1
+order: 2
+title: Your first API calls
+summary: The anatomy of a Messages API request and response, multi-turn as resent history, streaming, stop reasons, usage, errors and retries, and keeping keys out of your code.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Build a Messages API request from its parts (model, max_tokens, system, messages, content blocks) and read every field of the response
+  - Implement a multi-turn conversation by resending history, and explain what that costs
+  - Stream a response and explain why streaming improves perceived latency without changing total work
+  - Handle each stop_reason correctly, especially max_tokens truncation and refusal
+  - Classify API errors as retryable or not, and implement exponential backoff with jitter
+  - Keep API keys out of source code, prompts, and version control
+sources:
+  - { id: claude-messages-api-ref, use: summarized, where: "Request parameters and response shape" }
+  - { id: claude-streaming-docs, use: summarized, where: "Event types, error events, final message helper" }
+  - { id: claude-stop-reasons-docs, use: summarized }
+  - { id: claude-errors-docs, use: summarized, where: "HTTP errors, SDK error types, long requests" }
+  - { id: claude-rate-limits-docs, use: summarized, where: "Token bucket, retry-after, spend caps, cache-aware ITPM" }
+  - { id: claude-thinking-docs, use: summarized, where: "Thinking billed as output tokens" }
+  - { id: claude-python-sdk, use: summarized, where: "Client, streaming helper, retries" }
+  - { id: aws-backoff-jitter, use: summarized }
+  - { id: anthropic-courses, use: linked, where: "API fundamentals course, for more first-call practice" }
+  - { id: claude-docs, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: code-reading
+    prompt: This code worked with an older model. On a current Claude model it sometimes prints an empty string even though the response clearly has an answer. Why?
+    code: |
+      resp = client.messages.create(
+          model="claude-opus-5-5",
+          max_tokens=16000,
+          messages=[{"role": "user", "content": "Summarize this ticket: ..."}],
+      )
+      print(resp.content[0].text)
+    options:
+      - id: a
+        text: "`max_tokens` is too high, so the model returns nothing."
+        rationale: A high max_tokens is a ceiling, not a target. It never empties a response.
+      - id: b
+        text: "`content` is a list of typed blocks. The first block can be a thinking block, so the code must select blocks whose type is `text`."
+        correct: true
+        rationale: On models with thinking on, a thinking block (often with empty text by default) can come first. Filter by block type.
+      - id: c
+        text: The response is streamed, so `content` is still empty when it is read.
+        rationale: This is a non-streaming call. The SDK returns the complete message.
+    explanation: >-
+      A response's `content` is an ordered list of blocks with a `type` field: text, thinking, tool_use, and others.
+      Code that assumes the answer is at index 0 breaks as soon as a model emits any other block first. Always iterate
+      and pick the block types you need.
+  - id: kc2
+    type: mcq
+    prompt: A request returns HTTP 200 with `stop_reason` equal to `"max_tokens"`. What is the right default handling?
+    options:
+      - id: a
+        text: Treat the text as complete, because the status code was 200.
+        rationale: The status says the request succeeded, not that the answer finished. This is how truncated JSON reaches production.
+      - id: b
+        text: Retry the identical request with backoff.
+        rationale: An identical request will most likely truncate again. Backoff is for transient errors, not for limits you set.
+      - id: c
+        text: Treat the output as truncated. Raise `max_tokens` or continue the response, and never parse it as if it were finished.
+        correct: true
+        rationale: The model hit the ceiling you set. Fix the ceiling or continue, and flag partial output.
+    explanation: >-
+      Stop reasons arrive on successful responses, so error handling never sees them. Check `stop_reason` after every
+      call: `end_turn` is the normal case, `max_tokens` means truncated, `refusal` means the model declined, and
+      `tool_use` means it wants a tool run.
+  - id: kc3
+    type: multi
+    prompt: Which of these failures are reasonable to retry automatically with backoff? Select all that apply.
+    options:
+      - id: a
+        text: "429 `rate_limit_error` with a `retry-after` header"
+        correct: true
+        rationale: Wait at least the time the header says, then retry.
+      - id: b
+        text: "529 `overloaded_error`"
+        correct: true
+        rationale: Transient capacity pressure. Backoff with jitter is the documented approach.
+      - id: c
+        text: "400 `invalid_request_error`"
+        rationale: The request itself is wrong. Retrying sends the same mistake again.
+      - id: d
+        text: "401 `authentication_error`"
+        rationale: A bad or revoked key will not fix itself. Fail fast and alert.
+      - id: e
+        text: A connection error before any response arrived
+        correct: true
+        rationale: Network blips are transient; the SDK retries these by default.
+    explanation: >-
+      Retry what is transient (429 with retry-after, 5xx including 529, timeouts, connection errors) and fail fast on what
+      is not (400, 401, 403, 404). One trap: a 429 caused by hitting your monthly spend cap has no retry-after header and
+      keeps failing until access resumes, so cap your attempts.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## One endpoint, one request shape
+
+Almost everything you will build in this program goes through a single HTTP endpoint: the Messages API. You send a JSON body describing a conversation, and you get back one assistant message. Tools, structured outputs, images, and documents are all features of that same request, not separate APIs. Learn its shape once and the rest of the studio is variations on it.
+
+A minimal request has three required fields. **`model`** names the exact model, for example `claude-opus-5-5`. **`max_tokens`** is a hard ceiling on how many tokens the model may generate in this response; it is a ceiling, not a target, and the model does not try to fill it. **`messages`** is the conversation so far: a list of turns, each with a `role` of `user` or `assistant` and some `content`. The first turn must be from the user.
+
+Two more fields matter on day one. **`system`** is a top-level field (not a message) that holds your standing instructions: the role, the rules, the output format. And **`content`** can be either a plain string or a list of typed **content blocks**. A text block is the simple case. Images, PDF documents, tool calls, and tool results are other block types, and you will meet them in weeks 2 and 3. If you have used older chat APIs, notice that the system prompt is not a message with role "system" here; it lives in its own field.
+</Listen>
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
+
+resp = client.messages.create(
+    model="claude-opus-5-5",
+    max_tokens=16000,
+    system="You are a release-notes editor. Reply in plain English, under 120 words.",
+    messages=[
+        {"role": "user", "content": "Rewrite for customers: fixed N+1 query in /orders, p95 down 40%."},
+    ],
+)
+
+for block in resp.content:          # content is a list of typed blocks
+    if block.type == "text":
+        print(block.text)
+
+print(resp.stop_reason)             # why generation stopped
+print(resp.usage)                   # token counts you are billed for
+print(resp._request_id)             # log this; support asks for it
+```
+
+<Listen>
+## Reading the response
+
+The response is one assistant message with a handful of fields you should treat as part of your contract. **`content`** is the list of blocks the model produced, in order. On current Claude models that list can include **thinking** blocks as well as text, because these models reason before answering; on Claude Opus 5.5, thinking is always on and its text is omitted by default, so you may see a thinking block with an empty string. That is why the example loops over blocks and picks the text ones instead of reading `content[0]`.
+
+**`stop_reason`** tells you why generation ended, and it is the field beginners skip most often. **`usage`** reports token counts: `input_tokens`, `output_tokens`, and, when you use prompt caching, `cache_creation_input_tokens` and `cache_read_input_tokens`. Two details catch people. First, with caching, `input_tokens` counts only the tokens after your last cache breakpoint, so total input is the sum of all three input fields. Second, thinking tokens are billed as output tokens even when you never see their text, so `output_tokens` can be much larger than the visible answer. Finally, every response carries a **request id** (the `request-id` header, exposed by the Python SDK as `_request_id`). Log it with every call; it is how you and the provider find a specific request later.
+</Listen>
+
+<Callout type="pitfall" title="Prefill and sampling knobs are gone">
+Two habits from older tutorials now cause 400 errors on current Claude models. Ending `messages` with a partial assistant turn ("prefill") to force a format is rejected; use instructions or structured outputs (week 2) instead. And on the current API version, `temperature`, `top_p`, and `top_k` are rejected; you steer depth with an effort setting instead. If a tutorial's code fails on a field like these, check its date before debugging your own code.
+</Callout>
+
+<Listen>
+## Multi-turn is resent history
+
+The API is stateless. It does not remember your previous request, so a "conversation" is something your code builds: after each reply, append the assistant's turn to your list, append the user's next turn, and send the whole list again. The model sees the full history every time, which is exactly why it can refer back to earlier turns.
+
+That design has two consequences you should plan for. Cost and latency grow with every turn, because you pay for the entire history as input on each request; a 30-turn support chat bills its first message 30 times. And you control memory completely: you can drop, summarize, or edit old turns, which is powerful and also a way to confuse the model if you rewrite history carelessly. When you append the assistant's turn, append the full `content` list the API returned (all blocks, unchanged), not just the text you extracted. Current models check that returned blocks such as thinking come back exactly as they were produced. Prompt caching (week 2) is the standard way to make long, stable prefixes cheap.
+</Listen>
+
+```python
+history = []
+
+def ask(user_text: str) -> str:
+    history.append({"role": "user", "content": user_text})
+    resp = client.messages.create(model="claude-opus-5-5", max_tokens=16000, messages=history)
+    history.append({"role": "assistant", "content": resp.content})  # keep every block, unchanged
+    return "".join(b.text for b in resp.content if b.type == "text")
+
+ask("Our churn went from 3.1% to 4.0% this quarter. Is that a big change?")
+ask("Express that as a relative increase.")  # works only because turn 1 was resent
+```
+
+<Listen>
+## Streaming: same work, sooner feedback
+
+By default the SDK waits until the whole response is finished and then returns it. With **streaming**, the API sends server-sent events as tokens are produced, so your code can show text while the model is still writing. The total time to produce the response is about the same. What changes is **time to first token**, the delay before anything appears, which is what users perceive as responsiveness. For a long answer, the difference between a blank screen for twenty seconds and text appearing after one second is the difference between "broken" and "working."
+
+Streaming is also a reliability tool, not only a UX choice. Anthropic's docs recommend streaming (or the Batches API) for long requests, because some networks drop idle connections, and the Python SDK refuses non-streaming requests that it expects to exceed a ten-minute timeout. A useful default: stream whenever output might be long or `max_tokens` is large. The SDK's stream helper accumulates the events for you and can hand back the same final message object a non-streaming call would, so you lose nothing.
+
+The raw event sequence is worth knowing for debugging. A stream starts with `message_start` (carrying the message shell and initial usage), then for each content block a `content_block_start`, a series of `content_block_delta` events with the new text, and a `content_block_stop`. A `message_delta` carries the `stop_reason` and final output token count (cumulative), and `message_stop` ends the stream. `ping` events may appear anywhere. And an error can arrive mid-stream, after the HTTP 200, as an `error` event such as `overloaded_error`, so stream handling needs its own error path.
+</Listen>
+
+```python
+import time
+
+start = time.perf_counter()
+first_token_at = None
+with client.messages.stream(
+    model="claude-opus-5-5",
+    max_tokens=64000,
+    messages=[{"role": "user", "content": "Draft a one-page incident postmortem template."}],
+) as stream:
+    for text in stream.text_stream:
+        if first_token_at is None:
+            first_token_at = time.perf_counter() - start
+        print(text, end="", flush=True)
+    final = stream.get_final_message()   # same Message object as a non-streaming call
+
+print(f"\nTTFT {first_token_at:.2f}s, total {time.perf_counter() - start:.2f}s, stop={final.stop_reason}")
+```
+
+<DragOrder
+  client:visible
+  prompt="Put the streaming events for a single text response in the order they arrive"
+  items={[
+    "message_start",
+    "content_block_start",
+    "content_block_delta (repeated)",
+    "content_block_stop",
+    "message_delta (carries stop_reason and usage)",
+    "message_stop",
+  ]}
+  explanation="The message opens, each content block opens, streams deltas, and closes, then a message_delta reports why generation stopped and the cumulative output tokens, and message_stop closes the stream. Ping events can appear anywhere, and an error event can arrive mid-stream even after an HTTP 200."
+/>
+
+<Callout type="note" title="Thinking delays the first visible token">
+On models that think before answering, the first event your user can read may come after the model's reasoning. With thinking display omitted (the default on several current models), the stream can look like a pause before the text. If you show progress to users, request summarized thinking or show a status indicator, and measure time to first *text* token separately from time to first event.
+</Callout>
+
+<Listen>
+## Stop reasons: the success cases you must still handle
+
+A 200 response means the request succeeded, not that the answer is usable. Check `stop_reason` after every call and decide explicitly what each value means for your code.
+
+**`end_turn`** is the normal case: the model finished. **`max_tokens`** means the response hit your ceiling and is truncated. If you were expecting JSON, it is probably invalid; if you show it to a user, mark it as cut off. The fix is to raise `max_tokens` or continue the response, not to retry the identical request. **`stop_sequence`** means one of your custom stop strings fired. **`tool_use`** means the model wants you to run a tool and send back a result, which is week 3. **`pause_turn`** appears with server-side tools such as web search when a long tool loop pauses; you send the paused turn back to continue. **`refusal`** means the model declined, and it arrives as HTTP 200, so it never reaches your exception handler. On current models a `stop_details` object names the policy category. Anthropic's guidance is to retry on a fallback model, which the API can do for you on several models, or to rephrase. Treat refusals as a product event you log and review, because a pattern of refusals on legitimate traffic is a prompt or routing problem you can fix. **`model_context_window_exceeded`** means the output filled the context window; treat it like truncation.
+</Listen>
+
+<Predict
+  title="What does this handler do with a truncated answer?"
+  code={`resp = {"stop_reason": "max_tokens",
+        "content": [{"type": "text", "text": '{"risk": "high", "reas'}]}
+
+def handle(resp):
+    if resp["stop_reason"] == "end_turn":
+        return "ok"
+    if resp["stop_reason"] in ("max_tokens", "model_context_window_exceeded"):
+        return "truncated"
+    if resp["stop_reason"] == "refusal":
+        return "refused"
+    return "other"
+
+print(handle(resp))`}
+  options={["ok", "truncated", "refused", "A JSONDecodeError"]}
+  answer={1}
+>
+The handler branches on `stop_reason` before touching the text, so it never tries to parse the half-written JSON. Code that skipped this check and called `json.loads` on the text would raise a `JSONDecodeError`, or worse, a lenient parser would accept a partial object.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s1-parse-response"
+  title="Read a response like production code does"
+  starter={`PRICES = {  # USD per million tokens, claude-haiku-5-5, snapshot 2026-11-11
+    "input": 0.10, "output": 0.50, "cache_write": 0.125, "cache_read": 0.01,
+}
+
+def summarize_response(resp, prices=PRICES):
+    """Return a dict with:
+      text:     all text blocks joined in order (ignore other block types)
+      complete: True only if stop_reason is "end_turn" or "stop_sequence"
+      cost_usd: cost from resp["usage"], where each usage field may be missing
+                (treat missing as 0). Cache writes use prices["cache_write"],
+                cache reads prices["cache_read"].
+    """
+    # TODO: implement
+    pass
+
+sample = {
+    "stop_reason": "end_turn",
+    "content": [
+        {"type": "thinking", "thinking": ""},
+        {"type": "text", "text": "Churn rose 0.9 points, "},
+        {"type": "text", "text": "a 29% relative increase."},
+    ],
+    "usage": {"input_tokens": 1200, "output_tokens": 300, "cache_read_input_tokens": 8000},
+}
+print(summarize_response(sample))
+`}
+  tests={`r = summarize_response(sample)
+assert r is not None, "summarize_response returned None"
+assert r["text"] == "Churn rose 0.9 points, a 29% relative increase.", "join only text blocks, in order"
+assert r["complete"] is True, "end_turn is complete"
+expected = (1200 * 0.10 + 300 * 0.50 + 8000 * 0.01) / 1_000_000
+assert abs(r["cost_usd"] - expected) < 1e-12, f"expected cost {expected}"
+cut = dict(sample, stop_reason="max_tokens")
+assert summarize_response(cut)["complete"] is False, "max_tokens means truncated"
+ref = {"stop_reason": "refusal", "content": [], "usage": {"input_tokens": 50, "output_tokens": 0}}
+out = summarize_response(ref)
+assert out["complete"] is False and out["text"] == "", "a refusal is not a complete answer"
+w = {"stop_reason": "end_turn", "content": [], "usage": {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 1_000_000}}
+assert abs(summarize_response(w)["cost_usd"] - 0.125) < 1e-12, "cache writes are priced separately"`}
+  solution={`def summarize_response(resp, prices=PRICES):
+    text = "".join(b["text"] for b in resp["content"] if b.get("type") == "text")
+    complete = resp["stop_reason"] in ("end_turn", "stop_sequence")
+    u = resp.get("usage", {})
+    cost = (
+        u.get("input_tokens", 0) * prices["input"]
+        + u.get("output_tokens", 0) * prices["output"]
+        + u.get("cache_creation_input_tokens", 0) * prices["cache_write"]
+        + u.get("cache_read_input_tokens", 0) * prices["cache_read"]
+    ) / 1_000_000
+    return {"text": text, "complete": complete, "cost_usd": cost}`}
+>
+Write `summarize_response` for a response shaped like the API's JSON. This is the function you will want around every call: one place that extracts text, decides whether the answer is usable, and records what it cost. The prices are a dated snapshot from the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing); in real code, load them from config.
+</PyRunner>
+
+<Listen>
+## Errors: classify, then retry only what is transient
+
+When a request fails, the API returns an HTTP error with a JSON body naming an error `type`, and the Python SDK raises a typed exception for each one. Sort them into two groups. **Do not retry** client mistakes: 400 `invalid_request_error` (a bad field, a missing parameter, a prefill), 401 `authentication_error` (bad or revoked key), 403 `permission_error`, 404 `not_found_error` (often a mistyped model id), and 413 `request_too_large`. Retrying these sends the same mistake again, so fail fast and surface the message.
+
+**Do retry** transient failures: 429 `rate_limit_error`, 500 `api_error`, 529 `overloaded_error`, timeouts, and connection errors. Rate limits are per organization, measured in requests, input tokens, and output tokens per minute, and enforced with a token bucket, so capacity refills continuously and short bursts can trip a limit even when your per-minute average is fine. A 429 usually carries a `retry-after` header telling you how many seconds to wait; earlier retries will fail. One important exception: when your organization hits its monthly spend cap, the API returns a 429 with **no** `retry-after`, and retrying cannot succeed until access resumes. A retry loop without an attempt limit will spin on that forever.
+
+The official SDK already retries connection errors, 408, 409, 429, and 5xx errors with exponential backoff, twice by default, honoring `retry-after`. You configure it with `max_retries` on the client or per request. Write your own wrapper only when you need different behavior, such as more attempts for a batch job, a fallback model, or logging of each attempt. Catch the SDK's typed exceptions, most specific first, rather than matching on error message strings.
+</Listen>
+
+<Listen>
+## Backoff with jitter, and why the jitter matters
+
+The standard retry schedule is **exponential backoff**: wait a base delay, then double it on each attempt, up to a cap. If attempt 0 waits up to 0.5 seconds, attempt 3 waits up to 4. The doubling gives an overloaded service room to recover.
+
+Backoff alone has a flaw that Marc Brooker described on the AWS Architecture Blog: if many clients fail at the same moment, they all retry on the same schedule and arrive together again, in synchronized waves. Adding randomness, called **jitter**, spreads them out. His "full jitter" variant picks the delay uniformly between zero and the exponential value, and his simulations showed it reduced both total work and completion time compared with no jitter. In symbols: delay for attempt n is a uniform random number in the interval from 0 to min(cap, base times 2 to the n). If the server sent `retry-after`, wait at least that long.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s1-backoff"
+  title="Exponential backoff with full jitter"
+  starter={`import random
+
+RETRYABLE = {408, 409, 429, 500, 502, 503, 504, 529}
+
+def should_retry(status, attempt, max_attempts, has_retry_after=True):
+    """True if a failed request should be retried.
+    - Never retry once attempt + 1 >= max_attempts (attempt counts from 0).
+    - Retry only RETRYABLE statuses.
+    - A 429 WITHOUT a retry-after header is a spend cap: do not retry."""
+    # TODO
+    pass
+
+def backoff_delay(attempt, base=0.5, cap=8.0, retry_after=None, rng=random.random):
+    """Full jitter: uniform in [0, min(cap, base * 2**attempt)).
+    If retry_after (seconds) is given, return max(jittered delay, retry_after)."""
+    # TODO
+    pass
+
+for a in range(5):
+    print(a, round(backoff_delay(a, rng=lambda: 0.999), 3))
+`}
+  tests={`assert should_retry(429, 0, 4) is True, "429 with retry-after is retryable"
+assert should_retry(529, 1, 4) is True, "529 overloaded is retryable"
+assert should_retry(400, 0, 4) is False, "400 is a client error"
+assert should_retry(401, 0, 4) is False, "401 will not fix itself"
+assert should_retry(500, 3, 4) is False, "respect max_attempts"
+assert should_retry(429, 0, 4, has_retry_after=False) is False, "429 without retry-after is a spend cap"
+assert backoff_delay(0, rng=lambda: 1.0) == 0.5, "attempt 0 tops out at base"
+assert backoff_delay(3, rng=lambda: 1.0) == 4.0, "attempt 3 tops out at base * 8"
+assert backoff_delay(10, rng=lambda: 1.0) == 8.0, "the cap applies"
+assert backoff_delay(2, rng=lambda: 0.0) == 0.0, "full jitter can be zero"
+assert backoff_delay(2, rng=lambda: 0.5) == 1.0, "half of base * 4"
+assert backoff_delay(0, retry_after=3, rng=lambda: 0.1) == 3, "never retry before retry-after"
+import random as _r
+r = _r.Random(7)
+ds = [backoff_delay(4, rng=r.random) for _ in range(2000)]
+assert 0 <= min(ds) and max(ds) < 8.0 and 3.5 < sum(ds) / len(ds) < 4.5, "delays should be uniform on [0, 8)"`}
+  solution={`def should_retry(status, attempt, max_attempts, has_retry_after=True):
+    if attempt + 1 >= max_attempts:
+        return False
+    if status == 429 and not has_retry_after:
+        return False
+    return status in RETRYABLE
+
+def backoff_delay(attempt, base=0.5, cap=8.0, retry_after=None, rng=random.random):
+    delay = rng() * min(cap, base * 2 ** attempt)
+    if retry_after is not None:
+        delay = max(delay, retry_after)
+    return delay`}
+>
+Implement the two pure functions a retry wrapper needs. Injecting `rng` makes the randomness testable: the checks pass fixed values to pin down the math, then sample many delays to confirm the distribution. In the lab you will wire these into a wrapper around real SDK exceptions.
+</PyRunner>
+
+<Callout type="pitfall" title="Retries that double your bill or your writes">
+Retrying is safe for a pure question-and-answer call. It is not automatically safe when the call triggers side effects, such as a tool that sends an email or writes a row. Make those operations idempotent (safe to repeat, for example by keying writes on a request id) before you wrap them in retries. And remember that retries multiply worst-case latency: with a 60 second timeout and two retries, a caller can wait three minutes.
+</Callout>
+
+<Listen>
+## Keep keys out of your code
+
+An API key is a bearer credential: anyone who has it can spend your money and read whatever your organization's data settings allow. Treat it like a password. The SDK reads `ANTHROPIC_API_KEY` from the environment when you construct the client with no arguments, so the key never needs to appear in source code. For these labs, put it in `labs/.env`, which is gitignored, and let the shared test setup load it. In deployed services, use your platform's secret manager and inject the key as an environment variable at runtime.
+
+Three rules cover most real incidents. Never commit a key, including in notebooks, test fixtures, or a "temporary" script; if one leaks, revoke it in the Console and issue a new one, because deleting the commit does not remove it from history or from anyone who cloned it. Never put a key in a prompt, a log line, or an error message you send to a user. And use separate keys, ideally in separate workspaces with their own spend limits, for development and production, so a runaway test loop cannot drain your production budget. The Console lets you set a monthly spend limit below your tier's cap for exactly this reason.
+</Listen>
+
+<LabLink path="labs/studio-1/01-first-call" title="Lab: your first streaming call, cost, and retries" needs={["Anthropic API key (optional for offline tests)"]} minutes={45}>
+Write three functions you will reuse all program: `stream_reply`, which streams a response with the official SDK and returns the text, usage, stop reason, and time to first token; `cost_usd`, which prices a usage record from a price table; and `with_retries`, which wraps any call with backoff and jitter and retries only transient SDK errors. Offline tests use a fake client, so you can finish the whole lab without a key. The live tests make two small calls on Claude Haiku 5.5 and cost well under one cent at time of writing.
+</LabLink>
+
+<GoDeeper title="What the SDK does for you, and when to reach past it">
+The Python SDK handles authentication headers, the `anthropic-version` header, timeouts (ten minutes by default), retries, typed errors, and stream accumulation. When you need headers it does not surface on the message object, such as the rate-limit headers (`anthropic-ratelimit-input-tokens-remaining` and friends), call `client.messages.with_raw_response.create(...)` and read `.headers`, then `.parse()` to get the message. Those headers let a high-volume service slow itself down before it hits a 429, which is kinder to everyone than reacting after. Check the [rate limits page](https://platform.claude.com/docs/en/api/rate-limits) for the current header list.
+</GoDeeper>
+
+<Listen>
+## Checks and balances for every call
+
+Before you move on, fix one habit in place. Every call your code makes should end with three checks: did the request succeed (exceptions handled, transient ones retried with a limit), did the model finish (`stop_reason` is what you expected), and what did it cost (usage recorded with the request id). Those three lines are cheap, and they are what turns a demo into something you can operate. The next lesson uses the usage numbers to compare models on cost and latency, and to decide which model a task deserves.
+</Listen>

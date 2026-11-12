@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.627
+Confidence the model reports is not confidence you can use.
+
+2
+00:00:03.907 --> 00:00:11.587
+The obvious next idea is to ask the model how sure it is: add a confidence field and auto-accept anything above 0.
+
+3
+00:00:11.867 --> 00:00:12.613
+9.
+
+4
+00:00:12.893 --> 00:00:14.600
+The research says to be careful.
+
+5
+00:00:14.880 --> 00:00:31.563
+Xiong and colleagues (2023) benchmarked ways of eliciting confidence from black-box models, including GPT-4, and found that models verbalizing their confidence tend to be overconfident, possibly imitating how people talk about certainty.
+
+6
+00:00:31.843 --> 00:00:43.128
+Calibration improved with model scale and with methods that combine several sampled answers, but no method was reliably good, especially on tasks needing specialist knowledge.
+
+7
+00:00:43.408 --> 00:00:45.029
+There’s a nuance worth knowing.
+
+8
+00:00:45.309 --> 00:00:58.451
+Kadavath and colleagues (2022), at Anthropic, showed that large models can be well calibrated when asked in the right format, for example estimating the probability that a proposed answer is true.
+
+9
+00:00:58.731 --> 00:01:05.579
+That’s a carefully elicited, measured probability, not a number the model writes into a JSON field mid-extraction.
+
+10
+00:01:05.859 --> 00:01:13.987
+The practical rule follows from your math background: a confidence score is only meaningful once you’ve measured its calibration on your data.
+
+11
+00:01:14.267 --> 00:01:19.941
+Take a labeled set, bucket items by stated confidence, and compute accuracy per bucket.
+
+12
+00:01:20.221 --> 00:01:21.203
+If the 0.
+
+13
+00:01:21.483 --> 00:01:25.984
+9 bucket is right 70 percent of the time, your threshold is lying to you.
+
+14
+00:01:26.264 --> 00:01:31.853
+Until you’ve done that, treat the field as a weak signal for sorting a review queue, never as a gate.

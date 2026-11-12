@@ -1,0 +1,308 @@
+---
+id: s2-w1-l3
+studio: s2
+week: 1
+order: 3
+title: Nearest-neighbor search at scale
+summary: What brute-force search costs, how approximate nearest neighbor indexes buy speed with recall, the intuition behind HNSW graphs, IVF partitioning, and product quantization, and how to measure an index's recall@k against exact search before you trust it.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Estimate the compute and memory cost of brute-force vector search, and decide when it is good enough
+  - Explain the HNSW search procedure and what its parameters (M, efConstruction, efSearch) trade off
+  - Explain IVF partitioning (nlist, nprobe) and product quantization at the level needed to configure them
+  - Distinguish an index's recall against exact search from retrieval recall against human labels
+  - Measure recall@k of an approximate index against exact search and tune it to a recall target
+sources:
+  - { id: malkov-2016-hnsw, use: summarized }
+  - { id: jegou-2011-pq, use: summarized }
+  - { id: faiss-wiki-indexes, use: summarized, where: "Flat, HNSW, IVF, PQ, and IVFPQ index descriptions" }
+  - { id: faiss-wiki-choose-index, use: summarized }
+  - { id: douze-2024-faiss, use: summarized }
+  - { id: faiss-docs, use: linked }
+  - { id: aumuller-2018-ann-benchmarks, use: summarized }
+  - { id: ann-benchmarks, use: linked }
+  - { id: pgvector-docs, use: summarized, where: "Exact search by default; HNSW and IVFFlat index options" }
+  - { id: voyage-embeddings-docs, use: summarized, where: "output_dtype (int8 and binary quantization)" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      You add an HNSW index to a pgvector table that previously had no vector index. What should you expect, according
+      to the pgvector documentation?
+    options:
+      - id: a
+        text: Identical results, only faster.
+        rationale: That's true of a B-tree index on a normal column, not of an approximate vector index.
+      - id: b
+        text: Faster queries, and some queries may now return different results, because the index trades some recall for speed.
+        correct: true
+        rationale: Yes. Without an index pgvector does exact search with perfect recall; an approximate index can miss true neighbors.
+      - id: c
+        text: Slower queries until the index finishes training on the data.
+        rationale: HNSW needs no training step (IVF does), and once built it is faster, not slower.
+    explanation: >-
+      This catches teams by surprise: adding an index changes answers, not just latency. Measure recall against exact
+      search before and after, and tune the search-time parameter (`hnsw.ef_search` in pgvector) to your target.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your RAG system's retrieval recall@10 against human labels dropped from 0.82 to 0.74 after you moved from a small
+      prototype to a production vector database. The embedding model and chunks didn't change. What do you check first?
+    options:
+      - id: a
+        text: The embedding model, since recall problems usually come from the model.
+        rationale: Nothing about the model changed, so it can't explain a change in results.
+      - id: b
+        text: The index's recall against exact search on a sample of real queries, then its search parameters (efSearch or nprobe) and the metric it was configured with.
+        correct: true
+        rationale: Yes. Exact search was likely replaced by an approximate index with default settings, or the metric doesn't match the model.
+      - id: c
+        text: Add more chunks so the right answer appears more often.
+        rationale: More data makes approximate search harder, not easier, and doesn't address the cause.
+    explanation: >-
+      Separate the two recalls. Run exact search on the same vectors for a sample of queries, and compute the index's
+      overlap with it. If the index finds, say, 90 percent of the true top 10, the lost labeled recall is the index's
+      fault and you raise efSearch or nprobe. If it finds nearly all, look elsewhere (metric, normalization, filters).
+  - id: kc3
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      exact = [4, 9, 2, 7, 1]
+      approx = [4, 2, 8, 7, 3]
+      k = 5
+      print(len(set(approx[:k]) & set(exact[:k])) / k)
+    options:
+      - id: a
+        text: "`0.6`"
+        correct: true
+        rationale: The approximate list contains 4, 2, and 7 from the exact top 5. Three of five is 0.6.
+      - id: b
+        text: "`0.4`"
+        rationale: Order doesn't matter for this metric; count the overlap, not the positions that match.
+      - id: c
+        text: "`1.0`"
+        rationale: Two of the exact neighbors (9 and 1) are missing.
+    explanation: >-
+      Recall@k of an index is the overlap between its top k and the exact top k, divided by k. It ignores order within
+      the top k. It says nothing about whether the results are relevant to the user; that is what your labeled set from
+      lesson 2 measures.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Brute force is simple, exact, and linear
+
+The `top_k` you wrote in lesson 1 is **exact** (or brute-force, or flat) search: score the query against every vector, keep the best k. Its cost is easy to state. For n vectors of dimension d, each query takes n times d multiply-adds and reads every vector from memory. At 10 million vectors of 1,024 dimensions, that's about 10 billion multiply-adds per query and roughly 41 GB of float32 vectors to stream through.
+
+Before you reach for anything cleverer, run the numbers for your own case, because brute force is often enough. A help center with 50,000 chunks at 1,024 dimensions is about 200 MB of vectors and around 50 million multiply-adds per query, well within what an optimized matrix library does on one CPU in a few milliseconds. The Faiss documentation describes its flat index as the only index that guarantees exact results, recommends it as the baseline every other index is measured against, and notes it is the best choice when you'll run only a modest number of searches, since building an index won't pay for itself. pgvector, the Postgres extension, does exact search by default and calls that perfect recall.
+
+Exact search stops being enough when the corpus reaches millions of vectors, when you need many queries per second, or when the vectors don't fit in memory. Then you trade a little accuracy for a lot of speed.
+</Listen>
+
+<Listen>
+## Approximate nearest neighbor search, and the metric that judges it
+
+**Approximate nearest neighbor (ANN)** indexes return vectors that are probably among the true nearest neighbors, much faster than checking them all. They don't promise the exact answer, so you need a number that says how close they get.
+
+That number is **recall@k against exact search**: for a query, take the exact top k and the index's top k, count how many vectors appear in both, and divide by k. Average over a sample of queries. An index with recall@10 of 0.95 returns, on average, 9.5 of the true 10 nearest neighbors.
+
+Keep this separate from the recall in lesson 2. That one compared retrieved documents with **human relevance labels**: did the answer make it into the context? This one compares the index with **exact search on the same vectors**: did the index find what brute force would have? The total error in your system is a product of both: an index can only lose relevant documents that the embedding model ranked highly, and a perfect index can't rescue a model that ranks the right document 200th. When retrieval quality drops, measuring both tells you which part to fix.
+</Listen>
+
+<Listen>
+## HNSW: a navigable graph with express lanes
+
+The ANN method you are most likely to meet first is **HNSW**, Hierarchical Navigable Small World graphs, from Malkov and Yashunin (2016). Faiss and pgvector both implement it, as do many vector databases.
+
+Start with one layer. Connect every vector to a handful of its near neighbors, making a graph. To search, begin at an entry point and walk greedily: look at the current node's neighbors, move to whichever is closest to the query, and stop when no neighbor is closer. On a well-built graph this reaches the query's neighborhood after visiting a small fraction of the nodes. The "small world" property, short paths between any two nodes, is what makes greedy routing work.
+
+A single layer has a problem: early in the search, the walk takes many short steps. HNSW adds a hierarchy, much like a skip list (the paper draws this analogy). Each vector is assigned a maximum layer at random, with exponentially decreasing probability for higher layers, so the top layer has very few nodes with long-range links, and each layer below is denser. Search starts at the top, takes a few long hops to get close, then drops down a layer and refines, until it reaches the bottom layer that contains every vector. The paper reports logarithmic scaling of search complexity with this structure, and a neighbor-selection heuristic that helps most at high recall and on clustered data.
+
+Three parameters (named as in Faiss; vector databases use similar names) control the trade-offs:
+
+- **M**: how many neighbors each node keeps. Higher M means better recall and more memory.
+- **efConstruction**: how widely the builder searches when inserting a vector. Higher means a better graph and slower builds.
+- **efSearch**: how many candidates the search keeps in play. This is the dial you tune at query time: higher means better recall and slower queries.
+
+Know the costs, too. Faiss estimates HNSW memory at roughly d times 4 plus M times 8 bytes per vector (the full vector plus its links), so it doesn't compress anything, and its HNSW index doesn't support removing vectors. Databases that support deletes handle it with extra machinery.
+</Listen>
+
+<Mermaid
+  alt="Diagram of HNSW search across three layers. Layer 2 has two nodes with long links; the search enters there, hops once toward the query, then descends. Layer 1 has more nodes; the search takes a few medium hops, then descends. Layer 0 contains all vectors; the search takes short greedy steps among near neighbors and returns the closest candidates."
+  caption="HNSW search: long hops on sparse upper layers, short greedy steps on the dense bottom layer."
+  chart={`flowchart TD
+  subgraph L2["Layer 2: few nodes, long links"]
+    E["Entry point"] --> A2["Closer node"]
+  end
+  subgraph L1["Layer 1: more nodes, medium links"]
+    A1["Same node, one layer down"] --> B1["Closer"] --> C1["Closer still"]
+  end
+  subgraph L0["Layer 0: every vector, short links"]
+    C0["Same node, bottom layer"] --> D0["Greedy steps among neighbors"] --> R["Keep the best efSearch candidates, return top k"]
+  end
+  A2 --> A1
+  C1 --> C0`}
+/>
+
+<Listen>
+## IVF: search only the nearby buckets
+
+The second family partitions the space. An **inverted file (IVF)** index runs k-means on a sample of the vectors to find nlist centroids, then assigns each vector to its nearest centroid, so every centroid owns a bucket (an "inverted list"). At query time the index finds the nprobe centroids closest to the query and scans only those buckets.
+
+The trade-off is direct. With nprobe of 1, you scan about 1/nlist of the data and miss true neighbors that sit just across a bucket boundary. Raising nprobe scans more buckets, raising recall and cost together; with nprobe equal to nlist you are back to exact search. Faiss's guidance suggests nlist on the order of the square root of n, a few times over (its wiki gives a rule of thumb near 10 times the square root, and its index guide suggests 4 to 16 times for collections under a million vectors). Unlike HNSW, IVF needs a training step to learn centroids, and if your data drifts far from the training sample, the buckets become unbalanced and recall can fall. pgvector's IVFFlat index exposes the same dial, called probes, and defaults it to 1, which favors speed.
+
+You'll build a small IVF index in the exercise and watch recall climb as nprobe grows.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s2-w1-ivf-recall"
+  title="Measure an IVF index against exact search"
+  starter={`import random
+
+def make_data(n=600, d=16, clusters=12, seed=7):
+    rng = random.Random(seed)
+    centers = [[rng.gauss(0, 1) for _ in range(d)] for _ in range(clusters)]
+    vectors = [[x + rng.gauss(0, 0.6) for x in centers[i % clusters]] for i in range(n)]
+    queries = [[x + rng.gauss(0, 0.9) for x in centers[rng.randrange(clusters)]] for _ in range(40)]
+    return vectors, queries
+
+def dist2(a, b):
+    return sum((x - y) ** 2 for x, y in zip(a, b))
+
+def exact_top_k(query, vectors, k):
+    """Brute force: indices of the k nearest vectors (squared Euclidean), ties by index."""
+    return sorted(range(len(vectors)), key=lambda i: (dist2(query, vectors[i]), i))[:k]
+
+def nearest_lists(query, centroids, nprobe):
+    """Indices of the nprobe centroids closest to the query."""
+    return sorted(range(len(centroids)), key=lambda j: (dist2(query, centroids[j]), j))[:nprobe]
+
+def build_ivf(vectors, centroids):
+    """Assign every vector to its nearest centroid. lists[j] holds the vector indices in bucket j."""
+    lists = [[] for _ in centroids]
+    for i, v in enumerate(vectors):
+        lists[nearest_lists(v, centroids, 1)[0]].append(i)
+    return lists
+
+VECTORS, QUERIES = make_data()
+CENTROIDS = [VECTORS[i] for i in range(5, 600, 37)]   # 17 "trained" centroids (a stand-in for k-means)
+LISTS = build_ivf(VECTORS, CENTROIDS)
+
+def ivf_search(query, vectors, centroids, lists, k, nprobe):
+    """Scan only the buckets of the nprobe nearest centroids.
+    Return (top_k_indices, number_of_vectors_scanned). Rank candidates exactly like exact_top_k."""
+    # TODO
+    pass
+
+def recall_vs_exact(approx, exact):
+    """Share of the exact neighbors that the approximate result contains (len(exact) is k)."""
+    # TODO
+    pass
+
+def sweep(k=10, nprobes=(1, 2, 4, 8, 17)):
+    """For each nprobe, return (nprobe, mean recall@k over QUERIES, mean fraction of the data scanned)."""
+    exact = [exact_top_k(q, VECTORS, k) for q in QUERIES]
+    rows = []
+    for nprobe in nprobes:
+        # TODO: run ivf_search for every query, average recall and the scanned fraction
+        pass
+    return rows
+
+for nprobe, recall, scanned in sweep():
+    print(f"nprobe={nprobe:>2}  recall@10={recall:.3f}  scanned={scanned:.0%}")
+`}
+  tests={`res = ivf_search(QUERIES[0], VECTORS, CENTROIDS, LISTS, 10, len(CENTROIDS))
+assert res is not None, "ivf_search returned None"
+top, scanned = res
+assert top == exact_top_k(QUERIES[0], VECTORS, 10), "probing every bucket must reproduce exact search"
+assert scanned == len(VECTORS), "probing every bucket scans every vector"
+assert recall_vs_exact([1, 2, 3, 4], [1, 2, 5, 6]) == 0.5, "two of four exact neighbors found"
+rows = sweep()
+assert rows and len(rows) == 5, "sweep should return one row per nprobe"
+recalls = [r for _, r, _ in rows]
+fractions = [f for _, _, f in rows]
+assert recalls == sorted(recalls), "recall should never fall as nprobe grows"
+assert fractions == sorted(fractions), "the scanned fraction grows with nprobe"
+assert recalls[0] < 0.9, "one bucket should miss a noticeable share of true neighbors"
+assert recalls[-1] == 1.0, "probing all 17 buckets is exact search"
+assert fractions[0] < 0.15, "nprobe=1 should scan a small fraction of the data"`}
+  solution={`def ivf_search(query, vectors, centroids, lists, k, nprobe):
+    candidates = [i for j in nearest_lists(query, centroids, nprobe) for i in lists[j]]
+    ranked = sorted(candidates, key=lambda i: (dist2(query, vectors[i]), i))
+    return ranked[:k], len(candidates)
+
+def recall_vs_exact(approx, exact):
+    return len(set(approx) & set(exact)) / len(exact)
+
+def sweep(k=10, nprobes=(1, 2, 4, 8, 17)):
+    exact = [exact_top_k(q, VECTORS, k) for q in QUERIES]
+    rows = []
+    for nprobe in nprobes:
+        recalls, fractions = [], []
+        for q, ex in zip(QUERIES, exact):
+            top, scanned = ivf_search(q, VECTORS, CENTROIDS, LISTS, k, nprobe)
+            recalls.append(recall_vs_exact(top, ex))
+            fractions.append(scanned / len(VECTORS))
+        rows.append((nprobe, sum(recalls) / len(recalls), sum(fractions) / len(fractions)))
+    return rows`}
+>
+Implement `ivf_search`, `recall_vs_exact`, and the loop in `sweep`, then press **Check my answer**. Read the printed table as an engineer would: one bucket scans about 6 percent of the data and finds roughly three quarters of the true neighbors; a few buckets reach the high 90s at under a quarter of the cost. Where you stop is a product decision, and the table is the evidence for it.
+</PyRunner>
+
+<Listen>
+## Product quantization: compress the vectors themselves
+
+HNSW and IVF reduce how many vectors you compare. **Product quantization (PQ)**, from Jégou, Douze, and Schmid (2011), reduces how big each vector is. Split each d-dimensional vector into M sub-vectors. For each sub-space, run k-means to learn a small codebook (with 8 bits, 256 centroids). Store each sub-vector as the index of its nearest centroid. A 1,024-dimensional float32 vector is 4,096 bytes; with M of 64 and 8-bit codes it becomes 64 bytes, a 64-fold reduction.
+
+Distances can be computed without decompressing: the paper's asymmetric method compares the uncompressed query with each stored code, using precomputed tables of distances from the query's sub-vectors to every centroid, so scoring a vector costs M table lookups. The price is approximation error in every distance. Faiss combines PQ with IVF in its IVFPQ index, which its wiki describes as the usual choice for very large collections, and its index guide pairs compressed codes with **refinement**: retrieve a larger candidate set with compressed codes, then re-rank it with exact distances.
+
+A simpler cousin is scalar or binary quantization of each coordinate. Some providers return these directly: Voyage's API can return int8 or binary vectors, which its docs describe as cutting storage by 4x and 32x. As always, measure what it does to recall on your data.
+</Listen>
+
+<Callout type="pitfall" title="Trusting default index settings">
+Vector database defaults are chosen to work acceptably on typical benchmarks, not tuned for your data. pgvector's HNSW defaults are m of 16, ef_construction of 64, and ef_search of 40, and its IVFFlat index probes one list by default. Those may be fine, or may quietly cost you several points of recall. Two related traps: configuring the index with a different metric than your model expects (inner product on vectors that aren't normalized, for example), and measuring index recall on random vectors or benchmark data instead of real queries against your real corpus. Tune on a sample of your own queries, with exact search as ground truth.
+</Callout>
+
+<Listen>
+## The recall versus latency trade-off, measured
+
+Every ANN method gives you a dial (efSearch, nprobe, the number of candidates to refine) that moves you along a curve: more work per query, higher recall. ANN-Benchmarks (Aumüller and colleagues, 2018) plots these curves for many libraries on standard datasets, recall on one axis and queries per second on the other. One of its findings is reassuring for practitioners: very different approaches reach comparable quality and speed trade-offs. The choice of library matters less than tuning whichever one you have.
+
+Here is how a working team measures it.
+
+1. **Sample real queries.** A few hundred from logs, embedded with your production model.
+2. **Compute ground truth with exact search** on the same vectors, offline. It's slow, and it only runs once per corpus snapshot.
+3. **Sweep the dial.** For each setting, record mean recall@k against exact and the latency at the median and the 95th or 99th percentile, under realistic load.
+4. **Pick the cheapest setting that meets a target** you chose in advance, for example recall@10 of at least 0.95 at a p95 latency under 50 milliseconds.
+5. **Re-measure as the corpus grows.** A setting tuned at 1 million vectors may lose recall at 10 million, and IVF centroids trained on last year's data may fit this year's poorly. Put the recall check in a scheduled job.
+
+Then connect it back to lesson 2: confirm with your labeled set that end-to-end retrieval recall didn't drop when you switched from exact search to the index.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the steps for tuning an ANN index"
+  items={[
+    "Sample a few hundred real queries and embed them with the production model",
+    "Run exact search on the same vectors to get the true top k for each query",
+    "Sweep efSearch or nprobe, recording recall@k against exact and p95 latency",
+    "Pick the cheapest setting that meets your recall and latency targets",
+    "Check end-to-end retrieval recall on your labeled set, then schedule the recall check to rerun as data grows",
+  ]}
+  explanation="Ground truth first, then the sweep, then the decision. The labeled-set check confirms that the index's small losses don't land on documents users need, and the scheduled rerun catches drift."
+/>
+
+<GoDeeper title="Why greedy search works on small-world graphs, and how the pieces combine">
+Greedy routing is guaranteed to stop at a local minimum of the distance to the query, not the global one. Two design choices make that local minimum usually good. Keeping efSearch candidates instead of one turns greedy descent into a beam search, which escapes many shallow local minima. And HNSW's neighbor-selection heuristic prefers diverse neighbors (links pointing in different directions) over the strictly closest ones, which helps keep separate clusters reachable from each other; the paper reports that the heuristic gives its largest gains at high recall and on highly clustered data.
+
+Production systems combine the ideas in this lesson. A common large-scale design is IVF for coarse partitioning, with an HNSW graph to find the nearest centroids quickly, PQ codes in the buckets, and an exact re-rank of the top few hundred candidates using full-precision vectors kept on disk. The Faiss library paper (Douze and colleagues, 2024) lays out this trade-off space of speed, memory, and accuracy, and is a good map if you ever need to go past a vector database's defaults.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Start with exact search and do the arithmetic; for many internal tools it's fast enough and its recall is perfect. When you need an ANN index, HNSW is the usual default if memory allows; IVF with product quantization is the tool for collections too big for RAM. Every index has a dial that trades recall for speed, and adding one changes your results, not just your latency. So measure recall@k against exact search on real queries, pick a setting against a stated target, and keep measuring as the data grows. Week 2 takes you from raw documents to the chunks you'll index; the vector store choices there build directly on this lesson.
+</Listen>

@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.536
+Roles and system prompts.
+
+2
+00:00:01.816 --> 00:00:07.192
+Every major API separates standing instructions from the turn-by-turn conversation.
+
+3
+00:00:07.472 --> 00:00:10.779
+In the Claude Messages API it is the system parameter.
+
+4
+00:00:11.059 --> 00:00:20.787
+OpenAI calls the equivalent channel developer messages (or the instructions parameter) and documents that they take priority over user messages.
+
+5
+00:00:21.067 --> 00:00:24.480
+Google’s Gemini API calls it the system instruction.
+
+6
+00:00:24.760 --> 00:00:42.616
+Open-weight models do this too, at a lower level: their chat template converts each role into special tokens, and models fine-tuned from the same base can expect different templates, which is why Hugging Face’s tools apply the template that ships with each model rather than one universal format.
+
+7
+00:00:42.896 --> 00:00:43.856
+What goes where?
+
+8
+00:00:44.136 --> 00:00:56.744
+A useful rule: the system prompt holds what stays true for every request (the role, the business context, standing rules, the output contract), and the user turn holds this request’s data and question.
+
+9
+00:00:57.024 --> 00:01:10.848
+OpenAI’s guide suggests ordering a developer message as identity, then instructions, then examples, then context; treat that as a starting layout, since the guide itself notes the best order varies by model.
+
+10
+00:01:11.128 --> 00:01:18.893
+Setting a role is the simplest system-prompt move, and Anthropic’s docs note that even one sentence changes focus and tone.
+
+11
+00:01:19.173 --> 00:01:30.949
+“You review vendor contracts for a 200-person logistics company’s procurement team” primes vocabulary, priorities, and level of caution that “You are a helpful assistant” does not.
+
+12
+00:01:31.229 --> 00:01:32.936
+A role is not magic, though.
+
+13
+00:01:33.216 --> 00:01:38.272
+It shapes defaults; it doesn’t supply facts the model lacks or replace a clear task.

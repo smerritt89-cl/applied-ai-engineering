@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.219
+The same idea at every provider.
+
+2
+00:00:02.499 --> 00:00:04.952
+Tool calling is not a Claude-specific trick.
+
+3
+00:00:05.232 --> 00:00:08.219
+The vocabulary changes; the protocol does not.
+
+4
+00:00:08.499 --> 00:00:19.315
+OpenAI’s function calling guide describes the same five-step flow: send tools, receive a tool call, run your code, send the output back, receive the final answer.
+
+5
+00:00:19.595 --> 00:00:29.216
+In its Responses API, a call arrives as a function_call item with a call_id, and you return a function_call_output item with the same id.
+
+6
+00:00:29.496 --> 00:00:36.067
+Parallel calls are on by default, and a parallel_tool_calls flag limits the model to zero or one call.
+
+7
+00:00:36.347 --> 00:00:43.408
+Google’s Gemini docs describe function calls returned with a name and arguments, which you execute and send back.
+
+8
+00:00:43.688 --> 00:00:58.301
+They cover parallel calling (several functions in one turn) and compositional calling (a chain, where one call’s output feeds the next), and modes that let the model decide, force a call, forbid calls, or enforce schema adherence.
+
+9
+00:00:58.581 --> 00:01:06.261
+xAI’s Grok docs follow the same request, execute, return pattern, with parallel calls enabled by default.
+
+10
+00:01:06.541 --> 00:01:08.269
+Two practical consequences.
+
+11
+00:01:08.549 --> 00:01:15.824
+First, your tool implementations and your gating logic are portable; only the adapter that translates blocks differs.
+
+12
+00:01:16.104 --> 00:01:18.173
+Second, behavior is not portable.
+
+13
+00:01:18.453 --> 00:01:27.541
+How eagerly a model calls tools, how often it calls them in parallel, and how well it recovers from errors all vary between model families and versions.
+
+14
+00:01:27.821 --> 00:01:31.533
+When you switch models, re-run your tool evals rather than assuming.

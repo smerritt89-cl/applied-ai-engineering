@@ -1,0 +1,93 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.112
+Designing schemas that extract well.
+
+2
+00:00:02.392 --> 00:00:04.931
+A schema is a prompt as much as a contract.
+
+3
+00:00:05.211 --> 00:00:07.472
+Five rules cover most of what goes wrong.
+
+4
+00:00:07.752 --> 00:00:09.181
+Describe every field.
+
+5
+00:00:09.461 --> 00:00:11.787
+Descriptions go to the model with the schema.
+
+6
+00:00:12.067 --> 00:00:22.605
+Say what belongs in the field, in what form, and what to do when the source is silent: “Person who committed to the task, as written in the transcript; null if no one was named.
+
+7
+00:00:22.885 --> 00:00:23.183
+”.
+
+8
+00:00:23.463 --> 00:00:24.850
+Enumerate closed sets.
+
+9
+00:00:25.130 --> 00:00:29.567
+Priority, status, category: if your code branches on it, make it an enum.
+
+10
+00:00:29.847 --> 00:00:33.452
+Free strings drift (“High”, “high priority”, “P1”).
+
+11
+00:00:33.732 --> 00:00:35.162
+Make “not found” legal.
+
+12
+00:00:35.442 --> 00:00:40.711
+Every field the source might not cover should be nullable, or have an explicit “unknown” value.
+
+13
+00:00:40.991 --> 00:00:43.935
+Otherwise constrained decoding forces an invention.
+
+14
+00:00:44.215 --> 00:00:51.980
+Required-but-nullable, from lesson 7, is the usual pattern: the model must address the field, and null is a valid answer.
+
+15
+00:00:52.260 --> 00:00:53.284
+Keep it shallow.
+
+16
+00:00:53.564 --> 00:00:58.130
+Nest only where the data is really nested (a list of items, each with fields).
+
+17
+00:00:58.410 --> 00:01:10.356
+Deep trees of small objects are harder to fill correctly, and providers impose complexity limits; Claude’s docs, for example, cap optional parameters and union-typed parameters per request.
+
+18
+00:01:10.636 --> 00:01:13.495
+Keep the API schema to the supported subset.
+
+19
+00:01:13.775 --> 00:01:17.978
+Close every object, and leave numeric and length bounds to your validator.
+
+20
+00:01:18.258 --> 00:01:24.572
+The SDK does this for you when it starts from Pydantic, but hand-written schemas sent to output_config.
+
+21
+00:01:24.852 --> 00:01:27.711
+format must follow the rules or the request fails.
+
+22
+00:01:27.991 --> 00:01:38.167
+On model choice: structured outputs are available across current Claude tiers (Opus, Sonnet, Haiku), so the guarantee doesn’t force you onto the largest model.
+
+23
+00:01:38.447 --> 00:01:49.284
+Whether a smaller, cheaper model gets the values right as often is an empirical question for your eval set; the project’s optional stretch goal asks you to measure exactly that.

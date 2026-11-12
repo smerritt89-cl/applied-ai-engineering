@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.347
+What the guarantee covers, and what it doesn’t.
+
+2
+00:00:02.627 --> 00:00:15.811
+Constrained decoding guarantees shape: the JSON parses, required keys exist, types are right, enum values are legal, and no unknown keys appear (within the schema features the provider enforces).
+
+3
+00:00:16.091 --> 00:00:19.888
+That eliminates a whole class of bugs and most of your cleanup code.
+
+4
+00:00:20.168 --> 00:00:22.301
+It guarantees nothing about values.
+
+5
+00:00:22.581 --> 00:00:24.843
+A valid owner can name the wrong person.
+
+6
+00:00:25.123 --> 00:00:27.619
+A valid due_date can be a date nobody said.
+
+7
+00:00:27.899 --> 00:00:33.104
+An items array can include discussion that was never a commitment, or miss a real one.
+
+8
+00:00:33.384 --> 00:00:37.331
+Google’s docs say it plainly: validate values in your application.
+
+9
+00:00:37.611 --> 00:00:47.061
+Claude’s docs add a smaller caveat worth knowing: enum values can come back with different capitalization than the schema, so compare them case-insensitively.
+
+10
+00:00:47.341 --> 00:00:51.629
+There is also a live debate about whether constraining format hurts quality.
+
+11
+00:00:51.909 --> 00:00:58.757
+Tam and colleagues (2024) reported that reasoning performance dropped under strict format restrictions.
+
+12
+00:00:59.037 --> 00:01:13.544
+The team behind the Outlines library published a rebuttal arguing that the study compared different prompts across conditions and conflated structured generation with JSON mode, and that their reruns showed structured generation helping.
+
+13
+00:01:13.824 --> 00:01:25.301
+Treat this as unsettled, with a practical takeaway either way: let the model think (thinking blocks, or a separate step) and constrain only the final answer, then measure on your own data.

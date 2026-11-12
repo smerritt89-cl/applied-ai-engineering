@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.792
+The tool runner, or your own loop.
+
+2
+00:00:02.072 --> 00:00:06.744
+The Anthropic SDKs include a tool runner (in beta at the time of writing).
+
+3
+00:00:07.024 --> 00:00:19.611
+You write ordinary functions, decorate them, and the runner generates the schemas, calls the API, runs your functions when the model asks, feeds results back, and stops when the model stops calling tools.
+
+4
+00:00:19.891 --> 00:00:26.760
+When a tool raises an exception, the runner returns it to the model as an error result, the same pattern you just learned.
+
+5
+00:00:27.040 --> 00:00:38.517
+You can cap it with a maximum number of iterations, and you can intervene on each turn: inspect the pending tool calls, take over the message history, or modify results before they go back.
+
+6
+00:00:38.797 --> 00:00:40.056
+So which should you use?
+
+7
+00:00:40.336 --> 00:00:51.984
+The docs give both answers depending on the page: the runner for most custom-tool agents, and the manual loop when you want complete control over approval, logging, or conditional execution.
+
+8
+00:00:52.264 --> 00:00:59.091
+A reasonable rule: write the manual loop once, by hand, so you know what the runner is doing (that is this week’s lab).
+
+9
+00:00:59.371 --> 00:01:08.715
+In production, use the runner when its hooks cover your needs, and keep a manual loop when you want to own every step, or when you would rather not depend on a beta helper.
+
+10
+00:01:08.995 --> 00:01:12.877
+Either way, remember that a runner runs your functions automatically.
+
+11
+00:01:13.157 --> 00:01:19.429
+Any tool that changes something in the world needs its own gate, inside the function or in the per-turn hook.
+
+12
+00:01:19.709 --> 00:01:21.117
+That is lesson 11.

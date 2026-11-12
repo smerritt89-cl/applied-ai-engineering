@@ -1,0 +1,299 @@
+---
+id: s3-w2-l6
+studio: s3
+week: 2
+order: 6
+title: Calibrating the judge
+summary: Treat the judge as a classifier and measure it against human labels. Hand-labeling a sample, accuracy versus true positive and true negative rates, Cohen's kappa, iterating on a dev split and reporting on a held-out split, and correcting a measured pass rate with the judge's error rates.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - "Plan a hand-labeling pass: who labels, how many examples, and what each label records"
+  - Compute accuracy, true positive rate, true negative rate, and Cohen's kappa, and explain why accuracy alone misleads
+  - Iterate a judge prompt on a dev split and report agreement once on a held-out test split
+  - Derive and apply the correction that turns a judge's observed pass rate into an estimate of the true pass rate
+  - Judge how much uncertainty small calibration sets leave, and when to re-calibrate
+sources:
+  - { id: hamel-llm-judge, use: summarized, where: "Domain expert labels; TPR and TNR; train, dev, and test splits; sample sizes" }
+  - { id: cohen-1960-kappa, use: summarized }
+  - { id: rogan-gladen-1978, use: summarized }
+  - { id: eugeneyan-llm-evaluators, use: summarized, where: "Agreement metrics: kappa, correlations, classification metrics" }
+  - { id: thakur-2024-judging-judges, use: summarized, where: "Percent agreement versus alignment metrics" }
+  - { id: shankar-2024-validators, use: summarized, where: "Criteria drift; aligning evaluators with human grades" }
+  - { id: bavaresco-2024-judgebench, use: summarized }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Calibrating model-based graders" }
+  - { id: zheng-2023-llm-judge, use: linked }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 3, AI as a judge" }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      human = ["pass", "pass", "pass", "fail"]
+      judge = ["pass", "pass", "fail", "fail"]
+      n = len(human)
+      p_o = sum(h == j for h, j in zip(human, judge)) / n
+      p_e = sum((human.count(k) / n) * (judge.count(k) / n) for k in ("pass", "fail"))
+      print(round((p_o - p_e) / (1 - p_e), 2))
+    options:
+      - id: a
+        text: "`0.75`"
+        rationale: That's `p_o`, raw agreement. Kappa subtracts the agreement you'd expect by chance.
+      - id: b
+        text: "`0.5`"
+        correct: true
+        rationale: "`p_o` = 0.75; `p_e` = 0.75 x 0.5 + 0.25 x 0.5 = 0.5; kappa = 0.25 / 0.5 = 0.5."
+      - id: c
+        text: "`0.25`"
+        rationale: That's `p_o` minus `p_e` before dividing by 1 minus `p_e`.
+      - id: d
+        text: "`0.67`"
+        rationale: Check `p_e`. The judge says pass half the time and the human three quarters of the time.
+    explanation: >-
+      Kappa rescales agreement so that 0 means "no better than two raters guessing independently with these label
+      frequencies" and 1 means perfect agreement. Here the judge got 3 of 4 right, but half of that agreement was
+      expected by chance, so kappa is 0.5.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A teammate labeled 60 replies, rewrote the judge prompt five times while looking at all 60, and reports "the
+      judge agrees with us 93 percent of the time." The team wants to use the judge to gate releases. What do you do?
+    options:
+      - id: a
+        text: Accept it. 93 percent is high, and 60 labels is a reasonable sample.
+        rationale: The number was measured on the same data the prompt was tuned on, so it is optimistic by construction. It also hides TPR and TNR.
+      - id: b
+        text: Label a fresh set the prompt has never seen, run the frozen prompt on it once, and report TPR, TNR, and kappa with their sample sizes.
+        correct: true
+        rationale: Yes. Tuning on a set and reporting on it is selection on the test data. A held-out set gives an honest estimate, and the split metrics show which errors the judge makes.
+      - id: c
+        text: Raise the bar to 95 percent and keep iterating on the 60 examples.
+        rationale: More iteration on the same examples makes the reported number more optimistic, not more trustworthy.
+    explanation: >-
+      Every prompt revision you make while looking at a set fits the prompt to that set's quirks. Keep a test split
+      you don't look at until the prompt is frozen, and report that number. If you only have 60 labels, Hamel Husain's
+      guide suggests a small train set for few-shot examples and the rest split roughly evenly into dev and test.
+  - id: kc3
+    type: mcq
+    prompt: >-
+      A frozen judge passes 70 percent of last week's production replies. On a held-out labeled set it had TPR 0.95
+      and TNR 0.80. What is the corrected estimate of the true pass rate?
+    options:
+      - id: a
+        text: About 0.67
+        correct: true
+        rationale: (0.70 + 0.80 - 1) / (0.95 + 0.80 - 1) = 0.50 / 0.75, about 0.67.
+      - id: b
+        text: 0.70, because the judge is quite accurate
+        rationale: A 20 percent false pass rate on bad replies inflates the observed rate. The correction removes that.
+      - id: c
+        text: About 0.74, after dividing by TPR to undo missed passes
+        rationale: Dividing by TPR alone ignores the false passes, which are the larger error here.
+      - id: d
+        text: About 0.45, subtracting both error rates (0.05 and 0.20) from 0.70
+        rationale: Subtracting error rates from the observed rate isn't the same as solving the equation for p.
+    explanation: >-
+      The observed rate mixes true passes the judge caught (TPR times p) with failures it let through
+      ((1 minus TNR) times (1 minus p)). Solving for p gives the Rogan and Gladen estimator. Its accuracy depends on
+      how well you measured TPR and TNR, which is why the sample sizes behind them matter.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The judge is a classifier, so measure it like one
+
+Lesson 5 built a judge. Now the question is how far to trust it, and the answer is a measurement, not an impression from reading a few critiques. A binary judge is a **classifier**: for each output it predicts pass or fail. The truth it's trying to predict is what your domain expert would say. So you collect the expert's labels on a sample of outputs, run the judge on the same sample, and compare, exactly as you would evaluate any classifier.
+
+Hamel Husain's guide to LLM judges frames the work this way and is specific about the inputs. Pick one person (perhaps two) whose judgment defines quality for this product, the **principal domain expert**, rather than averaging a crowd or letting the engineer who wrote the prompt grade their own work. Have them label each example pass or fail with a short critique explaining why. The critiques do double duty: they show the judge's author what the expert is actually looking for, and the clearest ones become few-shot examples in the judge prompt.
+
+Anthropic's agent-evals write-up puts the goal plainly: calibrate model graders closely against human experts until their judgments rarely diverge, and then a person only needs to spot-check occasionally. Shankar and colleagues (2024), who built a tool for aligning LLM graders with human grades, add a warning from their user study: alignment is iterative and somewhat subjective, because people refine their criteria as they grade (criteria drift). Budget for the expert to change a few labels as they go. If they do, apply the change everywhere, and do it before you look at the test split.
+</Listen>
+
+<Listen>
+## Accuracy, and why it isn't enough
+
+Put the expert's labels and the judge's verdicts in a two-by-two table, with pass as the positive class. **True positives** are passes the judge called pass; **false negatives** are passes it called fail; **false positives** are failures it let through; **true negatives** are failures it caught.
+
+**Accuracy** is the share of all examples on which they agree. It's the number people report, and on skewed data it misleads badly. Suppose 90 percent of your outputs are fine. A "judge" that says pass to everything scores 90 percent accuracy while catching zero failures, which are the only thing you built it to find.
+
+So report the two conditional rates separately, as Hamel recommends:
+
+- **True positive rate (TPR)**: of the outputs the expert passed, the share the judge passed. TP divided by (TP plus FN).
+- **True negative rate (TNR)**: of the outputs the expert failed, the share the judge failed. TN divided by (TN plus FP).
+
+These answer two different operational questions. Low TNR means bad outputs slip through, so the eval overstates quality. Low TPR means good outputs get flagged, so the eval understates quality and your reviewers waste time. Which one you care about more depends on what the judge gates. For a release gate on harmful replies, TNR is the safety number. For a dashboard of overall quality, both matter, and in a moment you'll use both to correct the dashboard.
+
+Thakur and colleagues (2024) make the same point from research on judges: judges with high percent agreement can still assign very different scores, so you need metrics beyond raw agreement.
+</Listen>
+
+<Predict
+  title="The always-pass judge"
+  code={`human = ["pass"] * 18 + ["fail"] * 2
+judge = ["pass"] * 20
+
+accuracy = sum(h == j for h, j in zip(human, judge)) / len(human)
+tnr = sum(h == j == "fail" for h, j in zip(human, judge)) / human.count("fail")
+print(accuracy, tnr)`}
+  options={["0.9 0.0", "0.9 1.0", "1.0 0.0", "0.5 0.0"]}
+  answer={0}
+>
+Ninety percent accuracy, and a true negative rate of zero: it never catches a failure. On a set where most outputs pass, accuracy rewards a judge for agreeing with the majority. Always look at TPR and TNR, and at how many examples of each label sit behind them.
+</Predict>
+
+<Listen>
+## Cohen's kappa: agreement beyond chance
+
+When you want one number for agreement that isn't fooled by skewed labels, use **Cohen's kappa**, introduced by Jacob Cohen in 1960 for exactly this problem: two raters assigning items to categories, some of whose agreement would happen by chance.
+
+Let `p_o` be the observed agreement (accuracy). Let `p_e` be the agreement you'd expect if the two raters labeled independently, each keeping their own label frequencies: for each label k, multiply the share of items the human gave label k by the share the judge gave label k, and add these products over labels. Then
+
+kappa = (`p_o` minus `p_e`) / (1 minus `p_e`).
+
+Kappa is 1 for perfect agreement, 0 when agreement is exactly what chance predicts, and negative when the raters agree less than chance (a systematically contrarian judge). The always-pass judge above has `p_o` = 0.9, but the judge says pass 100 percent of the time and the human 90 percent, so `p_e` = 0.9 times 1 plus 0.1 times 0 = 0.9, and kappa = 0. That matches intuition: the judge's verdict tells you nothing.
+
+Two cautions. First, kappa depends on prevalence: the same judge can show different kappas on sets with different pass rates, so compare kappas only across sets with similar label mixes. Second, the published rules of thumb for "good" kappa are conventions, not laws. Eugene Yan's survey notes kappa is the more conservative metric, compared with correlations, which run higher because they don't correct for chance. Report kappa next to TPR and TNR, with the counts, and decide what's good enough from what the judge is used for.
+</Listen>
+
+<Listen>
+## Dev and test splits: iterate on one, report the other
+
+You will revise the judge prompt several times: sharpen the criterion, add an edge case, swap a few-shot example. Every revision made while looking at a set of examples fits the prompt to those examples, so agreement measured on the same set is optimistic. It's the same overfitting you'd guard against in any model, applied to a prompt.
+
+The fix is the standard one. Hamel's guide suggests three splits of the labeled data:
+
+- **Train** (roughly 10 to 20 percent): clear pass and fail examples you may paste into the prompt as few-shot examples.
+- **Dev** (roughly 40 to 45 percent): run the judge, read every disagreement, revise the prompt. Dev examples never go into the prompt.
+- **Test** (roughly 40 to 45 percent): untouched until you freeze the prompt; then run once and report.
+
+Two implementation details matter. **Stratify** by label, so both splits keep the same pass and fail mix; otherwise TNR on a test set with three failures is noise. And make the split **deterministic**: assign each example by hashing its id with a fixed seed, not by an unseeded shuffle, so the split is the same on every machine and nobody can reshuffle until the numbers look better. The lab does both.
+
+How many labels? Hamel suggests aiming for 30 to 50 examples of each label in dev and in test where you can, and warns that with fewer than about 60 examples confidence intervals are often too wide to be useful. With a TNR of 0.875 measured on only 8 failures, one standard error is about 0.12. If your calibration set is small, say so next to every number.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of a calibration workflow. Labeled examples are split, stratified by label and deterministically, into a small train set for few-shot examples, a dev set, and a test set. The judge prompt runs on dev; disagreements are read, and the prompt is revised in a loop until it stops improving. Then the prompt is frozen, the judge runs once on test, and TPR, TNR, and kappa are reported with counts. The test rates are then used to correct the judge's pass rate on new unlabeled outputs, and a sample of production outputs is periodically relabeled to detect drift."
+  caption="Iterate on dev, report on test once, then use the test rates in production and keep auditing."
+  chart={`flowchart TD
+  L["Expert-labeled examples"] --> S["Stratified, deterministic split"]
+  S --> T["Train: few-shot examples"]
+  S --> D["Dev"]
+  S --> H["Test (held out)"]
+  D --> R["Run judge, read disagreements"]
+  R --> P["Revise prompt"]
+  P --> R
+  R -- "stops improving" --> F["Freeze prompt"]
+  F --> H
+  H --> M["Report TPR, TNR, kappa with counts"]
+  M --> C["Correct pass rate on new unlabeled outputs"]
+  C --> A["Relabel a sample periodically to catch drift"]`}
+/>
+
+<Callout type="pitfall" title="Grading the judge with labels that aren't human">
+It's tempting to save time by having a strong model label the calibration set, or by "fixing" human labels wherever the judge disagreed and its critique sounded convincing. Both make agreement go up while measuring nothing: you are scoring the judge against itself, or against a model with the same blind spots. The labels are the ground truth only if a person decided them independently. When the judge's critique does change the expert's mind, that's legitimate criteria drift: relabel deliberately, record why, and re-measure on test.
+</Callout>
+
+<Listen>
+## Correcting a measured pass rate
+
+Here's the payoff of measuring TPR and TNR separately. Once the judge is frozen, you run it on new outputs that nobody labeled, say last week's production replies, and it reports an **observed pass rate** q. That number is biased by the judge's errors: it counts failures the judge let through, and misses passes it flagged. If you know the error rates, you can undo that.
+
+Let p be the true pass rate on the new outputs. A truly passing output is called pass with probability TPR; a truly failing one is called pass with probability 1 minus TNR. So, assuming the judge's error rates on new outputs match what you measured,
+
+q = TPR times p plus (1 minus TNR) times (1 minus p).
+
+This is linear in p. Collect the terms: q = p times (TPR plus TNR minus 1) plus (1 minus TNR). Solving,
+
+p = (q plus TNR minus 1) / (TPR plus TNR minus 1).
+
+Epidemiologists have used exactly this estimator since Rogan and Gladen's 1978 paper on estimating disease prevalence from an imperfect screening test, where TPR is the test's sensitivity and TNR its specificity. Three properties follow from the algebra. A perfect judge (TPR = TNR = 1) leaves q unchanged. The denominator must be positive: if TPR plus TNR is 1 or less, the judge is no better than a coin weighted to its own pass rate and q carries no information about p. And sampling noise can push the estimate outside 0 to 1, so clip it.
+
+A worked example: the judge passes 79 percent of production replies, with TPR 0.90 and TNR 0.70 from the test split. Then p = (0.79 plus 0.70 minus 1) / (0.90 plus 0.70 minus 1) = 0.49 / 0.60, about 0.82. The correction went up here, because the judge misses more good replies than the extra bad ones it lets through at this pass rate. With a more lenient judge it goes down. Don't guess the direction; compute it.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s3-w2-kappa-correction"
+  title="Compute kappa and a corrected pass rate"
+  starter={`# 30 held-out examples: a person's label and the frozen judge's verdict for each.
+HUMAN = ["pass"] * 20 + ["fail"] * 10
+JUDGE = ["pass"] * 18 + ["fail"] * 2 + ["pass"] * 3 + ["fail"] * 7
+
+def rates(human, judge):
+    """Return (tpr, tnr) with "pass" as the positive class."""
+    # TODO
+    pass
+
+def cohen_kappa(human, judge):
+    """(p_o - p_e) / (1 - p_e), with p_e = sum over labels k of P(human = k) * P(judge = k)."""
+    # TODO
+    pass
+
+def corrected_pass_rate(observed, tpr, tnr):
+    """Solve observed = tpr * p + (1 - tnr) * (1 - p) for p, clip to [0, 1].
+    Raise ValueError if tpr + tnr <= 1."""
+    # TODO
+    pass
+
+if rates(HUMAN, JUDGE) is not None:
+    tpr, tnr = rates(HUMAN, JUDGE)
+    print("TPR", tpr, "TNR", tnr, "kappa", cohen_kappa(HUMAN, JUDGE))
+    # The same frozen judge then grades 2,000 unlabeled production replies and passes 1,580 of them.
+    print("observed", 1580 / 2000, "corrected", corrected_pass_rate(1580 / 2000, tpr, tnr))`}
+  tests={`assert rates(HUMAN, JUDGE) is not None, "rates returned None"
+tpr, tnr = rates(HUMAN, JUDGE)
+assert abs(tpr - 0.9) < 1e-9 and abs(tnr - 0.7) < 1e-9, "TPR = 18/20 and TNR = 7/10"
+k = cohen_kappa(HUMAN, JUDGE)
+assert k is not None, "cohen_kappa returned None"
+# p_o = 25/30; judge says pass 21/30; p_e = (20/30)(21/30) + (10/30)(9/30)
+p_o, p_e = 25 / 30, (20 / 30) * (21 / 30) + (10 / 30) * (9 / 30)
+assert abs(k - (p_o - p_e) / (1 - p_e)) < 1e-9, "check p_e: use each rater's own label frequencies"
+assert abs(cohen_kappa(["pass", "fail"], ["pass", "fail"]) - 1.0) < 1e-9
+assert abs(corrected_pass_rate(0.79, 0.9, 0.7) - 0.49 / 0.6) < 1e-9, "expected (0.79 + 0.7 - 1) / (0.9 + 0.7 - 1)"
+assert corrected_pass_rate(0.2, 0.9, 0.7) == 0.0, "clip at 0"
+try:
+    corrected_pass_rate(0.5, 0.6, 0.4)
+    raise AssertionError("tpr + tnr = 1 must raise ValueError")
+except ValueError:
+    pass`}
+  solution={`def rates(human, judge):
+    tp = sum(h == "pass" and j == "pass" for h, j in zip(human, judge))
+    tn = sum(h == "fail" and j == "fail" for h, j in zip(human, judge))
+    return tp / human.count("pass"), tn / human.count("fail")
+
+def cohen_kappa(human, judge):
+    n = len(human)
+    p_o = sum(h == j for h, j in zip(human, judge)) / n
+    labels = set(human) | set(judge)
+    p_e = sum((human.count(k) / n) * (judge.count(k) / n) for k in labels)
+    return (p_o - p_e) / (1 - p_e)
+
+def corrected_pass_rate(observed, tpr, tnr):
+    denom = tpr + tnr - 1
+    if denom <= 0:
+        raise ValueError("judge must be better than chance: tpr + tnr > 1")
+    return min(1.0, max(0.0, (observed + tnr - 1) / denom))`}
+>
+Implement `rates`, `cohen_kappa`, and `corrected_pass_rate`, then press **Check my answer**. The data are a held-out calibration set of 30 examples (illustrative) and the judge's pass count on 2,000 unlabeled production replies. After it passes, change the TNR by 0.05 in either direction and watch how far the corrected estimate moves. That sensitivity is why small calibration sets deserve error bars.
+</PyRunner>
+
+<GoDeeper title="Putting error bars on the corrected rate">
+The corrected estimate inherits uncertainty from three places: the observed pass rate q (usually measured on many outputs, so small), and TPR and TNR (measured on your calibration set, often small). A simple way to see the combined effect is a **bootstrap**: resample the calibration set with replacement many times (say 2,000), recompute TPR and TNR on each resample, resample the production verdicts too, recompute the corrected p each time, and report the middle 95 percent of the resulting values. The interval is often wide, and the dominant term is usually the rate with the fewest examples behind it (typically TNR, since failures are rarer).
+
+Rogan and Gladen also derived the estimator's variance analytically. For product work, the bootstrap is easier to get right and makes the assumptions visible. The key assumption deserves a sentence in any report: the judge's error rates on production outputs are the same as on the calibration set. If production outputs differ (a new model, a new customer segment, a new policy), that assumption breaks, which is the next section's topic.
+</GoDeeper>
+
+<Listen>
+## Keeping a judge calibrated
+
+Calibration is a measurement at one point in time, of one judge configuration, on one distribution of outputs. Change any of those and the numbers can move. Re-run the test split whenever you change the judge's prompt, model, or effort setting, and whenever the system being judged changes substantially, because a new generator produces new kinds of mistakes the judge may not recognize. Bavaresco and colleagues (2024) found that judge reliability varied with whether the text being judged was written by people or generated by models, a reminder that the distribution of inputs matters.
+
+Between those events, **audit**: each week or release, have the expert label a small random sample of production outputs the judge has already graded. That sample estimates current TPR and TNR on live traffic and catches drift that a frozen test set can't. When the audit disagrees with the test-split numbers, believe the audit, investigate, and re-calibrate.
+
+The same procedure is how you choose a judge model. Calibrate each candidate (a small, fast model; a frontier model; a model from another provider, especially when the outputs come from Claude; an open-weight model you host) on the same labeled splits and compare TPR, TNR, kappa, and cost per thousand verdicts. Pick the cheapest one that meets the bar your use requires, and write down the numbers so the next person can see why.
+
+In the lab you'll do all of this on 40 labeled support replies: split, write the metrics, build the judge with structured outputs, iterate on dev, report on test once, and correct a pass rate.
+</Listen>
+
+<LabLink path="labs/studio-3/02-judge-calibration" title="Lab: calibrate an LLM judge against human labels" needs={["Anthropic API key (optional: offline tests run without one)"]} minutes={75}>
+A fictional store's returns policy, 40 support replies labeled by a person, and recorded verdicts from a weak and an improved judge prompt. You write the stratified split, accuracy, TPR, TNR, Cohen's kappa, and the corrected pass rate (all tested offline), then run a live Claude judge on dev, improve its prompt, and report on test once.
+</LabLink>

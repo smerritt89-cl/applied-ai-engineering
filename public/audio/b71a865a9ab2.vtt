@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.413
+JSON Schema: a vocabulary for describing data.
+
+2
+00:00:03.693 --> 00:00:08.024
+JSON Schema is a standard for describing what valid JSON looks like.
+
+3
+00:00:08.304 --> 00:00:18.267
+The current version is Draft 2020-12, and its validation vocabulary is a short list of keywords that you’ll see in every model provider’s docs.
+
+4
+00:00:18.547 --> 00:00:20.936
+A schema is itself a JSON object.
+
+5
+00:00:21.216 --> 00:00:27.147
+The keywords you’ll use most: type: string, number, integer, boolean, object, array, or null.
+
+6
+00:00:27.427 --> 00:00:30.733
+properties: for an object, a schema for each named key.
+
+7
+00:00:31.013 --> 00:00:33.787
+required: the list of keys that must be present.
+
+8
+00:00:34.067 --> 00:00:35.965
+Keys not listed may be absent.
+
+9
+00:00:36.245 --> 00:00:38.763
+enum: the value must be one of a fixed list.
+
+10
+00:00:39.043 --> 00:00:42.797
+additionalProperties: whether keys not named in properties are allowed.
+
+11
+00:00:43.077 --> 00:00:45.531
+Setting it to false makes the object closed.
+
+12
+00:00:45.811 --> 00:00:49.331
+items: for an array, the schema every element must match.
+
+13
+00:00:49.611 --> 00:00:52.683
+format: a named format such as date or email.
+
+14
+00:00:52.963 --> 00:00:55.011
+description: human-readable text.
+
+15
+00:00:55.291 --> 00:00:58.768
+It doesn’t constrain anything, but as you’ll see, models read it.
+
+16
+00:00:59.048 --> 00:01:00.691
+Two details trip people up.
+
+17
+00:01:00.971 --> 00:01:11.488
+First, required and nullability are independent: a key can be required but allowed to be null (the type is a union with null), or optional but non-null when present.
+
+18
+00:01:11.768 --> 00:01:19.555
+Second, by default JSON Schema objects are open: extra keys pass validation unless additionalProperties is false.
+
+19
+00:01:19.835 --> 00:01:27.813
+Closed objects are what you want for model output, because a stray assignee key usually means the model misunderstood the contract.
+
+20
+00:01:28.093 --> 00:01:30.333
+You’ll rarely write these schemas by hand.
+
+21
+00:01:30.613 --> 00:01:32.213
+You’ll generate them from code.

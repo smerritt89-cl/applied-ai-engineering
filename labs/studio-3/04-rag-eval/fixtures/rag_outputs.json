@@ -1,0 +1,83 @@
+{
+  "about": "Fictional employee handbook for Halden Logistics, eight questions answered by a RAG system. 'retrieved' is the ranked list of chunk ids the retriever returned (top 5). 'relevant' is the hand-labeled set of chunks that contain the answer. 'abstained' is true when the system declined to answer. Citation markers like [pto-2] appear in answers.",
+  "chunks": {
+    "pto-1": "Full-time employees accrue 1.5 days of paid time off per month, up to a maximum balance of 30 days. Accrual pauses when the balance reaches the cap.",
+    "pto-2": "Unused paid time off above 5 days is forfeited on January 1. Employees in California are exempt from forfeiture and keep their full balance.",
+    "pto-3": "Paid time off requests of more than 5 consecutive working days need manager approval at least two weeks in advance.",
+    "exp-1": "Employees may expense meals during business travel up to $60 per day. Alcohol is not reimbursable.",
+    "exp-2": "Expense reports must be submitted within 30 days of the purchase, with an itemized receipt for any item over $25.",
+    "exp-3": "Corporate cards are issued to employees who travel more than four times per year. Requests go to the finance team.",
+    "it-1": "Laptops are refreshed every three years. Engineers may request a refresh after two years if their machine no longer meets build requirements.",
+    "it-2": "Lost or stolen devices must be reported to the IT service desk within 24 hours so the device can be remotely wiped.",
+    "it-3": "Personal devices may access email only after enrolling in mobile device management.",
+    "rem-1": "Employees may work remotely up to three days per week with manager approval. Fully remote arrangements require a VP exception.",
+    "rem-2": "Employees working from another country for more than 14 days must notify HR in advance because of tax and immigration rules.",
+    "par-1": "Birthing parents receive 16 weeks of paid parental leave; non-birthing parents receive 8 weeks. Leave must begin within 12 months of the birth or adoption."
+  },
+  "cases": [
+    {
+      "id": "q1",
+      "question": "How many PTO days can I carry into the new year?",
+      "retrieved": ["pto-1", "pto-3", "pto-2", "exp-2", "rem-1"],
+      "relevant": ["pto-2", "pto-1"],
+      "answer": "You can carry over up to 5 days of unused PTO into the new year [pto-2]. Anything above 5 days is forfeited on January 1 [pto-2]. Employees in California keep their full balance [pto-2].",
+      "abstained": false
+    },
+    {
+      "id": "q2",
+      "question": "What is the daily meal limit when I travel for work?",
+      "retrieved": ["exp-1", "exp-3", "exp-2", "pto-1", "it-1"],
+      "relevant": ["exp-1"],
+      "answer": "The meal limit during business travel is $60 per day [exp-1]. Alcohol is not reimbursable [exp-1]. You need an itemized receipt for any meal over $15 [exp-2].",
+      "abstained": false
+    },
+    {
+      "id": "q3",
+      "question": "How often are laptops replaced?",
+      "retrieved": ["it-2", "it-3", "rem-1", "it-1", "exp-3"],
+      "relevant": ["it-1"],
+      "answer": "Laptops are refreshed every three years [it-1]. Engineers can ask for a refresh after two years if their machine no longer meets build requirements [it-1].",
+      "abstained": false
+    },
+    {
+      "id": "q4",
+      "question": "Can I work from Portugal for a month?",
+      "retrieved": ["rem-1", "par-1", "pto-3", "it-3", "exp-1"],
+      "relevant": ["rem-2", "rem-1"],
+      "answer": "You can work remotely up to three days per week with manager approval [rem-1]. Working abroad for a month is allowed as long as your manager approves [rem-1].",
+      "abstained": false
+    },
+    {
+      "id": "q5",
+      "question": "What should I do if my laptop is stolen?",
+      "retrieved": ["it-2", "it-1", "it-3", "exp-2", "rem-2"],
+      "relevant": ["it-2"],
+      "answer": "Report it to the IT service desk within 24 hours [it-2]. IT will remotely wipe the device for you [it-2].",
+      "abstained": false
+    },
+    {
+      "id": "q6",
+      "question": "How much parental leave do non-birthing parents get?",
+      "retrieved": ["pto-1", "pto-2", "rem-1", "pto-3", "exp-1"],
+      "relevant": ["par-1"],
+      "answer": "I couldn't find the parental leave policy in the documents I can search. Please check with HR.",
+      "abstained": true
+    },
+    {
+      "id": "q7",
+      "question": "Who can get a corporate card?",
+      "retrieved": ["exp-3", "exp-1", "exp-2", "it-1", "pto-3"],
+      "relevant": ["exp-3"],
+      "answer": "Corporate cards are issued to employees who travel more than four times per year [exp-3]. You can request one from the finance team [exp-3]. Cards come with a $5,000 monthly limit.",
+      "abstained": false
+    },
+    {
+      "id": "q8",
+      "question": "Do I need approval to take a week off?",
+      "retrieved": ["pto-1", "pto-3", "rem-1", "pto-2", "par-1"],
+      "relevant": ["pto-3"],
+      "answer": "Yes. Requests for more than 5 consecutive working days need manager approval at least two weeks in advance [pto-3].",
+      "abstained": false
+    }
+  ]
+}

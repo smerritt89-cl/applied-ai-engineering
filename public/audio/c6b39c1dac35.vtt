@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.112
+Small and sharp, or few and capable?
+
+2
+00:00:02.392 --> 00:00:06.083
+Here the sources pull in two directions, and it is worth seeing both.
+
+3
+00:00:06.363 --> 00:00:12.144
+Anthropic’s guidance favors fewer, more capable tools over a thin wrapper per API endpoint.
+
+4
+00:00:12.424 --> 00:00:21.235
+The engineering post’s example: instead of list_contacts, which makes an agent read every contact token by token, offer search_contacts.
+
+5
+00:00:21.515 --> 00:00:28.533
+Instead of list_users, list_events, and create_event, consider one schedule_event that finds availability and books.
+
+6
+00:00:28.813 --> 00:00:36.941
+The tool docs go further and suggest grouping related operations under one tool with an action parameter, to reduce selection ambiguity.
+
+7
+00:00:37.221 --> 00:00:42.299
+Too many overlapping tools, the post notes, distract agents from efficient strategies.
+
+8
+00:00:42.579 --> 00:00:46.696
+The security literature favors giving the agent only what it needs.
+
+9
+00:00:46.976 --> 00:01:02.165
+OWASP’s entry on Excessive Agency lists “excessive functionality” as a root cause, with examples like a document-reading extension that can also delete documents, or a tool meant to run one shell command that fails to block others.
+
+10
+00:01:02.445 --> 00:01:09.784
+This course’s rule of thumb reconciles them: consolidate by workflow, but never mix risk levels inside one tool.
+
+11
+00:01:10.064 --> 00:01:14.245
+A search_contacts tool that only reads is a fine consolidation.
+
+12
+00:01:14.525 --> 00:01:25.939
+A manage_tasks tool whose action can be list, update, or delete hides a destructive operation behind a parameter, so your gate has to inspect arguments to know what it is approving.
+
+13
+00:01:26.219 --> 00:01:32.107
+Split it so read and write tools are separate, and any tool’s name tells you whether it can change the world.
+
+14
+00:01:32.387 --> 00:01:39.555
+A run_sql tool that accepts arbitrary queries is the extreme case: you cannot gate what you cannot classify.

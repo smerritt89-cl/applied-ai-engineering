@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.669
+A tool is an interface for a reader who cannot ask questions.
+
+2
+00:00:03.949 --> 00:00:08.408
+When you write a function for a colleague, they can read the code, ask you, or try it.
+
+3
+00:00:08.688 --> 00:00:13.808
+A model gets the name, the description, and the schema, nothing else, on every request.
+
+4
+00:00:14.088 --> 00:00:31.880
+Anthropic’s tool use docs call detailed descriptions by far the most important factor in tool performance, and ask for at least three or four sentences per tool covering what it does, when to use it and when not to, what each parameter means, and its caveats, such as what it does not return.
+
+5
+00:00:32.160 --> 00:00:43.595
+Anthropic’s engineering post “Writing effective tools for AI agents” (September 2025) gives a useful test: describe the tool the way you would to a new hire.
+
+6
+00:00:43.875 --> 00:00:48.888
+Make the implicit explicit: query formats, niche terms, how resources relate.
+
+7
+00:00:49.168 --> 00:00:53.669
+Name parameters unambiguously, for instance user_id rather than user.
+
+8
+00:00:53.949 --> 00:01:03.997
+When tools from several services sit side by side, prefix names by service or resource ( asana_search, jira_search ) so the model can tell them apart.
+
+9
+00:01:04.277 --> 00:01:13.557
+The post reports that the choice between prefix and suffix naming had measurable effects in their evaluations, and recommends choosing by your own evals.
+
+10
+00:01:13.837 --> 00:01:18.211
+That last point is the theme of the post: tools are prompts, so you measure them.
+
+11
+00:01:18.491 --> 00:01:23.696
+Build realistic tasks that need several tool calls, run them, and read the transcripts.
+
+12
+00:01:23.976 --> 00:01:36.285
+The post’s examples of what to look for: many redundant calls suggest pagination or limits need adjusting, and many invalid-parameter errors suggest the descriptions or examples need work.
+
+13
+00:01:36.565 --> 00:01:44.416
+In one case Anthropic found Claude needlessly appending the year to web search queries and fixed it by improving the tool description.

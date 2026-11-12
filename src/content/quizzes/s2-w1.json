@@ -1,0 +1,161 @@
+{
+  "id": "s2-w1",
+  "studio": "s2",
+  "week": 1,
+  "title": "Week 1 quiz: Embeddings and similarity",
+  "questions": [
+    {
+      "id": "s2w1-q1",
+      "type": "mcq",
+      "prompt": "Why can a bi-encoder (embedding model) search a large corpus quickly when a cross-encoder cannot?",
+      "options": [
+        { "id": "a", "text": "Bi-encoders are smaller networks, so each call is faster.", "rationale": "Size helps, but the decisive difference is when the work happens, not model size." },
+        { "id": "b", "text": "A bi-encoder embeds each document independently, so document vectors are computed once ahead of time and each query needs only one model call plus vector comparisons.", "correct": true, "rationale": "Yes. A cross-encoder must read the query and each candidate together, so it runs once per candidate at query time." },
+        { "id": "c", "text": "Cross-encoders can only compare two sentences, not a sentence and a document.", "rationale": "Cross-encoders handle passages too; the cost is that they must run on every pair." },
+        { "id": "d", "text": "Bi-encoders don't use transformers.", "rationale": "Sentence-BERT and most modern embedding models are transformers." }
+      ],
+      "explanation": "Reimers and Gurevych estimated that finding the most similar pair among 10,000 sentences with BERT as a cross-encoder takes about 65 hours, versus about 5 seconds with Sentence-BERT embeddings. That's why retrieval uses bi-encoders for the first pass and saves cross-encoders for reranking a shortlist (week 3).",
+      "week": 1,
+      "tags": ["embeddings", "architecture"],
+      "difficulty": 1
+    },
+    {
+      "id": "s2w1-q2",
+      "type": "predict-output",
+      "prompt": "Both vectors have unit length. What does this print?",
+      "code": "import math\na = [0.6, 0.8]\nb = [0.8, 0.6]\ncos = sum(x * y for x, y in zip(a, b))\nd2 = sum((x - y) ** 2 for x, y in zip(a, b))\nprint(round(cos, 2), round(d2, 2), round(2 - 2 * cos, 2))",
+      "options": [
+        { "id": "a", "text": "`0.96 0.08 0.08`", "correct": true, "rationale": "The dot product is 0.48 + 0.48. The squared distance is 0.04 + 0.04, which equals 2 minus 2 times the cosine." },
+        { "id": "b", "text": "`0.96 0.28 0.08`", "rationale": "0.28 is roughly the distance itself (square root of 0.08), not its square." },
+        { "id": "c", "text": "`1.0 0.0 0.0`", "rationale": "The vectors point in different directions, so the cosine is below 1." }
+      ],
+      "explanation": "On unit vectors, squared Euclidean distance equals 2 minus 2 cos, which is why cosine, dot product, and Euclidean distance rank normalized embeddings identically.",
+      "week": 1,
+      "tags": ["similarity", "math"],
+      "difficulty": 1
+    },
+    {
+      "id": "s2w1-q3",
+      "type": "code-reading",
+      "prompt": "This search function is used with an embedding model whose vectors are **not** normalized, and whose model card recommends cosine similarity. What is the bug?",
+      "code": "def search(query_vec, docs, k=5):\n    scored = [(sum(q * d for q, d in zip(query_vec, vec)), doc_id)\n              for doc_id, vec in docs.items()]\n    scored.sort(reverse=True)\n    return [doc_id for _, doc_id in scored[:k]]",
+      "options": [
+        { "id": "a", "text": "It ranks by raw dot product, so long vectors win regardless of direction; it should normalize vectors (once, at write time) or divide by the norms.", "correct": true, "rationale": "Yes. Without normalization, the dot product mixes magnitude into the score." },
+        { "id": "b", "text": "`sort(reverse=True)` puts the lowest scores first.", "rationale": "reverse=True sorts descending, which is what you want for similarity." },
+        { "id": "c", "text": "It should use `max` instead of sorting.", "rationale": "max would return only one result; the problem is the scoring, not the selection." },
+        { "id": "d", "text": "Nothing; dot product and cosine always give the same ranking.", "rationale": "Only for unit vectors. These are not normalized." }
+      ],
+      "explanation": "Follow the model's documented metric. The robust fix is to normalize every vector when you store it and every query when you embed it, then use the dot product everywhere. A second, smaller issue: ties are broken by doc id in reverse order, which is deterministic but surprising; an explicit key such as `(-score, doc_id)` is clearer.",
+      "week": 1,
+      "tags": ["similarity", "debugging"],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w1-q4",
+      "type": "multi",
+      "prompt": "Which of these are documented caveats when using the MTEB leaderboard to pick a retrieval model? Select all that apply.",
+      "options": [
+        { "id": "a", "text": "The overall average blends task types (clustering, classification, and others) that may not matter for search.", "correct": true, "rationale": "MTEB spans several task types; for search, the retrieval columns are what count." },
+        { "id": "b", "text": "Some top models trained on benchmark tasks, so their scores may overstate how well they generalize.", "correct": true, "rationale": "The MTEB maintainers report this for the legacy English leaderboard and now compute a zero-shot score from disclosed training data." },
+        { "id": "c", "text": "Benchmark domains may not resemble your documents.", "correct": true, "rationale": "BEIR showed retrieval quality can change sharply out of domain." },
+        { "id": "d", "text": "MTEB only includes English datasets.", "rationale": "The original MTEB covered 112 languages, and MMTEB covers over 250." },
+        { "id": "e", "text": "Model size and latency are not part of the score.", "correct": true, "rationale": "A model a few points higher may be far larger and slower, which the ranking doesn't reflect." }
+      ],
+      "explanation": "Use the leaderboard to shortlist, not to decide. The decision comes from your own labeled queries, weighed against latency, cost, and data constraints.",
+      "week": 1,
+      "tags": ["mteb", "model-selection"],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w1-q5",
+      "type": "scenario",
+      "prompt": "Your team stores 3,072-dimensional embeddings from a Matryoshka-trained provider model. Storage costs are growing, and someone proposes slicing every stored vector to its first 768 values. What is the right plan?",
+      "options": [
+        { "id": "a", "text": "Slice the stored vectors and keep using the dot product as before.", "rationale": "A prefix of a unit vector is shorter than 1, so the dot product no longer equals cosine. You'd also be shipping an unmeasured change." },
+        { "id": "b", "text": "Truncate to 768 and renormalize (or request 768 dimensions from the API), re-embed queries at the same size, and compare recall@k and MRR on your labeled set at both sizes before switching.", "correct": true, "rationale": "Yes. Matryoshka models are designed for this, but renormalization and a measured comparison are required." },
+        { "id": "c", "text": "Don't do it: truncating an embedding always destroys its meaning.", "rationale": "Not for Matryoshka-trained models, whose leading dimensions are trained to work as a smaller embedding." },
+        { "id": "d", "text": "Average neighboring dimensions down to 768 instead of slicing.", "rationale": "Matryoshka training makes the prefix meaningful, not averages of coordinates." }
+      ],
+      "explanation": "Matryoshka Representation Learning trains coarse-to-fine embeddings so prefixes stay useful; OpenAI, Voyage, and Gemini all expose shorter sizes. The provider docs say to renormalize vectors you truncate yourself. Then the labeled set tells you what the 4x saving costs in quality.",
+      "week": 1,
+      "tags": ["matryoshka", "cost"],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w1-q6",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "def reciprocal_rank(ranked, relevant):\n    for i, doc in enumerate(ranked, start=1):\n        if doc in relevant:\n            return 1 / i\n    return 0.0\n\nruns = [([\"d4\", \"d1\", \"d9\"], {\"d1\"}),\n        ([\"d2\", \"d7\", \"d3\"], {\"d8\"}),\n        ([\"d5\", \"d6\", \"d0\"], {\"d5\", \"d0\"})]\nprint(round(sum(reciprocal_rank(r, rel) for r, rel in runs) / len(runs), 3))",
+      "options": [
+        { "id": "a", "text": "`0.5`", "correct": true, "rationale": "Reciprocal ranks are 1/2, 0 (no relevant result), and 1 (first result relevant). Their mean is 1.5 / 3 = 0.5." },
+        { "id": "b", "text": "`0.611`", "rationale": "That would add credit for the second relevant document in the third run (1/3). MRR counts only the first relevant hit." },
+        { "id": "c", "text": "`0.75`", "rationale": "That averages over only the two queries with a hit. A query with no relevant result counts as 0 and stays in the denominator." }
+      ],
+      "explanation": "MRR rewards getting a relevant result near the top and ignores everything after the first hit. Pair it with recall@k, which tells you whether all the relevant documents made it into the context.",
+      "week": 1,
+      "tags": ["metrics", "mrr"],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w1-q7",
+      "type": "mcq",
+      "prompt": "In contrastive training with **in-batch negatives**, where do the negative examples for a given query come from?",
+      "options": [
+        { "id": "a", "text": "Randomly generated vectors added to the batch.", "rationale": "Negatives are real passages, not random vectors." },
+        { "id": "b", "text": "The positive passages of the other queries in the same batch.", "correct": true, "rationale": "Yes. In a batch of B pairs, each query gets B minus 1 negatives at no extra cost." },
+        { "id": "c", "text": "Passages a human labeled as irrelevant for that query.", "rationale": "Labeled hard negatives can be added, but that isn't what in-batch negatives means." },
+        { "id": "d", "text": "The query's own positive passage with words shuffled.", "rationale": "That's a form of augmentation, not in-batch negatives." }
+      ],
+      "explanation": "The InfoNCE loss is a softmax cross-entropy over the positive and the negatives, so more negatives give a harder, more informative task. Dense Passage Retrieval used in-batch negatives; SimCSE added hard negatives from contradiction pairs.",
+      "week": 1,
+      "tags": ["training", "contrastive"],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w1-q8",
+      "type": "scenario",
+      "prompt": "You moved a prototype from brute-force search to an HNSW index in your vector database. Latency fell from 180 ms to 9 ms, but support agents say search 'feels worse.' The embedding model and chunks are unchanged. What is the best next step?",
+      "options": [
+        { "id": "a", "text": "Switch to a larger embedding model.", "rationale": "Nothing about the model changed, so this can't explain the regression, and it forces a full re-embed." },
+        { "id": "b", "text": "Measure the index's recall@10 against exact search on a sample of real queries, then raise efSearch until it meets a target you set (for example 0.95), checking latency as you go.", "correct": true, "rationale": "Yes. Approximate indexes trade recall for speed; default search settings may be too low for your data." },
+        { "id": "c", "text": "Go back to brute force permanently.", "rationale": "Possibly right for a small corpus, but you'd be deciding without measuring; tuning usually recovers most recall at a fraction of the latency." },
+        { "id": "d", "text": "Increase M and rebuild the index right away.", "rationale": "M can help, but it costs memory and a rebuild. Measure first, and try the query-time dial before rebuilding." }
+      ],
+      "explanation": "Separate index recall (against exact search) from retrieval recall (against human labels). The first isolates what the index costs you; the second, on your labeled set, confirms the fix where users feel it.",
+      "week": 1,
+      "tags": ["ann", "hnsw", "debugging"],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w1-q9",
+      "type": "code-reading",
+      "prompt": "This function measures an approximate index against exact search. What does it compute incorrectly?",
+      "code": "def index_recall(approx_ids, exact_ids, k):\n    hits = 0\n    for i in range(k):\n        if approx_ids[i] == exact_ids[i]:\n            hits += 1\n    return hits / k",
+      "options": [
+        { "id": "a", "text": "It requires matching positions, so an index that returns the right neighbors in a slightly different order is scored as missing them. It should count the set overlap of the two top-k lists.", "correct": true, "rationale": "Yes. Recall@k against exact search ignores order within the top k." },
+        { "id": "b", "text": "It should divide by the length of `approx_ids`, not k.", "rationale": "Dividing by k is right, provided both lists are cut to k." },
+        { "id": "c", "text": "It should compare distances, not ids.", "rationale": "Comparing ids is standard; ties at equal distance are a rare edge case." },
+        { "id": "d", "text": "Nothing; position-by-position comparison is the definition of recall@k.", "rationale": "That's closer to a strict ranking-agreement metric, and it badly understates recall." }
+      ],
+      "explanation": "Use `len(set(approx_ids[:k]) & set(exact_ids[:k])) / k`. If ordering within the top k matters for your application, measure it separately (for example with a rank correlation), but don't fold it into recall.",
+      "week": 1,
+      "tags": ["ann", "metrics"],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w1-q10",
+      "type": "mcq",
+      "prompt": "What does product quantization (PQ) do to a stored vector?",
+      "options": [
+        { "id": "a", "text": "It splits the vector into sub-vectors and stores, for each, the index of the nearest centroid in a small learned codebook.", "correct": true, "rationale": "Yes. With M sub-vectors and 8-bit codes, each vector takes M bytes." },
+        { "id": "b", "text": "It keeps only the first few dimensions, like a Matryoshka embedding.", "rationale": "That's truncation. PQ compresses all dimensions." },
+        { "id": "c", "text": "It rounds every coordinate to the nearest integer.", "rationale": "That's closer to scalar quantization, a simpler technique." },
+        { "id": "d", "text": "It stores the vector in a graph with links to its neighbors.", "rationale": "That's HNSW, which doesn't compress the vectors themselves." }
+      ],
+      "explanation": "Jégou, Douze, and Schmid's product quantization lets distances be estimated directly from codes using small lookup tables, so huge collections fit in memory. The cost is approximation error, which is why large systems often re-rank the top candidates with exact vectors.",
+      "week": 1,
+      "tags": ["ann", "quantization"],
+      "difficulty": 2
+    }
+  ]
+}

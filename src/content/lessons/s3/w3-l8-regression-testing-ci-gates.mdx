@@ -1,0 +1,373 @@
+---
+id: s3-w3-l8
+studio: s3
+week: 3
+order: 8
+title: Regression testing and CI gates
+summary: Turn evals into a test suite. Fast offline checks on every commit, model-graded runs nightly, thresholds that don't flake, cached model responses, the main tools (pytest, promptfoo, Inspect, OpenAI Evals), and versioning prompts, models, and datasets together.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Separate regression evals from capability evals and decide which checks run on every commit, on every pull request, nightly, and before release
+  - Design a CI gate that uses a paired lower confidence bound and must-pass cases instead of a raw threshold, and explain why naive gates flake
+  - Record and replay model responses with a cache key that includes everything that changes the output, and know what a cache cannot detect
+  - Compare pytest, promptfoo, Inspect, and OpenAI Evals as homes for an eval suite
+  - Version prompts, model ids, datasets, and graders together so every result can be reproduced
+sources:
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Capability vs regression evals; evals in CI; trials" }
+  - { id: hamel-evals-faq, use: summarized, where: "Repeatable eval sets; retiring expensive evals" }
+  - { id: miller-2024-error-bars, use: summarized, where: "Paired analysis" }
+  - { id: pytest-flaky-docs, use: summarized }
+  - { id: pytest-parametrize-docs, use: linked }
+  - { id: inspect-docs, use: summarized }
+  - { id: inspect-caching-docs, use: summarized }
+  - { id: promptfoo-docs, use: summarized }
+  - { id: promptfoo-assertions, use: summarized, where: "Assertion types and thresholds" }
+  - { id: promptfoo-caching, use: summarized }
+  - { id: promptfoo-github-action, use: summarized }
+  - { id: openai-evals-repo, use: summarized }
+  - { id: openai-evals-guide, use: summarized, where: "Deprecation notice" }
+  - { id: github-actions-triggers, use: summarized, where: "schedule, workflow_dispatch, pull_request paths" }
+  - { id: claude-models-docs, use: summarized, where: "Model ids and aliases" }
+  - { id: claude-python-sdk, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your CI job runs 60 live eval questions on every pull request and fails if the pass rate drops below 90
+      percent. It fails about one PR in five, and rerunning usually turns it green. What is the best fix?
+    options:
+      - id: a
+        text: Add an automatic rerun on failure, so only persistent failures block merges.
+        rationale: Rerunning until green turns the gate into a coin you flip until it lands your way. It hides real regressions as readily as noise.
+      - id: b
+        text: Lower the threshold to 80 percent.
+        rationale: A lower bar flakes less but also lets real regressions through. The problem is that a single noisy rate is being compared with a fixed number.
+      - id: c
+        text: Replay cached responses on PRs so the check is deterministic, gate on a paired lower confidence bound against the baseline plus must-pass cases, and run the larger live suite nightly.
+        correct: true
+        rationale: >-
+          Yes. Deterministic replays test your code and graders without sampling noise; the paired bound accounts for the
+          noise that remains in live runs; and the nightly suite has enough questions to detect real drops.
+    explanation: >-
+      With 60 questions at a true rate near 92 percent, the standard error is about 3.5 points, so random dips below
+      90 percent are routine. A gate is a statistical test whether you admit it or not. Make the cheap tier
+      deterministic and the expensive tier statistically honest.
+  - id: kc2
+    type: multi
+    prompt: Which of these should be part of the cache key for a recorded model response? Select all that apply.
+    options:
+      - id: a
+        text: The pinned model id
+        correct: true
+      - id: b
+        text: The full system prompt and messages, after templating
+        correct: true
+      - id: c
+        text: Request settings such as effort, max_tokens, tools, and output format
+        correct: true
+      - id: d
+        text: The trial number when you run each question several times
+        correct: true
+      - id: e
+        text: The wall-clock time of the request
+        rationale: Time doesn't change what the request asks for. Including it would make every key unique and the cache useless.
+    explanation: >-
+      A cache key must change whenever the output could legitimately change, and only then. Inspect's cache, for
+      example, keys on the model and base URL, the message history, the epoch, the generation config, and the active
+      tools. Pin the model version, because an alias can point to a new model while your key stays the same.
+  - id: kc3
+    type: mcq
+    prompt: What can a suite that replays cached model responses on every commit NOT detect?
+    options:
+      - id: a
+        text: A bug in a grader that now marks correct answers as failures
+        rationale: Replays catch this well, because the inputs are fixed and only your code changed.
+      - id: b
+        text: A change in the prompt template that alters the request
+        rationale: The request changes, so the cache key changes and the test either misses the cache (and says so) or calls the model.
+      - id: c
+        text: The provider updating the model behind an alias, or a new model behaving differently on the same prompt
+        correct: true
+        rationale: Yes. Replays freeze the model's side. Only live runs, such as a nightly uncached job, see model-side change.
+    explanation: >-
+      Record and replay tests the deterministic half of the system: templating, parsing, graders, thresholds. The model
+      half needs live runs on a schedule. A good pipeline has both and knows which is which.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## From an eval to a test suite
+
+An eval you run by hand when you remember to is a measurement. An eval that runs automatically and can block a merge is a **regression test**, and it changes how a team works: nobody has to remember, and nobody can quietly ship a prompt that breaks last month's fixes.
+
+Anthropic's guide to agent evals draws a useful line between two kinds of suite. **Capability evals** ask what the system can do and should start with a low pass rate, giving you a hill to climb. **Regression evals** ask whether it still does what it used to and should sit near 100 percent. As capability tasks become reliably solved, they graduate into the regression suite. The two kinds want different handling: a capability score is something you report with an interval and discuss; a regression suite is something you gate on.
+
+What goes into the regression suite? The failure modes you found in error analysis (week 1), each turned into a few concrete cases. Every production bug that reached a user, as a case that would have caught it. Must-pass cases: safety refusals, the account-deletion flow, anything where one failure is unacceptable. And a broad sample of ordinary traffic, so the suite reflects what users actually ask. Hamel Husain and Shreya Shankar describe this repeatable eval set growing over time, often to 100 or more examples, with coverage of important workflows and known failures deciding its size, not a target number.
+
+This is where engineering habits pay off. The suite is code: versioned, reviewed, and run by CI (continuous integration, the system that runs your tests on every change). Its graders are code too, and they need their own unit tests.
+</Listen>
+
+<Listen>
+## What runs when
+
+The constraint that shapes everything is cost. A deterministic assertion runs in microseconds for free; a model-graded check on a long answer costs real money and seconds per case, and adds its own noise. So you tier the suite by cost and speed, the same way the pytest docs recommend splitting fast, reliable tests from slower integration tests and gating CI on the fast ones while monitoring the rest.
+
+**On every commit (offline, seconds, free).** Unit tests for prompt templating and output parsing. Unit tests for every grader, on hand-written good and bad outputs. And, most valuable, **replays**: recorded model responses fed through your current parsing and grading code. If someone changes a grader, a regex, or a parser, replays show the effect immediately and deterministically.
+
+**On every pull request that touches prompts or models (minutes, cents to dollars).** A smaller live set, a few dozen to a couple of hundred cases, focused on the must-pass list and recent bugs, compared against the baseline from main. Cache responses keyed on the full request, so unchanged prompts don't pay twice.
+
+**Nightly or on a schedule (longer, the real bill).** The full suite, live and uncached, with model-graded checks and several trials per question, analyzed with the paired statistics from lesson 7. This is what catches model-side drift you didn't cause.
+
+**Before a release or model switch.** The full suite plus a human spot check of a random sample of outputs, because graders drift too.
+
+Anthropic's guide notes that automated evals can run on every commit and model upgrade as a first line of defense. The tiering is what makes that affordable. Hamel and Shreya add the other half: retire or run less often the evals that keep passing, and be most aggressive about it with expensive ones such as LLM judges.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order these checks from cheapest and most frequent to most expensive and least frequent"
+  items={[
+    "Unit tests for prompt templates, parsers, and graders",
+    "Replay recorded responses through the current graders",
+    "Live smoke set on PRs that change prompts, with cached responses",
+    "Full uncached suite with model graders and several trials per question",
+    "Human review of a random sample before a release or model switch",
+  ]}
+  explanation="Deterministic checks run on every commit because they are free and never flake. Live checks run when something that affects the model's output changes. The full statistical run happens on a schedule, and people review a sample before the decisions that matter most."
+/>
+
+<Listen>
+## Thresholds, and why naive gates flake
+
+The obvious gate is "fail if the pass rate is below 90 percent." On a live suite, that gate is a statistical test with a hidden error rate. With 60 questions and a true pass rate of 92 percent, the standard error is about 3.5 points, so the observed rate falls below 90 percent on about one run in five (54 or more passes out of 60 are needed) with nothing wrong. Engineers learn to rerun until green, and then the gate catches nothing.
+
+The pytest docs describe flaky tests as tests that fail intermittently without a clear reason, and name the cost: people stop trusting results and real failures get overlooked. Their suggestions translate directly to evals. Gate CI on the reliable suite and monitor the others. Use a temporary quarantine (an `xfail` mark that doesn't fail the build) for a known-flaky case, but don't leave it there, since the docs warn against keeping that permanently. Plugins that rerun failures exist; for evals, automatic reruns are an especially bad idea, because rerunning a noisy measurement until it passes is selecting on the outcome.
+
+</Listen>
+
+<Listen>
+## Gates that measure what you mean
+
+Better gates use what you learned in lesson 7:
+
+- **Must-pass cases** fail the build on any failure. Keep this list short and run those cases deterministically where you can.
+- **A non-inferiority gate** for everything else: compare the candidate with the baseline on the same questions, compute the paired difference and its standard error, and fail only if the **lower** confidence bound falls below minus a margin you chose in advance (say, 3 points). This asks "could the candidate plausibly be worse by more than we tolerate?", which is the question a release decision needs.
+- **Size the margin and the suite together.** From lesson 7, the bound's half-width is about 1.96 times the square root of (discordance rate over n). A 200-question suite where systems disagree on 5 percent of questions gives a half-width of about 3 points, so a 3-point margin would fail identical systems half the time. Either enlarge the suite, accept a larger margin on PRs, or keep the strict gate for the nightly run.
+
+Promptfoo builds thresholds into its assertions (a test case can pass when its weighted score meets a threshold), and Inspect reports per-sample scores you can feed into the same analysis. Whatever the tool, make the decision rule explicit, write it next to the suite, and don't change it after seeing a result you dislike.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s3-w3-cache-and-gate"
+  title="A cache key and a non-inferiority gate"
+  starter={`import hashlib
+import json
+import math
+
+def cache_key(request, epoch=0):
+    """Stable key for a recorded model response.
+    Serialize {"request": request, "epoch": epoch} with json.dumps(..., sort_keys=True,
+    separators=(",", ":")), encode as UTF-8, and return the SHA-256 hex digest.
+    Same request and epoch -> same key, whatever the dict key order."""
+    # TODO
+    pass
+
+def gate(baseline, candidate, margin=0.03, critical_ids=(), z=1.96):
+    """Non-inferiority gate on per-question 0/1 results.
+
+    baseline, candidate: dicts mapping question id -> 0 or 1.
+    1. If the two dicts don't have exactly the same ids, raise ValueError.
+    2. reasons = []. For each id in critical_ids (in order) that the candidate fails,
+       append "critical failed: <id>".
+    3. d_i = candidate[id] - baseline[id]. mean_d = mean of d; se = sample standard deviation
+       of d (divide by n - 1) over sqrt(n). lower = mean_d - z * se.
+       If lower < -margin, append "possible regression: lower bound <lower rounded to 3> below -<margin>".
+    Return {"passed": not reasons, "reasons": reasons, "mean_diff": mean_d, "lower": lower}.
+    """
+    # TODO
+    pass
+
+def make(ids_lost=(), ids_gained=(), n=200):
+    """Baseline passes q0..q179 and fails q180..q199. Candidate is the same except
+    it fails the ids in ids_lost and passes the ids in ids_gained."""
+    base = {f"q{i}": int(i < 180) for i in range(n)}
+    cand = dict(base)
+    for q in ids_lost:
+        cand[q] = 0
+    for q in ids_gained:
+        cand[q] = 1
+    return base, cand
+
+base, same = make()
+print(gate(base, same, critical_ids=["q0", "q1"]))
+base, worse = make(ids_lost=[f"q{i}" for i in range(10, 18)])
+print(gate(base, worse, critical_ids=["q0", "q1"]))`}
+  tests={`req = {"model": "claude-haiku-5-5", "max_tokens": 512, "messages": [{"role": "user", "content": "hi"}]}
+reordered = {"messages": [{"content": "hi", "role": "user"}], "max_tokens": 512, "model": "claude-haiku-5-5"}
+k = cache_key(req)
+assert k is not None, "cache_key returned None"
+assert len(k) == 64, "return a SHA-256 hex digest (64 characters)"
+assert k == cache_key(reordered), "dict key order must not change the key"
+assert cache_key(req, epoch=1) != k, "a different trial (epoch) needs a different key"
+assert cache_key(dict(req, model="claude-sonnet-5-5")) != k, "a different model needs a different key"
+base, same = make()
+r = gate(base, same, critical_ids=["q0", "q1"])
+assert r is not None, "gate returned None"
+assert r["passed"] and r["reasons"] == [], "an identical candidate passes"
+base, noisy = make(ids_lost=["q20", "q21"], ids_gained=["q190"])
+r = gate(base, noisy, critical_ids=["q0", "q1"])
+assert r["passed"], "losing 2 and gaining 1 of 200 is within a 3-point margin"
+assert abs(r["mean_diff"] + 0.005) < 1e-9
+assert abs(r["lower"] - (-0.005 - 1.96 * (0.014975 / 200) ** 0.5)) < 1e-4, "use the sample SD (n - 1) of the paired differences"
+base, worse = make(ids_lost=[f"q{i}" for i in range(10, 18)])
+r = gate(base, worse, critical_ids=["q0", "q1"])
+assert not r["passed"], "losing 8 questions and gaining none is a regression"
+assert len(r["reasons"]) == 1 and r["reasons"][0].startswith("possible regression"), r["reasons"]
+base, crit = make(ids_lost=["q1"], ids_gained=["q185", "q186"])
+r = gate(base, crit, critical_ids=["q0", "q1"])
+assert not r["passed"] and r["reasons"] == ["critical failed: q1"], "a must-pass question fails the gate even when the average improves"
+try:
+    gate({"q0": 1}, {"q1": 1})
+    raise AssertionError("mismatched ids should raise ValueError")
+except ValueError:
+    pass`}
+  solution={`def cache_key(request, epoch=0):
+    blob = json.dumps({"request": request, "epoch": epoch}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+def gate(baseline, candidate, margin=0.03, critical_ids=(), z=1.96):
+    if set(baseline) != set(candidate):
+        raise ValueError("baseline and candidate must cover the same questions")
+    reasons = [f"critical failed: {q}" for q in critical_ids if candidate[q] != 1]
+    d = [candidate[q] - baseline[q] for q in baseline]
+    n = len(d)
+    mean_d = sum(d) / n
+    var = sum((x - mean_d) ** 2 for x in d) / (n - 1)
+    lower = mean_d - z * math.sqrt(var / n)
+    if lower < -margin:
+        reasons.append(f"possible regression: lower bound {round(lower, 3)} below -{margin}")
+    return {"passed": not reasons, "reasons": reasons, "mean_diff": mean_d, "lower": lower}`}
+>
+Write `cache_key` and `gate`, then press **Check my answer**. The helper `make` builds a 200-question baseline that passes 180 questions, and a candidate that loses or gains specific questions. Notice that the critical check runs before the statistics: a candidate that improves the average but fails a must-pass question still fails. After it passes, try `make(ids_lost=[f"q{i}" for i in range(10, 13)], ids_gained=["q190"])` with `margin=0.01` and see a small, honest drop fail a tight margin.
+</PyRunner>
+
+<Listen>
+## Caching model responses
+
+Caching here means **record and replay**: you store each model response keyed by everything that determined it, and later runs with an identical request read the stored response instead of calling the model. It is different from provider prompt caching (Studio 1), which makes repeated prompt prefixes cheaper but still runs the model.
+
+Record and replay gives you three things. Speed and cost, since unchanged cases don't pay twice. Determinism, since a replayed suite gives the same result every time, so any change in score was caused by your code. And a fixed corpus for developing graders: you can rewrite a judge prompt or a parser and rescore last night's outputs for free.
+
+The hard part is the **key**. It must change whenever the output could legitimately change, and only then. Include the pinned model id, the full rendered system prompt and messages, every request setting that affects output (effort, max_tokens, tools and tool choice, output format), and the trial number when you sample a question several times. Exclude timestamps and request ids. Serialize with sorted keys, or two equal requests will hash differently. Inspect's documented cache key covers the same ground: model name and base URL, message history, epoch, generation config, and active tools. Its responses expire after one week by default, and its docs recommend explicitly versioned model names so a new deployment under an alias doesn't silently reuse old responses. Promptfoo caches by default too (on disk, 14 days by default), with `--no-cache` to bypass it.
+
+Know what a cache **can't** see. If the provider changes the model behind an alias, or a dated model behaves differently over time, a replayed suite stays green. That's why the nightly tier runs uncached. A sound rule: replays answer "did my code change the result?", and live runs answer "did the system change?".
+</Listen>
+
+```python
+import hashlib
+import json
+import pathlib
+
+import anthropic
+
+client = anthropic.Anthropic()
+CACHE = pathlib.Path(".eval-cache")
+
+def cached_create(request: dict, epoch: int = 0) -> dict:
+    """Return a recorded response for this exact request and trial, calling Claude only on a miss."""
+    blob = json.dumps({"request": request, "epoch": epoch}, sort_keys=True, separators=(",", ":"))
+    path = CACHE / f"{hashlib.sha256(blob.encode()).hexdigest()}.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    response = client.messages.create(**request)
+    record = {"request": request, "epoch": epoch, "response": response.model_dump(mode="json")}
+    CACHE.mkdir(exist_ok=True)
+    path.write_text(json.dumps(record))
+    return record
+
+record = cached_create({
+    "model": "claude-haiku-5-5",
+    "max_tokens": 1024,
+    "output_config": {"effort": "low"},
+    "system": "Classify the support ticket as billing, bug, or other. Reply with the label only.",
+    "messages": [{"role": "user", "content": "I was charged twice this month."}],
+})
+```
+
+<Callout type="pitfall" title="A green replay suite that tests nothing">
+Two mistakes make a cache lie. The first is a key that leaves something out: if `effort` or the tool list isn't in the key, a request that changed still reads the old response, and your PR looks safe because it never ran. Test the key: change each setting and assert the key changes, as the exercise does. The second is replaying in a job that is supposed to detect drift. Mark the nightly job uncached in its configuration, and have the report state cache hits and misses, so "100 percent pass, 100 percent cache hits" is visible for what it is.
+</Callout>
+
+<Listen>
+## Where the suite lives: tools
+
+You don't need a framework to start. **pytest** is enough for many teams: one parametrized test per case (the docs show `@pytest.mark.parametrize` for running one test function over many inputs), deterministic assertions inline, a custom marker such as this course's `live` marker for tests that call a model, and a small script that computes paired statistics from a results file. Its advantage is that the eval suite runs with the rest of your tests, in the same CI, with tools everyone knows. The labs in this program are built that way.
+
+**Promptfoo** is an open-source (MIT) command-line tool and library for evaluating and red-teaming LLM apps. Cases live in a YAML config (`promptfooconfig.yaml` in its examples) with assertions per test: deterministic ones such as `equals`, `contains`, `is-json`, `regex`, and custom `python` or `javascript` checks, model-graded ones such as `llm-rubric` and `factuality`, plus `cost` and `latency`. Its GitHub Action runs a before-and-after comparison when a pull request edits a prompt and posts a link to the results.
+
+**Inspect** is an open-source (MIT) framework for LLM evaluations developed by the UK AI Security Institute with Meridian Labs. An eval is a **task** that combines a dataset of samples, a **solver** that produces answers (from a single `generate()` call to a full agent), and a **scorer**. You run tasks with `inspect eval`, browse logs with `inspect view`, and it ships a large set of prebuilt evaluations. It suits agentic and multi-step evals, and teams who want detailed logs of every sample.
+
+**OpenAI Evals** is an open-source framework and registry of benchmarks from OpenAI. OpenAI also built a hosted Evals product on its platform, and its docs now say that the hosted Evals platform became read-only for existing users on October 31, 2026 and is scheduled to shut down on November 30, 2026. That's a lesson in itself: keep your cases, graders, and results in your own repository in a portable format (JSONL plus code), so a vendor's product decision can't take your regression suite with it.
+
+How to choose: start with pytest unless a tool gives you something you need. Promptfoo is quick for prompt-level comparisons across several providers with a PR workflow. Inspect fits agent evals and research-grade logging. Whatever you pick, the statistics in lesson 7 and the decision rules above are yours to apply; none of these tools makes a noisy score significant.
+</Listen>
+
+<Listen>
+## Version everything that changes the result
+
+An eval result is a function of at least five things: the **prompt** (template and any few-shot examples), the **model** (an exact id, not an alias), the **request settings** (effort, max tokens, tools), the **dataset** (which questions, which reference answers), and the **graders** (including the judge model and its prompt). Change any one and the score can move. Change two at once and you can't say which one moved it.
+
+Practical habits:
+
+- **Pin model ids** in config, and record the id the API reports in each response. Anthropic's models overview lists the current ids; aliases are convenient for prototypes and wrong for a baseline.
+- **Keep prompts in files**, in the repository, reviewed like code. Give each a version or a content hash.
+- **Version the dataset.** Store it as JSONL in the repository (or with a content hash if it's large). Never edit a case in place without bumping the version: a "fixed" reference answer is a different eval.
+- **Write a manifest with every run**: git commit, prompt hashes, model ids, settings, dataset hash, grader versions, number of trials, cache hit rate, and date. Results without a manifest can't be compared later.
+- **Change one thing per comparison.** If you migrate a model and must re-tune the prompt, measure the new model with the old prompt first, then the new prompt, so you know what each change bought.
+
+This is also what makes the gate fair. The baseline must be the same suite, same dataset version, and same graders as the candidate, rerun under the same conditions, or the paired comparison is pairing different experiments.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of an eval CI pipeline. On every commit, unit tests and cached replays run offline and block the merge on failure. On pull requests that change prompts or model config, a live smoke set runs against the baseline and the gate checks must-pass cases and a paired lower bound. On a nightly schedule, the full uncached suite runs with several trials per question, results and a manifest are stored, and a drop opens an issue. Before release, a human reviews a random sample."
+  caption="Each tier answers a different question, at a different price."
+  chart={`flowchart TD
+  C["Every commit"] --> U["Unit tests + cached replays (offline)"]
+  U -- "fail" --> X["Block merge"]
+  P["PR changes prompts or model config"] --> L["Live smoke set vs baseline"]
+  L --> G{"Must-pass OK and paired lower bound above -margin?"}
+  G -- "no" --> X
+  G -- "yes" --> M["Merge"]
+  N["Nightly schedule"] --> F["Full uncached suite, K trials per question"]
+  F --> S["Store results + manifest"]
+  S --> D{"Drop vs last night?"}
+  D -- "yes" --> I["Open an issue"]
+  R["Before release"] --> H["Human review of a random sample"]`}
+/>
+
+<Listen>
+## Wiring it into CI
+
+In GitHub Actions, the tiers map onto workflow triggers. A `pull_request` trigger with a `paths` filter runs the live smoke set only when prompts, model config, or the eval itself change. A `schedule` trigger with a cron expression runs the nightly suite, and `workflow_dispatch` lets someone run it by hand before a release. Three details from GitHub's docs are worth knowing. Cron schedules run in UTC unless you set a time zone, and they run only on the latest commit of the default branch. Scheduled runs can be delayed at busy times, especially the top of the hour, so pick an odd minute. And in public repositories, scheduled workflows are disabled automatically after 60 days without repository activity, which can silently stop a nightly eval on a quiet project.
+
+API keys go in the repository's encrypted secrets, never in the workflow file. Upload the results file and manifest as a build artifact so anyone can rerun the analysis. The lab for this week includes a complete example workflow that runs the offline gate; it sits in the lab folder rather than in `.github/workflows`, so it documents the pattern without running on this repository.
+</Listen>
+
+<LabLink path="labs/studio-3/03-compare-and-gate" title="Lab: compare two systems and gate a release" needs={["No API key (offline fixtures)"]} minutes={60}>
+You get recorded per-question results for a baseline and a candidate system: pass or fail, cluster id, cost, and latency for 240 questions. You compute pass rates with Wilson and cluster-bootstrap intervals, the paired difference and McNemar's exact test, and a configurable gate that checks must-pass cases and a paired lower bound. A command-line entry point exits nonzero when the gate fails, and an example GitHub Actions workflow shows how to run it in CI. All tests are offline and check the statistics against known values.
+</LabLink>
+
+<GoDeeper title="Evals for agents and multi-step systems">
+For agents, a test case is a task with an environment, and grading usually checks the final state (was the ticket created with the right fields? do the repository's tests pass?) rather than the text. That makes each trial slower and noisier, so the tiering matters more: replay recorded tool results offline where you can, run a handful of tasks live on PRs, and run many trials per task nightly. Anthropic's guide recommends starting with 20 to 50 tasks drawn from real failures, and warns that a task nobody passes across many trials more often signals a broken task than an incapable agent, so read failing transcripts before trusting a zero. Inspect's solvers and sandboxing were built for this style of eval. Report pass^k when the product needs consistency.
+</GoDeeper>
+
+<Listen>
+## The checklist
+
+Split the suite into capability and regression evals, and gate on regression. Tier checks by cost: deterministic tests and replays on every commit, a live smoke set on PRs that change model behavior, the full uncached suite on a schedule, a human sample before releases. Gate on must-pass cases and a paired lower bound with a margin you fixed in advance, and size the suite so identical systems pass. Never rerun until green. Key cached responses on everything that changes the output, pin model ids, and run something uncached regularly. Keep prompts, datasets, graders, and results in your repository with a manifest for every run. Lesson 9 uses all of this to answer the question the industry argues about most: which model should we use?
+
+A team note to finish. Give the suite an owner, the way a service has an on-call owner. Someone has to triage a red nightly run, decide whether a failing case is a real regression or a stale reference answer, and retire cases that no longer earn their cost. Without an owner, an eval suite decays into a dashboard nobody reads.
+</Listen>

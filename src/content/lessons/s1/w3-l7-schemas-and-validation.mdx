@@ -1,0 +1,317 @@
+---
+id: s1-w3-l7
+studio: s1
+week: 3
+order: 7
+title: "Why structure: schemas and validation"
+summary: Why free text breaks pipelines, how JSON Schema describes data, and how a Pydantic model becomes the single source of truth for types, constraints, and error reports.
+estMinutes: 50
+reviewed: 2026-11-11
+objectives:
+  - Explain why downstream code needs a contract, not prose, and name the ways free-text output breaks a pipeline
+  - Read and write a basic JSON Schema (type, properties, required, enum, additionalProperties)
+  - Define a Pydantic model with types, enums, required versus optional fields, constraints, and field descriptions
+  - Validate messy model output and turn validation errors into messages a person (or a model) can act on
+sources:
+  - { id: claude-structured-outputs, use: summarized, where: "Why structured outputs (the failure list)" }
+  - { id: json-schema-spec, use: summarized, where: "Validation keywords: type, enum, required, properties, additionalProperties" }
+  - { id: json-schema-understanding, use: summarized, where: "Object and enum reference pages" }
+  - { id: pydantic-docs, use: summarized, where: "Models, Fields, strict and lax mode, validators" }
+  - { id: pydantic-json-schema, use: summarized, where: "model_json_schema and Draft 2020-12" }
+  - { id: pydantic-validation-errors, use: summarized, where: "ValidationError.errors(): type, loc, msg" }
+  - { id: yt-jason-liu-pydantic, use: embedded }
+  - { id: gemini-structured-output, use: linked, where: "Pydantic model_json_schema example" }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: What happens when this runs?
+    code: |
+      from pydantic import BaseModel
+
+      class Item(BaseModel):
+          task: str
+          owner: str | None
+
+      print(Item(task="Send the deck"))
+    options:
+      - id: a
+        text: "It prints `task='Send the deck' owner=None`"
+        rationale: >-
+          That would need a default (`owner: str | None = None`). The type allows null, but nothing says the field may be left out.
+      - id: b
+        text: "It raises a `ValidationError` because `owner` is missing"
+        correct: true
+        rationale: Yes. In Pydantic v2, a field without a default is required, even if its type allows None.
+      - id: c
+        text: "It raises a `TypeError` because `str | None` is not a valid annotation"
+        rationale: The `X | None` syntax is valid on Python 3.10 and later, and Pydantic supports it.
+    explanation: >-
+      Two separate questions hide inside "optional": may the value be null, and may the key be absent? The type
+      `str | None` answers the first. A default answers the second. For extraction, a required-but-nullable field is
+      often what you want: the model must state "no owner" explicitly instead of quietly omitting the key.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      Your extraction script works on 50 test transcripts, then fails in production because one response began with
+      "Here are the action items:" before the JSON. Which statement best describes the root problem?
+    options:
+      - id: a
+        text: The prompt was too short; a longer prompt would have prevented the preamble.
+        rationale: Better prompts reduce the rate of such failures but do not remove them, because output is sampled.
+      - id: b
+        text: Nothing in the pipeline enforced or checked the output contract, so a format the code didn't expect passed straight through.
+        correct: true
+        rationale: Yes. Free text has no contract. You need a schema the output is checked against, and a defined path for failures.
+      - id: c
+        text: The model was overloaded and returned a degraded answer.
+        rationale: Load does not explain a format difference; sampling variation does.
+    explanation: >-
+      Fifty good runs is evidence about the common case, not a guarantee about the next run. The fix has two halves:
+      a contract (a schema) and enforcement (validation, plus the API features in the next lesson). Either half alone
+      leaves a gap.
+  - id: kc3
+    type: multi
+    prompt: Which of these come for free from a single Pydantic model? Select all that apply.
+    options:
+      - id: a
+        text: A JSON Schema you can send to a model API
+        correct: true
+        rationale: "`model_json_schema()` generates it."
+      - id: b
+        text: Runtime validation of the parsed data, with field-level error messages
+        correct: true
+        rationale: "`model_validate_json()` checks types, enums, and constraints, and raises a `ValidationError` listing every problem."
+      - id: c
+        text: Typed Python objects your code can use
+        correct: true
+        rationale: Valid input becomes an instance with real types (a `datetime.date`, not a string).
+      - id: d
+        text: A guarantee that the values are true
+        rationale: A schema checks shape and types. Whether "Priya owns the budget" is true needs evidence, which is lesson 9.
+    explanation: >-
+      That is the "single source of truth" argument: define the shape once, and the schema, the validator, the types,
+      and the documentation (field descriptions) can't drift apart. Truth is a separate problem with separate checks.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Free text is a contract nobody signed
+
+This week you'll build the core of the studio project: reading a meeting transcript and producing action items your code can act on. The moment a model's output feeds another program (a tracker, a database, a dashboard), its job changes. A person reading "Priya will send finance the budget, probably by the 20th" understands it. A program needs to know which field is the owner, which is the date, and what format the date is in.
+
+Ask a model for "the action items as JSON" in plain prose and you'll see a familiar set of failures. Sometimes there's a friendly sentence before the JSON, or the JSON arrives wrapped in a Markdown code fence. A key is called `owner` on one run and `assignee` on the next. A date arrives as "next Friday." A field your code needs is simply missing. Anthropic's structured outputs documentation lists the same categories: invalid JSON syntax, missing required fields, inconsistent data types, and schema violations that force you to write error handling and retries.
+
+None of this means the model is bad at the task. It means nothing told it, or checked, what shape the answer must have. Every one of these failures is about **shape**, and shape is something you can specify exactly and verify mechanically. That's the job of a schema. Lesson 8 shows how to make the API enforce a schema during generation. This lesson covers the schema itself and the validation you run no matter which API you use, because validation is your check on any output, from any provider.
+</Listen>
+
+<Listen>
+## JSON Schema: a vocabulary for describing data
+
+**JSON Schema** is a standard for describing what valid JSON looks like. The current version is Draft 2020-12, and its validation vocabulary is a short list of keywords that you'll see in every model provider's docs. A schema is itself a JSON object. The keywords you'll use most:
+
+- `type`: string, number, integer, boolean, object, array, or null.
+- `properties`: for an object, a schema for each named key.
+- `required`: the list of keys that must be present. Keys not listed may be absent.
+- `enum`: the value must be one of a fixed list.
+- `additionalProperties`: whether keys not named in `properties` are allowed. Setting it to false makes the object closed.
+- `items`: for an array, the schema every element must match.
+- `format`: a named format such as `date` or `email`.
+- `description`: human-readable text. It doesn't constrain anything, but as you'll see, models read it.
+
+Two details trip people up. First, `required` and nullability are independent: a key can be required but allowed to be null (the type is a union with null), or optional but non-null when present. Second, by default JSON Schema objects are open: extra keys pass validation unless `additionalProperties` is false. Closed objects are what you want for model output, because a stray `assignee` key usually means the model misunderstood the contract.
+
+You'll rarely write these schemas by hand. You'll generate them from code.
+</Listen>
+
+This is the schema for one action item. Read it before you see the Python that produces it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "task":     { "type": "string", "minLength": 1, "description": "What will be done, as a short imperative phrase" },
+    "owner":    { "anyOf": [{ "type": "string" }, { "type": "null" }], "description": "Person responsible, or null if no one was named" },
+    "due_date": { "anyOf": [{ "type": "string", "format": "date" }, { "type": "null" }], "default": null },
+    "priority": { "enum": ["high", "medium", "low"] }
+  },
+  "required": ["task", "owner", "priority"],
+  "additionalProperties": false
+}
+```
+
+<Listen>
+## Pydantic: one class, four jobs
+
+**Pydantic** is a Python library that validates data against type hints (its docs describe it as the most widely used one). You declare a class whose attributes have types, and Pydantic gives you four things from that one declaration: a validator for incoming data, typed Python objects, a JSON Schema (from `model_json_schema()`, which targets Draft 2020-12), and documentation through field descriptions. The structured-output examples from Anthropic, OpenAI, Google, and xAI all accept a Pydantic model (directly, or through its generated schema), so the same class serves your prompt, your API call, and your tests.
+
+That's why you should treat the model class as the **single source of truth**. If the schema lives in a prompt string, a JSON file, and a parsing function, they'll drift apart. If all three are generated from one class, they can't.
+
+The building blocks map directly onto JSON Schema:
+
+- **Types.** `str`, `int`, `bool`, `datetime.date`, lists, and nested models. A `date` field parses "2026-11-20" into a real `datetime.date`.
+- **Enums.** `Literal["high", "medium", "low"]` (or a Python `Enum`) becomes a JSON Schema enum.
+- **Required versus optional.** A field with no default is required. A field with a default may be omitted. Allowing null is a separate choice: `str | None`.
+- **Constraints.** `Field(min_length=1)`, `Field(ge=0)`, and friends add checks beyond the type.
+- **Descriptions.** `Field(description="...")` lands in the schema. Write descriptions as instructions to the model, because they are.
+- **Closed objects.** `model_config = ConfigDict(extra="forbid")` rejects unknown keys and sets `additionalProperties` to false.
+</Listen>
+
+```python
+from datetime import date
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field
+
+class ActionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task: str = Field(min_length=1, description="What will be done, as a short imperative phrase")
+    owner: str | None = Field(description="Person responsible, or null if no one was named")
+    due_date: date | None = Field(default=None, description="ISO date, only if a specific date was stated")
+    priority: Literal["high", "medium", "low"]
+
+print(ActionItem.model_json_schema())
+```
+
+<Video id="yj-wSRJwrrc" title="Pydantic is all you need: Jason Liu" channel="AI Engineer" minutes={18} source="https://www.youtube.com/watch?v=yj-wSRJwrrc">
+A 2023 talk by the author of the Instructor library. The API calls shown use OpenAI function calling as it existed then, so skip the specific code. Watch for the idea that carries forward: describe your output as a Pydantic class, let the class generate the schema, and validate what comes back. Notice how much of the "prompt" ends up living in field names and descriptions.
+</Video>
+
+<Callout type="pitfall" title="Optional means two different things">
+`owner: str | None` is **required** in Pydantic v2: the key must be present, though its value may be null. Only a default (`= None`) lets the key be left out. Choose deliberately. For extraction, required-but-nullable is often right, because it forces the model to say "nobody was named" instead of silently dropping the field, and a missing key then signals a real contract failure.
+</Callout>
+
+<Predict
+  title="Lax mode in action"
+  code={`from pydantic import BaseModel
+
+class Estimate(BaseModel):
+    hours: int
+
+print(Estimate.model_validate_json('{"hours": "3"}'))`}
+  options={["hours=3", "ValidationError: hours must be an integer", "hours='3'"]}
+  answer={0}
+>
+By default Pydantic runs in **lax mode** and converts a numeric string like "3" into the integer 3. A string like "3.5" or "three" would still fail. If you want "3" rejected because a model that writes numbers as strings is ignoring your schema, use strict mode (`ConfigDict(strict=True)` or `Field(strict=True)`). Lax mode is convenient; strict mode is a sharper detector of a model drifting from the contract.
+</Predict>
+
+<Listen>
+## Validate, then report errors someone can act on
+
+Validation is the check that turns "it looked fine" into "it matched the contract." With Pydantic, `ActionItem.model_validate_json(text)` either returns a typed object or raises a `ValidationError`. That error is structured: `errors()` returns a list with one entry per problem, and each entry has a `type` (a machine-readable code such as `missing` or `literal_error`), a `loc` (the path to the field, such as `("priority",)`, or a nested path like `("items", 2, "owner")`), and a `msg` for humans. Invalid JSON itself is reported too, with an empty location, because the problem is the whole document.
+
+Pydantic reports **every** problem in one pass rather than stopping at the first, which matters for two reasons. You get a complete picture for logs and dashboards ("12 percent of failures are bad priorities"). And you can hand the full list back to the model in a retry, which you'll build in this week's lab. A message like "priority: Input should be 'high', 'medium' or 'low'" is something a model can fix; "parse failed" is not.
+
+Decide up front what happens on failure: retry once with the errors, drop the item and log it, or send it to a person. What you must not do is catch the exception and carry on with a half-parsed dictionary. That's how a pipeline goes quietly wrong.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s1-w3-validate-action-items"
+  title="Define ActionItem and validate messy outputs"
+  packages={["pydantic"]}
+  starter={`from datetime import date
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+class ActionItem(BaseModel):
+    """One commitment from a meeting.
+    TODO: replace 'pass' with:
+      - extra fields forbidden
+      - task: non-empty string
+      - owner: string or None, REQUIRED (no default)
+      - due_date: date or None, OPTIONAL (default None)
+      - priority: exactly one of "high", "medium", "low"
+    Add a description to each field."""
+    pass
+
+FENCE = "\`" * 3
+
+def strip_fences(text):
+    """Given: remove a Markdown code fence and anything before the first brace."""
+    text = text.strip()
+    if FENCE in text:
+        text = text.split(FENCE)[1]
+        if text.startswith("json"):
+            text = text[len("json"):]
+    start = text.find("{")
+    return text[start:] if start != -1 else text
+
+def check(raw):
+    """Validate one raw model output.
+    Return (item, []) if it is valid, or (None, messages) if not.
+    Each message is "<loc>: <msg>", with the loc parts joined by "."
+    and "(root)" when the loc is empty (for example, invalid JSON)."""
+    # TODO: implement using ActionItem.model_validate_json(strip_fences(raw))
+    pass
+
+SAMPLES = [
+    '{"task": "Send revised budget to finance", "owner": "Priya", "due_date": "2026-11-20", "priority": "high"}',
+    'Sure! Here is the action item:\\n' + FENCE + 'json\\n{"task": "Book the offsite venue", "owner": null, "priority": "medium"}\\n' + FENCE,
+    '{"task": "Update the roadmap slide", "owner": "Sam", "priority": "urgent"}',
+    '{"task": "", "owner": "Lee", "priority": "low", "assignee": "Lee"}',
+    '{"task": "Draft the launch FAQ", "priority": "low", "due_date": "next Friday"}',
+    '{"task": "Call the vendor", "owner": "Ana", "priority": "high",}',
+]
+
+for raw in SAMPLES:
+    result = check(raw)
+    if result is None:
+        print("check() returned None")
+        continue
+    item, errors = result
+    print("OK      " + repr(item) if item else "INVALID " + "; ".join(errors))
+`}
+  tests={`assert check(SAMPLES[0]) is not None, "check() must return a tuple (item, errors)"
+item, errs = check(SAMPLES[0])
+assert item is not None and errs == [], "sample 0 is valid"
+assert item.due_date == date(2026, 11, 20), "due_date should become a datetime.date"
+item, errs = check(SAMPLES[1])
+assert item is not None and item.owner is None and item.due_date is None, "sample 1 is valid: owner is an explicit null and due_date is omitted"
+item, errs = check(SAMPLES[2])
+assert item is None and any(e.startswith("priority:") for e in errs), "'urgent' is not an allowed priority"
+item, errs = check(SAMPLES[3])
+assert len(errs) == 2, "sample 3 has two problems: an empty task and an extra field"
+assert any(e.startswith("task:") for e in errs) and any(e.startswith("assignee:") for e in errs), "report the empty task and the extra 'assignee' field"
+item, errs = check(SAMPLES[4])
+assert any(e.startswith("owner:") for e in errs), "owner is required even though it may be null"
+assert any(e.startswith("due_date:") for e in errs), "'next Friday' is not an ISO date"
+item, errs = check(SAMPLES[5])
+assert item is None and errs and errs[0].startswith("(root):"), "invalid JSON has an empty loc, so report it as (root)"
+schema = ActionItem.model_json_schema()
+assert set(schema["required"]) == {"task", "owner", "priority"}, "required should be exactly task, owner, priority"
+assert schema.get("additionalProperties") is False, "forbid extra fields"
+assert all("description" in p for k, p in schema["properties"].items() if k != "priority"), "give task, owner, and due_date a description"`}
+  solution={`class ActionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task: str = Field(min_length=1, description="What will be done, as a short imperative phrase")
+    owner: str | None = Field(description="Person responsible, or null if no one was named")
+    due_date: date | None = Field(default=None, description="ISO date, only if a specific date was stated")
+    priority: Literal["high", "medium", "low"] = Field(description="How urgent the item is")
+
+def check(raw):
+    try:
+        return ActionItem.model_validate_json(strip_fences(raw)), []
+    except ValidationError as e:
+        messages = []
+        for err in e.errors():
+            where = ".".join(str(part) for part in err["loc"]) or "(root)"
+            messages.append(f"{where}: {err['msg']}")
+        return None, messages`}
+>
+Fill in the `ActionItem` fields and the `check` function, run it to see the six outputs, then press **Check my answer**. The first load downloads Pydantic into your browser, which takes a few seconds. Notice that sample 4 produces two errors at once, and that sample 5 (a trailing comma) fails before any field is examined.
+</PyRunner>
+
+<Callout type="tip" title="Validate in your code, whatever the provider promises">
+Next lesson you'll see APIs that constrain output to a schema during generation. Keep the validation step anyway. Providers support different subsets of JSON Schema, and some ignore constraints they don't support. Google's Gemini docs, for instance, say certain keywords such as `minLength` are not enforced and advise validating values in your application. Your Pydantic model is the check that travels with your code across providers and model versions.
+</Callout>
+
+<GoDeeper title="Validators: rules a type can't express">
+Some rules involve logic rather than types: "a due date can't be before the meeting date" or "if status is done, completed_on is required." Pydantic handles these with `@field_validator` (one field) and `@model_validator` (the whole object, after field validation), which raise a `ValueError` that Pydantic folds into the same `ValidationError` format. Keep two kinds of rule apart, though. Rules about the data's internal consistency belong in validators. Rules that need outside facts (is this person on the team? does the quote appear in the transcript?) need context the model doesn't have, and are clearer as separate verification functions, which is how lesson 9 builds them. Pydantic's docs also cover strict mode per field, custom error messages, and `TypeAdapter`, which validates plain types such as `list[ActionItem]` without a wrapper class.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Three habits from this lesson run through the rest of the studio. Define output shape once, as a Pydantic model, and generate everything else from it. Make choices about required, nullable, and closed explicit, because each one changes what a failure looks like. And always validate, then decide what happens to failures instead of letting them slide through. Validation tells you the output has the right shape. It says nothing about whether the owner, the date, or the task is correct. Lesson 8 makes the right shape nearly automatic; lesson 9 deals with whether it's true.
+</Listen>

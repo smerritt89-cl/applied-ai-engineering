@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.984
+Structured outputs on Claude today.
+
+2
+00:00:02.264 --> 00:00:04.291
+Claude offers two related features.
+
+3
+00:00:04.571 --> 00:00:09.797
+JSON outputs constrain the response itself: you pass a schema in output_config.
+
+4
+00:00:10.077 --> 00:00:15.197
+format with type json_schema, and the reply’s text block is JSON matching it.
+
+5
+00:00:15.477 --> 00:00:23.477
+Strict tool use constrains tool arguments: you add strict: true to a tool definition, and calls to that tool always validate.
+
+6
+00:00:23.757 --> 00:00:25.677
+You can use both in one request.
+
+7
+00:00:25.957 --> 00:00:32.464
+The older top-level output_format request parameter is deprecated; the current home is output_config.
+
+8
+00:00:32.744 --> 00:00:33.512
+format.
+
+9
+00:00:33.792 --> 00:00:36.416
+In Python, the recommended path is client.
+
+10
+00:00:36.696 --> 00:00:37.613
+messages.
+
+11
+00:00:37.893 --> 00:00:38.704
+parse().
+
+12
+00:00:38.984 --> 00:00:48.776
+You pass your Pydantic class (the SDK’s parse() helper takes it as output_format ), the SDK converts it to a schema and sends it as output_config.
+
+13
+00:00:49.056 --> 00:00:53.451
+format, and the response carries a validated instance in parsed_output.
+
+14
+00:00:53.731 --> 00:01:10.179
+The SDK also adapts the schema: the API supports a subset of JSON Schema, and the docs list what’s out, including recursive schemas, numeric bounds such as minimum, string length bounds such as minLength, and any additionalProperties other than false.
+
+15
+00:01:10.459 --> 00:01:19.291
+The SDK helpers move unsupported constraints into the field description and then check your original constraints when they validate the response.
+
+16
+00:01:19.571 --> 00:01:23.496
+That’s another reason to keep the Pydantic model as your source of truth.
+
+17
+00:01:23.776 --> 00:01:26.144
+Some operational details from the docs.
+
+18
+00:01:26.424 --> 00:01:34.872
+The first request with a new schema pays a one-time compilation cost; compiled grammars are cached for 24 hours from last use.
+
+19
+00:01:35.152 --> 00:01:39.291
+Changing the format invalidates the prompt cache for that conversation.
+
+20
+00:01:39.571 --> 00:01:42.643
+Structured outputs can’t be combined with citations.
+
+21
+00:01:42.923 --> 00:01:54.208
+And the guarantee has stated exceptions: if stop_reason is refusal or max_tokens, the output may not match the schema, so check the stop reason before you trust parsed_output.

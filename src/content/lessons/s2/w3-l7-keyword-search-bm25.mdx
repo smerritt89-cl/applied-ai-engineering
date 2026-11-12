@@ -1,0 +1,299 @@
+---
+id: s2-w3-l7
+studio: s2
+week: 3
+order: 7
+title: Keyword search and BM25
+summary: How inverted indexes work, how TF-IDF grew into BM25, what the k1 and b parameters do, and the kinds of queries (exact names, codes, rare terms) where a forty-year-old ranking function still beats embeddings.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Describe an inverted index and the statistics (term frequency, document frequency, document length) that keyword ranking needs
+  - Derive BM25 from TF-IDF by adding term-frequency saturation and document-length normalization, and explain what k1 and b control
+  - Implement BM25 scoring over a small corpus and test it against properties you can reason about
+  - Predict which queries keyword search will handle better than embedding search, and the reverse, and check the prediction with data
+sources:
+  - { id: robertson-zaragoza-2009-bm25, use: summarized, where: "Sections 3.4 and 3.5: saturation, document length, BM25, uses of BM25" }
+  - { id: lucene-bm25-similarity, use: summarized, where: "Default parameters and idf implementation" }
+  - { id: elastic-similarity-docs, use: summarized, where: "BM25 similarity settings" }
+  - { id: anthropic-contextual-retrieval, use: summarized, where: "The TS-999 example; embeddings plus BM25" }
+  - { id: thakur-2021-beir, use: summarized }
+  - { id: karpukhin-2020-dpr, use: summarized }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 6, RAG and Agents (retrieval algorithms)" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your support bot uses embedding search only. Agents report that a query for "error E-4471" returns articles about
+      error codes in general, while the article that names E-4471 is ranked 14th. What is the most sensible first move?
+    options:
+      - id: a
+        text: Switch to a larger embedding model and re-embed the corpus.
+        rationale: A different embedding model might help, but exact identifiers are a known weak spot for dense retrieval in general. You'd be paying to re-embed without addressing the cause.
+      - id: b
+        text: Add a keyword (BM25) retriever whose tokenizer keeps codes like "e-4471" intact, combine its results with the vector results, and measure on a set of code queries.
+        correct: true
+        rationale: Yes. Lexical matching is exactly what this query needs, and measuring on labeled code queries tells you whether the fix worked.
+      - id: c
+        text: Tell users to describe the error in words instead of typing the code.
+        rationale: That moves the system's weakness onto users, and the code is the most specific signal they have.
+    explanation: >-
+      Anthropic's contextual retrieval post uses this exact pattern (an error code like "TS-999") to show where embeddings
+      miss and BM25 succeeds. The fix is to add the right tool, check the tokenizer, and confirm with a measured set of
+      queries rather than one anecdote.
+  - id: kc2
+    type: predict-output
+    prompt: With k1 = 1.2 and b = 0 (no length normalization), what does this print?
+    code: |
+      def tf_part(tf, k1=1.2):
+          return tf * (k1 + 1) / (tf + k1)
+
+      print(round(tf_part(100) / tf_part(1), 2))
+    options:
+      - id: a
+        text: "`100.0`"
+        rationale: That would be raw term frequency, as in plain TF-IDF. BM25 saturates.
+      - id: b
+        text: "`2.17`"
+        correct: true
+        rationale: tf_part(1) is 2.2 / 2.2 = 1.0 and tf_part(100) is 220 / 101.2, about 2.174, so the ratio rounds to 2.17.
+      - id: c
+        text: "`1.0`"
+        rationale: That would be a binary model (k1 = 0), where only presence counts.
+    explanation: >-
+      The term-frequency part of BM25 is tf times (k1 + 1) over (tf + k1). It equals 1 at tf = 1 and approaches k1 + 1 =
+      2.2 as tf grows, so a hundred mentions are worth barely more than twice one mention. That saturation is the main
+      difference from TF-IDF's linear term frequency.
+  - id: kc3
+    type: mcq
+    prompt: In BM25, what does setting b = 1 (instead of the common 0.75) do?
+    options:
+      - id: a
+        text: Turns off document-length normalization.
+        rationale: That's b = 0.
+      - id: b
+        text: Applies full length normalization, so term frequency is judged entirely relative to the document's length compared with the average.
+        correct: true
+        rationale: Right. Robertson and Zaragoza describe b = 1 as full normalization and b = 0 as none.
+      - id: c
+        text: Makes every term weigh the same regardless of rarity.
+        rationale: Rarity is the idf factor; b doesn't touch it.
+      - id: d
+        text: Doubles the maximum contribution of each term.
+        rationale: The ceiling on a term's contribution is set by k1 (and idf), not b.
+    explanation: >-
+      b interpolates between two stories about long documents: they are verbose (so divide by length) or they cover
+      more ground (so don't). b = 0.75 is the Lucene and Elasticsearch default, a partial normalization. Tune it on
+      labeled queries from your corpus if documents vary a lot in length.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Why an old method is in a modern RAG course
+
+In weeks 1 and 2 you built retrieval on embeddings: turn text into vectors, find the nearest ones. That works well when the user's words differ from the document's words but mean the same thing. It works less well when the user types something the embedding model has no special reason to preserve: a product code, an error number, a person's surname, an internal project name.
+
+Anthropic's post on contextual retrieval gives a clean example. A user searches a support database for "Error code TS-999". An embedding model finds content about error codes in general and can miss the one document that contains "TS-999". A keyword ranker finds that string directly. The post's recommendation, which you'll implement next lesson, is to run both and combine them.
+
+The research record supports keeping keyword search around, with nuance. Karpukhin and colleagues (2020) showed a trained dense retriever beating a strong BM25 baseline by 9 to 19 points of top-20 accuracy on open-domain question answering, in the domain it was trained for. The BEIR benchmark (Thakur and colleagues, 2021) then tested retrievers on 18 datasets they weren't tuned for and found BM25 to be a robust baseline that many dense models of the time failed to beat. Both findings hold: dense retrieval shines in domain, and keyword search is hard to beat out of domain and on exact terms. Your company's internal jargon is about as out of domain as text gets.
+
+This lesson builds keyword search from first principles: the inverted index, then TF-IDF, then BM25, the ranking function behind Lucene, Elasticsearch, and OpenSearch.
+</Listen>
+
+<Listen>
+## The inverted index
+
+A book's index maps words to page numbers. An **inverted index** does the same for a corpus: for each term, a **postings list** of the documents that contain it, usually with the count of occurrences in each. To answer a query you look up each query term, take the union of the postings lists as candidates, and score only those. A corpus of ten million chunks may have a few thousand candidates for a specific query, which is why keyword search is fast without any GPUs.
+
+Three statistics fall out of the index, and every classic ranking function uses them:
+
+- **Term frequency**, tf: how many times the term occurs in this document.
+- **Document frequency**, n: how many documents contain the term. Rare terms are more informative.
+- **Document length**, dl, and the average length avgdl across the corpus.
+
+Before any of that comes **tokenization**: the rule that turns text into terms. This is where most real bugs live. A tokenizer that lowercases and splits on every non-letter turns "TS-999" into "ts" and "999", and now a query for TS-999 also matches every document that mentions 999 users. Stemming ("renewals" to "renewal"), stop-word removal, and handling of accents all change what matches. None of these choices is universally right. Pick them for your corpus, and test them with the queries your users actually type.
+</Listen>
+
+<Callout type="pitfall" title="The tokenizer ate your identifiers">
+Default analyzers in search engines and simple regex tokenizers often split on hyphens, dots, and slashes, which breaks SKUs, version numbers ("v2.3.1"), error codes, and file paths. The query still returns results, so nothing looks broken. Write a handful of test queries containing your identifiers, check the tokens your analyzer produces for them, and check that the right document comes back first. If you need both behaviors, index the field twice: once split, once with identifiers intact.
+</Callout>
+
+<Listen>
+## From TF-IDF to BM25
+
+**TF-IDF** scores a document for a query by summing, over query terms, term frequency times inverse document frequency. A common idf is log(N / n), where N is the number of documents. It captures two good intuitions: a term that appears often in a document is probably what the document is about, and a term that appears in few documents is a better discriminator than one that appears everywhere.
+
+It also has two weaknesses. Term frequency counts linearly, so a document that says "license" twenty times scores twenty times higher on that term than one that says it once, though it isn't twenty times more relevant. And long documents accumulate higher counts just by being long.
+
+**BM25** fixes both. Robertson and Zaragoza's survey "The Probabilistic Relevance Framework: BM25 and Beyond" (2009) derives it from a probabilistic model of relevance; here is the result. For a query Q and document D:
+
+score(D, Q) = sum over query terms q of idf(q) times tf(q, D) times (k1 + 1), divided by tf(q, D) + k1 times (1 minus b plus b times dl / avgdl).
+
+The idf is the Robertson and Sparck Jones weight with no relevance information: log((N minus n plus 0.5) / (n plus 0.5)). That goes negative for terms in more than half the documents, so Lucene uses log(1 + (N minus n plus 0.5) / (n plus 0.5)), which is always positive. You'll use the Lucene form in the exercise. The (k1 + 1) in the numerator is a constant per term, so it doesn't change the ranking; the survey notes that it is included so a single occurrence weighs the same as in the plain RSJ weight.
+</Listen>
+
+```text
+                         tf · (k1 + 1)
+BM25(D, Q) = Σ  idf(q) · ─────────────────────────────────
+            q∈Q          tf + k1 · (1 − b + b · dl / avgdl)
+
+idf(q) = ln(1 + (N − n_q + 0.5) / (n_q + 0.5))      (Lucene's always-positive form)
+```
+
+<Listen>
+## What k1 and b do, for a mathematician
+
+Fix a term and look at its contribution as a function of tf. Write K for k1 times (1 minus b plus b times dl / avgdl). The contribution is proportional to tf / (tf + K), a saturating hyperbola: zero at tf = 0, increasing and concave, with horizontal asymptote 1. Multiplying by (k1 + 1) scales it so the asymptote is k1 + 1 and, for an average-length document, tf = 1 gives exactly 1.
+
+**k1 controls saturation.** With k1 = 0 the function is a step: present or absent, a binary model. As k1 grows, saturation comes later and the function approaches linear tf, which is TF-IDF's behavior. Typical values sit between those extremes, so the second mention of a term adds a lot and the twentieth adds almost nothing.
+
+**b controls length normalization.** The factor (1 minus b plus b times dl / avgdl) is a convex combination of 1 and the relative length. At b = 0 length is ignored. At b = 1 term frequency is judged fully relative to length: a document twice the average length needs twice the occurrences to earn the same contribution. Robertson and Zaragoza frame this as two hypotheses about long documents, verbosity (the author used more words for the same content, so normalize) and scope (the document covers more ground, so don't), and b as a soft mix of the two.
+
+On values: Lucene and Elasticsearch default to k1 = 1.2 and b = 0.75. The survey reports that experiments generally found values in roughly 0.5 to 0.8 for b and 1.2 to 2 for k1 to work well in many circumstances, while noting that the model gives no guidance on setting them and that the best values depend on the documents and queries. That last point is your cue: these are hyperparameters you can tune on a labeled query set, which is exactly what lesson 9 teaches you to build.
+</Listen>
+
+<Predict
+  title="Saturation, by hand"
+  code={`def tf_part(tf, k1=1.2):
+    # BM25's term-frequency factor for an average-length document
+    return tf * (k1 + 1) / (tf + k1)
+
+print([round(tf_part(t), 2) for t in (1, 2, 10)])`}
+  options={["[1.0, 1.38, 1.96]", "[1.0, 2.0, 10.0]", "[1.2, 2.4, 12.0]", "[0.45, 0.62, 0.89]"]}
+  answer={0}
+>
+At tf = 1 the factor is 2.2 / 2.2 = 1. At tf = 2 it is 4.4 / 3.2, about 1.38. At tf = 10 it is 22 / 11.2, about 1.96, already close to the ceiling of k1 + 1 = 2.2. Ten mentions are worth about twice one mention, not ten times.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s2-w3-bm25"
+  title="Implement BM25 over a tiny knowledge base"
+  starter={`import math
+import re
+from collections import Counter
+
+def tokenize(text):
+    """Lowercase and keep hyphenated identifiers such as ts-999 as one token."""
+    return re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", text.lower())
+
+DOCS = {
+    "kb-101": "Error TS-999 means the license server is unreachable. Restart the license service on the host.",
+    "kb-102": "To reset your password, open Settings, choose Security, and follow the reset link.",
+    "kb-103": "License renewal starts 30 days before expiry. Finance approves every license renewal.",
+    "kb-104": "If the VPN drops, check the network adapter, then restart the VPN client.",
+    "kb-105": "Error TS-404 appears when a report template is missing from the shared drive.",
+    "kb-106": "The server room is locked after 6 pm. Ask facilities for after-hours server access.",
+}
+
+def build_index(docs):
+    """Return {"postings": {term: {doc_id: tf}}, "lengths": {doc_id: n_tokens},
+    "N": number of docs, "avgdl": average length in tokens}."""
+    # TODO
+    pass
+
+def idf(index, term):
+    """Lucene's form: log(1 + (N - n + 0.5) / (n + 0.5)), n = docs containing term."""
+    # TODO
+    pass
+
+def bm25_score(index, query, doc_id, k1=1.2, b=0.75):
+    """Sum the BM25 contribution of each query token for this document."""
+    # TODO
+    pass
+
+def search(index, query, k=3, k1=1.2, b=0.75):
+    """Score only documents that contain at least one query token.
+    Return up to k (doc_id, score) pairs, best first; break ties by doc_id."""
+    # TODO
+    pass
+
+INDEX = build_index(DOCS)
+print(search(INDEX, "error TS-999"))
+print(search(INDEX, "license renewal"))
+`}
+  tests={`INDEX = build_index(DOCS)
+assert INDEX is not None, "build_index returned None"
+assert INDEX["N"] == 6 and INDEX["lengths"]["kb-103"] == 12, "count tokens with tokenize()"
+assert abs(INDEX["avgdl"] - 80 / 6) < 1e-9, "avgdl is the mean length in tokens"
+assert INDEX["postings"]["license"] == {"kb-101": 2, "kb-103": 2}, "postings map doc_id to term frequency"
+assert abs(idf(INDEX, "error") - math.log(1 + 4.5 / 2.5)) < 1e-9, "'error' appears in 2 of 6 docs"
+assert idf(INDEX, "nonexistent") > idf(INDEX, "error") > 0, "rarer terms get higher idf; idf stays positive"
+top = search(INDEX, "error TS-999")
+assert top[0][0] == "kb-101", "the document containing ts-999 must rank first"
+assert [d for d, _ in top] == ["kb-101", "kb-105"], "only docs sharing a query token are returned"
+assert abs(top[0][1] - 2.4450343) < 1e-6, "check the BM25 formula, including (k1 + 1) in the numerator"
+assert search(INDEX, "quarterly forecast") == [], "no shared tokens, no results"
+assert bm25_score(INDEX, "license", "kb-103") > bm25_score(INDEX, "license", "kb-101"), "same tf, shorter doc wins when b > 0"
+assert abs(bm25_score(INDEX, "license", "kb-103", b=0) - bm25_score(INDEX, "license", "kb-101", b=0)) < 1e-12, "b = 0 ignores length"
+binary = search(INDEX, "license", k1=0.0)
+assert abs(binary[0][1] - binary[1][1]) < 1e-12, "k1 = 0 makes BM25 binary: presence is all that counts"`}
+  solution={`def build_index(docs):
+    tokens = {d: tokenize(t) for d, t in docs.items()}
+    postings = {}
+    for d, toks in tokens.items():
+        for term, tf in Counter(toks).items():
+            postings.setdefault(term, {})[d] = tf
+    lengths = {d: len(t) for d, t in tokens.items()}
+    return {"postings": postings, "lengths": lengths,
+            "N": len(docs), "avgdl": sum(lengths.values()) / len(docs)}
+
+def idf(index, term):
+    n = len(index["postings"].get(term, {}))
+    N = index["N"]
+    return math.log(1 + (N - n + 0.5) / (n + 0.5))
+
+def bm25_score(index, query, doc_id, k1=1.2, b=0.75):
+    score = 0.0
+    dl = index["lengths"][doc_id]
+    for term in tokenize(query):
+        tf = index["postings"].get(term, {}).get(doc_id, 0)
+        if tf == 0:
+            continue
+        norm = k1 * (1 - b + b * dl / index["avgdl"])
+        score += idf(index, term) * tf * (k1 + 1) / (tf + norm)
+    return score
+
+def search(index, query, k=3, k1=1.2, b=0.75):
+    candidates = set()
+    for term in tokenize(query):
+        candidates.update(index["postings"].get(term, {}))
+    scored = [(d, bm25_score(index, query, d, k1, b)) for d in candidates]
+    scored.sort(key=lambda pair: (-pair[1], pair[0]))
+    return scored[:k]`}
+>
+Fill in the four functions, then press **Check my answer**. The tests check exact values where the math is unambiguous, and properties where it's more instructive: shorter documents win at equal term frequency when b is above zero, and k1 = 0 reduces BM25 to presence or absence. Afterwards, try changing the tokenizer to `re.findall(r"[a-z0-9]+", text.lower())` and search for "TS-999" again. Which document now competes with kb-101, and why?
+</PyRunner>
+
+<Listen>
+## When keyword search beats embeddings, and when it doesn't
+
+Here is a working map, drawn from the sources above and from how the two methods are built. Treat it as a set of hypotheses to check on your own queries, not as rules.
+
+**Keyword search tends to win on:**
+- **Exact identifiers**: error codes, SKUs, ticket numbers, clause numbers, version strings. Embeddings compress text into a few hundred or thousand dimensions, and nothing forces two different codes to land far apart.
+- **Names and rare terms**: surnames, product names, internal project codenames, drug names. A rare term gets a high idf, which is exactly the right instinct.
+- **Vocabulary the embedding model never saw**: new jargon, acronyms coined after its training data. BM25 needs no training at all.
+- **Explainability**: you can show which terms matched and how much each contributed, which helps when a stakeholder asks why a result appeared.
+
+**Embeddings tend to win on:**
+- **Paraphrase and synonyms**: "how do I get my money back" versus a document titled "Refund policy". BM25 scores that pair at zero unless you add synonyms.
+- **Natural-language questions** whose key words don't appear in the answer.
+- **Cross-lingual search**, with a multilingual embedding model.
+
+In a real team, the evidence to collect is a labeled set of queries tagged by type (identifier lookups, how-to questions, policy questions) and recall measured per type for each retriever. You'll often find each method wins a different slice, which is the case for hybrid search in the next lesson. Anthropic's experiments reached that conclusion across several knowledge domains: embeddings plus BM25 retrieved better than embeddings alone.
+</Listen>
+
+<Callout type="tip" title="You rarely write BM25 in production">
+Lucene, and the engines built on it (Elasticsearch, OpenSearch, Solr), implement BM25 with the defaults above, and many vector databases now offer a keyword or hybrid mode alongside vectors. Writing it yourself once, as in the exercise and the lab, is how you learn to read their explain output and pick parameters. In production, use the engine's implementation and spend your effort on the analyzer and on measurement.
+</Callout>
+
+<GoDeeper title="Where the saturation curve comes from">
+Robertson and Zaragoza motivate the tf / (tf + k) shape with an **eliteness** model. Imagine each document is either "about" a term (elite) or not, and term counts follow a Poisson distribution with a higher rate in elite documents: the 2-Poisson model. The ideal term weight under that model rises with tf and levels off at a maximum, and it has an awkward closed form. BM25 approximates it with the simple saturating function, scaled by the presence-absence (RSJ) weight that plays the role of idf. The survey also covers BM25F, which scores structured documents (title, body, anchor text) with a separate length normalization per field, and how to tune k1 and b, including a recipe for tuning per-field weights. If you index titles and bodies separately, this is the part worth reading.
+</GoDeeper>
+
+<Listen>
+## What to take into the next lesson
+
+Keyword search is an inverted index plus a ranking function. BM25 adds two ideas to TF-IDF: repeated mentions saturate (k1), and long documents are partly normalized (b). The defaults, k1 = 1.2 and b = 0.75, are good starting points, not truths. The tokenizer decides what can match at all, so test it with your identifiers. And keyword and embedding retrieval fail on different queries, which is a strong hint that combining them should help. The next lesson does that combination properly, because the obvious way to do it (add the scores) has a trap in it.
+</Listen>

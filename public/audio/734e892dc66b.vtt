@@ -1,0 +1,101 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.451
+The loop, step by step.
+
+2
+00:00:01.731 --> 00:00:07.789
+Anthropic’s tool use course builds this up over several notebooks; here is the whole cycle in one place.
+
+3
+00:00:08.069 --> 00:00:08.709
+One.
+
+4
+00:00:08.989 --> 00:00:12.104
+You send a request with your messages and a tools list.
+
+5
+00:00:12.384 --> 00:00:13.109
+Two.
+
+6
+00:00:13.389 --> 00:00:16.952
+The model either answers directly or decides to use a tool.
+
+7
+00:00:17.232 --> 00:00:24.400
+If it uses one, the response has a stop_reason of tool_use, and its content includes one or more tool_use blocks.
+
+8
+00:00:24.680 --> 00:00:28.072
+Each block has an id, a name, and an input object.
+
+9
+00:00:28.352 --> 00:00:34.475
+The content may also include text, such as “Let me look that up,” and on current models, thinking blocks.
+
+10
+00:00:34.755 --> 00:00:35.501
+Three.
+
+11
+00:00:35.781 --> 00:00:40.816
+You append the assistant’s entire content to your message history, tool_use blocks included.
+
+12
+00:00:41.096 --> 00:00:41.821
+Four.
+
+13
+00:00:42.101 --> 00:00:45.152
+For each tool_use block, you run the matching function.
+
+14
+00:00:45.432 --> 00:00:46.200
+Five.
+
+15
+00:00:46.480 --> 00:00:56.016
+You send a new user message whose content is a list of tool_result blocks, each carrying the tool_use_id it answers and the result as content.
+
+16
+00:00:56.296 --> 00:00:57.043
+Six.
+
+17
+00:00:57.323 --> 00:01:00.075
+You call the API again with the longer history.
+
+18
+00:01:00.355 --> 00:01:07.075
+The model reads the results and either requests more tools or finishes, in which case stop_reason is end_turn.
+
+19
+00:01:07.355 --> 00:01:14.693
+Because the API is stateless (lesson 1), the history you resend is the only memory the model has of what it asked for.
+
+20
+00:01:14.973 --> 00:01:17.704
+Two formatting rules from the docs trip people up.
+
+21
+00:01:17.984 --> 00:01:23.872
+The user message with results must come immediately after the assistant message that requested them.
+
+22
+00:01:24.152 --> 00:01:29.656
+And within that user message, the tool_result blocks must come first, before any text you add.
+
+23
+00:01:29.936 --> 00:01:31.685
+Finally, put a ceiling on it.
+
+24
+00:01:31.965 --> 00:01:36.680
+A model can keep asking for tools, and each round trip costs tokens and time.
+
+25
+00:01:36.960 --> 00:01:39.840
+A maximum iteration count is cheap insurance.

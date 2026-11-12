@@ -1,0 +1,370 @@
+{
+  "id": "s3-w4",
+  "studio": "s3",
+  "week": 4,
+  "title": "Week 4 quiz: Eval-driven development",
+  "questions": [
+    {
+      "id": "s3w4-q1",
+      "type": "mcq",
+      "prompt": "Your weekly review queue has 20 thumbs-down traces, 15 judge failures, 5 latency outliers, and 40 random traces. The expert passes 70% of the queue overall and 90% of the random slice. Which number estimates production quality?",
+      "options": [
+        {
+          "id": "a",
+          "text": "70%, because it uses all 80 reviewed traces",
+          "rationale": "Most of the queue was chosen because it was likely to fail, so the overall rate is biased low."
+        },
+        {
+          "id": "b",
+          "text": "90%, from the random slice, reported with its interval",
+          "rationale": "Yes. Only the random slice is an unbiased sample of traffic; the targeted slices exist to find failures.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The average of the two, 80%",
+          "rationale": "Averaging a biased and an unbiased estimate gives a biased estimate."
+        },
+        {
+          "id": "d",
+          "text": "Neither; you need every production trace reviewed",
+          "rationale": "A random sample with an interval is the standard, affordable answer."
+        }
+      ],
+      "explanation": "Targeted sampling (feedback, judge flags, outliers) is for discovery and is enriched with failures by design. The random slice is for measurement. With 40 random traces, report the interval too: a 90% rate on 40 has a wide one.",
+      "week": 4,
+      "tags": [
+        "human-review",
+        "sampling"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w4-q2",
+      "type": "multi",
+      "prompt": "Which statements about user feedback on an AI feature are accurate? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Explicit ratings come from a self-selected minority of users, so their average can differ from overall quality in either direction",
+          "rationale": "Correct. Raters skew toward strong reactions.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Clicks on cited sources partly reflect position: people click top-ranked items more even when the ranking is worse",
+          "rationale": "Correct. Joachims and colleagues found this trust and position bias in web search clicks.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "A user who doesn't rephrase their question was satisfied",
+          "rationale": "Ambiguous: they may have given up."
+        },
+        {
+          "id": "d",
+          "text": "Human votes can reward style, such as answer length, independent of correctness",
+          "rationale": "Correct. Chatbot Arena's own analysis found length was the dominant style factor in votes.",
+          "correct": true
+        }
+      ],
+      "explanation": "Feedback is a strong pointer to traces worth reading (every thumbs-down goes in the queue), and a weak, biased measurement. Measure quality with expert review of a random sample.",
+      "week": 4,
+      "tags": [
+        "feedback",
+        "bias"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w4-q3",
+      "type": "scenario",
+      "prompt": "You are launching an assistant that answers benefits questions for HR. Three engineers have offered to label 300 traces this week to calibrate the judge. The benefits manager has two hours a week. What is the best plan?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Let the engineers label all 300; they're available and fast.",
+          "rationale": "Engineers can't reliably judge benefits policy, so the judge would be calibrated to the wrong standard."
+        },
+        {
+          "id": "b",
+          "text": "Make the benefits manager the quality owner: they label a smaller set and resolve disagreements, while engineers build the review tool and pre-sort traces.",
+          "rationale": "Yes. The domain expert sets the standard; engineering time goes into making their two hours count.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Outsource labeling to a crowd platform to get 3,000 labels.",
+          "rationale": "Volume doesn't fix the lack of domain knowledge, and outsourcing loses the learning."
+        },
+        {
+          "id": "d",
+          "text": "Skip human labels and use a stronger model as the judge.",
+          "rationale": "An uncalibrated judge is a guess, however strong the model."
+        }
+      ],
+      "explanation": "Quality in a domain product is a domain judgment. One accountable expert (the 'benevolent dictator') keeps labels consistent. A fast custom review tool and good sampling stretch scarce expert time further than more non-expert labels would.",
+      "week": 4,
+      "tags": [
+        "human-review",
+        "staffing"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w4-q4",
+      "type": "code-reading",
+      "prompt": "This faithfulness function feeds a dashboard. What is wrong with it?",
+      "code": "def faithfulness(answer, contexts, judge):\n    claims = split_claims(answer)\n    if not claims:\n        return 1.0\n    supported = sum(judge(c, contexts) for c in claims)\n    return supported / len(claims)",
+      "options": [
+        {
+          "id": "a",
+          "text": "It should divide by the number of contexts, not claims",
+          "rationale": "Faithfulness is supported claims over total claims."
+        },
+        {
+          "id": "b",
+          "text": "An abstention or an empty answer scores a perfect 1.0, so a system that says nothing looks maximally faithful",
+          "rationale": "Yes. Return None and report abstentions separately.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It calls the judge once per claim, which is too expensive",
+          "rationale": "Per-claim judging is the standard design; cost is a trade-off, not a bug."
+        },
+        {
+          "id": "d",
+          "text": "sum() of booleans raises a TypeError in Python",
+          "rationale": "Booleans are integers in Python; the sum works."
+        }
+      ],
+      "explanation": "Defaults that silently score missing work as perfect are a classic metric bug. An abstention is a separate outcome: right when the corpus can't answer, wrong when it can. Track it with its own numbers.",
+      "language": "python",
+      "week": 4,
+      "tags": [
+        "rag",
+        "faithfulness",
+        "metrics"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w4-q5",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "retrieved = [\"d4\", \"d9\", \"d2\", \"d7\", \"d1\"]\nrelevant = {\"d2\", \"d5\"}\nk = 3\nrecall = len(relevant & set(retrieved[:k])) / len(relevant)\nprecision = len(relevant & set(retrieved[:k])) / k\nrr = next((1 / (i + 1) for i, d in enumerate(retrieved) if d in relevant), 0.0)\nprint(round(recall, 2), round(precision, 2), round(rr, 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.5 0.33 0.33`",
+          "rationale": "Yes. One of two relevant docs is in the top 3; one of three slots is relevant; the first relevant doc is at rank 3.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`1.0 0.33 0.33`",
+          "rationale": "d5 was never retrieved, so recall can't be 1.0."
+        },
+        {
+          "id": "c",
+          "text": "`0.5 0.5 0.33`",
+          "rationale": "Precision divides by k (3), not by the number of relevant docs."
+        },
+        {
+          "id": "d",
+          "text": "`0.5 0.33 3`",
+          "rationale": "Reciprocal rank is 1 over the rank, so 1/3."
+        }
+      ],
+      "explanation": "Recall asks how much of what you needed came back; precision asks how much of what came back you needed; reciprocal rank asks how far down the first useful result was. Each points to a different fix.",
+      "language": "python",
+      "week": 4,
+      "tags": [
+        "rag",
+        "retrieval-metrics"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3w4-q6",
+      "type": "mcq",
+      "prompt": "According to the Ragas documentation, what does response relevancy (answer relevance) measure?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Whether the answer is factually correct",
+          "rationale": "The docs say explicitly that it does not evaluate factual accuracy."
+        },
+        {
+          "id": "b",
+          "text": "Whether every claim in the answer is supported by the retrieved context",
+          "rationale": "That is faithfulness."
+        },
+        {
+          "id": "c",
+          "text": "How well the answer addresses the intent of the question, via similarity between the question and questions generated from the answer",
+          "rationale": "Yes. An on-topic wrong answer can score well.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Whether the retrieved chunks are ranked well",
+          "rationale": "That is context precision."
+        }
+      ],
+      "explanation": "Know what each automated metric can and cannot see. Relevancy catches off-topic or evasive answers; faithfulness catches unsupported claims; neither catches a well-supported answer built on the wrong passage. Correctness needs a reference.",
+      "week": 4,
+      "tags": [
+        "ragas",
+        "rag"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3w4-q7",
+      "type": "scenario",
+      "prompt": "Your refund agent passes 92% of eval tasks by end-state check (the order's status in the database is right). Reading transcripts, you find several passing runs issued the refund before the customer confirmed. What should you change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; the end state is what users care about.",
+          "rationale": "The policy violation is real harm even when the database looks right."
+        },
+        {
+          "id": "b",
+          "text": "Replace the end-state check with an exact expected sequence of tool calls.",
+          "rationale": "Rigid paths fail valid runs that take a different route; keep the outcome check."
+        },
+        {
+          "id": "c",
+          "text": "Keep the end-state check and add a trajectory assertion that fails any write tool call made before an explicit confirmation.",
+          "rationale": "Yes. Outcome for success, targeted path rules for policy and safety.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Add a line to the system prompt and keep the grader as is.",
+          "rationale": "Prompting may help, but the grader still wouldn't detect the violation."
+        }
+      ],
+      "explanation": "tau-bench's authors note that a correct final database is necessary but not sufficient, with exactly this example. Grade outcomes, add a few path rules that must hold regardless, and read transcripts to find the rules you're missing.",
+      "week": 4,
+      "tags": [
+        "agents",
+        "trajectory"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w4-q8",
+      "type": "predict-output",
+      "prompt": "An agent succeeds on a task with probability 0.75 per independent trial. What does this print?",
+      "code": "p = 0.75\npass_at_3 = 1 - (1 - p) ** 3\npass_hat_3 = p ** 3\nprint(round(pass_at_3, 2), round(pass_hat_3, 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.98 0.42`",
+          "rationale": "Yes. At least one success in three is very likely; three in a row happens about 42% of the time.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`0.75 0.75`",
+          "rationale": "Repeated trials change both quantities."
+        },
+        {
+          "id": "c",
+          "text": "`0.42 0.98`",
+          "rationale": "Reversed: pass@k rises with k, pass^k falls."
+        },
+        {
+          "id": "d",
+          "text": "`2.25 0.42`",
+          "rationale": "pass@3 is a probability, not 3 times p."
+        }
+      ],
+      "explanation": "pass@k fits tools where a person can pick the best of several tries. pass^k fits customer-facing agents, where every user is a fresh try and consistency is what they experience. Anthropic's agent-evals guide uses this same 75% example.",
+      "language": "python",
+      "week": 4,
+      "tags": [
+        "agents",
+        "reliability",
+        "pass-k"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w4-q9",
+      "type": "scenario",
+      "prompt": "Your full eval (generation plus two LLM judges on 300 questions) costs about $6 and takes 25 minutes. The team opens 15 pull requests a day and complains CI is slow. What is the best gate design?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Run the full suite on every pull request; quality matters more than speed.",
+          "rationale": "Slow, costly CI gets bypassed. Most PRs don't touch prompts or models."
+        },
+        {
+          "id": "b",
+          "text": "Drop evals from CI and run them before quarterly releases.",
+          "rationale": "Regressions would ship for months unnoticed."
+        },
+        {
+          "id": "c",
+          "text": "Run a fast deterministic suite (retrieval metrics, citation checks, regression cases) on every PR, and the full judged suite nightly and whenever prompts, models, or the judge change.",
+          "rationale": "Yes. Cheap checks often, expensive checks when they can matter.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Run the full suite on a random 10% of PRs.",
+          "rationale": "Random skipping means the PR that breaks quality is likely untested."
+        }
+      ],
+      "explanation": "Husain and Shankar's FAQ recommends deterministic assertions for frequent CI runs and setting judge-suite frequency by cost and value. Trigger the expensive suite on the changes most likely to affect it.",
+      "week": 4,
+      "tags": [
+        "ci",
+        "harness"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w4-q10",
+      "type": "multi",
+      "prompt": "Which practices protect an eval-driven project from overfitting to its own eval set? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "A held-out set you run rarely and never tune against, reported as the headline",
+          "rationale": "Correct.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Logging every variant tried, so the write-up can say how many comparisons were made",
+          "rationale": "Correct. Twenty tries and one winner is a different claim than one planned comparison.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Refreshing the dev set with new production failures",
+          "rationale": "Correct. It keeps the set resembling real traffic.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Removing hard questions the system keeps failing so the score is more stable",
+          "rationale": "That hides exactly the failures the eval exists to track."
+        }
+      ],
+      "explanation": "Choosing among many variants by dev-set score makes that score optimistic. A rarely used held-out set, an honest log, fresh cases, and reading the changed outputs keep the number connected to reality.",
+      "week": 4,
+      "tags": [
+        "overfitting",
+        "experiment-log"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

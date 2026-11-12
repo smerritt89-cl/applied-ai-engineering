@@ -1,0 +1,325 @@
+---
+id: s1-w2-l5
+studio: s1
+week: 2
+order: 5
+title: Examples, reasoning, and chaining
+summary: Few-shot examples and their side effects, letting the model reason (from chain-of-thought prompting to adaptive thinking and effort levels), splitting work into checkable steps, and choosing between a bigger model, more effort, or a chain.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Choose few-shot examples that are relevant, diverse, and balanced, and explain format leakage and ordering effects
+  - Explain what chain-of-thought prompting showed and how adaptive thinking and effort levels replace it on reasoning models
+  - Decide when visible reasoning helps and when it hurts, and read reasoning output safely in code
+  - Design a prompt chain with a programmatic check between steps
+  - Choose between a bigger model, a higher effort level, and a chain, and say what evidence would settle it
+sources:
+  - { id: claude-prompting-best-practices, use: summarized, where: "Use examples effectively; Leverage thinking; Chain complex prompts" }
+  - { id: claude-thinking-docs, use: summarized, where: "How thinking works; Thinking and effort" }
+  - { id: claude-effort-docs, use: summarized, where: "How effort works; Effort levels; Best practices" }
+  - { id: claude-prompt-docs, use: summarized, where: "When to prompt engineer" }
+  - { id: anthropic-courses, use: adapted, where: "prompt_engineering_interactive_tutorial chapters 6 and 7, appendix 10.1 Chaining Prompts" }
+  - { id: yt-anthropic-prompt-deep-dive, use: embedded }
+  - { id: wei-2022-cot, use: summarized }
+  - { id: min-2022-demonstrations, use: summarized }
+  - { id: lu-2021-order, use: summarized }
+  - { id: zhao-2021-calibrate, use: summarized }
+  - { id: turpin-2023-unfaithful, use: summarized }
+  - { id: anthropic-cot-faithfulness, use: summarized }
+  - { id: gemini-prompting-guide, use: summarized, where: "Zero-shot vs few-shot prompts" }
+  - { id: openai-reasoning-guide, use: summarized }
+  - { id: openai-prompting-guide, use: summarized, where: "Reasoning models versus GPT models" }
+  - { id: gemini-thinking-docs, use: summarized }
+  - { id: xai-reasoning-docs, use: summarized, where: "The reasoning_effort parameter" }
+  - { id: anthropic-effective-agents, use: summarized, where: "Workflow: prompt chaining" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: Min and colleagues (2022) randomly replaced the labels in few-shot classification examples. What did they find?
+    options:
+      - id: a
+        text: Accuracy collapsed to chance, showing that models learn the task mostly from correct labels.
+        rationale: That was the expected result, and it is not what they found.
+      - id: b
+        text: Accuracy improved, because random labels act as regularization.
+        rationale: No improvement was reported.
+      - id: c
+        text: Accuracy barely dropped; the examples mattered mainly for showing the label space, the kind of input text, and the format.
+        correct: true
+        rationale: Yes. Across 12 models, random labels hurt surprisingly little.
+    explanation: >-
+      The finding explains why examples are such a strong lever on format and style: that is much of what the model
+      takes from them. It also explains format leakage. If every example is three sentences long and starts with
+      "Overall,", expect the outputs to copy that, whether or not you meant it. These studies used models from 2021 and
+      2022, so treat the size of the effect as something to re-measure, not a constant.
+  - id: kc2
+    type: code-reading
+    prompt: This code worked on an older model. On a current model with thinking on, it sometimes raises an error or returns an empty string. Why?
+    code: |
+      response = client.messages.create(
+          model="claude-opus-5-5",
+          max_tokens=16000,
+          output_config={"effort": "high"},
+          messages=[{"role": "user", "content": prompt}],
+      )
+      answer = response.content[0].text
+    options:
+      - id: a
+        text: The first content block can be a thinking block, so reading position 0 as text is wrong; select blocks by their type.
+        correct: true
+        rationale: With thinking on, thinking blocks arrive before text blocks. Iterate over the content and keep blocks whose type is text.
+      - id: b
+        text: The `effort` value must be a number, not a string.
+        rationale: Effort levels are strings such as "low", "medium", and "high".
+      - id: c
+        text: The API returns plain text, not a list of blocks.
+        rationale: The Messages API returns a list of typed content blocks.
+    explanation: >-
+      Claude's docs say to select content blocks by type rather than by position, because thinking blocks come before the
+      text on models where thinking is on (on Claude Opus 5.5 it is always on). The same defensive habit applies to other
+      providers: OpenAI's docs warn that the text is not guaranteed to be the first output item either.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      Your tool turns a week of project status updates into a one-page executive summary. Reviewers keep finding wrong
+      dates in the summary, though the prose is good. What is the best next step?
+    options:
+      - id: a
+        text: Switch to the largest, most expensive model and hope the dates improve.
+        rationale: It might help, but you would be paying for a guess, and you still couldn't tell when a date is wrong.
+      - id: b
+        text: Add "BE VERY CAREFUL WITH DATES" in capitals to the prompt.
+        rationale: Emphasis without a mechanism rarely fixes a systematic error, and you still have no check.
+      - id: c
+        text: Raise effort to max on every request.
+        rationale: More reasoning may reduce errors, but it costs more on every request and still leaves you without verification.
+      - id: d
+        text: Split it into a chain. Step 1 extracts every milestone and date as JSON; code checks each date appears in the source; step 2 writes the summary from the checked list.
+        correct: true
+        rationale: The failure is specific and checkable, so put a check where it occurs. You also get a log of exactly which step failed.
+    explanation: >-
+      Chaining earns its cost when an intermediate result can be checked. Here the dates can be checked with a string
+      search against the source, cheaply and every time. Try that first; if extraction errors persist, then compare a
+      higher effort level or a bigger model on the extraction step alone, using the same test cases.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Examples are the strongest lever you have, so aim them
+
+Showing beats telling. A few examples of input and desired output (called few-shot or multishot prompting) are, in Anthropic's words, one of the most reliable ways to steer format, tone, and structure. Google's Gemini guide goes further and recommends including few-shot examples in prompts as a default, noting that clear examples can sometimes replace instructions entirely.
+
+Anthropic's docs give three properties to aim for. Examples should be **relevant**, mirroring your real inputs rather than toy cases. They should be **diverse**, covering edge cases and varying enough that the model doesn't latch onto an accidental pattern. And they should be **structured**, wrapped in `<example>` tags (inside an `<examples>` block) so the model can tell them apart from instructions. The docs suggest three to five examples as a starting point. Google adds two cautions: keep the format identical across examples, and don't include so many that the model starts copying them too closely.
+
+For a PM-flavored case, say you want status updates labeled on_track, at_risk, or blocked. Good examples would include a short update and a rambling one, one where the risk is buried in the last sentence, and one that sounds alarming but is actually on track. Each label appears at least once, and no single label dominates.
+</Listen>
+
+<Listen>
+## What models actually take from examples
+
+Research on few-shot prompting is humbling, and worth knowing because it changes how you choose examples.
+
+Min and colleagues (2022) replaced the labels in classification examples with random ones and found accuracy barely dropped, across 12 models. What mattered more was that the examples showed the **set of possible labels**, the **kind of input text**, and the **format** of the answer. In other words, models lean heavily on examples as a template. That is good news for format control and bad news for accidents: if every example summary opens with "Overall," or runs exactly three sentences, your outputs will too. Call this **format leakage**, and prevent it with deliberate variety in everything you don't want copied.
+
+Order matters too, at least on the models of that era. Lu and colleagues (2021) showed that simply reordering the same few examples could move a model from near state-of-the-art accuracy to near chance, and that a good order for one model did not transfer to another. Zhao and colleagues (2021) traced part of this instability to biases toward answers that appear near the end of the prompt or appear often in the examples.
+
+These studies used GPT-3-era models, and today's instruction-tuned models are generally more robust. But the engineering conclusions hold: balance your labels, vary the surface features, and when results matter, test the same prompt with the examples in a shuffled order. If the score moves, your prompt is fragile.
+</Listen>
+
+<Callout type="pitfall" title="Examples that teach the wrong lesson">
+Three common accidents: every example has the same label, so the model over-predicts it; every example has the same length or opening phrase, so outputs copy it; or the examples are all easy, so the model has never seen what to do with a messy input. Review your examples the way you would review a test set, because that is effectively what they are.
+</Callout>
+
+<PyRunner
+  client:visible
+  id="s1-w2-fewshot-selector"
+  title="Pick few-shot examples that cover every label"
+  starter={`POOL = [
+    {"text": "Vendor API is down and we cannot test payments", "label": "blocked"},
+    {"text": "Design review done, build starts Monday as planned", "label": "on_track"},
+    {"text": "QA found 14 bugs, launch may slip a week", "label": "at_risk"},
+    {"text": "Waiting on legal approval before we can send the contract", "label": "blocked"},
+    {"text": "Sprint goals met, demo scheduled for Friday", "label": "on_track"},
+    {"text": "Two engineers out sick, payments work is behind", "label": "at_risk"},
+]
+
+def similarity(a, b):
+    """Number of distinct lowercase words (split on whitespace) shared by a and b."""
+    return len(set(a.lower().split()) & set(b.lower().split()))
+
+def select_examples(pool, query, k):
+    """Return k examples from pool for this query.
+    1. Rank the pool by similarity to the query, highest first; break ties by pool order.
+    2. Walk the ranking and take the first example of each label not yet chosen.
+    3. Then fill any remaining slots from the ranking, skipping ones already chosen.
+    4. Return the first k chosen, in the order chosen."""
+    # TODO
+    pass
+
+def format_examples(examples):
+    """Wrap each example as <example><update>TEXT</update><label>LABEL</label></example>
+    and the whole list in <examples>...</examples>, with no extra whitespace."""
+    # TODO
+    pass
+
+chosen = select_examples(POOL, "payments vendor API timeout", 3)
+if chosen:
+    print([e["label"] for e in chosen])
+    print(format_examples(chosen))
+`}
+  tests={`sel = select_examples(POOL, "payments vendor API timeout", 3)
+assert sel is not None, "select_examples returned None"
+assert len(sel) == 3, "return exactly k examples"
+assert len({e["label"] for e in sel}) == 3, "with k=3, cover all three labels"
+assert sel[0]["text"].startswith("Vendor API"), "the most similar example comes first"
+assert [e["label"] for e in sel] == ["blocked", "at_risk", "on_track"], "labels in order of their best match"
+four = select_examples(POOL, "payments vendor API timeout", 4)
+assert len(four) == 4 and len({e["text"] for e in four}) == 4, "no duplicates"
+assert four[3]["text"].startswith("QA found"), "fill leftover slots from the ranking, ties by pool order"
+assert len(select_examples(POOL, "anything", 2)) == 2, "respect k even when there are more labels than slots"
+out = format_examples(sel)
+assert out.startswith("<examples><example>") and out.endswith("</example></examples>"), "wrap correctly"
+assert out.count("<example>") == 3, "one example tag per example"
+assert "<label>blocked</label>" in out, "include the label"`}
+  solution={`def select_examples(pool, query, k):
+    ranked = sorted(range(len(pool)), key=lambda i: (-similarity(pool[i]["text"], query), i))
+    chosen, seen = [], set()
+    for i in ranked:
+        if pool[i]["label"] not in seen:
+            chosen.append(i)
+            seen.add(pool[i]["label"])
+    for i in ranked:
+        if i not in chosen:
+            chosen.append(i)
+    return [pool[i] for i in chosen[:k]]
+
+def format_examples(examples):
+    body = "".join(
+        f"<example><update>{e['text']}</update><label>{e['label']}</label></example>"
+        for e in examples
+    )
+    return f"<examples>{body}</examples>"`}
+>
+Dynamic example selection is a common production pattern: keep a pool of labeled examples and pick the most relevant ones for each input, while guaranteeing every label is represented. Word overlap is a crude similarity measure; Studio 2 replaces it with embeddings. Press **Check my answer** when the tests pass.
+</PyRunner>
+
+<Video id="T9aRN5JkmL8" title="AI prompt engineering: A deep dive" channel="Anthropic" minutes={77} start={737} source="https://www.youtube.com/watch?v=T9aRN5JkmL8">
+A roundtable with four Anthropic staff who work on prompting (from alignment fine-tuning, developer relations, applied AI, and prompt engineering). The player starts at the "Refining prompts" chapter (12:17). Watch through to about 24:00, then skip to the "Model reasoning" chapter (37:12 to 45:18). What to watch for: any concrete method the panelists describe for telling whether a prompt change actually helped (ask yourself whether it would survive the test-set discipline of lesson 6), and what they say about asking models to reason. Treat their views as experienced practitioners' opinions, and compare them with the research cited later in this lesson.
+</Video>
+
+<Listen>
+## Letting the model reason: where chain of thought came from
+
+In 2022, Wei and colleagues published "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models." The method was simple: include a few worked examples whose answers show intermediate reasoning steps, not just the final answer. On arithmetic, commonsense, and symbolic reasoning tasks, this improved accuracy substantially, and the gains appeared in sufficiently large models. Their headline result: a 540-billion-parameter model prompted with eight chain-of-thought examples reached state-of-the-art accuracy on GSM8K, a benchmark of grade-school math word problems.
+
+The practical version became a staple: ask the model to think step by step before answering, and to put its final answer inside `<answer>` tags so code can extract it. Anthropic's tutorial teaches exactly this, under the name "precognition." The mechanism makes sense given week 1: the model generates one token at a time, so writing out intermediate steps gives later tokens something to build on, rather than forcing the answer to come out in the first few tokens.
+
+That is the history. The present is different, because the major providers now train models to reason before answering on their own.
+</Listen>
+
+<Listen>
+## Now: adaptive thinking and effort levels
+
+Current Claude models produce **thinking** content blocks before their visible answer. In adaptive mode, which Anthropic recommends for current models, the model decides when to think and how much, based on the request's difficulty and on the **effort** setting. Effort, set as `output_config.effort`, ranges from `low` through `medium`, `high`, and `xhigh` to `max` (not every model supports every level). It is a behavioral signal rather than a strict budget, and it applies to the whole response, not only the thinking: lower effort also means terser text and fewer tool calls. If you need a hard ceiling on spending, `max_tokens` is the strict limit. Defaults differ by model; on Claude Opus 5.5, thinking is always on and the default effort is `medium`, so set effort explicitly rather than relying on the default.
+
+Two details matter when you write code against this. First, the text in a thinking block is a summary of the reasoning, not the raw chain of thought, and on many current models it is omitted (an empty string) unless you ask for summaries. Second, thinking blocks arrive before the text, so select blocks by type, never by position.
+
+Other providers have converged on similar controls, under different names. At the time of writing, OpenAI's reasoning models take a `reasoning` setting with an effort level, Google's Gemini models take a `thinking_level`, and xAI's Grok reasoning models take `reasoning_effort` (defaulting to high, with reasoning that cannot be turned off). Check each provider's current docs before relying on specific levels or defaults; they change with model releases.
+
+What does this mean for prompting? Anthropic's guidance is that general instructions such as "think thoroughly" often work better than a hand-written step-by-step plan, because the model's own reasoning frequently beats the plan you would prescribe. Manual chain-of-thought prompting is now a fallback for when thinking is off; on models with thinking always on, the docs say to rely on thinking, at a lower effort level if cost matters. OpenAI's guide offers a memorable analogy: a reasoning model is like a senior colleague you can give a goal to, while a non-reasoning model is like a junior one who needs explicit instructions.
+</Listen>
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+response = client.messages.create(
+    model="claude-opus-5-5",
+    max_tokens=16000,  # hard limit on thinking plus answer
+    thinking={"type": "adaptive", "display": "summarized"},  # ask for readable summaries
+    output_config={"effort": "high"},  # low | medium | high | xhigh | max
+    messages=[{"role": "user", "content": prompt}],
+)
+for block in response.content:  # select by type, never by position
+    if block.type == "thinking":
+        print("[reasoning summary]", block.thinking)
+    elif block.type == "text":
+        print(block.text)
+```
+
+<Listen>
+## When visible reasoning helps, and when it hurts
+
+Reasoning, visible or hidden, costs tokens and time. It earns that cost on multi-step problems: calculations, planning, reconciling conflicting sources, debugging. For a simple lookup or a short classification, it mostly adds latency, which is why the docs recommend low effort for simple, high-volume work, and why the right level is something to measure.
+
+Asking for reasoning **in the visible answer** has its own trade-offs. It helps when you want an audit trail a reviewer can read, or when the reasoning is itself the deliverable, such as quoting the evidence before giving a verdict (the quote-first pattern from lesson 4, which you can check with a string search). It hurts when code has to parse the output, since prose mixed into an answer breaks parsers unless you fence the final answer in tags. And it can mislead.
+
+That last point deserves care. Turpin and colleagues (2023) showed that chain-of-thought explanations can systematically misrepresent why a model gave its answer: when they biased models toward an answer (for example, by making the correct option always "(A)" in the examples), the models changed answers and then wrote explanations that never mentioned the bias. Anthropic's 2025 research on its own reasoning models found the same kind of problem: models often used a hint planted in the prompt without saying so in their reasoning. The engineering conclusion: treat written reasoning as useful evidence for debugging, not as proof. Verify the answer itself.
+</Listen>
+
+<Predict
+  title="Extracting the answer from a reasoned reply"
+  code={`import re
+
+reply = "Revenue rose 4% in Q2 then fell 6% in Q3, so 1.04 * 0.94 = 0.9776. <answer>-2.24%</answer>"
+m = re.search(r"<answer>(.*?)</answer>", reply)
+print(m.group(1) if m else "no answer")`}
+  options={["-2.24%", "<answer>-2.24%</answer>", "0.9776", "no answer"]}
+  answer={0}
+>
+The capture group holds only the text between the tags, so the reasoning before them is ignored. This is why reasoning prompts ask for the final answer in named tags: the reasoning can be as long as it needs to be, and your code still extracts one value. Add a check for the "no answer" branch, because sometimes the tags will be missing.
+</Predict>
+
+<Listen>
+## Prompt chaining: split the work into steps you can check
+
+Even with strong reasoning models, some tasks are better split into several calls, each with one job. Anthropic's best-practices page says explicit chaining remains useful when you need to inspect intermediate outputs or enforce a particular pipeline. Anthropic's "Building effective agents" essay describes prompt chaining as a workflow where each call processes the previous call's output, with programmatic checks (it calls them gates) between steps, trading some latency for accuracy.
+
+Back to the status-report example. One giant prompt that reads a week of updates and writes the executive summary gives you one output to judge, and when a date is wrong you can't tell why. A chain gives you three checkable steps. Step one extracts every milestone, owner, and date as JSON. A code gate checks that the JSON parses and that each date string actually appears in the source updates. Step two writes the summary from the checked list only. Each step has its own test cases, and you can run the cheap extraction on a smaller model if your tests show it holds up.
+
+The most common chain, according to Anthropic's docs, is **self-correction**: draft, then have the model review the draft against explicit criteria, then revise based on the review. Each step is a separate call, so you can log it, score it, or stop early.
+</Listen>
+
+<Mermaid
+  alt="A three-step prompt chain. Raw status updates go to step 1, which extracts milestones and dates as JSON. A code gate checks that the JSON parses and that every date appears in the source. If the check fails, the item is retried or flagged for a human. If it passes, step 2 writes the executive summary from the checked list, and a final check verifies the summary mentions only dates from that list."
+  caption="A chain with a code gate. The gate is cheap, deterministic, and runs every time."
+  chart={`flowchart LR
+  A["Status updates"] --> B["Step 1: extract milestones and dates as JSON"]
+  B --> G{"Gate: JSON parses and every date is in the source?"}
+  G -- "no" --> H["Retry once, then flag for a human"]
+  G -- "yes" --> C["Step 2: write the summary from the checked list"]
+  C --> F{"Check: summary uses only listed dates?"}
+  F -- "yes" --> O["Send for review"]
+  F -- "no" --> H`}
+/>
+
+<DragOrder
+  client:visible
+  prompt="Order the self-correction chain from Anthropic's docs"
+  items={[
+    "Generate a first draft",
+    "Ask the model to review the draft against explicit criteria",
+    "Ask the model to revise the draft using the review",
+    "Run your programmatic checks on the final version",
+  ]}
+  explanation="Draft, review, refine are separate calls, so each can be logged and scored. The final step is yours: the model's own review is useful, but your code checks are what you rely on."
+/>
+
+<Listen>
+## Bigger model, more effort, or a chain?
+
+When output quality falls short, you have three main levers beyond rewording the prompt, and they cost different things.
+
+**Raise effort** first when the task needs more reasoning and you are already on a capable model. It is a one-line change, it keeps you on one model, and Claude's effort docs recommend tuning it per workload and testing rather than assuming. **Build a chain** when the failure is specific and checkable, when different steps need different tools or context, or when you need a log of where things went wrong. **Use a bigger model** when errors persist across effort levels and the task needs capability the current model lacks. Anthropic's prompt engineering overview makes the reverse point too: some problems, such as latency and cost, are better solved by choosing a different model than by more prompting.
+
+Notice the shared requirement. You can only choose between these with evidence, meaning the same test cases run under each option, compared on quality, cost per completed task, and latency. Without a test set, every lever looks like it helped, because you happened to try it on an input where it did. Lesson 6 builds that test set and the habit of using it.
+</Listen>
+
+<GoDeeper title="Calibration, self-consistency, and the open questions">
+Zhao and colleagues proposed **contextual calibration**: ask the model for its prediction on a content-free input such as "N/A", measure its bias toward each label, and correct for it. You rarely do this with API models today, since you often don't get the probabilities, but the idea is a useful mental model for why balanced examples matter.
+
+A related technique, **self-consistency** (sampling several reasoning paths and taking the majority answer), comes up in week 3 as a way to estimate confidence.
+
+On reasoning faithfulness, the research is active. Anthropic's 2025 post describes both the testing method (planting hints and checking whether the reasoning admits using them) and its limits. If your product shows users the model's reasoning, read it: it affects how much weight a reviewer should give that reasoning.
+</GoDeeper>

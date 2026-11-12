@@ -1,0 +1,197 @@
+---
+id: s2-project
+studio: s2
+title: "Q&A over a real document set"
+summary: >-
+  A question-answering system over a public corpus you choose, with hybrid retrieval, reranking, answers whose
+  citations are verified in code, designed abstention, and an evaluation set and trace log that Studio 3 will use to
+  improve it.
+estHours: 16
+repoName: doc-qa-rag
+requirements:
+  - { id: r1, text: "Uses a real, public corpus of at least 100 documents (or 500 pages) whose license you checked and state in the README, from the options on this page or one you justify" }
+  - { id: r2, text: "Evaluation set written before the pipeline: at least 30 questions, each with gold evidence (document, section, and an exact quote) and a short reference answer, including at least 4 the corpus cannot answer and at least 3 traps (vocabulary mismatch, superseded or conflicting sources)" }
+  - { id: r3, text: "Ingestion pipeline that parses and cleans the corpus, chunks it, and attaches metadata (title, URL or path, section, date or version, status); re-running it on unchanged text produces identical, deterministic chunk ids" }
+  - { id: r4, text: "Keyword (BM25) and vector indexes built from the same chunks, with the embedding model and ingestion settings recorded as an index version" }
+  - { id: r5, text: "Hybrid retrieval with rank fusion, followed by a reranker that keeps the top k; recall at k and MRR reported for keyword, vector, hybrid, and reranked results on the eval set" }
+  - { id: r6, text: "Generation that sends passages with stable ids, sources first and question last, using Claude's citations (search_result blocks) or a prompt-based citation format; the system prompt restricts answers to the sources and defines one exact abstention sentence" }
+  - { id: r7, text: "A verifier runs on every answer: each citation names a passage that was sent, each quote appears verbatim in that passage, and substantive uncited claims are flagged; failures are shown to the user and logged, never dropped silently" }
+  - { id: r8, text: "Designed abstention: a calibrated score gate before generation plus the abstention sentence; abstention recall and false-abstention rate reported on the eval set" }
+  - { id: r9, text: "Handles failures: retries with backoff on rate limits and server errors, refusal and max_tokens stop reasons, an empty or missing index, and documents that fail to parse" }
+  - { id: r10, text: "Logs one JSON record per question with question id, index and prompt versions, retriever results with ranks and scores, reranked ids, context ids and tokens, gate decision, model, answer, citations, verifier results, usage, latency per stage, cost, and errors" }
+  - { id: r11, text: "An evaluation script that replays the eval set and reports retrieval metrics, verified-citation rate, abstention numbers, and your hand-graded correctness, plus a comparison of two generator models on quality, cost, and latency" }
+  - { id: r12, text: "README (setup, corpus and license, architecture diagram, design decisions, results table, cost and latency per question, known limitations) and a write-up using the template on this page, including how you used AI assistants" }
+  - { id: s1, text: "Compare long context with prompt caching against your RAG pipeline on the same eval set (if your corpus or a subset fits), and report accuracy, cost, and latency", required: false }
+  - { id: s2, text: "Add a query router (rules or a small model) for out-of-scope and small-talk queries, with its accuracy measured on labeled queries", required: false }
+  - { id: s3, text: "Add a support check on a sample of answers with a judge from a different model family, and report its agreement with your own labels (true positive and true negative rates)", required: false }
+rubric:
+  - id: retrieval
+    criterion: Retrieval quality
+    levels:
+      1: "Single retriever, untuned; retrieval is not measured."
+      2: "Hybrid retrieval exists, but recall at k is unmeasured or measured only on a few hand-picked questions."
+      3: "Recall at k and MRR reported for each retriever, the fused list, and the reranked list on the full eval set, with k chosen from the curve."
+      4: "Level 3, plus at least one controlled experiment (chunking, query rewriting, or contextual chunks) with before and after numbers and a failure breakdown of the remaining misses."
+  - id: faithfulness
+    criterion: Answer faithfulness and citations
+    levels:
+      1: "Answers have no citations, or citations are not checked."
+      2: "Citations are present, but checked by eye or against the whole context rather than the cited passage."
+      3: "Every answer passes through a verifier for provenance and verbatim quotes, uncited substantive claims are flagged, and the verified-citation rate is reported."
+      4: "Level 3, plus outdated and conflicting sources handled through metadata and prompt rules, demonstrated on trap questions, and a support check on a sample (by you or a calibrated judge)."
+  - id: evaluation
+    criterion: Evaluation rigor
+    levels:
+      1: "No eval set; results are anecdotes."
+      2: "An eval set exists but has fewer than 30 questions, no unanswerable questions, or labels tied to chunk ids that change."
+      3: "At least 30 questions written before building, with gold evidence labels that survive re-chunking, unanswerable and trap questions, and a script that reproduces every reported number."
+      4: "Level 3, plus a held-out subset not used for tuning, error analysis by failure category (missing content, retrieval, ranking, context, synthesis, outdated), and an honest note on what 30 to 50 questions can and can't show."
+  - id: robustness
+    criterion: Robustness
+    levels:
+      1: "Crashes on API errors, empty results, or unparseable documents."
+      2: "Handles the happy path and some errors."
+      3: "Retries with backoff, refusal and truncation handling, abstention gate, and clear behavior for an empty index or failed parse all work, and the trace log is complete for successes and failures."
+      4: "Level 3, plus offline tests that simulate each failure with a fake client and fixture responses, run in CI without an API key."
+  - id: economics
+    criterion: Cost and latency awareness
+    levels:
+      1: "Unknown cost per question."
+      2: "Cost is logged but not analyzed."
+      3: "Reports cost and latency per question and per stage from the logs, and justifies the generator choice with a two-model comparison."
+      4: "Level 3, plus at least one cost lever measured (fewer passages, caching, a cheaper tier for one stage) with its effect on quality, and a recommendation with a monthly estimate at a stated volume."
+  - id: communication
+    criterion: Write-up and README
+    levels:
+      1: "Missing or minimal."
+      2: "Describes what was built, but not why or how well."
+      3: "Explains the corpus, design decisions, results, and limitations clearly to a technical reader."
+      4: "Level 3, and a hiring manager could understand the problem, the approach, and the evidence in five minutes, including what the system should not be trusted to do."
+sources:
+  - { id: claude-citations-docs, use: summarized }
+  - { id: claude-search-results-docs, use: summarized }
+  - { id: claude-prompt-caching-docs, use: linked }
+  - { id: barnett-2024-rag-failures, use: summarized }
+  - { id: anthropic-contextual-retrieval, use: linked }
+  - { id: hamel-evals, use: linked }
+  - { id: corpus-python-peps, use: linked }
+  - { id: corpus-kubernetes-docs, use: linked }
+  - { id: corpus-govuk-service-manual, use: linked }
+  - { id: corpus-rust-book, use: linked }
+---
+
+## The brief
+
+Every organization has a pile of documentation that people can't find their way through: policies, runbooks, specifications, handbooks. A chatbot over that pile is one of the most common LLM features a team is asked to build, and one of the easiest to build badly. It will answer every question fluently. Some answers will come from the right page, some from an outdated one, and some from nowhere at all.
+
+You will build a question-answering system over a real public document set. The deliverable is not a chatbot that sounds right. It is a system that answers from its sources, proves it with citations your code has checked, says "I don't know" when the sources don't settle the question, and produces measurements that show how often each of those things happens.
+
+This system has a second life. In Studio 3 you will build an evaluation harness around it, find its failure modes systematically, and improve it. So it must log everything that harness will need. Treat the trace log as a product requirement, not a debugging aid.
+
+## Choose your corpus
+
+Pick one of these, or propose another public corpus with a license you have checked. Licenses were checked on 2026-11-11; confirm them again for what you download, and record the license in your README.
+
+| Corpus | Where | License | Why it's interesting |
+|---|---|---|---|
+| Python Enhancement Proposals (PEPs) | [github.com/python/peps](https://github.com/python/peps) | Each PEP states its terms in its Copyright section; most are public domain or CC0-1.0-Universal | Hundreds of documents, reStructuredText, explicit status fields (Final, Superseded, Rejected), so outdated-source traps come built in |
+| Kubernetes documentation | [github.com/kubernetes/website](https://github.com/kubernetes/website) | CC BY 4.0 (attribution required) | Large Markdown corpus with versioned content, heavy jargon, and many near-duplicate pages; good for hybrid search |
+| GOV.UK Service Manual | [gov.uk/service-manual](https://www.gov.uk/service-manual) | Crown copyright under the Open Government Licence v3.0 (some content is exempt; check the GOV.UK terms) | Plain-language guidance for non-specialists; questions are phrased very differently from the text |
+| The Rust Programming Language (book) | [github.com/rust-lang/book](https://github.com/rust-lang/book) | MIT or Apache 2.0 | A long, structured book in Markdown with code; tests whether your chunking respects code blocks and sections |
+
+Download from the source repositories rather than scraping rendered pages, keep the attribution the license requires, and don't commit large corpora to your repo; commit a download script instead.
+
+## Suggested architecture
+
+<Mermaid
+  alt="Architecture: a download script fetches the corpus; an ingestion step parses, cleans, chunks with deterministic ids, and attaches metadata including dates and status; chunks feed a BM25 index and a vector index. At query time a question goes through hybrid retrieval over both indexes, rank fusion, and a reranker that keeps the top k; a score gate either abstains or calls the generator with the passages as search results and citations enabled; a verifier checks every citation against the passages sent; the answer with sources is returned. Every query writes a trace record to a JSONL log. An eval set of at least 30 questions with gold evidence drives an evaluation script that replays questions through the pipeline and reads the trace log to compute retrieval metrics, citation verification, abstention numbers, cost, and latency."
+  caption="One reasonable design. You may choose differently; explain why in your write-up."
+  chart={`flowchart TD
+  DL["Download script"] --> ING["Parse, clean, chunk (deterministic ids + metadata)"]
+  ING --> BM[("BM25 index")]
+  ING --> EMB["Embed"] --> VEC[("Vector index")]
+  Q["Question"] --> HY["Hybrid retrieval"]
+  BM --> HY
+  VEC --> HY
+  HY --> FU["Rank fusion"] --> RR["Rerank, keep top k"]
+  RR --> GATE{"Score gate"}
+  GATE -- "below threshold" --> AB["Abstain"]
+  GATE -- "ok" --> GEN["Generate with citations"]
+  GEN --> VER["Verify citations"] --> OUT["Answer + sources"]
+  HY -.-> LOG[("Trace log JSONL")]
+  RR -.-> LOG
+  GEN -.-> LOG
+  VER -.-> LOG
+  AB -.-> LOG
+  EVAL["Eval set: 30+ questions, gold evidence"] --> RUN["Eval script"]
+  RUN --> Q
+  LOG --> RUN`}
+/>
+
+Week 4's lesson "Designing the Q&A system" walks through each stage and the log record. Lab 04 (cited answers) gives you the generation and verification step; the week 1 to 3 labs give you embeddings, chunking, hybrid search, and reranking.
+
+<Callout type="tip" title="Write the eval set on day one">
+Before any code, write 30 questions a real user of your corpus would ask, and label each with the document, the section, and the exact quote that answers it. Include questions the corpus can't answer and questions where an older document disagrees with a newer one. Then build retrieval and measure recall at k before you generate a single answer. Every later decision (chunk size, k, reranker, model) becomes a number instead of an impression.
+</Callout>
+
+<Callout type="pitfall" title="Pitfalls that sink this project">
+- **Tuning the prompt when retrieval is broken.** If the gold passage never reached the model, no prompt fixes the answer. Check recall at k first.
+- **Chunk ids that change.** Sequence-number ids shift whenever you add a document or change chunk size, and your eval labels and old logs stop matching. Derive ids from the document, section, and a hash of the text.
+- **Verifying against the wrong text.** Check each quote against the passage it cites, not against all passages joined together.
+- **Treating abstention as failure.** A system that never says "I don't know" is answering questions it can't answer. Measure abstention in both directions.
+- **Ignoring document status.** Superseded PEPs, old Kubernetes versions, and archived pages quote perfectly and are wrong. Carry status and dates from ingestion to the prompt.
+- **Logging only successes.** A trace log without the abstentions, errors, and verifier failures measures nothing.
+</Callout>
+
+## Constraints
+
+- Use the official Anthropic SDK for generation (or another provider's official SDK if you prefer, but justify it). Embedding and reranking providers are your choice; justify them with retrieval measurements. Keep keys in environment variables.
+- A full evaluation run over your eval set should cost under $1 with your chosen configuration, not counting one-time embedding of the corpus. Log it and prove it.
+- The offline test suite must run without an API key, using a fake client and fixture responses.
+- Respect the corpus license: keep required attribution in your README, and don't redistribute content in ways the license doesn't allow.
+
+## Write-up template
+
+Put this in `WRITEUP.md` in your project repo and fill it in. Aim for two pages.
+
+```markdown
+# Q&A over [corpus]: write-up
+
+## Problem
+Who would use this, what they ask, and what "good" looks like. (2 to 3 sentences)
+
+## Corpus
+Source, size (documents, tokens), license and attribution, and what makes it hard.
+
+## Approach
+- Architecture (diagram or bullets)
+- Ingestion: parsing, chunking, id scheme, metadata
+- Retrieval: retrievers, fusion, reranker, k (and why)
+- Generation: model(s), prompt version, citation method, abstention rule
+- Checks: what the verifier catches, and what it can't
+
+## Evaluation set
+How you wrote it, composition (answerable, multi-passage, unanswerable, traps), how gold evidence is labeled.
+
+## Results
+| Configuration | Recall@k | MRR | Correct | Verified citations | Abstention recall | False abstention | Cost / question | Latency / question |
+|---|---|---|---|---|---|---|---|---|
+| ... | | | | | | | | |
+
+Failure analysis: count of wrong answers by category (missing content, retrieval miss, ranking miss,
+context overflow, synthesis error, outdated source), with one example each.
+
+## Decisions and trade-offs
+Two or three decisions you would defend in a design review, and what you gave up.
+
+## What Studio 3 should look at first
+The failure category, stage, or question type you'd attack next, and the evidence that points there.
+
+## Limitations
+What would break with real users? What should this system not be trusted to answer?
+
+## How I used AI assistants
+Which tools, for what, and what you had to correct.
+```
+
+When you finish, score yourself with the rubric below (ideally a day later), paste your repo link, and mark the project submitted.

@@ -1,0 +1,324 @@
+---
+id: s2-w2-l6
+studio: s2
+week: 2
+order: 6
+title: Vector stores in practice
+summary: What a vector store actually does, when a NumPy array is enough, how the main options (pgvector, sqlite-vec, Chroma, LanceDB, Qdrant, managed services) differ, metadata filtering and its traps, hybrid support, updates and deletes, multi-tenancy and access control that never leaks documents across users, and the cost and operations trade-offs.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Estimate when brute-force search over a NumPy array is enough, from corpus size, dimension, and latency needs
+  - Explain exact versus approximate nearest-neighbor search and what an HNSW index trades away
+  - Compare pgvector, sqlite-vec, Chroma, LanceDB, Qdrant, and managed services on filtering, hybrid search, updates, and operations
+  - Implement filtered search that applies access control before ranking, and re-indexing that leaves no stale chunks
+  - Design multi-tenant retrieval so that no user can retrieve another user's documents, and test that it holds
+sources:
+  - { id: pgvector-docs, use: summarized, where: "Querying, indexing (HNSW and IVFFlat), filtering, iterative index scans, hybrid search" }
+  - { id: postgres-rls, use: summarized }
+  - { id: sqlite-vec-docs, use: summarized }
+  - { id: chroma-docs, use: linked }
+  - { id: chroma-metadata-filtering, use: summarized }
+  - { id: chroma-delete-data, use: summarized }
+  - { id: lancedb-hybrid-search, use: summarized }
+  - { id: qdrant-filtering, use: linked }
+  - { id: qdrant-multitenancy, use: summarized }
+  - { id: qdrant-hybrid-queries, use: summarized }
+  - { id: pinecone-multitenancy, use: summarized }
+  - { id: malkov-2016-hnsw, use: summarized }
+  - { id: faiss-docs, use: linked }
+  - { id: ann-benchmarks, use: linked }
+  - { id: owasp-llm08-vector, use: summarized }
+  - { id: claude-embeddings-docs, use: summarized, where: "Quantization; normalized embeddings" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You run one Qdrant collection for 300 customer companies, with a `tenant_id` payload field. A new endpoint lets
+      the frontend send `tenant_id` in the request body, and the backend passes it straight into the filter. What is
+      wrong, and what should you do?
+    options:
+      - id: a
+        text: Nothing; the filter is applied server-side, so tenants are isolated.
+        rationale: The filter runs server-side, but its value comes from the client. Anyone can send another company's id.
+      - id: b
+        text: Derive the tenant from the authenticated session on the server, never from request input, add a test that queries with one tenant's credentials for a canary document planted in another tenant, and log every retrieval with the tenant used.
+        correct: true
+        rationale: Yes. Isolation depends on who chooses the filter value. Bind it to identity, prove it with canaries, and keep an audit trail.
+      - id: c
+        text: Move every tenant to its own collection, which makes the client-supplied id safe.
+        rationale: Separate collections don't help if the client still chooses which one to query. Qdrant's docs also say a collection per tenant is rarely the efficient choice.
+    explanation: >-
+      Most cross-tenant leaks are authorization bugs, not database bugs. Whatever the isolation mechanism (payload
+      filter, namespace, row-level security), the tenant and group values must come from the authenticated identity,
+      the query path must make the filter impossible to skip, and a test with planted canary documents should fail
+      the build if one tenant can ever see another's.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      A Postgres table has an HNSW index from pgvector. A query filters to one category that matches about 10 percent of
+      rows and asks for `LIMIT 10`, but often gets back only a handful of rows. Why?
+    options:
+      - id: a
+        text: With an approximate index, the filter is applied after the index scan returns its candidates, so most candidates are discarded. pgvector's iterative index scans (version 0.8.0 and later) keep scanning until enough rows match.
+        correct: true
+        rationale: Yes. The pgvector README gives nearly this example, and lists iterative scans, partial indexes, and partitioning as fixes.
+      - id: b
+        text: HNSW cannot be combined with a WHERE clause.
+        rationale: It can; the issue is when the filter is applied, not whether it is allowed.
+      - id: c
+        text: The embeddings were not normalized.
+        rationale: Normalization affects scores, not how many rows survive a filter.
+    explanation: >-
+      An HNSW scan returns a fixed-size candidate list (governed by `hnsw.ef_search`, 40 by default). If only 10
+      percent of candidates match the filter, you get about 4 rows. Turn on iterative scans, raise ef_search, use a
+      partial index for a common filter value, or use exact search for small filtered subsets.
+  - id: kc3
+    type: code-reading
+    prompt: This store method is meant to enforce document permissions. Which call returns documents the caller should not see?
+    code: |
+      def query(self, vector, k, allowed_groups=None):
+          rows = self.rows
+          if allowed_groups:
+              rows = [r for r in rows if set(r["groups"]) & set(allowed_groups)]
+          return top_k(rows, vector, k)
+    options:
+      - id: a
+        text: "`store.query(v, 5, allowed_groups={\"ops\"})`"
+        rationale: This filters correctly to records in the ops group.
+      - id: b
+        text: "`store.query(v, 5, allowed_groups=set())`"
+        correct: true
+        rationale: An empty set is falsy, so the filter is skipped and every record is searchable. The call without the argument leaks the same way.
+      - id: c
+        text: "`store.query(v, 50, allowed_groups={\"hr\", \"ops\"})`"
+        rationale: Larger k and more groups still filter correctly.
+    explanation: >-
+      A default of None plus a truthiness check means "no permissions" behaves like "all permissions." A user who
+      belongs to no groups, or a caller who forgot the argument, sees everything. Make the parameter required
+      (keyword-only, no default), treat an empty set as "nothing visible," and test both cases.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## What a vector store actually does
+
+Strip away the marketing and a vector store does five jobs. It **stores** vectors alongside an id, the chunk text, and metadata. It **searches**: given a query vector, return the k nearest stored vectors by cosine similarity, dot product, or Euclidean distance. It **filters**: restrict the search to records whose metadata matches a condition (this tenant, these groups, documents after this date). It **updates**: insert, replace, and delete records as documents change. And, for most production systems, it **persists and serves** this reliably, with backups, concurrency, and access control.
+
+You built the first three in week 1 with a list and a loop, and the lab this week adds the rest in about a hundred lines. Every product in this lesson is a faster, more durable, more operable version of that loop. That framing helps you evaluate them: ask how each one does search, filtering, updates, and operations, and which of those your application stresses.
+
+One more distinction does a lot of work. **Exact** (brute-force) search compares the query with every stored vector, so it always returns the true nearest neighbors. **Approximate nearest neighbor** (ANN) search uses an index to look at a small fraction of vectors and return results that are usually, not always, the true nearest neighbors. The dominant ANN index today is HNSW (Hierarchical Navigable Small World graphs, introduced by Malkov and Yashunin in 2016): a layered graph in which a search hops greedily toward the query, coarse layers first, then fine ones. It is fast and accurate, and it costs memory and build time. pgvector's README summarizes the trade-off well: by default it does exact search with perfect recall, and once you add an approximate index you trade some recall for speed, so the same query can return different results than before.
+</Listen>
+
+<Listen>
+## When a NumPy array is enough
+
+Before choosing a database, do the arithmetic. A float32 vector of dimension d takes 4d bytes. A corpus of n chunks takes 4nd bytes: 100,000 chunks at 1,024 dimensions is about 410 MB, and 10,000 chunks is about 41 MB. Exact search is one matrix-vector product (n times d multiply-adds) followed by a partial sort for the top k (NumPy's `argpartition` does this without sorting everything). On a laptop, that is a few milliseconds for tens of thousands of chunks and still well under a second for a few hundred thousand.
+
+So for an internal tool over a few thousand documents, a nightly batch job, a prototype, or an evaluation harness, a NumPy array plus a JSON or Parquet file of metadata is often the right answer: zero infrastructure, exact results, and trivially reproducible. The lab's store is this design. You can shrink it further: Voyage AI's documentation (which Anthropic's embeddings guide points to) notes that int8 and binary quantization cut storage by 4 and 32 times respectively, and its embeddings are normalized to length 1, so a dot product equals cosine similarity.
+
+A single array stops being enough when one of these becomes true: the vectors no longer fit comfortably in memory; you need many concurrent writers or readers; documents change continuously and you need updates without rebuilding; you need durable storage with backups and access control; or you need filters and keyword search that you don't want to write yourself. Those are operational reasons, not quality reasons. A database does not make retrieval more accurate, and an ANN index makes it slightly less accurate.
+</Listen>
+
+<Predict
+  title="How big is the index?"
+  code={`n_chunks = 200_000
+dim = 1024
+bytes_per_float = 4   # float32
+print(n_chunks * dim * bytes_per_float / 1e9)`}
+  options={["0.8192", "8.192", "0.2048", "819.2"]}
+  answer={0}
+>
+About 0.82 GB for the raw vectors. That fits in memory on most servers, so exact search is still feasible, though an HNSW index on top adds its own graph memory. Metadata and chunk text come on top of this; at a few hundred characters per chunk, text is usually smaller than the vectors. Halve it with float16, or divide by 4 or 32 with int8 or binary quantization, and measure what that does to recall@k before you ship it.
+</Predict>
+
+<Listen>
+## The landscape, by how much you have to run
+
+Group the options by operational weight, lightest first.
+
+**Embedded libraries** run inside your process and store data in local files. **sqlite-vec** adds vector search to SQLite through `vec0` virtual tables, runs anywhere SQLite runs (including the browser through WebAssembly), and supports metadata and partition-key columns; its README describes it as pre-v1, so expect breaking changes. **Chroma** can run embedded or as a server, with metadata filters (`where`, with operators such as equality, ranges, `$in`, `$and`, `$or`, and `$contains` for array fields) and document-content filters. **LanceDB** stores data in the Lance columnar format and supports full-text indexes and hybrid search. Faiss, from Meta, is the classic library of ANN index types if you want indexes without a database.
+
+**Your existing database.** **pgvector** adds a vector type, distance operators, and HNSW and IVFFlat indexes to Postgres. If your application already runs on Postgres, this is often the strongest default: vectors live next to the rows they describe, in the same transactions, backups, and access controls, and you can join against your other tables. Note its indexing limits (the standard `vector` type can be indexed up to 2,000 dimensions, `halfvec` up to 4,000), which matter for some embedding models.
+
+**Dedicated vector databases** such as **Qdrant** (open source, also offered as a managed cloud) run as their own service, with rich payload filtering, multitenancy features, and hybrid queries that fuse dense and sparse results.
+
+**Managed services** such as Pinecone (and managed versions of the open-source engines) run everything for you: scaling, replication, backups. You pay per usage and accept a network hop and a vendor dependency.
+
+The honest way to choose is by constraints, not benchmarks. Public benchmarks such as ANN-Benchmarks are useful for comparing index algorithms on standard datasets, but at the scale of most company knowledge bases, every option here is fast enough, and the deciding factors are where your data already lives, who will operate it, and whether its filtering and deletion model fits your access-control needs.
+</Listen>
+
+<Listen>
+## Metadata filtering, and the post-filter trap
+
+Almost every real query has a filter: this tenant, these permission groups, this product line, documents from the current year. How the store combines the filter with nearest-neighbor search matters more than any benchmark number.
+
+There are two basic orders. **Pre-filtering** restricts the candidates to records that match, then ranks them. **Post-filtering** ranks first, takes the top candidates, then drops the ones that don't match. Post-filtering is simpler for an ANN index, and it fails in a specific way: when the filter is selective, most of the top candidates are discarded and you get fewer results than you asked for, sometimes none. The pgvector README spells out a concrete case: with an HNSW index, a filter matching 10 percent of rows, and the default candidate list of 40, you get about 4 rows on average. Its fixes include iterative index scans (added in version 0.8.0, which keep scanning until enough rows match), partial indexes for common filter values, and partitioning.
+
+For permissions, post-filtering is worse than a performance problem. It lets restricted documents take part in ranking, it returns empty results that look like "no answer exists," and it puts the safety of the system on a step that is easy to forget. The exercise below makes the difference visible. Dedicated databases like Qdrant and Chroma apply filters during the search, and Qdrant recommends creating a payload index on every field you filter by; check how your store does it, and test with a selective filter before you trust it.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s2-w2-filtered-search"
+  title="Filter first, then rank, and re-index without stale chunks"
+  starter={`import math
+
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    return dot / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
+
+def post_filter_search(store, query, k, user_groups):
+    """A common bug, for comparison: rank everything, take the top k, THEN filter."""
+    top = sorted(store, key=lambda r: cosine(query, r["vec"]), reverse=True)[:k]
+    return [r for r in top if set(r["groups"]) & set(user_groups)]
+
+def search(store, query, k, user_groups):
+    """Return up to k records the user may see, best first.
+    A record is visible only if its groups share at least one group with user_groups.
+    Filter BEFORE ranking, so the user gets k results whenever k visible records exist,
+    and no hidden record ever influences the result."""
+    # TODO
+    pass
+
+def reindex(store, doc_id, new_records):
+    """Return a new store in which every record of doc_id is replaced by new_records.
+    The new version of a document may have fewer chunks than the old one: no stale
+    chunk may survive. Records of other documents are untouched."""
+    # TODO
+    pass
+
+STORE = [
+    {"id": "pay:0", "doc_id": "pay", "groups": ["hr"], "vec": [0.9, 0.1, 0.0], "text": "Warehouse leads earn 25 to 31 dollars per hour."},
+    {"id": "pay:1", "doc_id": "pay", "groups": ["hr"], "vec": [0.85, 0.2, 0.0], "text": "Evening shift premium is 2 dollars per hour."},
+    {"id": "pay:2", "doc_id": "pay", "groups": ["hr"], "vec": [0.8, 0.25, 0.1], "text": "Bands are reviewed every February."},
+    {"id": "hb:0", "doc_id": "hb", "groups": ["all-staff"], "vec": [0.6, 0.5, 0.2], "text": "Warehouse shifts run 6:00 to 14:30 and 14:00 to 22:30."},
+    {"id": "hb:1", "doc_id": "hb", "groups": ["all-staff"], "vec": [0.5, 0.3, 0.6], "text": "Report any injury to the shift lead the same day."},
+    {"id": "hb:2", "doc_id": "hb", "groups": ["all-staff"], "vec": [0.1, 0.9, 0.3], "text": "Staff discounts are 30 percent."},
+    {"id": "tr:0", "doc_id": "tr", "groups": ["all-staff"], "vec": [0.2, 0.2, 0.9], "text": "Hotels should cost no more than 180 dollars per night."},
+]
+
+query = [1.0, 0.1, 0.0]   # "how much do warehouse leads earn?"
+print("post-filter:", [r["id"] for r in post_filter_search(STORE, query, 3, {"all-staff"})])
+print("pre-filter: ", [r["id"] for r in search(STORE, query, 3, {"all-staff"}) or []])
+`}
+  tests={`res = search(STORE, query, 3, {"all-staff"})
+assert res is not None, "search returned None"
+assert [r["id"] for r in res] == ["hb:0", "hb:1", "tr:0"], "return the 3 best visible records, best first"
+assert all("hr" not in r["groups"] for r in res), "HR records leaked"
+assert len(post_filter_search(STORE, query, 3, {"all-staff"})) == 0, "(this shows the bug: post-filtering found nothing)"
+assert [r["id"] for r in search(STORE, query, 2, {"hr"})] == ["pay:0", "pay:1"]
+assert search(STORE, query, 3, set()) == [], "no groups means no results"
+assert len(search(STORE, query, 10, {"all-staff"})) == 4, "return fewer than k only when fewer are visible"
+new_hb = [
+    {"id": "hb:0", "doc_id": "hb", "groups": ["all-staff"], "vec": [0.6, 0.5, 0.2], "text": "Warehouse shifts run 6:00 to 14:30 and 14:00 to 22:30."},
+    {"id": "hb:1", "doc_id": "hb", "groups": ["all-staff"], "vec": [0.1, 0.9, 0.3], "text": "Staff discounts are 35 percent."},
+]
+updated = reindex(STORE, "hb", new_hb)
+assert updated is not None, "reindex returned None"
+ids = sorted(r["id"] for r in updated)
+assert "hb:2" not in ids, "stale chunk hb:2 survived the re-index"
+assert ids == sorted(["pay:0", "pay:1", "pay:2", "hb:0", "hb:1", "tr:0"])
+assert any(r["text"] == "Staff discounts are 35 percent." for r in updated), "new text must replace old"
+assert len(STORE) == 7, "do not modify the original store in place"`}
+  solution={`def search(store, query, k, user_groups):
+    allowed = set(user_groups)
+    visible = [r for r in store if allowed & set(r["groups"])]
+    return sorted(visible, key=lambda r: cosine(query, r["vec"]), reverse=True)[:k]
+
+def reindex(store, doc_id, new_records):
+    kept = [r for r in store if r["doc_id"] != doc_id]
+    return kept + list(new_records)`}
+>
+`post_filter_search` is the buggy pattern: rank everything, take the top k, then filter. Run the code first and see that an all-staff user asking about pay gets nothing back, because the HR-only chunks took all three top slots before the filter ran. Write `search`, which filters before ranking, and `reindex`, which replaces a document's chunks when the document changes. The new version of the handbook has two chunks instead of three; upserting by id alone would leave the old third chunk in the store forever.
+</PyRunner>
+
+<Listen>
+## Hybrid search, updates, and deletes
+
+**Hybrid support.** Embeddings miss exact terms (product codes, error numbers, names), and keyword search misses paraphrases, so most production retrieval combines both. Week 3 builds this properly; for now, know what each store offers. pgvector pairs with Postgres full-text search, and its README suggests merging the two result lists with Reciprocal Rank Fusion (RRF) or a cross-encoder. LanceDB builds a full-text index and uses RRF as its default reranker for hybrid queries. Qdrant runs dense and sparse (or BM25) sub-queries as prefetches and fuses them with RRF or distribution-based score fusion. Whether a store does this natively, or you merge two result lists in your code, is mostly a convenience question; RRF is a few lines either way.
+
+**Updates.** Documents change, and re-ingestion has to be idempotent: running it twice must not duplicate chunks, and running it after an edit must not leave stale chunks behind. The simplest correct pattern is "delete every chunk of this document, then insert the new chunks," in one transaction where the store supports it. Upserting by `doc_id:chunk_index` alone breaks when the new version has fewer chunks. Use the content hash from ingestion to skip unchanged documents entirely.
+
+**Deletes.** When a document is deleted or its access is revoked in the source system, it must disappear from the index promptly, because a retrieval system that still serves a revoked document is a data leak with extra steps. Chroma, for example, deletes by ids or by a `where` filter, and its docs warn that deletion is permanent. Run a periodic reconciliation job that compares the index's document ids and permission records against the source of truth.
+
+**Model changes.** Vectors from different embedding models (or different versions of one model) are not comparable. Store the model name in each record's metadata, and plan a full re-embed, ideally into a new index you switch to after it passes your eval set, whenever you change models.
+</Listen>
+
+<Listen>
+## Multi-tenancy and access control
+
+If your system serves more than one customer, team, or permission level, the most damaging retrieval failure is not a wrong answer. It is a right answer from a document the user was not allowed to see. OWASP's 2025 entry on vector and embedding weaknesses lists exactly this: weak access controls exposing sensitive embedded data, and cross-context leaks in multi-tenant systems that share one vector database. It also notes that embeddings can be partially inverted to recover source text, so treat vectors as being as sensitive as the documents they came from.
+
+The isolation mechanisms differ by store:
+
+- **Namespaces or collections per tenant.** Pinecone recommends one namespace per tenant: each is stored separately, which gives physical isolation and makes offboarding a tenant one delete. Qdrant, by contrast, says a collection per tenant is rarely efficient and is best kept for a few tenants that need strict isolation.
+- **One collection with a tenant field.** Qdrant's recommended default for many small tenants: a `group_id`-style payload field filtered on every request, with the payload index marked `is_tenant` (version 1.11 and later) so each tenant's data is stored together. Its docs add a subtle warning: BM25 and IDF statistics are shared across tenants by default, so keyword scores can be influenced by other tenants' documents unless you scope them.
+- **Row-level security.** In Postgres, a row security policy makes the database itself add the tenant condition to every query for a given role. Mind the Postgres docs' caveats: superusers and roles with the BYPASSRLS attribute always bypass row security, and table owners do too unless you set FORCE ROW LEVEL SECURITY, so the application must connect as an ordinary role. A table with row security enabled and no policy denies everything, which is the fail-closed default you want.
+
+Whatever the mechanism, the rules are the same. The tenant and group values come from the authenticated session on the server, never from request input or from the model. The query path makes the filter impossible to skip (a required argument, a policy in the database, a per-tenant client). Permission changes in the source system propagate to the index on a schedule you can state. And a test plants **canary documents** in one tenant and fails the build if any query from another tenant ever returns them. Log every retrieval with the identity and filter used, so you can answer "who could have seen this?" after an incident.
+</Listen>
+
+Here is a minimal pgvector schema that puts these rules into the database. The HNSW index and the `<=>` cosine-distance operator follow the pgvector README; the policy uses standard Postgres row-level security.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE chunks (
+  id          text PRIMARY KEY,           -- "<doc_id>:<chunk_index>"
+  doc_id      text   NOT NULL,
+  tenant_id   bigint NOT NULL,
+  groups      text[] NOT NULL,            -- permission groups copied from the source system
+  headings    text,
+  body        text   NOT NULL,
+  embed_model text   NOT NULL,
+  embedding   vector(1024) NOT NULL
+);
+CREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX ON chunks (tenant_id, doc_id);
+
+ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON chunks
+  USING (tenant_id = current_setting('app.tenant_id')::bigint);
+
+-- Per request, inside a transaction, as an application role that does not own the table:
+SET LOCAL app.tenant_id = '42';               -- from the authenticated session, never from the request body
+SET LOCAL hnsw.iterative_scan = strict_order; -- keep scanning when the group filter is selective
+SELECT id, body
+FROM chunks
+WHERE groups && ARRAY['all-staff', 'ops']     -- the user's groups, also from the session
+ORDER BY embedding <=> $1
+LIMIT 5;
+```
+
+<Callout type="pitfall" title="Permissions that live only in the prompt">
+"Only use documents the user is allowed to see" in a system prompt is not access control. Once a restricted chunk is in the context, the model can quote it, summarize it, or be talked into revealing it by a prompt injection hidden in another document. Enforce permissions in the retrieval layer, before ranking, so that restricted text never reaches the model. Then verify it with canary tests, not with a prompt.
+</Callout>
+
+<Listen>
+## Cost and operations trade-offs
+
+The costs that matter are rarely the vector math.
+
+**Embedding cost** is paid at ingestion and again on every re-embed (a model change, a chunking change, contextual retrieval). Estimate it as total tokens times the embedding price, and keep the content hash so unchanged documents are never re-embedded.
+
+**Storage and memory** scale with chunks times dimensions; smaller chunks and overlap multiply both. HNSW indexes add graph memory and take time to build; pgvector notes HNSW has a better speed-recall trade-off than IVFFlat but slower builds and more memory.
+
+**Operations** is where options differ most. An embedded store has no server to run but one process owns the files. pgvector inherits everything your team already does for Postgres: backups, monitoring, migrations, access control. A dedicated database is one more service to secure, upgrade, and page someone about. A managed service removes that work in exchange for usage-based pricing, data leaving your network, and lock-in, which you can reduce by keeping your ingestion pipeline and chunk store portable (the lab's JSON file is a crude version of this: you can rebuild any index from it).
+
+A defensible decision for most teams: NumPy or an embedded store while the corpus is small and you are still changing chunking; pgvector if you already run Postgres; a dedicated or managed vector database when scale, multitenancy features, or hybrid search at high volume justify running or buying one. Revisit the choice with numbers (latency at your p95, recall@k with the ANN index versus exact search, monthly cost) rather than with a vendor's benchmark chart.
+</Listen>
+
+<LabLink path="labs/studio-2/02-ingest-and-chunk" title="Lab: finish the store, with access control and deletes" needs={["Python 3.10+", "No API key", "Optional: numpy"]} minutes={75}>
+Complete steps 5 and 6 of the week's lab: a local vector store with upserts, deletes by document, metadata filters, and an `allowed_groups` filter that is required, applied before ranking, and fails closed. The tests plant an HR-only document and check it never appears for other users, that re-ingesting a document replaces rather than duplicates its chunks, and that the index survives a save and load. The README describes how to repeat the comparison with Chroma.
+</LabLink>
+
+<GoDeeper title="How HNSW finds neighbors, and what its knobs do">
+HNSW builds a multi-layer graph. Every vector is a node in the bottom layer; a random, geometrically shrinking subset also appears in each higher layer, so the top layer is a sparse "highway" and the bottom layer is dense. A search enters at the top, greedily moves to the neighbor closest to the query, drops a layer when it can't improve, and repeats, keeping a candidate list in the bottom layer. Malkov and Yashunin's paper reports logarithmic complexity scaling for search. The knobs map onto that picture. `m` is how many neighbors each node keeps (pgvector's default is 16): more means better recall and more memory. `ef_construction` is the candidate list size while building (default 64): larger builds a better graph, slowly. `ef_search` is the candidate list size at query time (default 40): larger raises recall and latency, and it is also the cap that causes the post-filter shortfall. To tune, measure recall@k of the ANN index against exact search on your own query set, at your production k, and pick the smallest settings that keep recall within your tolerance. The Faiss documentation and ANN-Benchmarks are good next stops for other index families (IVF, product quantization) and how they compare.
+</GoDeeper>
+
+<Listen>
+## Where this leaves your pipeline
+
+You now have every piece of the indexing half of retrieval: ingestion that produces clean text with metadata, chunking you chose by measurement, and a store that filters by permission before ranking and stays consistent as documents change. Week 3 turns to the query side, where keyword and vector search are combined and a reranker reorders the candidates, and week 4 turns retrieved chunks into answers with citations, which is where the offsets and source ids you stored this week pay off.
+</Listen>

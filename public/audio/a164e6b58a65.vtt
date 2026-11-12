@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.837
+Sampling: why the same prompt gives different answers.
+
+2
+00:00:03.117 --> 00:00:08.941
+At each step the model produces a score, called a logit, for every token in the vocabulary.
+
+3
+00:00:09.221 --> 00:00:12.613
+The softmax function turns those scores into probabilities.
+
+4
+00:00:12.893 --> 00:00:14.792
+Then something has to pick a token.
+
+5
+00:00:15.072 --> 00:00:22.411
+Always taking the most likely token (greedy decoding) sounds safe, but it tends to produce repetitive, flat text.
+
+6
+00:00:22.691 --> 00:00:28.429
+Sampling from the distribution produces more natural text, at the cost of run-to-run variation.
+
+7
+00:00:28.709 --> 00:00:30.885
+Two classic controls shape that sampling.
+
+8
+00:00:31.165 --> 00:00:40.189
+Temperature divides every logit by a number before the softmax: below 1 sharpens the distribution toward the top choices, above 1 flattens it.
+
+9
+00:00:40.469 --> 00:00:54.699
+Top-p (nucleus sampling, introduced by Holtzman and colleagues in 2019) samples only from the smallest set of tokens whose probabilities add up to p, which cuts off the long tail of unlikely tokens.
+
+10
+00:00:54.979 --> 00:01:02.445
+If you have a math background, temperature is a familiar object: it is the same parameter as in the Boltzmann distribution.
+
+11
+00:01:02.725 --> 00:01:07.397
+Probability of token i is proportional to e raised to the logit over T.
+
+12
+00:01:07.677 --> 00:01:12.883
+As T approaches zero you recover the argmax; as T grows you approach uniform.

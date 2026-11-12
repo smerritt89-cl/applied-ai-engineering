@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.579
+Read tools and write tools.
+
+2
+00:00:01.859 --> 00:00:04.205
+Sort every tool into one of two buckets.
+
+3
+00:00:04.485 --> 00:00:08.816
+Read tools observe: look up a teammate, resolve a date, search a ticket queue.
+
+4
+00:00:09.096 --> 00:00:15.155
+They are safe to retry, safe to run in parallel, and their worst failure is a wrong answer you can check.
+
+5
+00:00:15.435 --> 00:00:20.704
+Write tools change something: create a task, send a message, update a record, spend money.
+
+6
+00:00:20.984 --> 00:00:23.885
+Their failures persist after the conversation ends.
+
+7
+00:00:24.165 --> 00:00:38.032
+The parallel tool use docs make the execution consequence explicit: independent read-only calls are usually safe to run concurrently, while tools with side effects or ordering requirements may be better run in sequence.
+
+8
+00:00:38.312 --> 00:00:45.523
+Write tools also need to be idempotent, meaning that running the same call twice has the same effect as running it once.
+
+9
+00:00:45.803 --> 00:00:47.744
+Agent loops make repeats likely.
+
+10
+00:00:48.024 --> 00:00:50.221
+A request times out and is retried.
+
+11
+00:00:50.501 --> 00:00:52.699
+The model loses track and asks again.
+
+12
+00:00:52.979 --> 00:01:05.693
+Stripe’s API documentation shows the standard pattern: the client sends an idempotency key, and the server returns the saved result for a repeated key instead of performing the operation twice.
+
+13
+00:01:05.973 --> 00:01:12.160
+For create_task, a key derived from owner, title, and due date, checked before you append, does the job.
+
+14
+00:01:12.440 --> 00:01:14.872
+Then grade write tools by reversibility.
+
+15
+00:01:15.152 --> 00:01:18.459
+Creating a draft task in your own tracker is cheap to undo.
+
+16
+00:01:18.739 --> 00:01:24.029
+Posting to a client’s Slack channel, emailing a customer, or deleting records is not.
+
+17
+00:01:24.309 --> 00:01:27.253
+The irreversible ones need a human in front of them.

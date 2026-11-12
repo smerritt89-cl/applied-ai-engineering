@@ -1,0 +1,364 @@
+{
+  "id": "s2-w4",
+  "studio": "s2",
+  "week": 4,
+  "title": "Week 4 quiz: Grounded answers",
+  "questions": [
+    {
+      "id": "s2w4-q1",
+      "type": "mcq",
+      "prompt": "On the Claude API, what does a `search_result` content block's `source` field do in a RAG prompt?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It tells the API which URL to fetch the content from.",
+          "rationale": "The API doesn't fetch anything; you supply the text in `content`."
+        },
+        {
+          "id": "b",
+          "text": "It carries a stable identifier of your choice (a URL or an internal id), which each citation echoes back so you know which passage was cited.",
+          "rationale": "Yes. Any stable string works, and it becomes the `source` on every `search_result_location` citation.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It sets the ranking order the model must follow.",
+          "rationale": "Order of blocks is up to you; `source` is an identifier, not a rank."
+        },
+        {
+          "id": "d",
+          "text": "It is optional metadata the model never sees.",
+          "rationale": "It's a required field, and it is how your verifier maps citations back to passages."
+        }
+      ],
+      "explanation": "Put your own chunk id in `source`. Citations then name passages in terms your logs, eval labels, and verifier already understand, which makes provenance checks a dictionary lookup.",
+      "week": 4,
+      "tags": [
+        "citations",
+        "claude-api"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2w4-q2",
+      "type": "predict-output",
+      "prompt": "A verifier checks quotes against the passages. What does this print?",
+      "code": "def normalize(t):\n    return \" \".join(t.split())\n\npassage = \"Submit expense reports within 30 days\\nof the end of a trip.\"\nquotes = [\"within 30 days of the end\", \"within thirty days\", \"\"]\nprint([q != \"\" and normalize(q) in normalize(passage) for q in quotes])",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[False, False, True]`",
+          "rationale": "Without normalization the first would fail, but `normalize` runs on both sides. And the empty quote is rejected by the `q != \"\"` guard."
+        },
+        {
+          "id": "b",
+          "text": "`[True, False, True]`",
+          "rationale": "An empty string is a substring of everything, which is exactly why the guard is there; it short-circuits to False."
+        },
+        {
+          "id": "c",
+          "text": "`[True, False, False]`",
+          "rationale": "Yes. The newline normalizes to a space; the paraphrase fails; the explicit check rejects the empty quote.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "`[True, True, False]`",
+          "rationale": "\"thirty\" is not \"30\". Exact matching means paraphrases fail, by design."
+        }
+      ],
+      "explanation": "Normalize whitespace on both sides, require an exact substring, and reject empty quotes explicitly. Each relaxation beyond whitespace (number words, case, punctuation) lets more paraphrase through, so add one only after measuring.",
+      "week": 4,
+      "tags": [
+        "verification"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w4-q3",
+      "type": "scenario",
+      "prompt": "Your HR bot answers \"Business class is allowed on flights over 4 hours\" with a citation that verifies perfectly. It quotes an archived 2023 FAQ; the current policy allows only premium economy over 6 hours, with approval. What is the most effective fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Tighten the verifier to fuzzy-match quotes against the current policy.",
+          "rationale": "The verifier did its job: the quote is real. The problem is that a stale document is competing as an equal source."
+        },
+        {
+          "id": "b",
+          "text": "Fix it at ingestion and in the prompt: mark the FAQ archived (or remove it), store effective dates as metadata, demote or filter superseded documents in retrieval, and tell the model to prefer the newest source and mention conflicts.",
+          "rationale": "Yes. Outdated sources are a corpus problem, so the main fix lives in ingestion and metadata, with the prompt as a backstop.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Switch to a larger generator model.",
+          "rationale": "A larger model will quote the stale passage just as faithfully if it is retrieved and nothing marks it as outdated."
+        }
+      ],
+      "explanation": "Mechanical citation checks prove provenance and fidelity, not freshness. Carry dates and status through ingestion so retrieval and the prompt can act on them, and add trap questions like this one to your eval set.",
+      "week": 4,
+      "tags": [
+        "failure-modes",
+        "ingestion"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w4-q4",
+      "type": "multi",
+      "prompt": "Which statements about Claude's citations feature are correct, according to the citations docs? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The `cited_text` in a citation does not count toward output tokens.",
+          "rationale": "Correct. That's one reason API citations are cheaper than asking the model to write quotes out.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Citations can be combined with `output_config.format` to get schema-valid JSON with citations per field.",
+          "rationale": "Incorrect. That combination returns a 400."
+        },
+        {
+          "id": "c",
+          "text": "Citations must be enabled on all or none of the documents in a request.",
+          "rationale": "Correct. The same applies to search result blocks.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Plain-text documents are chunked into sentences, which are the smallest citable units.",
+          "rationale": "Correct. Custom content documents use your blocks as-is instead.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "A citation is guaranteed to support the claim it is attached to.",
+          "rationale": "Incorrect. The guarantee is that it points at a provided document; whether it supports the claim needs a separate check."
+        }
+      ],
+      "explanation": "The feature guarantees valid pointers and saves output tokens. It doesn't guarantee support, and it can't be combined with structured outputs.",
+      "week": 4,
+      "tags": [
+        "citations",
+        "claude-api"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w4-q5",
+      "type": "code-reading",
+      "prompt": "This function turns a Claude response into claims. What is the bug?",
+      "code": "def parse(response):\n    claims = []\n    for block in response.content:\n        cites = [c.source for c in block.citations or []]\n        claims.append((block.text, cites))\n    return claims",
+      "options": [
+        {
+          "id": "a",
+          "text": "It crashes when a `thinking` block (or any non-text block) appears in `content`, because those blocks have no `text` or `citations`.",
+          "rationale": "Yes. Check `block.type == \"text\"` first; current models can return thinking blocks before the answer.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`block.citations` is always a list, so `or []` is wrong.",
+          "rationale": "Uncited text blocks can have no citations (null), so the `or []` guard is correct."
+        },
+        {
+          "id": "c",
+          "text": "It should join all text blocks into one string before reading citations.",
+          "rationale": "Joining loses which citation belongs to which text, which is the information you need to verify claims."
+        },
+        {
+          "id": "d",
+          "text": "Citations should be read from `response.citations`.",
+          "rationale": "Citations live on the individual text blocks, not on the response."
+        }
+      ],
+      "explanation": "A cited answer is a sequence of content blocks. Skip non-text blocks, keep each text block with its own citations, and filter citations by `type` so you only read the location type you expect.",
+      "week": 4,
+      "tags": [
+        "citations",
+        "parsing"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w4-q6",
+      "type": "mcq",
+      "prompt": "In Barnett and colleagues' (2024) seven failure points, what is FP3, \"Not in context\"?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The answer isn't in the document collection at all.",
+          "rationale": "That's FP1, Missing content."
+        },
+        {
+          "id": "b",
+          "text": "Documents with the answer were retrieved but didn't make it into the context used to generate the answer, for example because of a consolidation step or limit.",
+          "rationale": "Yes. In this course's taxonomy that's context overflow.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The answer was in the context but the model failed to extract it.",
+          "rationale": "That's FP4, Not extracted."
+        },
+        {
+          "id": "d",
+          "text": "The answer ignores the requested format.",
+          "rationale": "That's FP5, Wrong format."
+        }
+      ],
+      "explanation": "FP2 and FP3 are both cases where the system had the answer and lost it before generation: one in ranking, one in assembling the prompt. Logging the final context ids is the only way to tell them apart.",
+      "week": 4,
+      "tags": [
+        "failure-modes",
+        "barnett-2024"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w4-q7",
+      "type": "scenario",
+      "prompt": "Your corpus is 90,000 tokens of internal runbooks that change about once a quarter, and on-call engineers ask about 300 questions a day, spread across the day. A teammate has spent two weeks tuning chunking and hybrid search, and recall at 10 is still 0.82. What do you propose?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Keep tuning; RAG is always the right architecture for documents.",
+          "rationale": "Not always. For a corpus this small and stable, there's a strong alternative worth measuring."
+        },
+        {
+          "id": "b",
+          "text": "Test a baseline that puts the whole corpus in a cached prompt prefix, and compare accuracy, latency, and cost with the RAG pipeline on the same eval set.",
+          "rationale": "Yes. It removes retrieval misses, ranking misses, and context overflow at once; with steady traffic most requests pay the cache-read price. Measure before switching.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Raise k to 100 so every chunk is retrieved.",
+          "rationale": "That approaches long context without the caching benefits or the simplicity."
+        },
+        {
+          "id": "d",
+          "text": "Fine-tune a model on the runbooks.",
+          "rationale": "Fine-tuning is slow to update, doesn't give citations, and is a poor way to inject facts. It doesn't address the measured problem."
+        }
+      ],
+      "explanation": "Anthropic suggests including knowledge bases under about 200,000 tokens directly in the prompt with caching. It isn't automatically better (latency and synthesis errors remain), but it is the baseline a RAG system over a small corpus should beat.",
+      "week": 4,
+      "tags": [
+        "long-context",
+        "prompt-caching",
+        "model-selection"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w4-q8",
+      "type": "predict-output",
+      "prompt": "What does this print? Prices are dollars per million tokens on one model: input $4.00, cache read $0.20.",
+      "code": "corpus = 100_000\nuncached = corpus * 4.00 / 1e6\ncached = corpus * 0.20 / 1e6\nprint(round(uncached, 2), round(cached, 3), round(uncached / cached))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.4 0.02 20`",
+          "rationale": "Yes. $0.40 uncached, $0.02 from cache, a factor of 20.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`0.4 0.04 10`",
+          "rationale": "That would be a 0.1x read price. On this model the read price is 0.05x the input price."
+        },
+        {
+          "id": "c",
+          "text": "`4.0 0.2 20`",
+          "rationale": "Divide by a million: 100,000 tokens is a tenth of a million."
+        },
+        {
+          "id": "d",
+          "text": "`0.04 0.002 20`",
+          "rationale": "Off by a factor of ten in both; check the token count."
+        }
+      ],
+      "explanation": "Cache reads are priced as a fraction of base input (0.05x on Claude Opus 5.5 and Sonnet 5.5 at the time of writing, 0.1x on many other models). Writes cost more than base input, so the savings depend on traffic keeping the cache warm.",
+      "week": 4,
+      "tags": [
+        "prompt-caching",
+        "cost"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w4-q9",
+      "type": "mcq",
+      "prompt": "You add a pre-generation gate that abstains when the top reranker score is below a threshold. Raising the threshold will most likely do what?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Raise abstention recall and lower false abstentions.",
+          "rationale": "A single threshold can't usually improve both; it moves them together."
+        },
+        {
+          "id": "b",
+          "text": "Change nothing, because the model decides when to abstain.",
+          "rationale": "The gate runs before the model, so it changes which questions the model ever sees."
+        },
+        {
+          "id": "c",
+          "text": "Raise abstention recall on unanswerable questions and raise the false-abstention rate on answerable ones.",
+          "rationale": "Yes. A stricter gate refuses more of everything; you choose the point on that trade-off with both numbers in view.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Lower cost and raise answer accuracy on every question.",
+          "rationale": "It lowers cost (fewer generator calls) but refuses some answerable questions, which is an accuracy loss for those users."
+        }
+      ],
+      "explanation": "Abstention needs two numbers: recall on questions the corpus can't answer and false abstention on those it can. Calibrate the threshold on an eval set that contains both kinds.",
+      "week": 4,
+      "tags": [
+        "abstention",
+        "evaluation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w4-q10",
+      "type": "code-reading",
+      "prompt": "Your ingestion script assigns chunk ids like this. Why will it hurt you in Studio 3?",
+      "code": "for doc in documents:\n    for i, chunk in enumerate(split(doc.text, size=400)):\n        index.add(id=f\"chunk-{counter}\", text=chunk)\n        counter += 1",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ids must be integers for vector databases.",
+          "rationale": "Most stores accept string ids; the problem is stability, not type."
+        },
+        {
+          "id": "b",
+          "text": "It creates duplicate ids within a document.",
+          "rationale": "The global counter makes ids unique; they just aren't stable."
+        },
+        {
+          "id": "c",
+          "text": "Chunks should be embedded before they get ids.",
+          "rationale": "Order of embedding and id assignment doesn't matter; deterministic ids do."
+        },
+        {
+          "id": "d",
+          "text": "The ids depend on processing order and global position, so adding a document, reordering files, or changing the chunk size renames every later chunk, and old logs and eval labels no longer match the index.",
+          "rationale": "Yes. Build ids from the document id, the section, and a hash of the chunk text, so the same text always gets the same id.",
+          "correct": true
+        }
+      ],
+      "explanation": "Evaluation compares runs over time. If the same passage gets a different id after re-indexing, recall numbers silently drop and traces can't be joined to labels. Deterministic, content-derived ids prevent that.",
+      "week": 4,
+      "tags": [
+        "ingestion",
+        "logging"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

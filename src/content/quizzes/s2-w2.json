@@ -1,0 +1,332 @@
+{
+  "id": "s2-w2",
+  "studio": "s2",
+  "week": 2,
+  "title": "Week 2 quiz: Ingestion, chunking, and vector stores",
+  "questions": [
+    {
+      "id": "s2w2-q1",
+      "type": "mcq",
+      "prompt": "Why does a text-layer PDF parser such as pypdf often scramble tables and two-column layouts?",
+      "options": [
+        {
+          "id": "a",
+          "text": "pypdf has a bug in its table handling that newer versions fix.",
+          "rationale": "It is not a library bug. The pypdf docs describe it as a limitation of the PDF format."
+        },
+        {
+          "id": "b",
+          "text": "PDFs store glyphs at page positions with no semantic layer, so paragraphs, reading order, and table structure must be inferred.",
+          "correct": true,
+          "rationale": "Yes. A PDF says where to paint characters, not which cells form a row or which column comes first."
+        },
+        {
+          "id": "c",
+          "text": "Tables are always stored as images inside PDFs.",
+          "rationale": "Tables in born-digital PDFs are usually positioned text. Scanned pages are images, which is a different problem."
+        },
+        {
+          "id": "d",
+          "text": "The text is encrypted to prevent copying.",
+          "rationale": "Some PDFs restrict extraction, but that is not why ordinary tables come out scrambled."
+        }
+      ],
+      "explanation": "Layout-aware parsers (Docling, Unstructured) and vision models recover structure by looking at positions or the rendered page. A text-layer parser reads characters accurately but has to guess structure, so test it on your actual tables before trusting it.",
+      "week": 2,
+      "tags": [
+        "ingestion",
+        "pdf"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2w2-q2",
+      "type": "scenario",
+      "prompt": "You need to index 40,000 pages of mixed documents: mostly born-digital reports, plus about 2,000 scanned invoices and some slide decks with charts. Budget matters. Which ingestion plan is best?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Send all 40,000 pages through a frontier vision model, since it handles every format.",
+          "rationale": "It would work on most pages, but you would pay vision-tier prices for the large majority of pages a free parser handles fine."
+        },
+        {
+          "id": "b",
+          "text": "Run a text-layer parser on everything and skip the scanned invoices; retrieval will still find most answers.",
+          "rationale": "The scans would silently produce no chunks, so every invoice question fails with no error to warn you."
+        },
+        {
+          "id": "c",
+          "text": "Run a text-layer parser on everything, route pages with little or no extracted text (and chart-heavy slides) to OCR or a vision model, and validate each route on a small labeled sample first.",
+          "correct": true,
+          "rationale": "Yes. Route by need: cheap tier first, deterministic checks to find failures, expensive tier only where it pays, and a measured sample to confirm each choice."
+        }
+      ],
+      "explanation": "Model selection in ingestion is about cost per page and failure modes. Characters per page is a cheap, reliable router. A 30 to 50 page sample scored on table accuracy and reading order tells you which parser or model each route deserves.",
+      "week": 2,
+      "tags": [
+        "ingestion",
+        "model-selection",
+        "cost"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w2-q3",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "import unicodedata\nprint(repr(unicodedata.normalize(\"NFKC\", \"e\\ufb03cient\\u00a0team\")))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`'efficient team'`",
+          "correct": true,
+          "rationale": "NFKC expands the \"ffi\" ligature (U+FB03) into three letters and turns the non-breaking space into an ordinary space."
+        },
+        {
+          "id": "b",
+          "text": "`'e\\ufb03cient\\xa0team'`",
+          "rationale": "That is the input unchanged. NFKC applies compatibility decompositions, which cover both characters."
+        },
+        {
+          "id": "c",
+          "text": "`'ecient team'`",
+          "rationale": "Normalization replaces the ligature with its letters; it does not delete it."
+        }
+      ],
+      "explanation": "PDF extractors often emit ligatures and odd spaces. Without normalization, a search for \"efficient\" would not match \"eﬃcient\" in keyword search, and embeddings may treat it as a rare token. NFKC is a safe default cleaning step; it changes encoding, not words.",
+      "week": 2,
+      "tags": [
+        "ingestion",
+        "cleaning"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w2-q4",
+      "type": "multi",
+      "prompt": "Which statements about Anthropic's Contextual Retrieval post are accurate? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "A model writes a short, chunk-specific context using the whole document, and the context is prepended to the chunk before embedding and BM25 indexing.",
+          "correct": true,
+          "rationale": "That is the method: Contextual Embeddings plus Contextual BM25."
+        },
+        {
+          "id": "b",
+          "text": "Anthropic reported a 49 percent reduction in top-20 retrieval failures from contextual embeddings plus contextual BM25, and 67 percent with reranking added, on its datasets.",
+          "correct": true,
+          "rationale": "Those are the reported figures, measured as 1 minus recall@20."
+        },
+        {
+          "id": "c",
+          "text": "The technique requires semantic chunking to work.",
+          "rationale": "It works on any chunks; the post's cost estimate assumes 800-token chunks."
+        },
+        {
+          "id": "d",
+          "text": "The post suggests that for a knowledge base under roughly 200,000 tokens, you may not need retrieval at all.",
+          "correct": true,
+          "rationale": "Yes. It suggests putting the whole knowledge base in the prompt, with prompt caching, when it fits."
+        }
+      ],
+      "explanation": "The results are Anthropic's own measurements on its chosen datasets, and the post tells readers to run their own evals. The cost (one model call per chunk at indexing time) is made affordable by caching the document across its chunks.",
+      "week": 2,
+      "tags": [
+        "chunking",
+        "contextual-retrieval"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w2-q5",
+      "type": "code-reading",
+      "prompt": "This chunker splits Markdown at headings. On which input does it produce a wrong section boundary?",
+      "code": "import re\nHEADING = re.compile(r\"^(#{1,6})[ \\t]+(.+?)[ \\t]*$\", re.MULTILINE)\n\ndef section_titles(text):\n    return [m.group(2) for m in HEADING.finditer(text)]",
+      "options": [
+        {
+          "id": "a",
+          "text": "A document with an H1, two H2s, and an H3 under the second H2",
+          "rationale": "Nested headings are matched correctly; tracking the path is a separate step."
+        },
+        {
+          "id": "b",
+          "text": "A heading written as `## Usage` with trailing spaces",
+          "rationale": "The pattern allows trailing spaces and tabs, so the title is still \"Usage\"."
+        },
+        {
+          "id": "c",
+          "text": "A setup guide whose fenced bash code block contains the line `# install dependencies`",
+          "correct": true,
+          "rationale": "The regex sees a line starting with \"# \" and treats the shell comment as a heading, splitting the code block in two."
+        }
+      ],
+      "explanation": "Line-based heading detection doesn't know about code fences. Track whether you are inside a fence (a line starting with three backticks toggles it) and ignore heading-like lines there. Write the test first: a document with a fenced comment should produce one section, not two.",
+      "week": 2,
+      "tags": [
+        "chunking",
+        "structure-aware"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w2-q6",
+      "type": "mcq",
+      "prompt": "In parent and child (small-to-big) retrieval, what is embedded and what is given to the model?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Small child chunks are embedded for precise matching; the larger parents they point to are given to the model for context.",
+          "correct": true,
+          "rationale": "Yes. Match small, read big, and deduplicate parents when several children hit the same one."
+        },
+        {
+          "id": "b",
+          "text": "Large parent chunks are embedded; small children are given to the model to save tokens.",
+          "rationale": "Reversed. Large chunks match less precisely, and small ones lack context for the answer."
+        },
+        {
+          "id": "c",
+          "text": "Both are embedded and their vectors averaged.",
+          "rationale": "Averaging would blur the precise match that small chunks provide."
+        }
+      ],
+      "explanation": "Small-to-big separates the matching unit from the reading unit. Budget for it: parents are longer, so retrieve fewer of them, and keep parents and children consistent when a document is re-ingested.",
+      "week": 2,
+      "tags": [
+        "chunking",
+        "small-to-big"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2w2-q7",
+      "type": "predict-output",
+      "prompt": "A store upserts chunks by id. A document had three chunks; after an edit it has two. What does this print?",
+      "code": "records = [{\"id\": \"a:0\", \"doc\": \"a\"}, {\"id\": \"a:1\", \"doc\": \"a\"}, {\"id\": \"a:2\", \"doc\": \"a\"}]\nstore = {r[\"id\"]: r for r in records}\n\nnew = [{\"id\": \"a:0\", \"doc\": \"a\"}, {\"id\": \"a:1\", \"doc\": \"a\"}]\nfor r in new:\n    store[r[\"id\"]] = r\nprint(len(store))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`2`",
+          "rationale": "Upserting replaces matching ids but never removes ids that are missing from the new version."
+        },
+        {
+          "id": "b",
+          "text": "`3`",
+          "correct": true,
+          "rationale": "Chunk a:2 survives as a stale record from the old version."
+        },
+        {
+          "id": "c",
+          "text": "`5`",
+          "rationale": "Ids a:0 and a:1 are replaced, not duplicated."
+        }
+      ],
+      "explanation": "Stale chunks keep answering questions with text the document no longer contains. Re-index a document by deleting all of its chunks and inserting the new ones (in one transaction where possible), and skip unchanged documents by comparing content hashes.",
+      "week": 2,
+      "tags": [
+        "vector-stores",
+        "updates"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w2-q8",
+      "type": "scenario",
+      "prompt": "Your RAG assistant serves several departments from one index. Security asks how you guarantee that salary documents never reach non-HR users. Which answer would satisfy a careful reviewer?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The system prompt tells the model to ignore documents the user is not allowed to see.",
+          "rationale": "Once restricted text is in the context, the model can reveal it, and prompt injection can make it do so. A prompt is not access control."
+        },
+        {
+          "id": "b",
+          "text": "Retrieve the top 20 chunks, then remove any HR chunks before sending them to the model.",
+          "rationale": "That post-filter keeps HR text out of the prompt but can return too few results, and it depends on a step that is easy to skip in a new code path."
+        },
+        {
+          "id": "c",
+          "text": "Every chunk carries the source document's permission groups; the store filters on the user's groups, taken from the authenticated session, before ranking; documents without a permission record are visible to nobody; and a canary test fails the build if an HR-only document is ever returned to another group.",
+          "correct": true,
+          "rationale": "Yes. Permissions travel with the data, the filter is enforced before ranking with server-side identity, the default is closed, and a test proves it."
+        }
+      ],
+      "explanation": "OWASP's guidance on vector and embedding weaknesses recommends permission-aware retrieval and partitioning. Make the permission filter impossible to forget (a required argument, a database policy, or a per-tenant namespace) and test it with planted canary documents.",
+      "week": 2,
+      "tags": [
+        "vector-stores",
+        "access-control",
+        "security"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w2-q9",
+      "type": "multi",
+      "prompt": "Your corpus is 8,000 chunks of 1,024-dimensional embeddings, queried a few hundred times a day by an internal tool, and re-indexed nightly. Which statements are true? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The raw float32 vectors take about 33 MB, so exact search over a NumPy array is fast and needs no extra service.",
+          "correct": true,
+          "rationale": "8,000 x 1,024 x 4 bytes is about 33 MB, and one matrix-vector product over it takes milliseconds."
+        },
+        {
+          "id": "b",
+          "text": "An HNSW index would make results more accurate than brute-force search.",
+          "rationale": "Approximate indexes trade some recall for speed. Brute force returns the exact nearest neighbors."
+        },
+        {
+          "id": "c",
+          "text": "If the team already runs Postgres, pgvector is a reasonable choice for durability, backups, and access control, even though the math would fit in memory.",
+          "correct": true,
+          "rationale": "Yes. The reasons to use a database here are operational, not accuracy."
+        },
+        {
+          "id": "d",
+          "text": "You must use a managed vector database once you have more than 1,000 chunks.",
+          "rationale": "There is no such threshold. Size, concurrency, update patterns, and operations decide it."
+        }
+      ],
+      "explanation": "Do the memory and latency arithmetic before choosing infrastructure. Small corpora rarely need an ANN index; they may still benefit from a database for persistence, concurrency, and permissions.",
+      "week": 2,
+      "tags": [
+        "vector-stores",
+        "cost"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w2-q10",
+      "type": "code-reading",
+      "prompt": "This deduplication step runs before chunking. What is the most important problem with it?",
+      "code": "def dedupe(docs, threshold=0.8):\n    kept = []\n    for doc in docs:\n        if any(jaccard(shingles(doc.text), shingles(k.text)) >= threshold for k in kept):\n            continue\n        kept.append(doc)\n    return kept",
+      "options": [
+        {
+          "id": "a",
+          "text": "Which copy survives depends on the input order, not on a stated policy, and the dropped copies are not recorded anywhere.",
+          "correct": true,
+          "rationale": "Yes. An older or less authoritative copy can win by being listed first, and nobody can audit what was removed."
+        },
+        {
+          "id": "b",
+          "text": "Jaccard similarity cannot detect near duplicates.",
+          "rationale": "Shingle-set Jaccard is the standard near-duplicate measure; MinHash estimates it at scale."
+        },
+        {
+          "id": "c",
+          "text": "A threshold of 0.8 will remove documents that share only a few words.",
+          "rationale": "Sharing a few words gives a low Jaccard score on five-word shingles; 0.8 requires most shingles to match."
+        }
+      ],
+      "explanation": "Deduplication is a policy decision. Sort by the rule you choose (newest date, system of record), record each drop with what it duplicated, and consider flagging near copies that disagree instead of silently keeping one. It also recomputes shingles for every comparison, which is slow but secondary; at scale, use MinHash with LSH.",
+      "week": 2,
+      "tags": [
+        "ingestion",
+        "deduplication"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

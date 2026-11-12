@@ -1,0 +1,385 @@
+---
+id: s1-w3-l8
+studio: s1
+week: 3
+order: 8
+title: Structured outputs with the API
+summary: From "please return JSON" to constrained decoding. How Claude's structured outputs work today, the equivalents at OpenAI, Google, xAI, and open-model servers, what the guarantee covers, and how to design schemas that extract well.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Describe the three generations of getting JSON from a model (prompting, tool-call schemas, constrained decoding) and the failure each one leaves
+  - Call Claude with structured outputs using messages.parse and a Pydantic model, and handle refusals and truncation
+  - Compare the structured-output features of Claude, OpenAI, Gemini, Grok, and open-model servers such as vLLM
+  - Explain what constrained decoding guarantees (shape) and what it cannot (true values)
+  - Apply schema design rules (descriptions, enums, shallow nesting, nullable for not found) and lint a schema for them
+sources:
+  - { id: claude-structured-outputs, use: summarized, where: "JSON outputs, strict tool use, SDK helpers, schema limitations, caching, refusals" }
+  - { id: claude-tool-use-overview, use: summarized, where: "Tool choice and strict tool use" }
+  - { id: claude-docs, use: summarized, where: "Model-specific tool_choice restrictions" }
+  - { id: willard-2023-guided, use: summarized }
+  - { id: openai-structured-outputs, use: summarized }
+  - { id: gemini-structured-output, use: summarized }
+  - { id: xai-structured-outputs, use: summarized }
+  - { id: vllm-structured-outputs, use: summarized }
+  - { id: tam-2024-format, use: summarized }
+  - { id: dottxt-say-what-you-mean, use: summarized }
+  - { id: pydantic-json-schema, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      You use Claude's structured outputs with a strict schema whose `priority` field is an enum of "high", "medium",
+      and "low". The transcript never mentions priority. What does constrained decoding guarantee about `priority`?
+    options:
+      - id: a
+        text: That it will be null, because the transcript doesn't say.
+        rationale: The schema doesn't allow null, so null is impossible. Constrained decoding enforces the schema, not your intent.
+      - id: b
+        text: That it will be one of the three enum values, whether or not the transcript supports any of them.
+        correct: true
+        rationale: Yes. The grammar only allows those three strings, so the model must pick one. If "not stated" is a real possibility, the schema has to allow it.
+      - id: c
+        text: That the request will fail with a validation error.
+        rationale: Missing evidence isn't a schema violation. The output will be valid; it just may not be true.
+    explanation: >-
+      Constrained decoding removes invalid options from each sampling step. It can't add an option you didn't define.
+      A required field with no "not found" escape forces a guess, which is why the design rule is: make fields nullable
+      (or add an explicit "unknown" value) wherever the source might be silent.
+  - id: kc2
+    type: code-reading
+    prompt: This call returns normally. Which check should come before using `response.parsed_output`?
+    code: |
+      response = client.messages.parse(
+          model="claude-opus-5-5",
+          max_tokens=16000,
+          messages=[{"role": "user", "content": prompt}],
+          output_format=ActionItems,
+      )
+      items = response.parsed_output.items
+    options:
+      - id: a
+        text: "Check `response.stop_reason` for `refusal` or `max_tokens`, where the output may not match the schema"
+        correct: true
+        rationale: The docs name both cases as exceptions to the guarantee. Truncated or refused output may be incomplete or absent.
+      - id: b
+        text: "Call `json.loads` on the text block to make sure it is valid JSON"
+        rationale: parse() already validated the text against your model; repeating it adds nothing.
+      - id: c
+        text: "Check that `temperature` was set to 0 so the output is deterministic"
+        rationale: Sampling parameters are rejected on the current API version, and determinism isn't the issue here.
+    explanation: >-
+      The structured-outputs guarantee holds for completed, non-refused responses. Check the stop reason first; on
+      max_tokens, raise the limit or split the input; on refusal, route the item elsewhere instead of retrying blindly.
+  - id: kc3
+    type: multi
+    prompt: Which of these are good schema design choices for extracting action items? Select all that apply.
+    options:
+      - id: a
+        text: "A `description` on each field that says what to put there and what to do when it's absent"
+        correct: true
+        rationale: Descriptions are sent with the schema and act as field-level instructions.
+      - id: b
+        text: An enum for priority instead of a free string
+        correct: true
+        rationale: A closed set stops spelling drift and makes downstream code simple.
+      - id: c
+        text: "`due_date` as a nullable date rather than a required string"
+        correct: true
+        rationale: Nullable is the honest answer when no date was stated; a required string invites "TBD" or an invented date.
+      - id: d
+        text: Five levels of nested objects so every concept has its own type
+        rationale: Deep nesting is harder for the model and for you, and providers impose complexity limits. Keep schemas flat unless the data really is nested.
+    explanation: >-
+      Good schemas read like a form a careful person could fill in: each field says what it wants, closed choices are
+      enumerated, and every field the source might not cover has a legal way to say so.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Three generations of getting JSON out of a model
+
+**Generation one: ask nicely.** Put "respond only with JSON matching this format" in the prompt, parse the text, and retry on failure. It works most of the time, which is the problem: you saw in lesson 7 how the remaining failures look (preambles, code fences, renamed keys). Every team that shipped this way also shipped a pile of cleanup code.
+
+**Generation two: borrow tool calling.** Tool calling (week 4 covers it properly) lets you describe a function with a JSON Schema for its arguments, and the model returns a structured call. Engineers noticed they could define a fake tool whose "arguments" were the output they wanted, then force the model to call it. Tool arguments came back as parsed JSON, which removed most syntax failures. But the arguments were not guaranteed to match the schema: a required field could still be missing or the wrong type. And forcing a particular tool is no longer available everywhere. On Claude Opus 5.5 and Claude Sonnet 5.5, a `tool_choice` that forces a tool (`any` or a named `tool`) is rejected; Anthropic's guidance is to use structured outputs when you only wanted JSON back.
+
+**Generation three: constrain the decoder.** Instead of hoping the model writes valid output, the serving system makes invalid output impossible. Anthropic's docs describe compiling your JSON Schema into a grammar and restricting generation to it. The technique is general: Willard and Louf (2023) showed how to turn a regular expression or grammar into a finite-state machine and precompute, for each state, which vocabulary tokens are allowed, so the check adds little overhead per token.
+</Listen>
+
+<Listen>
+## How constrained decoding works, in one paragraph of math
+
+Recall from lesson 1 that each step produces a probability for every token. With a grammar, the system tracks which state of the automaton the output so far has reached. At each step it sets the probability of every token that would leave the language of valid documents to zero, renormalizes the rest, and samples. If your schema says the next thing must be one of "high", "medium", or "low", tokens that start any other string are masked out.
+
+Two consequences follow, and both matter for trust. First, the output is valid by construction: you can't get a missing brace or an unknown key. Second, the model must choose among the options you allowed, even if none of them fits. Masking redistributes probability over the legal tokens; it doesn't create a "this doesn't apply" option. If the transcript never states a priority and your enum has no way to say so, the model will pick one, and the result will look exactly as confident as a real answer. That's why schema design, not just the feature, decides whether structured output is honest.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of constrained decoding: the model produces probabilities for all tokens; a grammar compiled from the JSON schema masks tokens that would make the output invalid; the remaining probabilities are renormalized; one token is sampled and appended; the grammar state advances; the loop repeats until the JSON document is complete."
+  caption="Constrained decoding adds one step to the generation loop from lesson 1: mask, then sample."
+  chart={`flowchart LR
+  C["Context + output so far"] --> M["Model: probability for every token"]
+  M --> G["Grammar from your schema: mask invalid tokens"]
+  G --> R["Renormalize the allowed tokens"]
+  R --> S["Sample one token"]
+  S --> A["Append; advance grammar state"]
+  A --> D{"JSON document complete?"}
+  D -- "no" --> C
+  D -- "yes" --> V["Schema-valid output (values not yet verified)"]`}
+/>
+
+<Listen>
+## Structured outputs on Claude today
+
+Claude offers two related features. **JSON outputs** constrain the response itself: you pass a schema in `output_config.format` with type `json_schema`, and the reply's text block is JSON matching it. **Strict tool use** constrains tool arguments: you add `strict: true` to a tool definition, and calls to that tool always validate. You can use both in one request. The older top-level `output_format` request parameter is deprecated; the current home is `output_config.format`.
+
+In Python, the recommended path is `client.messages.parse()`. You pass your Pydantic class (the SDK's `parse()` helper takes it as `output_format`), the SDK converts it to a schema and sends it as `output_config.format`, and the response carries a validated instance in `parsed_output`. The SDK also adapts the schema: the API supports a subset of JSON Schema, and the docs list what's out, including recursive schemas, numeric bounds such as `minimum`, string length bounds such as `minLength`, and any `additionalProperties` other than false. The SDK helpers move unsupported constraints into the field description and then check your original constraints when they validate the response. That's another reason to keep the Pydantic model as your source of truth.
+
+Some operational details from the docs. The first request with a new schema pays a one-time compilation cost; compiled grammars are cached for 24 hours from last use. Changing the format invalidates the prompt cache for that conversation. Structured outputs can't be combined with citations. And the guarantee has stated exceptions: if `stop_reason` is `refusal` or `max_tokens`, the output may not match the schema, so check the stop reason before you trust `parsed_output`.
+</Listen>
+
+```python
+import anthropic
+from pydantic import BaseModel, ConfigDict, Field
+
+class ActionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task: str = Field(description="What will be done, as a short imperative phrase")
+    owner: str | None = Field(description="Person who committed to it, or null if no one was named")
+
+class ActionItems(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[ActionItem] = Field(description="Every commitment in the transcript; empty if none")
+
+client = anthropic.Anthropic()
+response = client.messages.parse(
+    model="claude-opus-5-5",
+    max_tokens=16000,
+    system="Extract action items from the meeting transcript the user provides.",
+    messages=[{"role": "user", "content": transcript}],
+    output_format=ActionItems,
+)
+
+if response.stop_reason in ("refusal", "max_tokens"):
+    raise RuntimeError(f"no usable output: {response.stop_reason}")
+for item in response.parsed_output.items:
+    print(item.owner, "->", item.task)
+```
+
+<Callout type="pitfall" title="Asking for reasoning inside the schema">
+It's tempting to add a `reasoning` string field so you can see why the model chose each value. Anthropic's structured outputs docs warn that a property asking for the model's reasoning can trigger a refusal on current models, and suggest asking for a short explanation instead. If you need to inspect reasoning, use the thinking feature with summarized display. For extraction, a better field than "reasoning" is "evidence": a verbatim quote from the source, which you can check mechanically. That's lesson 9.
+</Callout>
+
+<Listen>
+## The same idea at other providers
+
+Every major API now offers schema-constrained output. The names differ, and so do the subsets of JSON Schema they enforce, so read each provider's limits before you port a schema.
+
+**OpenAI** calls it Structured Outputs. In the Responses API you set a text format of type `json_schema` with `strict: true`; the Python SDK's `responses.parse()` accepts a Pydantic model and returns `output_parsed`. OpenAI distinguishes it from the older JSON mode, which guarantees valid JSON but not adherence to your schema. Refusals arrive as a separate content item you check before parsing.
+
+**Google's Gemini API** takes a JSON Schema with an `application/json` MIME type; the Python examples pass `Model.model_json_schema()` and validate with `model_validate_json()`. The docs say some keywords, such as `minLength` and `maxLength`, are ignored rather than enforced, and they warn about schema-compliant but semantically incorrect outputs.
+
+**xAI's Grok API** accepts a `json_schema` response format and Pydantic models, states that output is guaranteed to match when you use supported features, and lists other features as best effort.
+
+**Open models** get the same capability from the serving layer. vLLM, a widely used open-source inference server, supports JSON Schema, regex, fixed choices, and context-free grammars through backends such as xgrammar and guidance. Libraries such as Outlines (from the Willard and Louf paper) do the same in your own process. This is a real advantage of open models: you control the grammar engine and can constrain to formats a hosted API doesn't offer.
+</Listen>
+
+| | Claude | OpenAI | Gemini | Grok | vLLM (open models) |
+|---|---|---|---|---|---|
+| Feature name | Structured outputs (JSON outputs, strict tool use) | Structured Outputs | Structured output | Structured outputs | Structured outputs |
+| Where the schema goes | `output_config.format`, or `strict: true` on a tool | Text format `json_schema` with `strict: true` | JSON Schema plus `application/json` | `response_format` of type `json_schema` | `response_format` or `structured_outputs` extra body |
+| Python Pydantic helper | `messages.parse(output_format=Model)` | `responses.parse(text_format=Model)` | `model_json_schema()` in, `model_validate_json()` out | `chat.parse(Model)` in the xAI SDK | Pydantic schema via the OpenAI-compatible client |
+| Notable limits | No recursion; no numeric or length bounds in the API schema | All fields required; optional via union with null | Some constraints ignored, not enforced | Some features best effort | Depends on backend |
+
+<Callout type="note" title="Check the docs, not this table">
+These details change often. Every cell above was checked against the provider's documentation on the review date at the top of the page. Before you depend on one, open the linked docs and confirm it.
+</Callout>
+
+<Listen>
+## What the guarantee covers, and what it doesn't
+
+Constrained decoding guarantees **shape**: the JSON parses, required keys exist, types are right, enum values are legal, and no unknown keys appear (within the schema features the provider enforces). That eliminates a whole class of bugs and most of your cleanup code.
+
+It guarantees nothing about **values**. A valid `owner` can name the wrong person. A valid `due_date` can be a date nobody said. An `items` array can include discussion that was never a commitment, or miss a real one. Google's docs say it plainly: validate values in your application. Claude's docs add a smaller caveat worth knowing: enum values can come back with different capitalization than the schema, so compare them case-insensitively.
+
+There is also a live debate about whether constraining format hurts quality. Tam and colleagues (2024) reported that reasoning performance dropped under strict format restrictions. The team behind the Outlines library published a rebuttal arguing that the study compared different prompts across conditions and conflated structured generation with JSON mode, and that their reruns showed structured generation helping. Treat this as unsettled, with a practical takeaway either way: let the model think (thinking blocks, or a separate step) and constrain only the final answer, then measure on your own data.
+</Listen>
+
+<Callout type="claim" title="Do format constraints degrade reasoning?">
+**Claim (Tam et al., 2024, arXiv 2408.02442):** restricting LLMs to formats like JSON significantly reduced performance on reasoning tasks, and stricter constraints hurt more.
+
+**Counterpoint (Will Kurt, .txt, "Say What You Mean"):** the prompts differed between conditions and the JSON prompts were inadequate; with matched prompts, structured generation improved results. Note that .txt sells structured-generation tooling, so it is an interested party.
+
+**What to do:** don't take either side on faith. Run your own eval with and without constraints on the same prompts. For extraction tasks like this week's, the cost of unparseable output usually dominates.
+</Callout>
+
+<Listen>
+## Designing schemas that extract well
+
+A schema is a prompt as much as a contract. Five rules cover most of what goes wrong.
+
+**Describe every field.** Descriptions go to the model with the schema. Say what belongs in the field, in what form, and what to do when the source is silent: "Person who committed to the task, as written in the transcript; null if no one was named."
+
+**Enumerate closed sets.** Priority, status, category: if your code branches on it, make it an enum. Free strings drift ("High", "high priority", "P1").
+
+**Make "not found" legal.** Every field the source might not cover should be nullable, or have an explicit "unknown" value. Otherwise constrained decoding forces an invention. Required-but-nullable, from lesson 7, is the usual pattern: the model must address the field, and null is a valid answer.
+
+**Keep it shallow.** Nest only where the data is really nested (a list of items, each with fields). Deep trees of small objects are harder to fill correctly, and providers impose complexity limits; Claude's docs, for example, cap optional parameters and union-typed parameters per request.
+
+**Keep the API schema to the supported subset.** Close every object, and leave numeric and length bounds to your validator. The SDK does this for you when it starts from Pydantic, but hand-written schemas sent to `output_config.format` must follow the rules or the request fails.
+
+On model choice: structured outputs are available across current Claude tiers (Opus, Sonnet, Haiku), so the guarantee doesn't force you onto the largest model. Whether a smaller, cheaper model gets the values right as often is an empirical question for your eval set; the project's optional stretch goal asks you to measure exactly that.
+</Listen>
+
+<Predict
+  title="Which fields are required?"
+  code={`from pydantic import BaseModel
+
+class Item(BaseModel):
+    task: str
+    owner: str | None = None
+    due: str | None
+
+print(Item.model_json_schema()["required"])`}
+  options={["['task', 'due']", "['task']", "['task', 'owner', 'due']", "['owner', 'due']"]}
+  answer={0}
+>
+A field is required exactly when it has no default. `owner` has a default, so it may be omitted. `due` allows null but has no default, so it's required. When this schema goes to a provider, the model must always write `task` and `due` (possibly as null) and may skip `owner`. Generate the schema and read it before you ship; it's the contract the model actually sees.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s1-w3-schema-linter"
+  title="Write a schema linter"
+  starter={`UNSUPPORTED = ("minLength", "maxLength", "minimum", "maximum", "multipleOf")
+
+def lint_schema(schema, max_depth=3):
+    """Return a list of problems in a JSON Schema meant for Claude structured outputs.
+
+    Rules (one message per problem, each starting with the node's path):
+      1. Every object node (type "object", or has "properties") must have
+         additionalProperties set to False:
+             f"{path}: additionalProperties must be false"
+      2. Any node using a keyword in UNSUPPORTED:
+             f"{path}: {kw} is not supported in the API schema; enforce it in your validator"
+      3. An object nested more than max_depth objects deep (the root object is depth 1):
+             f"{path}: objects nested more than {max_depth} deep"
+    Paths: the root is "$"; a property adds ".name"; array items add "[]";
+    the i-th anyOf branch adds "|i".
+    """
+    problems = []
+
+    def walk(node, path, depth):
+        if not isinstance(node, dict):
+            return
+        # TODO: rules 1 and 3 for object nodes (remember to increase depth)
+        # TODO: rule 2
+        for name, sub in node.get("properties", {}).items():
+            walk(sub, f"{path}.{name}", depth)
+        # TODO: also walk node["items"] (path + "[]") and each anyOf branch (path + "|i")
+
+    walk(schema, "$", 0)
+    return problems
+
+GOOD = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "What will be done"},
+                    "owner": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                },
+                "required": ["task", "owner"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["items"],
+    "additionalProperties": False,
+}
+
+BAD = {
+    "type": "object",
+    "properties": {
+        "task": {"type": "string", "minLength": 1},
+        "hours": {"type": "integer", "minimum": 0},
+        "meta": {
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "object",
+                    "properties": {
+                        "speaker": {
+                            "type": "object",
+                            "properties": {"name": {"type": "string"}},
+                            "additionalProperties": False,
+                        }
+                    },
+                    "additionalProperties": False,
+                }
+            },
+            "additionalProperties": False,
+        },
+    },
+    "required": ["task"],
+}
+
+print("GOOD:", lint_schema(GOOD))
+for p in lint_schema(BAD):
+    print("BAD: ", p)
+`}
+  tests={`assert lint_schema(GOOD) == [], "the GOOD schema has no problems"
+problems = lint_schema(BAD)
+assert any(p.startswith("$:") and "additionalProperties" in p for p in problems), "the root object of BAD is open"
+assert any(p.startswith("$.task:") and "minLength" in p for p in problems), "flag minLength on task"
+assert any(p.startswith("$.hours:") and "minimum" in p for p in problems), "flag minimum on hours"
+assert any(p.startswith("$.meta.source.speaker:") and "nested" in p for p in problems), "speaker is the fourth nested object"
+assert len(problems) == 4, f"expected 4 problems in BAD, got {len(problems)}"
+arr = {"type": "object", "properties": {"rows": {"type": "array", "items": {"type": "object", "properties": {}}}}, "additionalProperties": False}
+assert any(p.startswith("$.rows[]:") for p in lint_schema(arr)), "look inside array items"
+union = {"anyOf": [{"type": "object", "properties": {}}, {"type": "null"}]}
+assert any(p.startswith("$|0:") for p in lint_schema(union)), "look inside anyOf branches"`}
+  solution={`def lint_schema(schema, max_depth=3):
+    problems = []
+
+    def walk(node, path, depth):
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "object" or "properties" in node:
+            depth += 1
+            if node.get("additionalProperties") is not False:
+                problems.append(f"{path}: additionalProperties must be false")
+            if depth > max_depth:
+                problems.append(f"{path}: objects nested more than {max_depth} deep")
+        for kw in UNSUPPORTED:
+            if kw in node:
+                problems.append(f"{path}: {kw} is not supported in the API schema; enforce it in your validator")
+        for name, sub in node.get("properties", {}).items():
+            walk(sub, f"{path}.{name}", depth)
+        if "items" in node:
+            walk(node["items"], f"{path}[]", depth)
+        for i, sub in enumerate(node.get("anyOf", [])):
+            walk(sub, f"{path}|{i}", depth)
+
+    walk(schema, "$", 0)
+    return problems`}
+>
+A hand-written schema that breaks the provider's rules fails at request time, or worse, passes with a constraint silently unenforced. Write a small linter that catches three common problems before you send anything. This is plain Python with no packages, and it's the kind of check worth adding to your project's test suite.
+</PyRunner>
+
+<LabLink path="labs/studio-1/04-structured-extraction" title="Lab: structured extraction with verification and retry" needs={["Anthropic API key (optional: offline tests run without one)"]} minutes={60}>
+Define Pydantic models for action items with evidence quotes, call Claude with `messages.parse()`, verify every quote against the source text, and retry once with the validation error fed back when parsing fails. The offline tests use a fake client, so you can finish the lab without a key; the live tests run the real call on two short sample documents.
+</LabLink>
+
+<GoDeeper title="Strict tool use, and when to prefer it">
+Use JSON outputs when you want the model's reply to be data. Use strict tool use when the structured thing is an action: the model decides to call `create_ticket`, and `strict: true` guarantees the arguments validate before your code runs them. In agent loops you'll often use both: strict tools for actions along the way, and a JSON output format for the final report. Strict tool schemas follow the same rules (closed objects, every required key listed). Anthropic's docs also cover the per-request limits on strict tools and the compilation timeout for very complex schemas; if you hit "schema too complex," flatten it or split the task into two calls.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Use the API's structured-output feature whenever a program consumes the result; it is the cheapest reliability win in this studio. Define the schema in Pydantic, check `stop_reason` before trusting the result, and keep validating in your own code, because providers enforce different subsets. Most of all, remember what you bought: valid shape. The values inside that shape are still model output, and the next lesson is about catching the ones that are confidently wrong.
+</Listen>

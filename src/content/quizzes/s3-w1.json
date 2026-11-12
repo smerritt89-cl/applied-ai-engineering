@@ -1,0 +1,361 @@
+{
+  "id": "s3-w1",
+  "studio": "s3",
+  "week": 1,
+  "title": "Week 1 quiz: Why evals, and error analysis",
+  "questions": [
+    {
+      "id": "s3w1-q1",
+      "type": "mcq",
+      "prompt": "In Anthropic's framing, what distinguishes a **capability** eval from a **regression** eval?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Capability evals use LLM judges; regression evals use code-based graders.",
+          "rationale": "The grader type is independent of the purpose. Either kind can use any grader."
+        },
+        {
+          "id": "b",
+          "text": "Capability evals target things the system can't yet do reliably and start with low pass rates; regression evals protect what already works and should stay near 100 percent.",
+          "rationale": "Yes. That's the distinction, and high-scoring capability cases can graduate into the regression suite.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Capability evals run in production; regression evals run in CI.",
+          "rationale": "Both can run in CI. The difference is what the pass rate is expected to be and what a change in it means."
+        },
+        {
+          "id": "d",
+          "text": "Capability evals measure the model; regression evals measure the prompt.",
+          "rationale": "Both measure the whole system on its tasks."
+        }
+      ],
+      "explanation": "A capability eval gives you a hill to climb, so a low score is expected. A regression eval is a tripwire, so any drop matters. Keeping them separate stops a falling regression score from being averaged away by a rising capability score.",
+      "week": 1,
+      "tags": [
+        "evals",
+        "regression"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3w1-q2",
+      "type": "multi",
+      "prompt": "Which of these are good open-coding notes for a failing support-bot trace? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Says AutoPay exists under Payments > AutoPay; help center lists AutoPay as not available.",
+          "rationale": "Specific, checkable, and points at a fix.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Hallucination.",
+          "rationale": "That's a category label applied top-down, not an observation. It hides which kind of invention happened."
+        },
+        {
+          "id": "c",
+          "text": "Asked how to change a sent invoice's due date; told how to create a new invoice instead.",
+          "rationale": "Describes the first thing that went wrong in plain words.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Bad answer, 2 out of 5.",
+          "rationale": "Vague, and a Likert score instead of a pass/fail judgment with a reason."
+        }
+      ],
+      "explanation": "Open codes are short, specific observations written before you have categories. They should name what went wrong concretely enough that someone else could verify it against the trace and the knowledge base. Categories come later, in axial coding.",
+      "week": 1,
+      "tags": [
+        "error-analysis",
+        "open-coding"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3w1-q3",
+      "type": "scenario",
+      "prompt": "Your director wants an eval dashboard by Friday and suggests turning on a vendor's built-in \"helpfulness\" and \"hallucination\" scores for all traffic. You have one week and a product manager who knows the domain well. What's the best plan?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Turn on the vendor scores now; they're better than nothing and you can refine later.",
+          "rationale": "Generic scores can rise while the failures users hit stay unmeasured, which creates false confidence. Use them at most to find traces to read."
+        },
+        {
+          "id": "b",
+          "text": "Have the PM review about 100 diverse traces, build a failure taxonomy, and report the top failure modes with counts; then build checks for the top one or two.",
+          "rationale": "Yes. That gives the director a real, specific picture this week and tells you which evals to build.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Write a 40-item rubric from the product spec before looking at any outputs.",
+          "rationale": "A spec-first rubric will miss failures you haven't seen, and criteria drift means it will change once you read outputs anyway."
+        },
+        {
+          "id": "d",
+          "text": "Wait until you have 1,000 labeled examples before reporting anything.",
+          "rationale": "Anthropic suggests 20 to 50 tasks from real failures is a good start. Waiting makes evals harder to start."
+        }
+      ],
+      "explanation": "Error analysis first, then measurement. A week of focused trace review by a domain expert produces a ranked list of concrete failure modes, which is both a useful report and the spec for your first graders.",
+      "week": 1,
+      "tags": [
+        "error-analysis",
+        "metrics",
+        "team"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w1-q4",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "from collections import Counter\n\ntraces = [\n    {\"outcome\": \"fail\", \"modes\": [\"tone\", \"tone\"]},\n    {\"outcome\": \"fail\", \"modes\": [\"tone\", \"missed_handoff\"]},\n    {\"outcome\": \"pass\", \"modes\": []},\n]\nc = Counter()\nfor t in traces:\n    if t[\"outcome\"] == \"fail\":\n        c.update(set(t[\"modes\"]))\nprint(c[\"tone\"], c[\"missed_handoff\"], sum(c.values()))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`3 1 4`",
+          "rationale": "That counts labels. The `set()` removes the repeated \"tone\" on the first trace."
+        },
+        {
+          "id": "b",
+          "text": "`2 1 3`",
+          "rationale": "Yes. Two failing traces show tone, one shows missed_handoff, and there are three trace-mode pairs.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`2 1 2`",
+          "rationale": "The sum counts trace-mode pairs, not traces. The second trace contributes two pairs."
+        },
+        {
+          "id": "d",
+          "text": "`1 1 2`",
+          "rationale": "Both failing traces show tone."
+        }
+      ],
+      "explanation": "Count traces per mode, not labels. Note that the sum of mode counts (3) exceeds the number of failing traces (2) whenever traces carry several modes, so mode rates can add up to more than the failure rate.",
+      "week": 1,
+      "tags": [
+        "error-analysis",
+        "counting"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w1-q5",
+      "type": "code-reading",
+      "prompt": "This helper parses the `failure_modes` cell of an annotation CSV. For which cell does it produce a wrong result?",
+      "code": "def parse_modes(cell):\n    return [m.strip() for m in cell.split(\";\")]",
+      "options": [
+        {
+          "id": "a",
+          "text": "`\"tone;invented_feature\"`",
+          "rationale": "That splits correctly into two modes."
+        },
+        {
+          "id": "b",
+          "text": "`\"\"` (an empty cell, as on every passing trace)",
+          "rationale": "Yes. `\"\".split(\";\")` is `[\"\"]`, so every pass gets one mode named the empty string, and counts include a blank mode.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`\" tone \"`",
+          "rationale": "`strip()` handles surrounding spaces."
+        }
+      ],
+      "explanation": "`str.split` with an explicit separator never returns an empty list, so empty and trailing-separator cells (`\"tone;\"`) produce empty strings. Drop empties after stripping, and de-duplicate. Then test the parser on a blank cell, because passing rows are the most common rows.",
+      "week": 1,
+      "tags": [
+        "error-analysis",
+        "python"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w1-q6",
+      "type": "scenario",
+      "prompt": "You're launching a multi-currency feature next month and have no production traces for it. You need test inputs now. What's the best approach?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ask a model for \"100 realistic customer questions about multi-currency\" and use them all.",
+          "rationale": "Unstructured generation tends to produce repetitive, generic questions, and using them unread risks testing the wrong thing."
+        },
+        {
+          "id": "b",
+          "text": "Define dimensions (for example currency pair, plan, customer style), hand-write about 20 tuples, expand them, generate one message per tuple in a separate step, and read the results before adding them.",
+          "rationale": "Yes. That is the two-step, dimension-driven method from the evals FAQ, with the verification step.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Skip testing until real traffic arrives.",
+          "rationale": "You can and should test before launch. Just don't use synthetic cases to estimate how often failures happen."
+        },
+        {
+          "id": "d",
+          "text": "Generate cases and use their failure rate to forecast production failure rates.",
+          "rationale": "Synthetic data shows whether failures can happen, not how often. Only real traffic gives frequencies."
+        }
+      ],
+      "explanation": "Dimensions make coverage deliberate, separate generation of tuples and messages reduces sameness, and reading the output checks that each case tests what it claims. Replace or supplement the synthetic cases with real traces after launch.",
+      "week": 1,
+      "tags": [
+        "test-sets",
+        "synthetic-data"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w1-q7",
+      "type": "mcq",
+      "prompt": "Shankar and colleagues (2024) reported **criteria drift** in people building LLM evaluators. What is it?",
+      "options": [
+        {
+          "id": "a",
+          "text": "LLM judges slowly change their scoring over time as providers update models.",
+          "rationale": "Judge drift across model versions is real, but it isn't what the paper means by criteria drift."
+        },
+        {
+          "id": "b",
+          "text": "People need criteria to grade outputs, but grading outputs changes their criteria, so some criteria only emerge after seeing outputs.",
+          "rationale": "Yes. That's the finding, and the reason criteria can't be fully specified before reading outputs.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Test sets become less representative as user behavior changes.",
+          "rationale": "That's dataset staleness, a related but different problem."
+        },
+        {
+          "id": "d",
+          "text": "Annotators grade more harshly as they get tired.",
+          "rationale": "Fatigue effects exist, but the paper's point is about criteria evolving through exposure to outputs."
+        }
+      ],
+      "explanation": "Criteria drift is why error analysis comes before rubric writing, and why taxonomies and test sets are versioned living documents rather than fixed specs.",
+      "week": 1,
+      "tags": [
+        "error-analysis",
+        "research"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w1-q8",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "import itertools\n\ndims = {\"topic\": [\"refund\", \"security\", \"export\"],\n        \"plan\": [\"Starter\", \"Pro\"],\n        \"style\": [\"terse\", \"frustrated\"]}\nexclude = lambda t: t[\"topic\"] == \"export\" and t[\"style\"] == \"frustrated\"\nkept = [t for t in (dict(zip(dims, v)) for v in itertools.product(*dims.values()))\n        if not exclude(t)]\nprint(len(kept))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`12`",
+          "rationale": "That's the full cross product (3 x 2 x 2) before filtering."
+        },
+        {
+          "id": "b",
+          "text": "`11`",
+          "rationale": "The filter removes one tuple per plan, not one in total."
+        },
+        {
+          "id": "c",
+          "text": "`10`",
+          "rationale": "Yes. 12 tuples, minus the two export-and-frustrated tuples (one per plan).",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "`7`",
+          "rationale": "Only combinations matching both conditions are excluded."
+        }
+      ],
+      "explanation": "Cross products grow multiplicatively, so a few dimensions with a few values each quickly yield dozens of tuples. Filters remove combinations that don't make sense for your product; each excluded combination is removed once for every value of the other dimensions.",
+      "week": 1,
+      "tags": [
+        "synthetic-data",
+        "python"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w1-q9",
+      "type": "scenario",
+      "prompt": "After a model upgrade, one regression case fails: the bot now answers a pricing question with the current price ($29) while the case's expected answer says $24. A teammate wants to edit the case so the suite is green for today's release. What do you do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Edit the expected answer quietly; the suite should be green.",
+          "rationale": "The edit may be right, but doing it silently destroys the record of why a case changed and makes old scores incomparable."
+        },
+        {
+          "id": "b",
+          "text": "Have the domain expert confirm the current price, update the case with a recorded reason, bump the test-set version, and note that scores before and after aren't directly comparable.",
+          "rationale": "Yes. The case was stale, not the model wrong. Fix it openly and version the set.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Roll back the model upgrade because a regression case failed.",
+          "rationale": "Read the failure first. Here the case is wrong, not the system."
+        },
+        {
+          "id": "d",
+          "text": "Delete the case; pricing changes too often to test.",
+          "rationale": "Pricing errors were a real failure mode. Keep the case, and consider checking against the help center rather than a hard-coded number."
+        }
+      ],
+      "explanation": "A failing case is either a regression or a stale expectation, and only reading it tells you which. When the expectation is wrong, change it with an expert's confirmation, a reason, and a version bump. Never loosen a case silently to make a release.",
+      "week": 1,
+      "tags": [
+        "test-sets",
+        "versioning",
+        "regression"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w1-q10",
+      "type": "multi",
+      "prompt": "Which practices help keep test cases from leaking into what they test? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Draw few-shot examples for the system prompt from a separate development pool, never from the golden or regression sets.",
+          "rationale": "Yes. Separate pools are the core rule.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Run an automated overlap check between the prompt and the test inputs whenever either changes.",
+          "rationale": "Yes. Mechanical checks catch innocent leaks that reviews miss.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Keep a held-out test split you don't tune against, alongside the development split you iterate on.",
+          "rationale": "Yes. Repeated tuning on the dev split overfits to it; the untouched split is your honest final check.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Paste failing test cases into the prompt as examples, since that fixes them fastest.",
+          "rationale": "That is the most common leak. The score then measures recall of the answer key."
+        }
+      ],
+      "explanation": "Leakage is benchmark contamination you cause yourself. Keep development, test, and (for judges) training examples in separate pools, check overlap in CI, and save one split for final checks only.",
+      "week": 1,
+      "tags": [
+        "test-sets",
+        "leakage"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

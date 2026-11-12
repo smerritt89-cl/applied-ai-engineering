@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.435
+Errors: classify, then retry only what is transient.
+
+2
+00:00:03.715 --> 00:00:14.637
+When a request fails, the API returns an HTTP error with a JSON body naming an error type, and the Python SDK raises a typed exception for each one.
+
+3
+00:00:14.917 --> 00:00:16.432
+Sort them into two groups.
+
+4
+00:00:16.712 --> 00:00:36.744
+Do not retry client mistakes: 400 invalid_request_error (a bad field, a missing parameter, a prefill), 401 authentication_error (bad or revoked key), 403 permission_error, 404 not_found_error (often a mistyped model id), and 413 request_too_large.
+
+5
+00:00:37.024 --> 00:00:41.973
+Retrying these sends the same mistake again, so fail fast and surface the message.
+
+6
+00:00:42.253 --> 00:00:53.304
+Do retry transient failures: 429 rate_limit_error, 500 api_error, 529 overloaded_error, timeouts, and connection errors.
+
+7
+00:00:53.584 --> 00:01:08.965
+Rate limits are per organization, measured in requests, input tokens, and output tokens per minute, and enforced with a token bucket, so capacity refills continuously and short bursts can trip a limit even when your per-minute average is fine.
+
+8
+00:01:09.245 --> 00:01:17.096
+A 429 usually carries a retry-after header telling you how many seconds to wait; earlier retries will fail.
+
+9
+00:01:17.376 --> 00:01:29.920
+One important exception: when your organization hits its monthly spend cap, the API returns a 429 with no retry-after, and retrying cannot succeed until access resumes.
+
+10
+00:01:30.200 --> 00:01:33.763
+A retry loop without an attempt limit will spin on that forever.
+
+11
+00:01:34.043 --> 00:01:47.312
+The official SDK already retries connection errors, 408, 409, 429, and 5xx errors with exponential backoff, twice by default, honoring retry-after.
+
+12
+00:01:47.592 --> 00:01:51.517
+You configure it with max_retries on the client or per request.
+
+13
+00:01:51.797 --> 00:02:00.160
+Write your own wrapper only when you need different behavior, such as more attempts for a batch job, a fallback model, or logging of each attempt.
+
+14
+00:02:00.440 --> 00:02:06.712
+Catch the SDK’s typed exceptions, most specific first, rather than matching on error message strings.

@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.792
+Human approval, done properly.
+
+2
+00:00:02.072 --> 00:00:17.645
+The Model Context Protocol specification, which defines how agent applications connect to tool servers, says there should always be a human in the loop with the ability to deny tool invocations, and that applications should show which tools are exposed,
+
+3
+00:00:17.925 --> 00:00:22.491
+indicate clearly when tools run, and ask for confirmation on operations.
+
+4
+00:00:22.771 --> 00:00:31.347
+OWASP calls the absence of this “excessive autonomy”: an application that fails to independently verify and approve high-impact actions.
+
+5
+00:00:31.627 --> 00:00:35.723
+Four details separate a real approval gate from a decorative one.
+
+6
+00:00:36.003 --> 00:00:42.424
+First, deny by default: if the approval callback is missing, broken, or times out, nothing is written.
+
+7
+00:00:42.704 --> 00:00:51.557
+Second, validate before you ask: run your schema and semantic checks first, so a person is never asked to approve a call that would fail anyway.
+
+8
+00:00:51.837 --> 00:01:00.008
+Third, show the exact arguments, not the model’s summary of them; the summary is model output too, and could be wrong or manipulated.
+
+9
+00:01:00.288 --> 00:01:11.019
+Fourth, tell the model the outcome: a declined call returns an is_error result saying it was declined and should not be retried, so the loop moves on instead of asking again.
+
+10
+00:01:11.299 --> 00:01:14.029
+Approval has a cost, and that shapes the design.
+
+11
+00:01:14.309 --> 00:01:18.875
+If people are asked to approve every lookup, they will start clicking yes without reading.
+
+12
+00:01:19.155 --> 00:01:32.211
+Gate the writes, and batch them where you can: the Studio 1 project ends with a human reviewing the whole list of proposed action items at once, which is a single, meaningful approval instead of twenty trivial ones.
+
+13
+00:01:32.491 --> 00:01:42.880
+With the SDK tool runner, you place this gate inside the tool function or in the per-turn hook, because the runner otherwise executes tools as soon as the model asks.
+
+14
+00:01:43.160 --> 00:01:47.533
+With a manual loop, it sits in your dispatcher, as in the exercise below.

@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.389
+Least privilege and input validation.
+
+2
+00:00:02.669 --> 00:00:07.320
+Least privilege means each tool gets the narrowest access that does its job.
+
+3
+00:00:07.600 --> 00:00:23.195
+OWASP’s examples are concrete: a tool that only needs to read a database should not connect with an identity that can also update and delete, and a tool acting for one user should not use a generic high-privilege account that can see everyone’s files.
+
+4
+00:00:23.475 --> 00:00:31.603
+For the meeting-notes tool, create_task should hold a token that can create tasks in one project, not an admin key to your whole tracker.
+
+5
+00:00:31.883 --> 00:00:40.309
+Anthropic’s injection guidance makes the same point from the other side: limit access so that a successful attack can do minimal damage.
+
+6
+00:00:40.589 --> 00:00:42.531
+Input validation has two layers.
+
+7
+00:00:42.811 --> 00:00:44.219
+The first is the schema.
+
+8
+00:00:44.499 --> 00:00:54.931
+With strict: true, the API constrains generation so tool inputs match your JSON Schema: correct types, required fields present, enum values respected.
+
+9
+00:00:55.211 --> 00:01:00.032
+That removes a whole class of bugs, such as a string “2” where you needed the number 2.
+
+10
+00:01:00.312 --> 00:01:05.261
+The second layer is yours, because a schema cannot know what exists or what is allowed.
+
+11
+00:01:05.541 --> 00:01:07.184
+Is this email a teammate?
+
+12
+00:01:07.464 --> 00:01:10.429
+Is this due date in the future, and not three years out?
+
+13
+00:01:10.709 --> 00:01:13.248
+Is this project one this user can write to?
+
+14
+00:01:13.528 --> 00:01:19.181
+The MCP specification puts it bluntly: servers must validate all tool inputs.
+
+15
+00:01:19.461 --> 00:01:23.685
+Run both layers on every call, including calls you expect to approve.

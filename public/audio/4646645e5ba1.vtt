@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.880
+The context window: everything the model can see.
+
+2
+00:00:03.160 --> 00:00:14.808
+For each request, the model sees a single sequence of tokens: your system prompt, the conversation so far, any tool definitions and tool results, and the tokens it is generating.
+
+3
+00:00:15.088 --> 00:00:19.568
+That sequence is the context, and its maximum length is the context window.
+
+4
+00:00:19.848 --> 00:00:25.352
+Current frontier models offer windows from a few hundred thousand tokens up to a million or more.
+
+5
+00:00:25.632 --> 00:00:28.320
+Two consequences shape real applications.
+
+6
+00:00:28.600 --> 00:00:30.435
+First, the API is stateless.
+
+7
+00:00:30.715 --> 00:00:41.531
+The model doesn’t remember your last request; chat applications create the feeling of memory by resending the history every time, and you pay for those tokens on every turn.
+
+8
+00:00:41.811 --> 00:00:44.307
+Second, a big window is not free attention.
+
+9
+00:00:44.587 --> 00:01:00.160
+Longer inputs cost more and take longer, and research such as “Lost in the Middle” (Liu and colleagues, 2023) found that models used information at the start and end of long inputs more reliably than information buried in the middle.
+
+10
+00:01:00.440 --> 00:01:11.000
+Newer models have improved, but the engineering lesson holds: put the most important instructions and evidence where they are easy to find, and send only what the task needs.

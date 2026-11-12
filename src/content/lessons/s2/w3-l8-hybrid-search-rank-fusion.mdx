@@ -1,0 +1,288 @@
+---
+id: s2-w3-l8
+studio: s2
+week: 3
+order: 8
+title: Hybrid search and rank fusion
+summary: Combining keyword and vector results without letting one scale drown the other. Reciprocal rank fusion versus weighted score fusion and the normalization problem, query rewriting and expansion (including HyDE), and metadata filters done safely.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain why raw BM25 and cosine scores can't be added directly, and what min-max normalization fixes and breaks
+  - Implement reciprocal rank fusion and weighted score fusion, and predict how each orders a small example
+  - Choose between rank-based and score-based fusion for a task, and justify the choice with a measurement plan
+  - Apply query rewriting, multi-query expansion, and HyDE, and say what each costs and how to check it helped
+  - Place metadata and permission filters correctly so they can't silently drop or leak results
+sources:
+  - { id: cormack-2009-rrf, use: summarized }
+  - { id: elastic-rrf-docs, use: summarized, where: "rank_constant and rank_window_size" }
+  - { id: weaviate-hybrid-concepts, use: summarized, where: "Fusion strategies" }
+  - { id: anthropic-contextual-retrieval, use: summarized, where: "Combining embeddings and BM25 with rank fusion" }
+  - { id: gao-2022-hyde, use: summarized }
+  - { id: qdrant-filtering, use: summarized }
+  - { id: qdrant-filterable-hnsw, use: linked }
+  - { id: owasp-llm-top10, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      def rrf(rankings, k=60):
+          scores = {}
+          for ranking in rankings:
+              for rank, doc in enumerate(ranking, start=1):
+                  scores[doc] = scores.get(doc, 0) + 1 / (k + rank)
+          return sorted(scores, key=lambda d: -scores[d])
+
+      print(rrf([["x", "y"], ["y", "z"], ["y", "x"]]))
+    options:
+      - id: a
+        text: "`['y', 'x', 'z']`"
+        correct: true
+        rationale: y appears in all three lists (ranks 2, 1, 1), x in two (ranks 1, 2), z in one. Appearing in more lists dominates.
+      - id: b
+        text: "`['x', 'y', 'z']`"
+        rationale: x is first in one list, but y is first in two lists and second in the third.
+      - id: c
+        text: "`['x', 'z', 'y']`"
+        rationale: RRF sums contributions across lists; it doesn't take the order of the first list.
+    explanation: >-
+      With k = 60 every contribution is between about 1/61 and 1/(60 + list length), so the number of lists a
+      document appears in matters more than small rank differences. That's the robustness Cormack and colleagues
+      wanted: no single system's outlier ranking can dominate.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A teammate fuses BM25 and vector results with `0.5 * bm25 + 0.5 * cosine` using raw scores. Retrieval quality
+      looks identical to BM25 alone. What is the most likely cause, and fix?
+    options:
+      - id: a
+        text: The vector index is broken; rebuild it.
+        rationale: Possible, but there's a simpler explanation built into the formula. Check the scales first.
+      - id: b
+        text: BM25 scores are unbounded (often in the tens) while cosine scores here sit in a narrow band below 1, so BM25 dominates the sum. Normalize per query or switch to rank fusion, then measure both on labeled queries.
+        correct: true
+        rationale: Yes. Adding quantities on different scales gives a weight that has nothing to do with the 0.5 you wrote.
+      - id: c
+        text: Raise the vector weight to 0.99.
+        rationale: That might rebalance this query, but the right weight would change with query length and corpus statistics, because BM25's scale does.
+    explanation: >-
+      BM25 scores grow with the number and rarity of query terms; cosine similarity is bounded and, for many
+      embedding models, concentrated in a narrow range. Fusion needs comparable inputs: ranks (RRF) or scores mapped
+      to a common range per query.
+  - id: kc3
+    type: multi
+    prompt: Which statements about HyDE (Gao et al., 2022) are accurate? Select all that apply.
+    options:
+      - id: a
+        text: It asks a language model to write a hypothetical answer document, then embeds that document to search the real corpus.
+        correct: true
+      - id: b
+        text: The hypothetical document may contain false details; the paper relies on the search over real documents to ground the result.
+        correct: true
+      - id: c
+        text: It adds a language-model call to every query, so it costs latency and money at query time.
+        correct: true
+      - id: d
+        text: The generated document is shown to the user as the answer.
+        rationale: No. It is only a search key. Showing it would show unverified, possibly invented text.
+    explanation: >-
+      HyDE trades a generation call for a better search key when the query and the documents look different. Whether
+      that trade pays off on your corpus is an empirical question: run it against your labeled set and compare recall
+      and latency with the plain query.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Two retrievers, two lists, one answer
+
+Last lesson ended with a finding that keeps recurring in the literature and in practice: keyword search and embedding search fail on different queries. BM25 nails "error TS-999" and misses "how do I get my money back". Embeddings do the reverse. **Hybrid search** runs both and combines the results.
+
+The architecture is simple. Each retriever returns its own top N candidates for the query, typically a few dozen to a hundred. A **fusion** step merges the lists into one ranking. The top k of that ranking goes on to a reranker (lesson 9) or straight into the prompt. Anthropic's contextual retrieval post describes exactly this pipeline: retrieve by embeddings, retrieve by BM25, then combine and deduplicate using rank fusion. In their tests across several knowledge domains, embeddings plus BM25 retrieved better than embeddings alone.
+
+The interesting question is the fusion step. There are two families. **Score fusion** combines the retrievers' scores, usually a weighted sum. **Rank fusion** ignores scores and combines positions. Each has a real argument behind it, and the choice matters more than it looks.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of a hybrid retrieval pipeline: the user query goes through optional query rewriting, then in parallel to a BM25 retriever and a vector retriever, both restricted by metadata and permission filters; each returns its top N candidates; a fusion step (RRF or normalized weighted scores) merges them; the top k fused results go to an optional reranker and then to the prompt."
+  caption="Hybrid retrieval. Filters apply inside both retrievers; fusion only sees what each retriever returned."
+  chart={`flowchart LR
+  Q["User query"] --> RW["Optional rewrite or expansion"]
+  RW --> B["BM25 retriever, top N"]
+  RW --> V["Vector retriever, top N"]
+  F["Metadata and permission filters"] -.-> B
+  F -.-> V
+  B --> FU["Fusion: RRF or normalized weighted sum"]
+  V --> FU
+  FU --> RR["Optional reranker"]
+  RR --> P["Top k into the prompt"]`}
+/>
+
+<Listen>
+## Why you can't just add the scores
+
+The tempting first version is `alpha * vector_score + (1 - alpha) * bm25_score`. With raw scores this is almost always wrong, because the two numbers live on different scales.
+
+A BM25 score is a sum of positive terms, one per matching query word, each bounded by roughly (k1 + 1) times that word's idf. So it grows with the length of the query and the rarity of its words, and it changes when the corpus changes, because idf does. Scores of 5 or 25 are both ordinary. A cosine similarity is bounded between minus 1 and 1, and for many embedding models the scores of plausible candidates sit in a narrow band. Add a number that varies by 10 to a number that varies by 0.05, and the first decides the ranking. Your alpha of 0.5 is not the weight you think it is.
+
+The standard repair is to **normalize per query**, most often with min-max scaling: within each retriever's result list, map the best score to 1 and the worst to 0. Weaviate's `relativeScoreFusion`, its default since version 1.24, does this and then takes a weighted sum. Its documentation makes a fair case for score fusion: scores carry information that ranks throw away. If one keyword result is far ahead of the rest, a score-based method can keep that gap; a rank-based method sees only "first".
+
+Min-max has its own failure modes, and you should know them before trusting it. The best result in each list always becomes 1, even when every result is poor, so a retriever that found nothing relevant still contributes full-strength votes. The worst result always becomes 0, however good it was. A single outlier squeezes everyone else toward 0. And with one result, or tied results, the formula divides by zero, so you need a rule for that case.
+</Listen>
+
+<Listen>
+## Reciprocal rank fusion
+
+Cormack, Clarke, and Buettcher introduced **reciprocal rank fusion** at SIGIR 2009, almost as an afterthought: they wanted a simple unsupervised baseline while studying learning-to-rank methods, and found the baseline hard to beat. The formula: for each document d, sum over the input rankings r of 1 / (k + r(d)), where r(d) is d's position (1 for the top) and a document absent from a list contributes nothing from that list. Sort by the sum.
+
+The constant k does real work. Without it (k = 0), being first in one list is worth 1 and being second is worth 0.5, so one system's top pick dominates. With k = 60, first is worth 1/61 and second 1/62: nearly the same. The authors say k "mitigates the impact of high rankings by outlier systems". They fixed k = 60 in a pilot study, reported it as near-optimal but not critical, and never changed it. Across their TREC experiments, RRF beat Condorcet Fuse and CombMNZ (two established fusion methods) and usually beat the best individual system, by 4 to 5 percent on average. Elasticsearch's RRF retriever uses the same formula, with `rank_constant` defaulting to 60 and a `rank_window_size` that sets how many results each retriever contributes.
+
+What RRF buys you is that it needs no calibration. Ranks are comparable across any retrievers, so there is nothing to normalize and nothing to tune at first. What it costs you is the information in the scores: a runaway winner and a near tie look the same. It also weighs every retriever equally unless your engine offers per-retriever weights, and documents found by only one retriever are at a disadvantage, which is usually what you want (agreement is evidence) but not always (an exact code match found only by BM25 may be the single right answer).
+</Listen>
+
+<Predict
+  title="Fuse two lists by hand"
+  code={`def rrf(rankings, k=60):
+    scores = {}
+    for ranking in rankings:
+        for rank, doc in enumerate(ranking, start=1):
+            scores[doc] = scores.get(doc, 0) + 1 / (k + rank)
+    return sorted(scores, key=lambda d: -scores[d])
+
+bm25   = ["a", "b", "c"]
+vector = ["c", "a", "d"]
+print(rrf([bm25, vector]))`}
+  options={["['a', 'c', 'b', 'd']", "['a', 'b', 'c', 'd']", "['c', 'a', 'b', 'd']", "['a', 'c', 'd', 'b']"]}
+  answer={0}
+>
+a scores 1/61 + 1/62, c scores 1/63 + 1/61, so a edges out c (first plus second beats first plus third). b and d each appear once, at rank 2, so they tie on score, and the stable sort keeps b, which was seen first, ahead of d. In real code, break ties explicitly (by doc id, or by the better single-list rank) so results don't depend on insertion order.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s2-w3-fusion"
+  title="Rank fusion versus score fusion"
+  starter={`def rrf(rankings, k=60):
+    """rankings: list of lists of doc ids, best first.
+    Return (ordered_doc_ids, scores) where scores[d] = sum of 1 / (k + rank), rank starting at 1.
+    Break ties by doc id so the output is deterministic."""
+    # TODO
+    pass
+
+def min_max(scores):
+    """Map a {doc: score} dict to [0, 1]: best -> 1, worst -> 0.
+    If all scores are equal, map every doc to 1.0."""
+    # TODO
+    pass
+
+def weighted_fusion(score_dicts, weights, normalize=True):
+    """Weighted sum of per-retriever scores. A doc missing from a retriever gets 0 from it.
+    If normalize is True, apply min_max to each retriever's scores first.
+    Return doc ids sorted best first, ties broken by doc id."""
+    # TODO
+    pass
+
+# Query: "can I get a refund after error TS-999?"
+BM25 = {"ts-999-fix": 14.2, "refund-policy": 7.9, "billing-faq": 6.1, "invoice-howto": 5.3}
+VECTOR = {"refund-policy": 0.83, "billing-faq": 0.81, "chargebacks": 0.79, "ts-999-fix": 0.52}
+
+bm25_ranking = sorted(BM25, key=BM25.get, reverse=True)
+vector_ranking = sorted(VECTOR, key=VECTOR.get, reverse=True)
+
+print("RRF:       ", rrf([bm25_ranking, vector_ranking])[0] if rrf([bm25_ranking, vector_ranking]) else None)
+print("raw sum:   ", weighted_fusion([BM25, VECTOR], [0.5, 0.5], normalize=False))
+print("min-max:   ", weighted_fusion([BM25, VECTOR], [0.5, 0.5]))
+`}
+  tests={`order, scores = rrf([["a", "b", "c"], ["c", "a", "d"]])
+assert order == ["a", "c", "b", "d"], "a and c appear twice; b and d tie and break by id"
+assert abs(scores["a"] - (1/61 + 1/62)) < 1e-12, "ranks start at 1 and k defaults to 60"
+order0, _ = rrf([["a", "b"], ["b", "c"]], k=0)
+assert order0[0] == "b", "with k = 0, b (2nd + 1st = 1.5) beats a (1st only = 1.0)"
+assert min_max({"x": 2.0, "y": 4.0, "z": 3.0}) == {"x": 0.0, "y": 1.0, "z": 0.5}, "min-max scaling"
+assert min_max({"x": 0.7}) == {"x": 1.0}, "a single result (or all ties) must not divide by zero"
+raw = weighted_fusion([BM25, VECTOR], [0.5, 0.5], normalize=False)
+assert raw[:3] == ["ts-999-fix", "refund-policy", "billing-faq"], "raw scores: BM25's scale decides the ranking"
+mm = weighted_fusion([BM25, VECTOR], [0.5, 0.5])
+assert mm[:3] == ["refund-policy", "billing-faq", "ts-999-fix"], "after min-max, ts-999-fix gets 0 from the vector side"
+assert set(mm) == set(BM25) | set(VECTOR), "fusion returns the union of both candidate sets"
+rr, _ = rrf([bm25_ranking, vector_ranking])
+assert rr[:2] == ["refund-policy", "ts-999-fix"], "RRF rewards appearing high in both lists"`}
+  solution={`def rrf(rankings, k=60):
+    scores = {}
+    for ranking in rankings:
+        for rank, doc in enumerate(ranking, start=1):
+            scores[doc] = scores.get(doc, 0.0) + 1.0 / (k + rank)
+    order = sorted(scores, key=lambda d: (-scores[d], d))
+    return order, scores
+
+def min_max(scores):
+    lo, hi = min(scores.values()), max(scores.values())
+    if hi == lo:
+        return {d: 1.0 for d in scores}
+    return {d: (s - lo) / (hi - lo) for d, s in scores.items()}
+
+def weighted_fusion(score_dicts, weights, normalize=True):
+    total = {}
+    for scores, w in zip(score_dicts, weights):
+        if normalize:
+            scores = min_max(scores)
+        for d, s in scores.items():
+            total[d] = total.get(d, 0.0) + w * s
+    return sorted(total, key=lambda d: (-total[d], d))`}
+>
+Implement the three functions and press **Check my answer**. Then compare the three printed rankings. The raw sum is BM25 in disguise. Min-max fixes the scale but gives ts-999-fix a vector contribution of exactly 0, because it was the vector retriever's last result, even though 0.52 might be a respectable similarity. RRF lands between the two. None of these is "correct" in general; which is best for your system is a question for the labeled set you'll build in lesson 9.
+</PyRunner>
+
+<Callout type="pitfall" title="Tuning fusion on the queries you happen to remember">
+It is easy to tweak alpha or k until the three queries in your head look right, and make the other three hundred worse. Fusion parameters are hyperparameters. Change them only against a labeled query set, report recall and MRR before and after, and keep a slice of queries you didn't look at while tuning, for the same reason you'd hold out a test set in any fitting problem.
+</Callout>
+
+<Listen>
+## Fixing the query instead of the ranking
+
+Sometimes the problem isn't how you combine results but what you searched for. Three techniques rewrite or expand the query before retrieval.
+
+**Rewriting conversational queries.** In a chat, the user's third message might be "what about for contractors?" On its own, that retrieves nothing useful. A model call that rewrites it into a standalone query, using the conversation ("What is the expense reimbursement policy for contractors?"), is a common, cheap fix in chat-based RAG. Check it the way you check any model output: log the rewritten query next to the original so you can see when the rewrite drifts, and make sure it never invents constraints the user didn't state.
+
+**Multi-query expansion.** Generate a few paraphrases of the query, retrieve for each, and fuse the lists with RRF. It raises recall for vague questions, at the cost of several retrievals per query. For keyword search specifically, a hand-maintained synonym list for your domain ("PTO", "vacation", "annual leave") is cheaper and fully predictable.
+
+**HyDE.** Gao, Ma, Lin, and Callan (2022) proposed Hypothetical Document Embeddings. A query and the passage that answers it often look quite different: a short question versus a paragraph of explanation. HyDE asks an instruction-following model to write a hypothetical document that would answer the query, embeds that document, and searches the real corpus with its embedding. The paper is candid that the generated document may contain false details; the claim is that the search over real documents grounds the result, because the embedding captures relevance patterns rather than specific facts. In their experiments HyDE beat the unsupervised dense retriever Contriever and was competitive with fine-tuned retrievers, across web search, QA, and fact verification tasks and several languages.
+
+Read the setting carefully: HyDE was shown for **zero-shot** dense retrieval, with no relevance labels. With a strong modern embedding model or a hybrid pipeline, the gain may be smaller, and every query now pays for a generation call. The hypothetical document is a search key, never something to show a user or cite. As always, measure it on your queries before keeping it.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the steps of a HyDE query, from the user's question to the passages you pass on"
+  items={[
+    "Receive the user's question",
+    "Ask a model to write a short passage that would answer it",
+    "Embed the generated passage (not the question)",
+    "Search the real corpus with that embedding",
+    "Discard the generated passage and pass on the retrieved real passages",
+  ]}
+  explanation="The generated passage exists only to produce a better embedding. Everything downstream (reranking, the answer, citations) uses retrieved real text, which is what keeps invented details out of the answer."
+/>
+
+<Listen>
+## Metadata filters, and the order of operations
+
+Real queries carry constraints that no embedding can express: only documents from this product line, only policies effective this year, only content this user is allowed to see. Qdrant's documentation states the point plainly: filters exist because you can't put every property of an object into a vector. Vector databases and search engines let you attach structured fields (often called payload or metadata) and filter on them, and they recommend indexing the fields you filter on.
+
+Where the filter runs matters. **Post-filtering** retrieves the top k by similarity and then drops the ones that fail the filter. If the filter is selective, you may be left with two results out of ten, or none, even though plenty of matching documents exist further down. **Filtering inside the search** (restricting the candidates as the index is searched) avoids that, but approximate nearest neighbor indexes can lose recall when a filter removes most of the graph. Qdrant's 2019 engineering article on filterable HNSW describes this failure and its fixes; modern engines handle it in various ways, so read your engine's docs on filtered search and test recall with your most selective filters.
+
+In hybrid search, apply the same filters to **both** retrievers before fusion. If only the vector side is filtered, the BM25 side can bring back documents the filter was meant to exclude, and fusion will happily rank them.
+
+That leads to the most important rule in this section: **permissions are filters, enforced in code.** Never retrieve everything and ask the model to ignore documents the user may not see. The model reads whatever is in its context, and anything in its context can end up in its answer. OWASP's Top 10 for LLM applications lists sensitive information disclosure among its main risks, and retrieval without access control is a direct path to it. Test this explicitly: a user without access runs a query whose best answer is in a restricted document, and the test asserts that document never appears in the retrieved set.
+</Listen>
+
+<GoDeeper title="Why 1 / (k + r) and not something else?">
+Cormack and colleagues chose a reciprocal because high ranks should matter more than low ones, but low ranks shouldn't vanish entirely, as they would with an exponential decay. You can view RRF as a smoothed Borda count. Borda gives each position a linear number of points; RRF gives 1 / (k + r), which for large k is approximately 1/k minus r/k², nearly linear in r over the top few dozen ranks. As k shrinks, the function becomes steeply convex and rewards top positions much more. That interpolation is why the paper found k "not critical": across a broad middle range, the induced ordering barely changes. A useful exercise is to fuse the lists in the PyRunner above with k from 1 to 1000 and see where the order flips.
+</GoDeeper>
+
+<Listen>
+## How a working team would decide
+
+Start with RRF, because it needs no calibration and is a strong default with a peer-reviewed track record. Apply filters, including permissions, identically in both retrievers. Build the labeled query set from lesson 9, and measure BM25 alone, vectors alone, and the fusion. Then try normalized score fusion and one query technique at a time (rewriting for chat, HyDE or multi-query for vague questions), keeping each only if it beats the baseline on held-out queries by more than the noise between runs. Write the result down with the numbers; the next person to touch the pipeline will want to know why it is built the way it is. This week's lab is exactly that experiment, run offline.
+</Listen>

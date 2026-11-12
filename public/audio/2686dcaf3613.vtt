@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.752
+Validate, then report errors someone can act on.
+
+2
+00:00:03.032 --> 00:00:07.747
+Validation is the check that turns “it looked fine” into “it matched the contract.
+
+3
+00:00:08.027 --> 00:00:09.819
+” With Pydantic, ActionItem.
+
+4
+00:00:10.099 --> 00:00:16.648
+model_validate_json(text) either returns a typed object or raises a ValidationError.
+
+5
+00:00:16.928 --> 00:00:34.421
+That error is structured: errors() returns a list with one entry per problem, and each entry has a type (a machine-readable code such as missing or literal_error ), a loc (the path to the field, such as ("priority",), or a nested path like ("items", 2, "owner") ), and a msg for humans.
+
+6
+00:00:34.701 --> 00:00:41.507
+Invalid JSON itself is reported too, with an empty location, because the problem is the whole document.
+
+7
+00:00:41.787 --> 00:00:48.379
+Pydantic reports every problem in one pass rather than stopping at the first, which matters for two reasons.
+
+8
+00:00:48.659 --> 00:00:54.248
+You get a complete picture for logs and dashboards (“12 percent of failures are bad priorities”).
+
+9
+00:00:54.528 --> 00:00:59.413
+And you can hand the full list back to the model in a retry, which you’ll build in this week’s lab.
+
+10
+00:00:59.693 --> 00:01:07.416
+A message like “priority: Input should be ‘high’, ‘medium’ or ‘low’” is something a model can fix; “parse failed” is not.
+
+11
+00:01:07.696 --> 00:01:14.971
+Decide up front what happens on failure: retry once with the errors, drop the item and log it, or send it to a person.
+
+12
+00:01:15.251 --> 00:01:20.115
+What you must not do is catch the exception and carry on with a half-parsed dictionary.
+
+13
+00:01:20.395 --> 00:01:22.549
+That’s how a pipeline goes quietly wrong.

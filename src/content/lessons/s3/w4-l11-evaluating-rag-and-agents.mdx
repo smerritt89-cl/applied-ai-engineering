@@ -1,0 +1,331 @@
+---
+id: s3-w4-l11
+studio: s3
+week: 4
+order: 11
+title: Evaluating RAG and agents
+summary: Score retrieval and generation separately, know what RAGAS-style metrics measure and where they mislead, and evaluate agents by end state, trajectory, tool-call correctness, cost, and reliability across trials. Public benchmarks such as SWE-bench and tau-bench give context, not answers about your system.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Separate retrieval metrics (recall@k, precision@k, MRR) from answer metrics (faithfulness, answer relevance) and diagnose a RAG failure to one side or the other
+  - Explain how RAGAS defines faithfulness, response relevancy, and context precision and recall, and name three limits of automated RAG metrics
+  - Choose between end-state and trajectory evaluation for an agent, and check tool calls by name, arguments, result, and resulting state
+  - Compute pass^k from repeated trials and explain why it matters more than pass@1 for customer-facing agents
+  - Use public agent benchmarks as context for model selection without treating them as evidence about your own system
+sources:
+  - { id: es-2023-ragas, use: summarized }
+  - { id: ragas-metrics-docs, use: summarized, where: "Faithfulness, response relevancy, context precision, context recall" }
+  - { id: hamel-evals-faq, use: summarized, where: "RAG evaluation; agent evaluation and the transition failure matrix" }
+  - { id: barnett-2024-rag-failures, use: summarized }
+  - { id: saad-falcon-2023-ares, use: summarized }
+  - { id: liu-2023-verifiability, use: summarized }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Outcomes vs transcripts, pass@k vs pass^k, grading bugs" }
+  - { id: yao-2024-taubench, use: summarized }
+  - { id: barres-2025-tau2bench, use: summarized }
+  - { id: jimenez-2023-swebench, use: summarized }
+  - { id: swebench-verified, use: summarized }
+  - { id: deng-2023-contamination, use: linked }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 6, RAG and Agents" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your RAG assistant's faithfulness is 0.95, but users say many answers are wrong. Recall@5 on your labeled
+      retrieval set is 0.60. What is the most likely story?
+    options:
+      - id: a
+        text: The faithfulness judge is broken, because faithful answers can't be wrong.
+        rationale: Faithful answers can be wrong when the retrieved passages are the wrong ones.
+      - id: b
+        text: The generator faithfully summarizes whatever comes back, and 40% of the time the passages that answer the question aren't retrieved. Fix retrieval first.
+        correct: true
+        rationale: Faithfulness measures the answer against the retrieved context, not against the truth. Low recall means the context is often the wrong evidence.
+      - id: c
+        text: The model needs a bigger context window.
+        rationale: The window isn't the bottleneck; the relevant passages aren't being retrieved at all.
+    explanation: >-
+      Faithfulness is A given C: is the answer supported by the context? It says nothing about whether C contains
+      the answer. That's why retrieval gets its own metrics, and why you diagnose the retrieval half first.
+  - id: kc2
+    type: predict-output
+    prompt: Using tau-bench's estimator, what does this print?
+    code: |
+      from math import comb
+      def pass_hat_k(n, c, k):
+          return comb(c, k) / comb(n, k)
+      tasks = [(4, 4), (4, 2)]  # (trials, successes) per task
+      print(sum(pass_hat_k(n, c, 2) for n, c in tasks) / len(tasks))
+    options:
+      - id: a
+        text: "`0.75`"
+        rationale: That's the plain success rate (6 of 8 trials). pass^2 asks for two successes in a row.
+      - id: b
+        text: "`0.5833333333333334`"
+        correct: true
+        rationale: Task 1 gives 6/6 = 1.0; task 2 gives C(2,2)/C(4,2) = 1/6. The mean is 7/12, about 0.583.
+      - id: c
+        text: "`0.5`"
+        rationale: That would be averaging 1.0 and 0.0; task 2 still has some chance of two straight successes.
+    explanation: >-
+      pass^k is the chance that k independent tries all succeed. An agent that is right half the time on a task
+      is right twice in a row only about one time in six (estimated without replacement from the 4 trials). Customer
+      agents face every user, so consistency is the property that matters.
+  - id: kc3
+    type: mcq
+    prompt: Why does Anthropic's agent-evals guide recommend grading outcomes rather than a fixed sequence of tool calls, in most cases?
+    options:
+      - id: a
+        text: Tool calls are not logged by most agent frameworks.
+        rationale: They are logged; you need the transcript to diagnose failures.
+      - id: b
+        text: Agents often find valid approaches the designer didn't anticipate, so a rigid expected path fails correct runs.
+        correct: true
+        rationale: Yes. Check the end state, and add path checks only for steps that must or must not happen.
+      - id: c
+        text: Outcome checks are always cheaper to compute.
+        rationale: Sometimes, but cost isn't the reason; brittleness is.
+    explanation: >-
+      Grade what the agent achieved, and keep targeted trajectory checks for rules that matter regardless of outcome:
+      never call a write tool without confirmation, always verify identity before a refund, stay under a step budget.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Two systems in one: why RAG evaluation splits in half
+
+A RAG system is a retriever and a generator glued together. The retriever picks some passages; the generator writes an answer from them. When the answer is wrong, the cause lives in one of two places: the right passages never came back, or they came back and the model misused them. A single end-to-end score can't tell you which, and the fixes are completely different. Better chunking, hybrid search, or a reranker fix the first; prompt changes, citation requirements, or a stronger model fix the second.
+
+So the standard advice, stated plainly in Husain and Shankar's evals FAQ, is to evaluate retrieval and generation separately and to debug retrieval first. Barnett and colleagues' experience report on engineering RAG systems ("Seven Failure Points," 2024) catalogs failures on both sides, from content missing in the corpus and relevant documents ranked too low, to answers that extract the wrong detail or ignore the requested format. Their broader lesson for a team is sobering: much of a RAG system's validation is only possible once it runs on real questions, so evaluation is ongoing, not a launch gate you pass once.
+
+A useful way to hold the whole picture is three relationships between the question Q, the retrieved context C, and the answer A, which the FAQ attributes to Jason Liu. **C given Q**: did retrieval find relevant context? **A given C**: is the answer supported by that context (faithfulness)? **A given Q**: does the answer address the question (answer relevance)? Add a fourth when you have reference answers: **A against the truth**, which is correctness. The lab and project measure all four, because each catches failures the others miss.
+</Listen>
+
+<Mermaid
+  alt="Diagram of RAG evaluation. A question goes to the retriever, which returns ranked context; the generator turns question and context into an answer. Retrieval metrics (recall at k, precision at k, MRR) compare the retrieved context to labeled relevant chunks. Faithfulness compares the answer to the retrieved context. Answer relevance compares the answer to the question. Correctness compares the answer to a reference answer."
+  caption="Each metric checks one relationship. A failure shows up in a specific place, which tells you which half to fix."
+  chart={`flowchart LR
+  Q["Question"] --> R["Retriever"]
+  R --> C["Retrieved context (ranked)"]
+  C --> G["Generator"]
+  Q --> G
+  G --> A["Answer"]
+  L["Labeled relevant chunks"] -.->|"recall@k, precision@k, MRR"| C
+  C -.->|"faithfulness: A given C"| A
+  Q -.->|"answer relevance: A given Q"| A
+  REF["Reference answer"] -.->|"correctness"| A`}
+/>
+
+<Listen>
+## Retrieval metrics: the half you can measure exactly
+
+Retrieval metrics need one label per question: which chunks contain the answer. With that, Studio 2's metrics apply directly. **Recall@k** is the fraction of relevant chunks that appear in the top k. **Precision@k** is the fraction of the top k that are relevant. **MRR** (mean reciprocal rank) rewards putting the first relevant chunk near the top. All three are deterministic code: no model, no judge, no drift. That is a strong reason to lean on them.
+
+For RAG, recall usually matters most. A generator can often ignore an irrelevant passage, but it cannot use a passage that was never retrieved. Precision still matters for cost, latency, and distraction, since every extra chunk is tokens you pay for and noise the model must ignore. Report both at the k your system actually uses, plus a smaller k if you are considering a reranker.
+
+Where do labels come from? Two sources, and you want both. **Real questions** from logs or users, labeled by someone who knows the corpus. **Synthetic questions**: the FAQ suggests taking a document, extracting its key facts, and generating questions those facts answer, which gives you a label for free (the source chunk). Synthetic questions are cheap and plentiful but tend to reuse the document's wording, which flatters keyword search and makes retrieval look easier than it is. Check a sample by hand, and report real and synthetic results separately.
+
+Two traps. A question whose answer is spread across several chunks needs all of them labeled, or recall will look worse than it is. And if your chunking changes, chunk ids change, so labels keyed to ids break. Key labels to stable document positions or to the answer text where you can.
+</Listen>
+
+<Listen>
+## Answer metrics: what RAGAS measures
+
+The Ragas paper (Es and colleagues, 2023) proposed a suite of **reference-free** metrics, meaning they score a RAG system without human-written ground-truth answers, using an LLM to do the judging. The Ragas documentation defines the metrics most teams now use.
+
+**Faithfulness**: break the answer into claims, check each claim against the retrieved context, and divide supported claims by total claims. An answer with two claims, one unsupported, scores 0.5. No reference needed. This is the metric you implement in the lab.
+
+**Response relevancy** (also called answer relevance): an LLM generates a few questions the answer would be a good response to, and the score is the average embedding similarity between those questions and the original. The docs are explicit that it measures whether the answer addresses the question's intent, not whether it is factually right. An on-topic, confidently wrong answer can score well.
+
+**Context precision**: a rank-weighted precision over the retrieved chunks, where the judge decides which chunks are relevant (against a reference answer, or in a reference-free variant, against the generated response). **Context recall**: break a reference answer into claims and check how many the retrieved context supports. The docs note that context recall always needs a reference. There are also non-LLM variants that compare retrieved ids to labeled ids, which is the deterministic recall you already have.
+
+Notice what that means: the "reference-free" convenience applies to faithfulness and relevancy, and both measure consistency, not truth. To measure correctness and retrieval completeness you need references, which means humans writing or approving them.
+</Listen>
+
+<Predict
+  title="Does response relevancy catch a wrong answer?"
+  code={`question = "How many weeks of parental leave do non-birthing parents get?"
+retrieved = ["Birthing parents receive 16 weeks of paid parental leave; non-birthing parents receive 8 weeks."]
+answer = "Non-birthing parents receive 16 weeks of paid parental leave."
+
+# Which score is LOW for this answer?
+# (A) faithfulness against retrieved   (B) response relevancy to the question`}
+  options={["Only (A)", "Only (B)", "Both", "Neither"]}
+  answer={0}
+>
+The answer is squarely on topic, so questions generated from it ("How much parental leave do non-birthing parents get?") are very similar to the original: response relevancy is high. Faithfulness catches it, because "16 weeks for non-birthing parents" is not supported by the retrieved passage. If the retriever had returned an outdated policy that said 16 weeks, faithfulness would pass too, and only a correctness check against a reference would catch it.
+</Predict>
+
+<Listen>
+## The limits of automated RAG metrics
+
+RAGAS-style metrics are useful, and they are LLM judges. Everything week 2 taught about judges applies. Four limits matter most in practice.
+
+**They need calibration on your data.** A faithfulness judge has a true positive rate and a true negative rate like any other, and lenient judges are common: they accept claims that sound like the passage but add a condition or a promise. The lab's recorded judge catches only half of the unsupported claims, which inflates faithfulness noticeably. Measure your judge against an expert's labels before you trust its number, exactly as you did for other judges. ARES (Saad-Falcon and colleagues, 2023) builds this into the method: it uses a few hundred human-annotated examples to correct its automated judges' estimates, with confidence intervals.
+
+**Claim splitting is a design choice.** How you break an answer into claims changes the score. Split too coarsely and one unsupported clause hides inside a supported sentence; split too finely and trivial fragments pad the denominator. Fix the splitter, version it, and don't compare scores across splitters.
+
+**Scores are not portable.** A faithfulness of 0.87 from one judge model, prompt, and library version is not comparable to 0.87 from another. Treat a judge change like a ruler change: rescore the baseline with the new judge before you compare.
+
+**Consistency is not truth.** Faithfulness and relevancy can both be high while the answer is wrong, because the context was wrong or stale. Citations have the same gap: in an audit of generative search engines, Liu, Zhang, and Liang (2023) found only about half of generated sentences were fully supported by their citations, and about a quarter of citations didn't support their sentence. Check citation support explicitly if your product shows citations, and keep a reference-answer correctness check on a core set.
+</Listen>
+
+<Callout type="pitfall" title="Adopting an off-the-shelf metric suite as your definition of quality">
+It is easy to install an eval library, run its default RAG metrics, and put the averages on a dashboard. You then optimize numbers whose judges you never checked, on questions you didn't choose, measuring properties (consistency, topicality) that may not be what your users care about. Start from your error analysis: which failures matter? Then pick or write the metric for each, and calibrate it. A library is a convenience for computing metrics, not a substitute for deciding which ones matter.
+</Callout>
+
+<Listen>
+## Agents: end state versus trajectory
+
+An agent takes many steps: it reads, calls tools, changes things, and talks to the user. You can grade two things. The **end state** (outcome) is what the world looks like afterward: is there a reservation in the database, did the tests pass, was the ticket closed with the right code? The **trajectory** (transcript or trace) is the path: which tools it called, in what order, with what arguments, and what it said along the way.
+
+Anthropic's guide to agent evals recommends grading outcomes in most cases. An outcome check is closer to what users care about, and checking for a rigid sequence of tool calls is brittle, because agents often find valid approaches the designer didn't anticipate. Its example: a booking agent's outcome is whether the reservation actually exists, not whether the agent said it booked one. tau-bench (Yao and colleagues, 2024) grades this way: it compares the final database to an annotated goal state, and checks that the agent told the user the required information.
+
+But the end state is not always enough, and tau-bench's authors say so. A correct final database is necessary but not sufficient: an agent might process a return without the user's explicit confirmation, which violates policy even though the database looks right. That is the job of **trajectory checks**: targeted rules about the path that matter regardless of outcome. Never call a write tool before confirmation. Always verify identity before touching an account. Don't read another customer's records. Stay within a step and cost budget.
+
+So the practical design is both. Grade the end state for success. Add a small number of trajectory assertions for policy and safety. Use the full transcript for diagnosis: when a task fails, read it, because, as the guide puts it, you need to know whether the agent or the eval is at fault. The guide reports a case where fixing grading bugs on a public benchmark moved a model's score from 42% to 95%, which is what an unread eval can hide.
+</Listen>
+
+<Listen>
+## Tool calls, steps, cost, and reliability across trials
+
+Within a trajectory, check tool calls as four separate things, as the evals FAQ recommends: the **name** (right tool), the **arguments** (right values, which you can often check with code), the **result** (did the call succeed, and did the agent handle an error), and the **resulting state** (did it change what it should, and nothing else). Separate checks tell you where a failure starts. The FAQ's **transition failure matrix** turns this into a diagnostic: rows are the last step that succeeded, columns are the step where things first went wrong, and the cell counts show where failures cluster. Early-stage failures cascade, so the hottest early cell is usually the best place to start.
+
+Track **cost and steps per task** alongside success. Two agents with the same success rate are not equivalent if one takes 40 tool calls and three times the tokens. Report median and a high percentile, because agent costs have long tails: a few runaway loops can dominate the bill. A step budget that ends the run is also a safety control.
+
+Then **reliability**. Agents are non-deterministic, so one trial per task overstates what users experience. Run several trials per task. **pass@k** is the chance at least one of k tries succeeds, which suits tools where a person can pick the best attempt. **pass^k** (read "pass hat k") is the chance that all k tries succeed, which suits customer-facing agents, because every user is a new try. tau-bench introduced pass^k and estimates it per task from n trials with c successes as the number of ways to choose k successes divided by the number of ways to choose k trials, C(c, k) over C(n, k), averaged over tasks. Anthropic's guide gives the intuition: an agent that succeeds 75% of the time succeeds three times in a row only about 42% of the time.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s3-w4-agent-grader"
+  title="Grade agent runs: end state, policy, and pass^k"
+  starter={`from math import comb
+
+WRITE_TOOLS = {"issue_refund", "cancel_order"}
+
+def end_state_ok(final_db, goal_db):
+    """True if every key in goal_db has the same value in final_db (extra keys are fine)."""
+    # TODO
+    return False
+
+def policy_violations(trajectory):
+    """trajectory: list of dicts {"tool": name, "args": {...}} in call order, plus
+    {"tool": "user_confirmed"} entries when the user explicitly confirmed.
+    Return a list of strings, one per violation:
+      "write before confirmation: <tool>"   a WRITE_TOOLS call with no earlier user_confirmed
+      "no identity check: <tool>"           a WRITE_TOOLS call with no earlier verify_identity call
+    Check both rules for every write call, in order."""
+    # TODO
+    return []
+
+def grade_run(run, goal_db, max_steps=12):
+    """A run passes only if the end state is right, there are no policy violations,
+    and the number of tool calls (excluding user_confirmed) is at most max_steps."""
+    # TODO
+    return False
+
+def pass_hat_k(results_by_task, k):
+    """results_by_task: dict task_id -> list of booleans (one per trial).
+    Return the mean over tasks of C(successes, k) / C(trials, k)."""
+    # TODO
+    return 0.0
+
+run = {
+    "final_db": {"order_17": "refunded", "order_18": "shipped"},
+    "trajectory": [
+        {"tool": "lookup_order", "args": {"id": "order_17"}},
+        {"tool": "verify_identity", "args": {"email": "kim@example.com"}},
+        {"tool": "user_confirmed"},
+        {"tool": "issue_refund", "args": {"id": "order_17"}},
+    ],
+}
+print(grade_run(run, {"order_17": "refunded"}))
+print(pass_hat_k({"t1": [True, True, True, False], "t2": [True, False, False, False]}, 2))
+`}
+  tests={`goal = {"order_17": "refunded"}
+good = {"final_db": {"order_17": "refunded", "x": 1}, "trajectory": [
+    {"tool": "verify_identity", "args": {}}, {"tool": "user_confirmed"}, {"tool": "issue_refund", "args": {"id": "order_17"}}]}
+assert end_state_ok(good["final_db"], goal), "extra keys in the final state are fine"
+assert not end_state_ok({"order_17": "shipped"}, goal)
+assert not end_state_ok({}, goal), "a missing key is a failure"
+assert policy_violations(good["trajectory"]) == []
+assert grade_run(good, goal)
+sneaky = {"final_db": {"order_17": "refunded"}, "trajectory": [
+    {"tool": "issue_refund", "args": {"id": "order_17"}}, {"tool": "verify_identity", "args": {}}, {"tool": "user_confirmed"}]}
+assert policy_violations(sneaky["trajectory"]) == ["write before confirmation: issue_refund", "no identity check: issue_refund"], "both rules, in that order"
+assert end_state_ok(sneaky["final_db"], goal) and not grade_run(sneaky, goal), "right end state, wrong path: fail"
+loopy = {"final_db": {"order_17": "refunded"}, "trajectory":
+    [{"tool": "lookup_order", "args": {}}] * 11 + [{"tool": "verify_identity", "args": {}}, {"tool": "user_confirmed"}, {"tool": "issue_refund", "args": {}}]}
+assert not grade_run(loopy, goal), "13 tool calls is over the step budget (user_confirmed doesn't count)"
+assert grade_run(loopy, goal, max_steps=13)
+r = {"t1": [True, True, True, False], "t2": [True, False, False, False]}
+assert abs(pass_hat_k(r, 1) - 0.5) < 1e-9, "pass^1 is the plain success rate"
+assert abs(pass_hat_k(r, 2) - 0.25) < 1e-9, "t1: C(3,2)/C(4,2) = 0.5; t2: 0; mean 0.25"
+assert pass_hat_k({"t": [True] * 5}, 5) == 1.0`}
+  solution={`def end_state_ok(final_db, goal_db):
+    return all(k in final_db and final_db[k] == v for k, v in goal_db.items())
+
+def policy_violations(trajectory):
+    out, confirmed, verified = [], False, False
+    for step in trajectory:
+        tool = step["tool"]
+        if tool == "user_confirmed":
+            confirmed = True
+        elif tool == "verify_identity":
+            verified = True
+        elif tool in WRITE_TOOLS:
+            if not confirmed:
+                out.append(f"write before confirmation: {tool}")
+            if not verified:
+                out.append(f"no identity check: {tool}")
+    return out
+
+def grade_run(run, goal_db, max_steps=12):
+    steps = sum(1 for s in run["trajectory"] if s["tool"] != "user_confirmed")
+    return end_state_ok(run["final_db"], goal_db) and not policy_violations(run["trajectory"]) and steps <= max_steps
+
+def pass_hat_k(results_by_task, k):
+    vals = [comb(sum(t), k) / comb(len(t), k) for t in results_by_task.values()]
+    return sum(vals) / len(vals)`}
+>
+Implement an outcome check, two trajectory rules, a step budget, and tau-bench's pass^k estimator. The `sneaky` run in the tests reaches the right end state by refunding before checking identity or asking for confirmation: an outcome-only grader would pass it. This is the case tau-bench's authors flag, and why policy rules belong in the grader.
+</PyRunner>
+
+<Listen>
+## Public agent benchmarks: context, not substitutes
+
+Public benchmarks are useful for one question: which models are plausible candidates for this kind of work? They can't answer the question you actually have, which is how a model performs on your tasks, with your tools, prompts, and policies.
+
+**SWE-bench** (Jimenez and colleagues, 2023) asks a system to resolve real GitHub issues from open-source Python repositories, graded by whether the repository's tests pass after the change. **SWE-bench Verified** is a 500-task subset that human annotators checked for clear problem statements, correct tests, and solvability, built with OpenAI. The leaderboard's own notes are a lesson in reading benchmarks: results mix very different systems (simple agent loops, multi-rollout systems), scores from different releases of the harness are not directly comparable, and a minimal "bash only" setup exists precisely to compare models under the same scaffold.
+
+**tau-bench** (Yao and colleagues, 2024) simulates customer-service conversations in retail and airline domains: an LLM plays the user, the agent has domain tools and a policy document, and success is the database end state plus required information. At publication, even strong function-calling agents such as gpt-4o succeeded on fewer than half the tasks, and pass^8 in retail was below 25%, which is the paper's evidence that reliability across trials is a separate problem from capability. **tau2-bench** (Barres and colleagues, 2025) adds a telecom domain where the user also has tools and must act in a shared environment, and reports significant drops when agents must coordinate with an active user.
+
+How to use them as a working engineer. Read the scaffold and the version before comparing numbers. Prefer benchmarks that resemble your task shape (a code-editing agent and a support agent need different evidence). Remember contamination (popular test sets leak into training data) and saturation (scores near the ceiling stop discriminating). Then shortlist two or three models and run **your** eval, with your tasks and graders, several trials each. That is the evidence your model choice should rest on.
+</Listen>
+
+<Callout type="claim" title="Benchmark claims in model launches">
+Model announcements routinely lead with SWE-bench Verified or tau-bench scores. **For:** these are public, reproducible tasks, and gains on them have tracked real improvements in coding and tool use. **Against:** vendors choose the scaffold, the number of attempts, and sometimes custom prompts; the SWE-bench leaderboard itself warns that systems and releases are not directly comparable; and none of it covers your tools or policies. **What to do:** treat a launch score as a reason to include a model in your own eval, never as the result of it.
+</Callout>
+
+<DragOrder
+  client:visible
+  prompt="A support agent fails a task in your eval. Order the diagnosis steps."
+  items={[
+    "Check the end state against the goal to confirm what went wrong",
+    "Read the transcript to see whether the agent or the grader is at fault",
+    "Find the first tool call where name, arguments, result, or state diverged",
+    "Tally that transition in the failure matrix across all failed runs",
+    "Fix the most common early failure, then rerun several trials per task",
+  ]}
+  explanation="Confirm the failure, rule out a grading bug by reading the transcript, locate the first divergence, aggregate across runs to find the hotspot, then fix and re-measure with repeated trials because agent behavior varies."
+/>
+
+<LabLink path="labs/studio-3/04-rag-eval" title="Lab 04: evaluate a RAG system and write the report" needs={["Python 3.10+", "Anthropic API key (optional: offline tests use recorded judgments)"]} minutes={75}>
+Compute recall@k, precision@k, and MRR on fixture RAG outputs; split answers into claims and score faithfulness with an LLM judge (Claude live, or recorded judgments offline); check the judge against a domain expert's labels; put a bootstrap interval on the result; and generate a one-page Markdown report. The fixtures hide a lenient judge, a retrieval miss that becomes an unfaithful answer, and a faithful answer that is still wrong.
+</LabLink>
+
+<GoDeeper title="Reading a benchmark paper critically">
+Three questions get you most of the way. **What exactly is graded?** tau-bench grades the end database plus required strings in the agent's messages, and its authors note that this can pass a policy violation. **How many trials, under what scaffold?** A pass@1 from one run says little about pass^8. **Who validated the tasks?** SWE-bench Verified exists because some original tasks had unclear statements or tests; Anthropic's agent-evals guide reports scores moving dramatically once grading bugs were fixed. Chip Huyen's *AI Engineering* (chapter 6) covers RAG and agent evaluation in more depth, and Deng and colleagues (2023) investigate how benchmark contamination can be detected.
+</GoDeeper>

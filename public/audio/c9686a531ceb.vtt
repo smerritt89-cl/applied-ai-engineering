@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.963
+One endpoint, one request shape.
+
+2
+00:00:02.243 --> 00:00:09.432
+Almost everything you will build in this program goes through a single HTTP endpoint: the Messages API.
+
+3
+00:00:09.712 --> 00:00:15.344
+You send a JSON body describing a conversation, and you get back one assistant message.
+
+4
+00:00:15.624 --> 00:00:22.643
+Tools, structured outputs, images, and documents are all features of that same request, not separate APIs.
+
+5
+00:00:22.923 --> 00:00:26.656
+Learn its shape once and the rest of the studio is variations on it.
+
+6
+00:00:26.936 --> 00:00:29.624
+A minimal request has three required fields.
+
+7
+00:00:29.904 --> 00:00:34.235
+model names the exact model, for example claude-opus-5-5.
+
+8
+00:00:34.515 --> 00:00:44.157
+max_tokens is a hard ceiling on how many tokens the model may generate in this response; it is a ceiling, not a target, and the model does not try to fill it.
+
+9
+00:00:44.437 --> 00:00:51.755
+messages is the conversation so far: a list of turns, each with a role of user or assistant and some content.
+
+10
+00:00:52.035 --> 00:00:53.976
+The first turn must be from the user.
+
+11
+00:00:54.256 --> 00:00:56.112
+Two more fields matter on day one.
+
+12
+00:00:56.392 --> 00:01:04.136
+system is a top-level field (not a message) that holds your standing instructions: the role, the rules, the output format.
+
+13
+00:01:04.416 --> 00:01:08.661
+And content can be either a plain string or a list of typed content blocks.
+
+14
+00:01:08.941 --> 00:01:10.883
+A text block is the simple case.
+
+15
+00:01:11.163 --> 00:01:18.715
+Images, PDF documents, tool calls, and tool results are other block types, and you will meet them in weeks 2 and 3.
+
+16
+00:01:18.995 --> 00:01:27.037
+If you have used older chat APIs, notice that the system prompt is not a message with role “system” here; it lives in its own field.

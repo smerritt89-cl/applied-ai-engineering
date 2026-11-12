@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.091
+A tool definition is a contract.
+
+2
+00:00:02.371 --> 00:00:04.504
+You describe each tool with three fields.
+
+3
+00:00:04.784 --> 00:00:07.173
+A name, which is how the model refers to it.
+
+4
+00:00:07.453 --> 00:00:10.717
+A description, which is how the model decides when to use it.
+
+5
+00:00:10.997 --> 00:00:16.075
+And an input_schema, a JSON Schema object that says what arguments the tool takes.
+
+6
+00:00:16.355 --> 00:00:24.227
+JSON Schema is a standard vocabulary for describing JSON: types, required fields, enums, and nested objects.
+
+7
+00:00:24.507 --> 00:00:27.259
+Treat the description as a prompt, because it is one.
+
+8
+00:00:27.539 --> 00:00:41.064
+It is loaded into the model’s context on every request, together with a short tool-use system prompt the API adds for you (a few hundred tokens on current Claude models, per the pricing section of the tool use docs).
+
+9
+00:00:41.344 --> 00:00:48.555
+Anthropic’s guidance is to say what the tool does, when to call it, what each parameter means, and what the tool will not do.
+
+10
+00:00:48.835 --> 00:00:50.712
+Lesson 11 goes deep on this.
+
+11
+00:00:50.992 --> 00:00:53.232
+Two schema settings matter from day one.
+
+12
+00:00:53.512 --> 00:00:58.461
+Mark the fields you need as required, and use enum when a value comes from a fixed list.
+
+13
+00:00:58.741 --> 00:01:06.187
+And consider strict: true on the tool, which makes the API constrain generation so the arguments always match your schema.
+
+14
+00:01:06.467 --> 00:01:09.112
+Strict mode guarantees the shape of the input.
+
+15
+00:01:09.392 --> 00:01:16.347
+It does not guarantee the input is true: a perfectly formed email address can still belong to nobody on your team.

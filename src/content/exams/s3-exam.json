@@ -1,0 +1,1450 @@
+{
+  "id": "s3-exam",
+  "studio": "s3",
+  "title": "Studio 3 exam: Evaluation",
+  "draw": 20,
+  "timeLimitMinutes": 40,
+  "passing": 0.8,
+  "questions": [
+    {
+      "id": "s3x-w1-01",
+      "type": "scenario",
+      "prompt": "Prompt A passes 41 of 50 eval cases and prompt B passes 43 of 50, each run once. Product wants to announce that B is \"4 points better.\" What's the most defensible response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Agree; 86 percent is higher than 82 percent.",
+          "rationale": "The difference is two cases. At n = 50 each pass rate has a 95 percent margin of roughly 10 points, and outputs vary between runs."
+        },
+        {
+          "id": "b",
+          "text": "Say the eval can't distinguish them yet; choose on other grounds (cost, latency, specific failure modes) or run more cases and repeated trials with a paired comparison.",
+          "rationale": "Yes. Two cases flipping is within noise at this size. Week 3 shows how paired comparisons sharpen this.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Say A is better because it was the baseline.",
+          "rationale": "Being first is not evidence."
+        },
+        {
+          "id": "d",
+          "text": "Re-run B until it scores higher, then announce.",
+          "rationale": "Selecting the best of several noisy runs inflates the result."
+        }
+      ],
+      "explanation": "Report n with every pass rate, and treat differences of a few cases on small sets as noise. Small sets are good for finding failures and catching collapses, not for ranking two decent versions.",
+      "week": 1,
+      "tags": [
+        "statistics",
+        "test-sets"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w1-02",
+      "type": "scenario",
+      "prompt": "You must pick a model for a contract-review assistant. Model X leads a popular public leaderboard; model Y is cheaper; model Z is open-weight and could run in your own cloud. What's the best way to decide?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Pick X; the leaderboard measures general capability, which transfers.",
+          "rationale": "Leaderboards can be distorted by contamination and submission practices, and they don't contain your contracts or your rules."
+        },
+        {
+          "id": "b",
+          "text": "Use benchmarks, price, latency, and deployment constraints to shortlist, then run all three on the same eval built from your own contracts and compare pass rates and failure modes.",
+          "rationale": "Yes. Benchmarks narrow the field; your eval, on your data, decides.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Pick Z, because self-hosting avoids all data concerns.",
+          "rationale": "Deployment constraints matter, but they are one criterion. You still need to know whether Z does the task."
+        },
+        {
+          "id": "d",
+          "text": "Ask each vendor for a case study in legal review.",
+          "rationale": "Vendor case studies are marketing, not evidence about your task."
+        }
+      ],
+      "explanation": "Public benchmarks are useful for shortlisting but are weak evidence about a specific task: different inputs, possible contamination, and occasional grading bugs. The same eval then lets you re-check when new models ship.",
+      "week": 1,
+      "tags": [
+        "model-selection",
+        "benchmarks"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w1-03",
+      "type": "scenario",
+      "prompt": "Three support leads labeled the same 40 traces. They agree on almost everything except the \"tone\" mode, where their labels barely overlap. What should you do first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Average their labels and move on.",
+          "rationale": "Averaging hides the problem: the definition of tone is not shared, so neither the labels nor a future grader will be consistent."
+        },
+        {
+          "id": "b",
+          "text": "Drop tone from the taxonomy.",
+          "rationale": "Tone may matter to users. Fix the definition before deciding it can't be measured."
+        },
+        {
+          "id": "c",
+          "text": "Hold an alignment session on the disagreements, rewrite the tone definition with concrete examples, re-label, and have the designated lead expert make final calls.",
+          "rationale": "Yes. Disagreement points at a fuzzy definition; the benevolent-dictator expert settles remaining cases.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Replace the three leads with an LLM judge, which will at least be consistent.",
+          "rationale": "A consistent judge applying an undefined criterion is consistently arbitrary, and you'd have no ground truth to check it against."
+        }
+      ],
+      "explanation": "Measure agreement (for example with Cohen's kappa) before trusting combined labels, treat low agreement as a definition problem, and keep one domain expert as the final authority. The resulting definition is the spec for a grader next week.",
+      "week": 1,
+      "tags": [
+        "error-analysis",
+        "annotation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w1-04",
+      "type": "scenario",
+      "prompt": "Error analysis on 120 traces shows: tone problems in 36 traces, wrong refund policy in 9, missed escalations for fraud reports in 6. You can fix one area this sprint. Which ranking logic is most defensible?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Fix tone; it's four times as frequent as anything else.",
+          "rationale": "Frequency alone ignores harm. A wrong refund policy or a missed fraud escalation costs far more per occurrence."
+        },
+        {
+          "id": "b",
+          "text": "Rank by frequency times a written severity (for example 1 for tone, 3 for policy and escalation errors), fix the top item, and record the weights and who set them.",
+          "rationale": "Yes. Frequency and severity both matter, and making the weights explicit lets the team challenge them.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Fix whichever is easiest, since all failures are equal.",
+          "rationale": "Ease matters for planning, but failures are not equal in cost."
+        },
+        {
+          "id": "d",
+          "text": "Don't fix anything until you have 1,000 traces.",
+          "rationale": "120 traces with clear counts is enough to act on; keep sampling while you fix."
+        }
+      ],
+      "explanation": "With severity weights of 1 and 3, tone scores 36, refund policy 27, and fraud escalations 18, so tone may still win, but now the decision is visible and debatable. If the team thinks a missed fraud report is worse than severity 3, the weights, not the counts, are what to argue about.",
+      "week": 1,
+      "tags": [
+        "error-analysis",
+        "prioritization"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s3x-w1-05",
+      "type": "scenario",
+      "prompt": "In your agent eval, one task has failed in all 30 trials across three different models. What is the most likely explanation to check first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The task is too hard for current models.",
+          "rationale": "Possible, but Anthropic's evals post notes that a 0 percent pass rate across many trials often signals a broken task or grader."
+        },
+        {
+          "id": "b",
+          "text": "The task or its grader is broken (ambiguous instructions, an impossible requirement, or a grading bug). Read several transcripts to see whether the failures look fair.",
+          "rationale": "Yes. Read transcripts before trusting the score; failures should look like real mistakes.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Sampling noise; run 30 more trials.",
+          "rationale": "Thirty straight failures on three models is not noise."
+        },
+        {
+          "id": "d",
+          "text": "All three models share a training flaw.",
+          "rationale": "Unlikely to be the first explanation, and unverifiable without reading what happened."
+        }
+      ],
+      "explanation": "Graders and tasks have bugs too. Anthropic's post describes public benchmark scores changing dramatically once grading problems were fixed. Reading transcripts is how you separate system failures from eval failures.",
+      "week": 1,
+      "tags": [
+        "evals",
+        "graders"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w1-06",
+      "type": "mcq",
+      "prompt": "Why does the evals FAQ by Husain and Shankar recommend binary pass/fail labels over 1 to 5 ratings for most annotation?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Binary labels are required by most eval frameworks.",
+          "rationale": "It's a methodological recommendation, not a tooling constraint."
+        },
+        {
+          "id": "b",
+          "text": "They force a clear decision, produce more consistent labels, and avoid ambiguity between adjacent scale points and drift toward the middle.",
+          "rationale": "Yes. And gradual progress can be tracked with several specific binary checks instead of one scale.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "LLM judges can't output numbers.",
+          "rationale": "They can. The issue is what the numbers mean and how consistently people and models assign them."
+        },
+        {
+          "id": "d",
+          "text": "Ratings are harder to store in a CSV.",
+          "rationale": "Storage is not the concern."
+        }
+      ],
+      "explanation": "The difference between a 3 and a 4 is subjective and varies between annotators and sessions, and detecting changes on a scale needs larger samples. A set of binary checks (\"mentions the refund window\", \"offers a handoff\") is easier to label and easier to automate.",
+      "week": 1,
+      "tags": [
+        "annotation",
+        "error-analysis"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3x-w1-07",
+      "type": "code-reading",
+      "prompt": "Each check returns `True`, `False`, or `None` (not applicable). What is wrong with this pass-rate function?",
+      "code": "def pass_rate(results):\n    return sum(1 for r in results if r) / len(results)",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; `None` is falsy, so not-applicable cases are excluded.",
+          "rationale": "Being falsy excludes them from the numerator but not from `len(results)`, so they count as failures."
+        },
+        {
+          "id": "b",
+          "text": "It counts not-applicable cases in the denominator, so the rate is understated whenever a check doesn't apply to every case.",
+          "rationale": "Yes. Filter out `None` first and divide by the applicable count (and handle zero applicable cases).",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It raises `TypeError` when a result is `None`.",
+          "rationale": "`if r` works on `None`; no error is raised."
+        },
+        {
+          "id": "d",
+          "text": "It counts `False` as a pass.",
+          "rationale": "`False` is falsy, so it is not counted as a pass."
+        }
+      ],
+      "explanation": "A check that doesn't apply should leave the denominator entirely. Otherwise the pass rate changes when your test mix changes, even though the system didn't. Report the applicable count next to the rate.",
+      "week": 1,
+      "tags": [
+        "evals",
+        "python"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w1-08",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "counts = {\"tone\": 6, \"wrong_policy\": 3, \"stale_pricing\": 4}\nseverity = {\"tone\": 1, \"wrong_policy\": 3, \"stale_pricing\": 2}\nranked = sorted(counts, key=lambda m: (-counts[m] * severity[m], -counts[m], m))\nprint(ranked)",
+      "options": [
+        {
+          "id": "a",
+          "text": "`['tone', 'stale_pricing', 'wrong_policy']`",
+          "rationale": "That's frequency order. The key multiplies by severity first."
+        },
+        {
+          "id": "b",
+          "text": "`['wrong_policy', 'stale_pricing', 'tone']`",
+          "rationale": "Yes. Scores are 9, 8, and 6.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`['stale_pricing', 'wrong_policy', 'tone']`",
+          "rationale": "stale_pricing scores 8, below wrong_policy's 9."
+        },
+        {
+          "id": "d",
+          "text": "`['wrong_policy', 'tone', 'stale_pricing']`",
+          "rationale": "tone scores 6, the lowest."
+        }
+      ],
+      "explanation": "Severity weighting reverses the frequency order here. That's the point of writing the weights down: anyone who disagrees with the ranking can see exactly which judgment to challenge.",
+      "week": 1,
+      "tags": [
+        "prioritization",
+        "python"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3x-w1-09",
+      "type": "multi",
+      "prompt": "Which fields belong in each record of a versioned golden test set? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "A stable case id",
+          "rationale": "Yes. Results and discussions refer to cases by id across versions.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "The input and the expected behavior or reference answer",
+          "rationale": "Yes. A case without an expected behavior can't be graded.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The source (log, expert, synthetic) and the failure mode it targets, with a short reason it exists",
+          "rationale": "Yes. These let you audit coverage and decide later whether a failing case is still right.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "The latest model output for that case",
+          "rationale": "Outputs belong in run results, tagged with the set version, prompt, and model. Storing them in the set mixes the question with one answer."
+        }
+      ],
+      "explanation": "A test set is specification, not results. Keep each case's input, expectation, provenance, and purpose in the set; keep outputs and scores in run logs that record which set version they used.",
+      "week": 1,
+      "tags": [
+        "test-sets",
+        "versioning"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w1-10",
+      "type": "mcq",
+      "prompt": "How should the expected pass rates of a golden set and a regression set typically differ?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Both should be at 100 percent before any release.",
+          "rationale": "A golden set that is always at 100 percent is saturated and can't show improvement."
+        },
+        {
+          "id": "b",
+          "text": "The regression set should be at or near 100 percent, while the golden set reflects current overall quality and can sit lower, with room to improve.",
+          "rationale": "Yes. A regression failure means something fixed broke again; the golden set measures how good the system is overall.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The golden set should be near 100 percent; the regression set is expected to fail often.",
+          "rationale": "Reversed. Regression cases were fixed; they are expected to pass."
+        },
+        {
+          "id": "d",
+          "text": "They should match, since both sample the same traffic.",
+          "rationale": "They're built differently: the golden set is representative, the regression set is a history of past failures."
+        }
+      ],
+      "explanation": "Keep them separate and report them separately. A drop in the regression set is a release blocker; a change in the golden set is a quality trend. Cases from capability work graduate into the regression set once they pass reliably.",
+      "week": 1,
+      "tags": [
+        "test-sets",
+        "regression"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3x-w2-01",
+      "type": "scenario",
+      "prompt": "Your feature turns analysts' questions into SQL. Generated queries often differ textually from the reference queries while returning the same rows. How should you grade correctness?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Exact string match against the reference SQL after lowercasing.",
+          "rationale": "Equivalent queries differ in aliases, ordering, and formatting. Exact match would fail many correct answers."
+        },
+        {
+          "id": "b",
+          "text": "Execute both queries against a fixture database in a sandbox (read-only credentials, timeout) and compare result sets.",
+          "rationale": "Yes. This is functional correctness, the same argument Chen et al. (2021) made for code: grade what the program does, not how it's written.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "BLEU between the generated and reference SQL, with a threshold of 0.7.",
+          "rationale": "The HumanEval paper found BLEU distributions for correct and incorrect programs overlap heavily."
+        },
+        {
+          "id": "d",
+          "text": "Ask an LLM judge whether the two queries are equivalent.",
+          "rationale": "A judge might help with edge cases, but executing the queries answers the question deterministically."
+        }
+      ],
+      "explanation": "When an output can be executed, executing it is usually the strongest and cheapest grader. Design the fixture data so that wrong queries return different rows (include the edge cases: nulls, duplicates, ties), and run it with no write access.",
+      "week": 2,
+      "tags": [
+        "code-graders",
+        "execution"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w2-02",
+      "type": "scenario",
+      "prompt": "You need to check that an extracted vendor name matches the expected name, allowing for small differences such as \"Tallow and Pine\" versus \"Tallow & Pine.\" A teammate suggests `difflib.SequenceMatcher` with a 0.8 cutoff. What's the best way to set the cutoff?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Keep 0.8; it's a common default.",
+          "rationale": "A default isn't evidence. Similar-looking names can be different vendors, and real variants can fall below 0.8."
+        },
+        {
+          "id": "b",
+          "text": "Label a set of name pairs as same or different, compute the ratio for each, and choose the cutoff that best separates them, then keep those pairs as tests.",
+          "rationale": "Yes. Treat the fuzzy matcher as a small classifier and pick its threshold from labeled data.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Use 0.99 to be safe.",
+          "rationale": "That rejects legitimate variants such as the ampersand, which is the reason you wanted fuzzy matching."
+        },
+        {
+          "id": "d",
+          "text": "Replace it with an LLM judge for every comparison.",
+          "rationale": "That's far more expensive and non-deterministic for a problem code can handle once the threshold is measured."
+        }
+      ],
+      "explanation": "Every threshold in a grader is a decision with error rates. Measure them on labeled pairs, including hard negatives (two different vendors with similar names), and add a normalization step (such as mapping \"&\" to \"and\") when it is clearly safe.",
+      "week": 2,
+      "tags": [
+        "fuzzy-match",
+        "code-graders"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w2-03",
+      "type": "mcq",
+      "prompt": "Chen et al. (2021) estimate pass@k with 1 - C(n - c, k) / C(n, k) rather than the shortcut 1 - (1 - c/n)^k. How does the shortcut behave?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It overestimates pass@k.",
+          "rationale": "The function 1 - (1 - p)^k is concave in p, so by Jensen's inequality the plug-in estimate is too low on average, not too high."
+        },
+        {
+          "id": "b",
+          "text": "It underestimates pass@k on average, increasingly so for larger k.",
+          "rationale": "Yes. The paper shows the shortcut is biased; concavity explains the direction.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It is unbiased but has higher variance.",
+          "rationale": "The paper's point is that it is biased."
+        },
+        {
+          "id": "d",
+          "text": "It is identical whenever n is at least k.",
+          "rationale": "They agree only in special cases, such as k = 1."
+        }
+      ],
+      "explanation": "For k = 1 both formulas give c/n. For larger k the exact combinatorial estimator counts draws without replacement from the n samples you actually generated, which avoids the bias.",
+      "week": 2,
+      "tags": [
+        "pass-at-k",
+        "code-graders"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s3x-w2-04",
+      "type": "scenario",
+      "prompt": "You have 40 expert-labeled examples for a new judge (24 pass, 16 fail). You want to iterate on the prompt and also report an honest agreement number. What's the best plan?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Iterate on all 40, then report agreement on all 40.",
+          "rationale": "Agreement on the data you tuned on is optimistic."
+        },
+        {
+          "id": "b",
+          "text": "Split 20 and 20 stratified by label with a deterministic, seeded assignment; iterate on dev; run test once after freezing the prompt; report TPR, TNR, and kappa with counts and a note that intervals are wide.",
+          "rationale": "Yes. That's the dev and test discipline, plus honesty about sample size.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Randomly reshuffle the split each time you change the prompt, so no example is overused.",
+          "rationale": "Reshuffling means every example eventually influences the prompt, and the final number depends on which shuffle you stopped at."
+        },
+        {
+          "id": "d",
+          "text": "Use all 40 as few-shot examples in the prompt, then report agreement on them.",
+          "rationale": "The judge would be graded on examples it was shown; agreement would mean little."
+        }
+      ],
+      "explanation": "Small sets make the split even more important, not less. With 8 failures in test, each failure the judge misses moves TNR by 0.125, so report counts alongside rates and plan to label more if the judge will gate releases.",
+      "week": 2,
+      "tags": [
+        "calibration",
+        "splits"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w2-05",
+      "type": "scenario",
+      "prompt": "Your judge was calibrated in September (TPR 0.93, TNR 0.90 on the held-out split). In November the team switched the reply generator to a different model. The weekly audit of 50 production replies now shows the judge's TNR at 0.70. What should you do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Keep using the September numbers; the judge itself didn't change.",
+          "rationale": "The judge didn't change, but its inputs did. A new generator makes new kinds of mistakes the judge may not recognize."
+        },
+        {
+          "id": "b",
+          "text": "Treat the audit as the current estimate, investigate the new failure types in the misses, update and re-calibrate the judge (labeling fresh examples from the new generator), and correct recent pass rates with the updated rates.",
+          "rationale": "Yes. Calibration describes a judge on a distribution of outputs; when the distribution shifts, re-measure.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Discard the audit as noise, since 50 is a small sample.",
+          "rationale": "Fifty examples gives wide intervals, but a drop from 0.90 to 0.70 is a signal to investigate, not to ignore."
+        },
+        {
+          "id": "d",
+          "text": "Lower the judge's effort setting to make it faster to re-run.",
+          "rationale": "Changing the judge's settings would itself require re-calibration and doesn't address the drop."
+        }
+      ],
+      "explanation": "This is why audits exist: a frozen test set can't detect that production outputs changed. Bavaresco et al. (2024) found judge reliability depends on the kind of text being judged, so a generator change is a re-calibration trigger.",
+      "week": 2,
+      "tags": [
+        "calibration",
+        "drift",
+        "monitoring"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s3x-w2-06",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "def corrected(q, tpr, tnr):\n    return min(1.0, max(0.0, (q + tnr - 1) / (tpr + tnr - 1)))\n\nprint(round(corrected(0.55, 0.80, 0.85), 2))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.62`",
+          "rationale": "Yes. (0.55 + 0.85 - 1) / (0.80 + 0.85 - 1) = 0.40 / 0.65, about 0.615.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`0.55`",
+          "rationale": "That's the observed rate before correction."
+        },
+        {
+          "id": "c",
+          "text": "`0.69`",
+          "rationale": "That's 0.55 / 0.80, which corrects for missed passes but ignores false passes."
+        },
+        {
+          "id": "d",
+          "text": "`0.4`",
+          "rationale": "That's the numerator only."
+        }
+      ],
+      "explanation": "Here the judge misses 20 percent of good outputs and lets 15 percent of bad ones through. At this pass rate the missed passes dominate, so the corrected estimate is higher than the observed one.",
+      "week": 2,
+      "tags": [
+        "correction",
+        "calibration"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w2-07",
+      "type": "code-reading",
+      "prompt": "This kappa implementation has a bug. What is it?",
+      "code": "def kappa(human, judge):\n    n = len(human)\n    p_o = sum(h == j for h, j in zip(human, judge)) / n\n    p_e = sum((human.count(k) / n) ** 2 for k in set(human))\n    return (p_o - p_e) / (1 - p_e)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`p_e` uses only the human's label frequencies, squared, instead of multiplying the human's and the judge's frequencies for each label.",
+          "rationale": "Yes. Chance agreement depends on both raters' label frequencies. With this bug, a judge that says pass far more often than the human gets too little chance correction.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`p_o` should divide by the number of labels, not the number of items.",
+          "rationale": "Observed agreement is the share of items on which the raters agree."
+        },
+        {
+          "id": "c",
+          "text": "Kappa should be `p_o / p_e`.",
+          "rationale": "Cohen's kappa is (p_o - p_e) / (1 - p_e)."
+        },
+        {
+          "id": "d",
+          "text": "There is no bug; for binary labels the two calculations are always equal.",
+          "rationale": "They're equal only when the judge's label frequencies happen to match the human's."
+        }
+      ],
+      "explanation": "Cohen (1960) defines chance agreement from each rater's own marginal frequencies. Test kappa code with a case where the raters' pass rates differ, such as an always-pass judge, which should give kappa 0.",
+      "week": 2,
+      "tags": [
+        "kappa",
+        "metrics"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s3x-w2-08",
+      "type": "multi",
+      "prompt": "Which practices reduce position bias in a pairwise LLM judge? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Run every comparison in both orders and count a win only when both orders agree.",
+          "rationale": "The swap rule from Zheng et al. (2023).",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Allow the judge to answer tie.",
+          "rationale": "Ties keep the judge from being forced to break near-equal cases by position.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Always put the new system's answer first so results are comparable across runs.",
+          "rationale": "A fixed order builds the bias into every result."
+        },
+        {
+          "id": "d",
+          "text": "Remove labels that say which answer is new, baseline, or reference.",
+          "rationale": "Origin labels invite deference that compounds order effects.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "Average scores over both orders (balanced position calibration).",
+          "rationale": "Wang et al. (2023) proposed exactly this aggregation.",
+          "correct": true
+        }
+      ],
+      "explanation": "Position bias is large enough to flip conclusions: Wang et al. showed reordering alone made Vicuna-13B beat ChatGPT on 66 of 80 questions when ChatGPT judged. Budget for the doubled calls.",
+      "week": 2,
+      "tags": [
+        "pairwise",
+        "position-bias"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w2-09",
+      "type": "mcq",
+      "prompt": "What did Panickssery, Bowman, and Feng (2024) report about self-preference in LLM evaluators?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Self-preference disappears when the judge is a larger model.",
+          "rationale": "The paper doesn't report that."
+        },
+        {
+          "id": "b",
+          "text": "Models can distinguish their own outputs from others' better than chance, and in fine-tuning experiments self-recognition ability correlated linearly with the strength of self-preference.",
+          "rationale": "Yes. That link is why a judge from a different family is a reasonable precaution.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Self-preference only occurs in open-weight models.",
+          "rationale": "Their out-of-the-box results include GPT-4."
+        },
+        {
+          "id": "d",
+          "text": "Self-preference makes judges harsher on their own outputs.",
+          "rationale": "The bias they study favors the judge's own generations."
+        }
+      ],
+      "explanation": "If a judge can recognize its own style, it can favor it. Practical responses: don't judge a model with itself, consider another family or a panel, and check every judge against human labels.",
+      "week": 2,
+      "tags": [
+        "self-preference",
+        "llm-judge",
+        "research"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w2-10",
+      "type": "scenario",
+      "prompt": "A nightly eval sends 1,200 judge calls to a frontier model. Each call repeats the same 3,000-token rubric and few-shot block before the case-specific material. Finance asks you to cut the cost without making the numbers less trustworthy. Which plan is best?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Cut the rubric to 300 tokens and drop the few-shot examples.",
+          "rationale": "That changes the judge, so the calibration no longer applies, and it may reduce agreement."
+        },
+        {
+          "id": "b",
+          "text": "Cache the shared rubric prefix, run the nightly job through the Batch API, and calibrate a cheaper judge on the same labels; switch only if it meets the same TPR and TNR bar.",
+          "rationale": "Yes. Caching and batching don't change the judge's behavior, and a model switch is made on evidence.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Judge only a random 10 percent of cases each night.",
+          "rationale": "That's a legitimate cost lever for some uses, but it widens intervals on every metric; the options in (b) save money without that loss."
+        },
+        {
+          "id": "d",
+          "text": "Switch to the cheapest model now and re-calibrate later if anyone complains.",
+          "rationale": "Switching without calibration means the nightly numbers are of unknown quality starting tonight."
+        }
+      ],
+      "explanation": "Cost levers that don't change the judge (prompt caching for the stable prefix, the Batch API's discount for non-urgent work) come first. Levers that do change it (a different model, a shorter prompt) require re-calibration before you trust the numbers.",
+      "week": 2,
+      "tags": [
+        "cost",
+        "model-selection",
+        "llm-judge"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w3-01",
+      "type": "scenario",
+      "prompt": "Your contract-review eval has 600 questions: 15 questions about each of 40 contracts. You need a 95 percent interval for the pass rate. Which approach is sound?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Treat the 600 questions as independent and use the Wilson interval.",
+          "rationale": "Questions about one contract are correlated, so the effective sample size is far below 600 and the interval is too narrow."
+        },
+        {
+          "id": "b",
+          "text": "Bootstrap by resampling the 40 contracts with replacement (keeping each contract's 15 questions together), or compute a clustered standard error on contract.",
+          "rationale": "Yes. Resample or cluster on the unit that was randomized. Miller reports clustered SEs can exceed naive ones by more than three times.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Bootstrap by resampling the 600 questions individually, with 10,000 replicates for accuracy.",
+          "rationale": "More replicates don't fix resampling the wrong unit; this reproduces the naive interval."
+        },
+        {
+          "id": "d",
+          "text": "Drop all but one question per contract to restore independence.",
+          "rationale": "That is valid but throws away information. Clustered methods use all the data."
+        }
+      ],
+      "explanation": "When questions share a source document, the document is the unit of randomization. Cluster-level resampling or clustered standard errors give honest intervals; designing future evals with more contracts and fewer questions each gives narrower ones.",
+      "tags": [
+        "statistics",
+        "clustering"
+      ],
+      "difficulty": 2,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-02",
+      "type": "scenario",
+      "prompt": "A public leaderboard shows model X at 82.0 and model Y at 81.5 percent on a 500-question benchmark, with no intervals. Y is half the price. A colleague says X is the better model. What is the most defensible response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Agree. X ranks higher, and rankings are what leaderboards are for.",
+          "rationale": "A half-point gap on 500 questions is a couple of questions; the standard error of each score alone is about 1.7 points."
+        },
+        {
+          "id": "b",
+          "text": "Say the leaderboard can't separate them; shortlist both and decide on a paired eval of your own task, where Y's lower price will matter if quality ties.",
+          "rationale": "Yes. Apply lesson 7 to public numbers: the difference is well within noise, and the benchmark may not resemble your task.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Pick Y, since cheaper is always better.",
+          "rationale": "Price matters only once quality meets your bar on your task, which this leaderboard doesn't establish."
+        },
+        {
+          "id": "d",
+          "text": "Average the two scores and treat the models as identical everywhere.",
+          "rationale": "Equal on one benchmark is not equal on every task."
+        }
+      ],
+      "explanation": "sqrt(0.82 * 0.18 / 500) is about 0.017, so each score alone has a 95 percent half-width of over 3 points. A leaderboard without intervals invites over-reading small gaps; your own paired comparison is what resolves them.",
+      "tags": [
+        "benchmarks",
+        "statistics"
+      ],
+      "difficulty": 2,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-03",
+      "type": "scenario",
+      "prompt": "Your PR gate fails if the paired 95 percent lower bound for candidate minus baseline is below minus 2 points. On a 150-question suite where versions typically disagree on 8 percent of questions, the gate fails about half of PRs that change nothing meaningful. What is the best fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Automatically rerun the gate up to three times and pass if any run passes.",
+          "rationale": "Rerunning until green makes the gate meaningless; it catches regressions as rarely as it catches noise."
+        },
+        {
+          "id": "b",
+          "text": "Switch to an unpaired comparison, which is more stable.",
+          "rationale": "An unpaired analysis has a larger standard error, so it would fail even more often."
+        },
+        {
+          "id": "c",
+          "text": "Recognize the gate is underpowered: the bound's half-width is about 4.5 points at this size. Use a wider margin on PRs (or cached replays), and enforce the strict margin on a larger nightly suite.",
+          "rationale": "Yes. 1.96 * sqrt(0.08 / 150) is about 0.045. A margin smaller than the half-width fails identical systems routinely; size suite and margin together.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Remove the gate and rely on code review.",
+          "rationale": "The gate is valuable once its noise and margin are matched."
+        }
+      ],
+      "explanation": "A non-inferiority gate only works when the suite is large enough that identical systems clear the margin. Compute the half-width from the discordance rate and n before choosing the margin, and keep the strict test where the suite is large.",
+      "tags": [
+        "ci",
+        "statistics"
+      ],
+      "difficulty": 3,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-04",
+      "type": "scenario",
+      "prompt": "You're comparing an API model with a self-hosted open-weight model for a classification service that handles about 2,000 requests per day. The self-hosted model's quality is within your bar. A colleague says it's free because there's no per-token fee. How should you compare cost?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Treat it as free; GPU servers are a fixed cost the company already pays.",
+          "rationale": "Unless the GPUs are already idle and paid for, they are a real cost of this service, as is the staff time to run them."
+        },
+        {
+          "id": "b",
+          "text": "Compute cost per successful task for both: for self-hosting, amortize GPU cost over realistic volume including idle time, and add operations time; for the API, use measured usage including retries.",
+          "rationale": "Yes. At low volume, a dedicated GPU's idle hours can dominate, and the comparison often flips. Price per success at your real traffic.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Compare list price per million tokens only.",
+          "rationale": "The open model has no per-token list price; that comparison can't be made, and it ignores failures and retries anyway."
+        },
+        {
+          "id": "d",
+          "text": "Choose the API model, since self-hosting is never cheaper.",
+          "rationale": "At high, steady volume self-hosting can be cheaper. It depends on the numbers."
+        }
+      ],
+      "explanation": "Cost per successful task puts both options on one scale. Self-hosting moves cost from tokens to hardware, utilization, and people; data control is a separate, sometimes decisive, benefit to weigh explicitly.",
+      "tags": [
+        "model-selection",
+        "cost"
+      ],
+      "difficulty": 2,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-05",
+      "type": "scenario",
+      "prompt": "After a bake-off, the candidate model is 1.5 points better than the incumbent (paired interval minus 1 to plus 4) and 40 percent cheaper. The team had not written a decision rule, and now two engineers argue for opposite choices using the same numbers. What should have happened, and what do you do now?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing could have prevented this; pick whichever engineer is more senior.",
+          "rationale": "A rule written in advance exists precisely to prevent this kind of post hoc argument."
+        },
+        {
+          "id": "b",
+          "text": "A rule should have been fixed beforehand (for example, switch if the lower bound is above minus 2 points and cost per success drops by at least 25 percent). Write one now from the product's needs, without looking for the version that favors a side, and note in the record that it was written after the fact.",
+          "rationale": "Yes. Under that example rule the candidate qualifies. The point is to make the criterion explicit and to be honest about when it was set.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Rerun the bake-off until the interval excludes zero.",
+          "rationale": "Repeating the same questions doesn't add information, and stopping when significant biases the result."
+        },
+        {
+          "id": "d",
+          "text": "Switch, because any improvement is worth having.",
+          "rationale": "The interval includes a small loss; whether that's acceptable is exactly what the rule should say."
+        }
+      ],
+      "explanation": "Decision rules written before the results arrive keep everyone, including you, from choosing the threshold that supports the answer they wanted. Non-inferiority plus a cost condition is a common and defensible rule for switching to a cheaper model.",
+      "tags": [
+        "model-selection",
+        "decisions"
+      ],
+      "difficulty": 2,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-06",
+      "type": "scenario",
+      "prompt": "You compare Claude at its default effort with another provider's model at its maximum reasoning setting. The other model wins by 5 points but costs three times as much per task and has double the p95 latency. What is the right conclusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The other provider's model is better at this task.",
+          "rationale": "This compares two budgets as much as two models."
+        },
+        {
+          "id": "b",
+          "text": "The comparison mixes model and effort. Sweep effort for both (or match cost per task) and compare quality against cost, then apply your latency limit.",
+          "rationale": "Yes. Each provider's effort dial changes quality, cost, and latency. Compare frontiers or matched-cost configurations.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Effort settings don't affect quality, so the result stands.",
+          "rationale": "They do; that's why providers expose them."
+        },
+        {
+          "id": "d",
+          "text": "Always compare every model at its default settings, since defaults represent vendor intent.",
+          "rationale": "Defaults differ between providers and models; equal defaults are not equal effort."
+        }
+      ],
+      "explanation": "The unit of comparison is a configuration. A sweep often shows one model at lower effort matching another at higher effort for a fraction of the cost, which a single mismatched run hides.",
+      "tags": [
+        "model-selection",
+        "effort"
+      ],
+      "difficulty": 2,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-07",
+      "type": "predict-output",
+      "prompt": "System A passes 5 questions that system B fails, and B passes none that A fails. What does this exact McNemar computation print?",
+      "code": "import math\nn_ab, n_ba = 5, 0\nn = n_ab + n_ba\nk = min(n_ab, n_ba)\ntail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n\nprint(min(1.0, 2 * tail))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.0625`",
+          "rationale": "Yes. The tail is 1 / 32, doubled for a two-sided test: 0.0625.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`0.03125`",
+          "rationale": "That is the one-sided tail. The comparison is two-sided unless you fixed a direction in advance."
+        },
+        {
+          "id": "c",
+          "text": "`0.0`",
+          "rationale": "A 5-to-0 split is fairly unlikely under the null, but not impossible."
+        },
+        {
+          "id": "d",
+          "text": "`5.0`",
+          "rationale": "That is the chi-square statistic (5 - 0)^2 / 5, not a p-value."
+        }
+      ],
+      "explanation": "Even a perfectly one-sided split is not significant at 0.05 with only five discordant questions. Small evals can't separate systems unless they disagree on many questions.",
+      "tags": [
+        "statistics",
+        "mcnemar"
+      ],
+      "difficulty": 2,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-08",
+      "type": "code-reading",
+      "prompt": "This gate is meant to catch regressions. What is the effect of how it computes the standard error?",
+      "code": "def gate(base_rate, cand_rate, n, margin=0.03):\n    se = ((base_rate * (1 - base_rate) + cand_rate * (1 - cand_rate)) / n) ** 0.5\n    lower = (cand_rate - base_rate) - 1.96 * se\n    return lower >= -margin",
+      "options": [
+        {
+          "id": "a",
+          "text": "It is the paired standard error, so the gate is correctly sized.",
+          "rationale": "It uses only the two totals; a paired SE needs per-question differences."
+        },
+        {
+          "id": "b",
+          "text": "It is the unpaired standard error. Because the two systems' scores are positively correlated, it overstates the noise, so the gate fails good candidates more often than a paired gate would.",
+          "rationale": "Yes. Without the covariance term the SE is too large, the lower bound too low, and the gate too strict for its margin.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It understates the noise, so regressions slip through.",
+          "rationale": "Ignoring positive correlation makes the SE larger, not smaller."
+        },
+        {
+          "id": "d",
+          "text": "It is fine as long as n is above 100.",
+          "rationale": "Sample size doesn't fix the missing covariance term."
+        }
+      ],
+      "explanation": "Gate on per-question paired differences. Log per-question results for both systems so you can; aggregate pass rates alone throw away the information that makes the comparison efficient.",
+      "tags": [
+        "ci",
+        "statistics"
+      ],
+      "difficulty": 2,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-09",
+      "type": "multi",
+      "prompt": "Which of these belong in the manifest saved with every eval run, so the result can be reproduced and compared? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The exact model ids used, as reported by the API",
+          "rationale": "Aliases move; the reported id is what ran.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Hashes or versions of the prompt templates and the dataset",
+          "rationale": "A fixed reference answer or reworded prompt is a different experiment.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Grader versions, including the judge model and its prompt",
+          "rationale": "Graders change scores too.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Request settings and the number of trials per question",
+          "rationale": "Effort, max tokens, tools, and trials all affect results and their variance.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "The cache hit rate for the run",
+          "rationale": "It tells a reader whether the run measured the live system or replayed old outputs.",
+          "correct": true
+        }
+      ],
+      "explanation": "An eval result is a function of model, prompt, settings, dataset, graders, and harness. Record all of them, and change one at a time when comparing, so any difference can be attributed.",
+      "tags": [
+        "versioning",
+        "ci"
+      ],
+      "difficulty": 1,
+      "week": 3
+    },
+    {
+      "id": "s3x-w3-10",
+      "type": "mcq",
+      "prompt": "OpenAI's docs state that its hosted Evals platform became read-only on October 31, 2026 and is scheduled to shut down on November 30, 2026. What practice protects a team from this kind of change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Using only open-source tools, which never change.",
+          "rationale": "Open-source tools change and get abandoned too. Portability of your data is the protection."
+        },
+        {
+          "id": "b",
+          "text": "Keeping cases, graders, results, and manifests in your own repository in portable formats (such as JSONL plus code), so any harness can run them.",
+          "rationale": "Yes. The tool is replaceable when the suite is yours.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Exporting only the final scores.",
+          "rationale": "Scores without per-question results and graders can't be rerun or reanalyzed."
+        },
+        {
+          "id": "d",
+          "text": "Avoiding evals until the tooling market settles.",
+          "rationale": "That trades a tooling risk for an unmeasured product."
+        }
+      ],
+      "explanation": "Pick tools for convenience, not as the home of record. pytest, promptfoo, Inspect, and hosted products can all run a suite whose data and graders live in your repository.",
+      "tags": [
+        "tools",
+        "ci"
+      ],
+      "difficulty": 1,
+      "week": 3
+    },
+    {
+      "id": "s3x-w4-01",
+      "type": "scenario",
+      "prompt": "You tested a new chunking strategy on 80 paired questions. Mean correctness rose from 0.78 to 0.81, with a 95% interval on the paired difference of -0.02 to +0.08. Your director asks whether to switch. What do you say?",
+      "options": [
+        {
+          "id": "a",
+          "text": "\"Yes, it's 3 points better.\"",
+          "rationale": "The interval includes zero and small losses, so 'better' isn't established."
+        },
+        {
+          "id": "b",
+          "text": "\"No, the change didn't work.\"",
+          "rationale": "The data don't show it failed either; most of the interval is positive."
+        },
+        {
+          "id": "c",
+          "text": "\"We can't tell yet: the likely effect ranges from a small loss to an 8-point gain. It costs the same, so I'd run 120 more questions this week before deciding.\"",
+          "rationale": "Yes. Honest uncertainty, in plain words, with a concrete next step.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "\"The p-value is above 0.05, so the result is insignificant.\"",
+          "rationale": "Correct in a narrow sense, but it gives the director nothing to act on."
+        }
+      ],
+      "explanation": "When an interval straddles zero, say 'we can't tell yet' and give the range in user terms. If the decision is cheap to delay, collect more data; if it is not, say what the downside of each choice is.",
+      "week": 4,
+      "tags": [
+        "communication",
+        "statistics"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w4-02",
+      "type": "scenario",
+      "prompt": "Your team upgraded the faithfulness judge to a newer model. With no change to the RAG system, faithfulness on the dev set jumped from 0.81 to 0.88. What is the right response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Treat it as judge drift: recalibrate the new judge against expert labels, rescore the baseline with it, and compare only scores from the same judge version.",
+          "rationale": "Yes. Pin and log the judge version; a judge change resets comparisons.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Report the improvement; newer judges are more accurate.",
+          "rationale": "Nothing about the system changed, so the 'improvement' is a change of ruler."
+        },
+        {
+          "id": "c",
+          "text": "Average the two judges' scores.",
+          "rationale": "Averaging two uncalibrated rulers doesn't make either one right."
+        },
+        {
+          "id": "d",
+          "text": "Revert to the old judge permanently.",
+          "rationale": "The old judge may be the worse one; measure both against human labels."
+        }
+      ],
+      "explanation": "A judge is part of the measurement apparatus. When it changes, measure its TPR and TNR on labeled data again, and rescore the baseline so comparisons are like for like. The new judge might simply be more lenient.",
+      "week": 4,
+      "tags": [
+        "judge-drift",
+        "calibration"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w4-03",
+      "type": "scenario",
+      "prompt": "You generated 500 retrieval test questions by having a model write questions from each chunk. BM25 keyword search scores recall@5 of 0.94 on them, while embedding search scores 0.86. On 60 real user questions, embedding search wins. What explains the gap?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Real users ask harder questions, so the real set is less reliable.",
+          "rationale": "Real questions are the ones you care about; the synthetic set is the one with a bias."
+        },
+        {
+          "id": "b",
+          "text": "The embedding model is broken on synthetic text.",
+          "rationale": "No evidence for that; the pattern fits the wording overlap."
+        },
+        {
+          "id": "c",
+          "text": "500 questions is too many for a stable estimate.",
+          "rationale": "More questions narrow intervals; size isn't the problem here."
+        },
+        {
+          "id": "d",
+          "text": "Synthetic questions tend to reuse the chunk's own wording, which flatters keyword matching. Report real and synthetic results separately and weight decisions toward the real set.",
+          "rationale": "Yes. Lexical overlap with the source is a known weakness of generated questions.",
+          "correct": true
+        }
+      ],
+      "explanation": "Synthetic queries give cheap labels but can mismatch real phrasing. Spot-check them, rewrite some in user language, and always keep a slice of real questions to keep the synthetic set honest.",
+      "week": 4,
+      "tags": [
+        "rag",
+        "datasets",
+        "synthetic-data"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s3x-w4-04",
+      "type": "scenario",
+      "prompt": "Finance cuts your expert review budget by half. Today each two-week round reviews 60 random traces, 40 thumbs-down traces, and 40 judge-flagged traces. What do you cut first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The random slice, since the targeted slices find more failures per hour.",
+          "rationale": "The random slice is your only unbiased quality estimate; cutting it leaves you blind to overall quality and to unknown failure types."
+        },
+        {
+          "id": "b",
+          "text": "Reduce the targeted slices (for example, sample within thumbs-down and judge flags, and stop a round at saturation), and keep most of the random slice.",
+          "rationale": "Yes. Targeted review has diminishing returns once failure types repeat; the random slice anchors measurement.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Drop expert review entirely and rely on the judge.",
+          "rationale": "The judge's calibration depends on fresh expert labels."
+        },
+        {
+          "id": "d",
+          "text": "Review every other round instead, keeping the same mix.",
+          "rationale": "Halving cadence doubles the time a new failure can go unnoticed; prefer trimming within rounds."
+        }
+      ],
+      "explanation": "Protect the random slice (measurement) and trim discovery work that has saturated. Better tooling and judge pre-screening also cut minutes per trace without losing signal.",
+      "week": 4,
+      "tags": [
+        "human-review",
+        "cost",
+        "sampling"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w4-05",
+      "type": "scenario",
+      "prompt": "You must choose a model for an internal IT-helpdesk agent with eight tools (ticket lookup, password reset, device wipe, and so on). A vendor's launch post leads with a record SWE-bench Verified score. How should that number enter your decision?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Pick the model with the top SWE-bench score; it measures agentic ability.",
+          "rationale": "SWE-bench measures resolving code issues under a particular scaffold, not your helpdesk tools or policies."
+        },
+        {
+          "id": "b",
+          "text": "Ignore all public benchmarks; they are marketing.",
+          "rationale": "They are useful context for building a shortlist."
+        },
+        {
+          "id": "c",
+          "text": "Use public benchmarks closest to your task (tool-using conversational agents, such as tau-bench) to shortlist two or three models, then run your own tasks with several trials each, measuring success, policy violations, steps, and cost.",
+          "rationale": "Yes. Benchmarks shortlist; your eval decides.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Use whichever model the team already uses for coding.",
+          "rationale": "Familiarity isn't evidence for this task."
+        }
+      ],
+      "explanation": "Public benchmarks differ from your task in tools, policies, scaffold, and grading. Use them to choose candidates, and decide with your own eval, including pass^k and policy checks for a customer-facing agent.",
+      "week": 4,
+      "tags": [
+        "model-selection",
+        "benchmarks",
+        "agents"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w4-06",
+      "type": "mcq",
+      "prompt": "Which Ragas metric always requires a reference (a ground-truth answer or labeled reference contexts)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Context recall",
+          "rationale": "Yes. You can't know what was missed without knowing what should have been found.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Faithfulness",
+          "rationale": "Faithfulness compares the answer with the retrieved context; no reference needed."
+        },
+        {
+          "id": "c",
+          "text": "Response relevancy",
+          "rationale": "It compares the question with questions generated from the answer; no reference needed."
+        },
+        {
+          "id": "d",
+          "text": "None of them; Ragas is entirely reference-free",
+          "rationale": "The paper emphasizes reference-free metrics, but context recall needs a reference."
+        }
+      ],
+      "explanation": "Reference-free metrics measure consistency (does the answer match its context, does it address the question). Anything about completeness or truth needs a reference, which means human labeling effort.",
+      "week": 4,
+      "tags": [
+        "ragas",
+        "rag"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w4-07",
+      "type": "code-reading",
+      "prompt": "This compares two RAG configurations for a CI gate. What is the most serious problem?",
+      "code": "import statistics\n\ndef compare(baseline_scores, candidate_scores):\n    # each is a list of per-question scores from separate runs\n    diff = statistics.fmean(candidate_scores) - statistics.fmean(baseline_scores)\n    return \"pass\" if diff >= 0 else \"block\"",
+      "options": [
+        {
+          "id": "a",
+          "text": "fmean should be median",
+          "rationale": "Either summary can be fine; that isn't the main issue."
+        },
+        {
+          "id": "b",
+          "text": "It should return a boolean instead of a string",
+          "rationale": "Style, not correctness."
+        },
+        {
+          "id": "c",
+          "text": "statistics.fmean fails on an empty list, so it needs a try block",
+          "rationale": "A guard is good practice, but the decision logic is the real flaw."
+        },
+        {
+          "id": "d",
+          "text": "It doesn't pair questions or quantify uncertainty, so any tiny dip from noise blocks the change and any tiny rise passes it, even if the two lists cover different questions",
+          "rationale": "Yes. Pair by question id, compute an interval on the mean difference, and use a tolerance.",
+          "correct": true
+        }
+      ],
+      "explanation": "A gate that reacts to noise gets ignored or gamed. Run both systems on the same versioned questions, analyze per-question differences with a bootstrap interval, block on clear drops, and route uncertain ones to review.",
+      "language": "python",
+      "week": 4,
+      "tags": [
+        "ci",
+        "statistics"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w4-08",
+      "type": "predict-output",
+      "prompt": "A correctness judge passes 75% of answers. Measured against expert labels, its TPR is 0.9 and its TNR is 0.8. What does this print?",
+      "code": "observed, tpr, tnr = 0.75, 0.9, 0.8\ntrue_rate = (observed + tnr - 1) / (tpr + tnr - 1)\nprint(round(true_rate, 3))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.75`",
+          "rationale": "That's the raw judge rate."
+        },
+        {
+          "id": "b",
+          "text": "`0.786`",
+          "rationale": "Yes. (0.75 + 0.8 - 1) / (0.9 + 0.8 - 1) = 0.55 / 0.7, about 0.786.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`0.675`",
+          "rationale": "That multiplies the observed rate by TPR, which isn't the correction."
+        },
+        {
+          "id": "d",
+          "text": "`0.55`",
+          "rationale": "That's only the numerator."
+        }
+      ],
+      "explanation": "Here the judge's errors partly cancel: it misses some passes (TPR 0.9) and lets some failures through (TNR 0.8), and the corrected rate is slightly higher than observed. The direction of the correction depends on which error dominates.",
+      "language": "python",
+      "week": 4,
+      "tags": [
+        "calibration",
+        "rogan-gladen"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3x-w4-09",
+      "type": "multi",
+      "prompt": "You are speccing a custom review tool for your RAG system's traces. Which features belong in a first version? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The question, the answer, and each retrieved chunk with its rank and source, on one screen",
+          "rationale": "Correct. Context in one place is the core benefit over generic tools.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "One-keystroke pass or fail, with a required critique on fail",
+          "rationale": "Correct. Binary verdicts with written reasons.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Filters by failure tag and by judge verdict, and a progress counter",
+          "rationale": "Correct. These make targeted review and steady progress easy.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "A 1-to-10 quality slider for each answer",
+          "rationale": "Fine-grained scales are hard to apply consistently; binary plus critique is recommended."
+        }
+      ],
+      "explanation": "A minimal tool that removes friction beats a feature-rich generic platform for a small team. Add features only when their absence slows the reviewer down.",
+      "week": 4,
+      "tags": [
+        "human-review",
+        "tooling"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3x-w4-10",
+      "type": "mcq",
+      "prompt": "tau-bench grades an episode by comparing the final database with an annotated goal state and checking required information in the agent's messages. What limitation do its authors point out?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Database comparison is too slow to run at scale",
+          "rationale": "They describe it as efficient."
+        },
+        {
+          "id": "b",
+          "text": "Simulated users always behave identically, so results can't vary",
+          "rationale": "Simulated users vary, which is one reason they report pass^k over trials."
+        },
+        {
+          "id": "c",
+          "text": "It can only evaluate coding agents",
+          "rationale": "It evaluates customer-service agents in retail and airline domains."
+        },
+        {
+          "id": "d",
+          "text": "A correct end state is necessary but not sufficient: an agent can reach it while violating policy, for example acting without the user's confirmation",
+          "rationale": "Yes. That's why trajectory rules complement outcome checks.",
+          "correct": true
+        }
+      ],
+      "explanation": "Outcome checks answer 'did it get there?' Policy and safety are about how. Combine an end-state grader with a few targeted trajectory assertions.",
+      "week": 4,
+      "tags": [
+        "agents",
+        "benchmarks",
+        "tau-bench"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

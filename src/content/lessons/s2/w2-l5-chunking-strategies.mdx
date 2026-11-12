@@ -1,0 +1,357 @@
+---
+id: s2-w2-l5
+studio: s2
+week: 2
+order: 5
+title: Chunking strategies
+summary: Fixed-size, recursive, structure-aware, and semantic chunking; overlap and chunk size trade-offs; parent and child (small-to-big) retrieval; Anthropic's Contextual Retrieval; and how to choose a strategy by measuring instead of guessing.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain why documents are chunked and how chunk size trades retrieval precision against context
+  - Describe fixed-size, recursive, structure-aware, and semantic chunking, and what the published evidence says about each
+  - Implement a structure-aware Markdown chunker with a size limit and word-boundary overlap
+  - Explain parent and child (small-to-big) retrieval and Anthropic's Contextual Retrieval, including its reported results and costs
+  - Design a measurement that picks a chunking strategy for your corpus with evidence
+sources:
+  - { id: langchain-recursive-splitter, use: summarized }
+  - { id: langchain-markdown-splitter, use: linked }
+  - { id: chroma-chunking-eval, use: summarized, where: "Methodology, results, and limitations" }
+  - { id: qu-2024-semantic-chunking, use: summarized, where: "Abstract and conclusions" }
+  - { id: llamaindex-recursive-retriever, use: summarized, where: "Chunk references and metadata references" }
+  - { id: anthropic-contextual-retrieval, use: summarized }
+  - { id: claude-embeddings-docs, use: summarized }
+  - { id: chen-2023-dense-x, use: summarized }
+  - { id: gunther-2024-late-chunking, use: summarized }
+  - { id: docling-docs, use: linked, where: "Chunking concepts and examples" }
+  - { id: liu-2023-lost-middle, use: linked }
+  - { id: claude-docs, use: summarized, where: "Prompt caching" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: What, specifically, does Anthropic's Contextual Retrieval change about a standard retrieval pipeline?
+    options:
+      - id: a
+        text: It replaces embeddings with a model that reads every document at query time.
+        rationale: No. Retrieval still uses embeddings and BM25 over chunks; the model runs once per chunk at indexing time.
+      - id: b
+        text: It splits documents at semantic boundaries found by comparing sentence embeddings.
+        rationale: That is semantic chunking, a different technique. Contextual Retrieval works with whatever chunks you already have.
+      - id: c
+        text: Before indexing, a model reads the whole document and writes a short context for each chunk, which is prepended to the chunk for both the embedding and the BM25 index.
+        correct: true
+        rationale: Yes. The post calls these Contextual Embeddings and Contextual BM25; the context is typically 50 to 100 tokens.
+    explanation: >-
+      A chunk like "revenue grew 3 percent over the previous quarter" is ambiguous on its own. Prepending "This chunk
+      is from ACME's Q2 2023 SEC filing" makes it findable. Anthropic reported that this cut the top-20 retrieval
+      failure rate by 35 percent with embeddings alone and by 49 percent combined with contextual BM25, on their
+      datasets. It costs one model call per chunk at index time, made affordable with prompt caching.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A teammate proposes switching your support-docs index from recursive chunking to semantic chunking, citing a
+      blog post. Re-embedding costs about a day of compute. What is the best response?
+    options:
+      - id: a
+        text: Switch. Semantic chunking follows meaning, so it must retrieve better.
+        rationale: Plausible-sounding, but published comparisons are mixed, and Qu and colleagues (2024) concluded the extra cost was not justified by consistent gains.
+      - id: b
+        text: Build a small evaluation set of real questions with known source passages, run both strategies with the same embedding model, and compare recall at your production k before deciding.
+        correct: true
+        rationale: Yes. Chunking effects depend on the corpus and embedding model, so measure on yours. The eval set then guards every future change.
+      - id: c
+        text: Keep recursive chunking forever, because research proved semantic chunking is worse.
+        rationale: The evidence says "not consistently better for the cost," not "always worse." It might win on your corpus; only measurement tells you.
+    explanation: >-
+      Chunking choices are empirical. Vendor reports and papers tell you what to try and what to expect, but the
+      differences between strategies are often smaller than the variance across datasets. A 50 to 100 question eval
+      set with gold passages, scored by recall@k, turns a debate into a table.
+  - id: kc3
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      text = "x" * 1000
+      size, overlap = 400, 100
+      chunks, pos = [], 0
+      while True:
+          chunks.append(text[pos:pos + size])
+          if pos + size >= len(text):
+              break
+          pos += size - overlap
+      print(len(chunks), sum(len(c) for c in chunks))
+    options:
+      - id: a
+        text: "`3 1200`"
+        correct: true
+        rationale: Windows start at 0, 300, and 600; the third ends exactly at 1000. Three chunks of 400 characters.
+      - id: b
+        text: "`3 1000`"
+        rationale: Overlap means some characters are stored twice, so the total exceeds the text length.
+      - id: c
+        text: "`4 1300`"
+        rationale: The loop stops once a window reaches the end of the text, so there is no fourth window starting at 900.
+    explanation: >-
+      With a step of size minus overlap (300), the windows start at 0, 300, and 600. Overlap stored 200 characters
+      twice, a 20 percent increase in what you embed and store. Overlap is not free: it adds storage, embedding cost,
+      and near-duplicate chunks competing for top-k slots.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Why chunk at all
+
+After ingestion you have clean documents. You could embed each whole document as one vector, but three things push you to cut them into **chunks**, pieces of a few hundred to a couple of thousand tokens each.
+
+First, a vector summarizes everything it was computed from. One vector for a 30-page handbook averages vacation rules, safety rules, and expense rules into a single point, and a question about sick days is only weakly similar to that average. A vector for the sick-days paragraph is strongly similar. Smaller chunks give sharper matches. Second, embedding models have input limits; anything past the limit is truncated or rejected. Third, what you retrieve goes into a prompt, and the prompt has a budget. Retrieving five 300-token chunks costs 1,500 tokens; retrieving five whole documents might cost 100,000, and long, padded contexts make it harder for a model to use what matters (recall the "Lost in the Middle" findings from Studio 1).
+
+The opposing force is context. Cut too small and a chunk loses the information that made it answerable: "It must be approved by a director" is useless if "it" was defined two paragraphs earlier. Every strategy in this lesson is a different answer to the same question: how do you make pieces small enough to match precisely and large enough to mean something on their own?
+
+A practical unit note: chunk sizes are quoted in tokens, characters, or words, depending on the tool. LangChain's recursive splitter measures characters by default, for example. Roughly four characters per English token is a fine conversion for planning, but measure with your embedding model's tokenizer when the limit matters.
+</Listen>
+
+<Listen>
+## Fixed-size and recursive chunking
+
+**Fixed-size chunking** cuts the text every N characters or tokens, often with an **overlap** of M so each window repeats the end of the previous one. It is simple, predictable, and fast, and it ignores structure completely: windows start mid-word, mid-sentence, and mid-table, and a window can straddle two unrelated sections. The overlap exists to soften those bad cuts, so that a sentence split at a boundary appears whole in at least one chunk.
+
+**Recursive chunking** keeps the size limit but chooses where to cut. LangChain's widely used recursive splitter tries a list of separators in order, by default paragraph breaks, then line breaks, then spaces, then individual characters, and only falls back to the next separator when a piece is still too large. The effect is that paragraphs stay together when they fit, then sentences, then words. For prose, this is the sensible default and the baseline every other strategy should beat.
+
+How much does the choice matter? Chroma's 2024 technical report on chunking (Smith and Troynikov) built a token-level evaluation: generate questions with known source excerpts, then measure how much of the retrieved text is the relevant excerpt (precision, and a Jaccard-style intersection over union) and how much of the excerpt was retrieved (recall). They found differences of up to about 9 percent in recall between strategies, and a recursive splitter at about 200 tokens with no overlap performed consistently well across their metrics. They also found the popular 800-token chunks with 400-token overlap scored among the lowest on precision. Treat the specifics with care: it is vendor research on about 470 machine-generated questions over five corpora, with large variance, and the authors say as much. The useful conclusion is directional: smaller, boundary-aware chunks are a strong starting point, and big overlaps are not automatically safer.
+</Listen>
+
+<Listen>
+## Structure-aware chunking
+
+Many business documents already tell you where their pieces are: headings in Markdown and wikis, sections and clauses in contracts, slides in decks, rows in tables. **Structure-aware chunking** uses that structure as the primary boundary and the size limit as a secondary one. Split at headings first; if a section fits under the limit, it is one chunk; if not, split it recursively inside the section, never across a heading.
+
+Two extra benefits make this the default for structured corpora. Each chunk inherits a **heading path** ("Employee Handbook > Time off > Sick days"), which you store as metadata, show in citations, and can prepend to the text before embedding so that a chunk saying "three consecutive days" carries the context that it is about sick leave. And section boundaries are where topics change, so chunks are more likely to be about one thing.
+
+LangChain ships a Markdown header splitter that does the first step and records the headers as metadata, and layout-aware parsers like Docling include chunkers that work on their structured document output, so you rarely start from nothing. You will write one yourself below anyway, because knowing exactly what the chunker does is how you debug it. Watch for three edge cases: a heading with no body (skip it; its title lives on in its children's paths), very short sections (consider merging them with a neighbor so you don't get a chunk that says only "See the travel policy"), and lines that look like headings but aren't, such as a comment line starting with "#" inside a fenced code block.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s2-w2-markdown-chunker"
+  title="Write a structure-aware Markdown chunker"
+  starter={`import re
+
+HEADING = re.compile(r"^(#{1,6})[ \\t]+(.+?)[ \\t]*$", re.MULTILINE)
+
+def split_sections(text):
+    """Split Markdown at headings. Return a list of (headings, section_text) where
+    headings is the path of enclosing titles, e.g. ["Handbook", "Time off", "Vacation"],
+    and section_text runs from the heading line up to the next heading (stripped).
+    Text before the first heading, if not blank, gets headings [].
+    Skip sections whose only content is the heading line itself."""
+    # TODO
+    pass
+
+def pack(text, max_chars, overlap):
+    """Split one section into pieces of at most max_chars characters.
+    Cut at the last paragraph break ("\\n\\n") before the limit, else the last newline,
+    else the last ". ", else the last space, else hard at the limit.
+    Start each next piece about overlap characters before the previous cut,
+    moved forward to the start of a word. Strip each piece."""
+    # TODO
+    pass
+
+def chunk_markdown(text, max_chars=400, overlap=60):
+    if not 0 <= overlap < max_chars:
+        raise ValueError("need 0 <= overlap < max_chars")
+    chunks = []
+    for headings, section in split_sections(text) or []:
+        for piece in pack(section, max_chars, overlap) or []:
+            chunks.append({"headings": headings, "text": piece})
+    return chunks
+
+DOC = """# Harbor & Pine Handbook
+
+Fictional handbook for an exercise.
+
+## Time off
+
+### Vacation
+
+Full-time staff accrue 1.25 vacation days per month in their first two years and 1.75 days per month after that. Request vacation at least three weeks ahead for peak season.
+
+### Sick days
+
+No doctor's note is needed for up to three consecutive days. Tell your manager before your shift starts. Sick days do not reduce your vacation balance. If you are sick for longer than three days, HR will contact you about short-term leave. Short-term leave pays 70 percent of your base pay for up to six weeks. You can return early at any time by telling your manager. Your benefits continue unchanged during short-term leave.
+
+## Expenses
+
+Submit receipts within 30 days. Purchases over 200 dollars need approval first.
+"""
+
+for c in chunk_markdown(DOC, max_chars=200, overlap=40) or []:
+    print(" > ".join(c["headings"]), "|", len(c["text"]), "|", c["text"][:60].replace("\\n", " "))
+`}
+  tests={`secs = split_sections(DOC)
+assert secs is not None, "split_sections returned None"
+assert [h for h, _ in secs] == [["Harbor & Pine Handbook"], ["Harbor & Pine Handbook", "Time off", "Vacation"], ["Harbor & Pine Handbook", "Time off", "Sick days"], ["Harbor & Pine Handbook", "Expenses"]], "heading paths are wrong (and '## Time off' has no body of its own, so skip it)"
+assert secs[1][1].startswith("### Vacation") and secs[1][1].endswith("peak season."), "a section runs from its heading line to the next heading, stripped"
+assert split_sections("Intro text.\\n\\n# Title\\n\\nBody.")[0] == ([], "Intro text."), "keep text before the first heading"
+assert pack("short text", 100, 10) == ["short text"], "a short section stays whole"
+chunks = chunk_markdown(DOC, max_chars=200, overlap=40)
+assert all(len(c["text"]) <= 200 for c in chunks), "no chunk may exceed max_chars"
+for c in chunks:
+    lines = [ln for ln in c["text"].splitlines() if ln.startswith("#")]
+    assert len(lines) <= 1 and (not lines or c["text"].startswith("#")), "a chunk must not cross a heading"
+sick = [c for c in chunks if c["headings"][-1] == "Sick days"]
+assert len(sick) >= 3, "the long Sick days section should be split into several chunks"
+for a, b in zip(sick, sick[1:]):
+    assert b["text"][:15] in a["text"], "consecutive chunks of a section should overlap"
+    assert a["text"].endswith(".") or a["text"].endswith(":"), "prefer cutting after a sentence"
+assert all(c["text"][0].isalnum() or c["text"][0] == "#" for c in chunks), "chunks should start at a word or a heading"
+whole = " ".join(c["text"] for c in sick)
+for sentence in ["Short-term leave pays 70 percent of your base pay for up to six weeks.", "Your benefits continue unchanged during short-term leave."]:
+    assert sentence in whole or any(sentence in c["text"] for c in sick), "no sentence should be lost"
+assert any(c["headings"][-1] == "Expenses" and "200 dollars" in c["text"] for c in chunks)`}
+  solution={`def split_sections(text):
+    matches = list(HEADING.finditer(text))
+    out = []
+    first = matches[0].start() if matches else len(text)
+    if text[:first].strip():
+        out.append(([], text[:first].strip()))
+    path = []
+    for i, m in enumerate(matches):
+        level = len(m.group(1))
+        path = [p for p in path if p[0] < level] + [(level, m.group(2))]
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        if text[m.end():end].strip():
+            out.append(([t for _, t in path], text[m.start():end].strip()))
+    return out
+
+def pack(text, max_chars, overlap):
+    if len(text) <= max_chars:
+        return [text]
+    pieces, pos = [], 0
+    while pos < len(text):
+        limit = min(pos + max_chars, len(text))
+        cut = limit
+        if limit < len(text):
+            for sep in ("\\n\\n", "\\n", ". ", " "):
+                idx = text.rfind(sep, pos + max_chars // 4, limit)
+                if idx != -1:
+                    cut = idx + len(sep)
+                    break
+        pieces.append(text[pos:cut].strip())
+        if cut >= len(text):
+            break
+        nxt = max(cut - overlap, pos + 1)
+        while nxt < cut and not text[nxt - 1].isspace():
+            nxt += 1
+        pos = nxt
+    return [p for p in pieces if p]`}
+>
+Write `split_sections` and `pack`; `chunk_markdown` glues them together. A chunk must never cross a heading, must never exceed `max_chars`, should prefer cutting after a sentence, and should start each continuation piece about `overlap` characters early, on a word boundary. Run it first to see the output shape, then press **Check my answer**. Afterward, try `max_chars=120` and look at how the Sick days chunks change, and try `overlap=0`.
+</PyRunner>
+
+<Callout type="pitfall" title="Judging a chunker by reading its output">
+Chunk output that looks tidy can retrieve badly, and chunks that look ugly can retrieve fine. The only way to know is a retrieval measurement on real questions (later in this lesson). Also check the boring invariants with tests, as you just did: no chunk over the limit, no chunk crossing a section, no text lost, offsets that slice back to the source. A chunker that silently drops the last sentence of every long section can pass a visual review for weeks.
+</Callout>
+
+<Listen>
+## Semantic chunking, and what the evidence says
+
+**Semantic chunking** tries to find topic boundaries from meaning rather than formatting: embed each sentence, compare each sentence with the next, and cut where similarity drops sharply. Variants cluster sentences, or ask a model where the boundaries are. The appeal is obvious for documents with no useful structure, such as transcripts or long emails.
+
+The evidence is less exciting than the idea. Qu, Tu, and Bao (2024) compared semantic and fixed-size chunking across document retrieval, evidence retrieval, and answer generation tasks, and concluded that the computational cost of semantic chunking was not justified by consistent performance gains. In Chroma's report, one of the authors' own embedding-based cluster chunkers did score best on precision, and an LLM-based chunker had the highest recall, but the margins over a well-configured recursive splitter were modest relative to the variance, and the LLM chunker was by far the slowest.
+
+A fair reading: semantic chunking can help on some corpora, especially unstructured ones, but it costs an embedding call per sentence at indexing time and adds a tuning knob (the similarity threshold). Try it after you have a measurement in place and a structure-aware or recursive baseline to beat.
+
+**Overlap** deserves the same skepticism. It protects against bad boundaries, but it stores and embeds text twice, and it creates near-duplicate chunks that can fill several of your top-k slots with the same passage. Chroma's report found that reducing overlap generally improved its precision-oriented scores. A small overlap (10 to 15 percent) on top of boundary-aware cutting is a reasonable default; measure before going larger.
+</Listen>
+
+<Listen>
+## Small-to-big: retrieve small, read big
+
+The precision-versus-context tension has a structural fix: use different sizes for matching and for reading. In **parent and child** retrieval (also called small-to-big), you split each document into large parent chunks (a full section, say 1,000 tokens), split each parent into small child chunks (100 to 300 tokens), embed only the children, and keep a pointer from each child to its parent. At query time you match against the sharp, small children, then hand the model the parents they point to, deduplicated, so the model reads full context.
+
+LlamaIndex documents this as recursive retrieval with node references. Its example splits a paper into 1,024-token parents with children of 128, 256, and 512 tokens, and on its own generated question set reports hit rate rising from 0.778 to 0.897 and MRR from 0.563 to 0.691 over the plain baseline. That is one document and one question set, so read it as "worth trying," not as a general result. A variant attaches a generated summary and generated questions to each parent and matches against those instead.
+
+Two costs to plan for. Parents are longer, so each retrieved hit spends more of the prompt budget; retrieve fewer parents than you would children. And you now maintain two levels, so re-ingesting a document must update parents and children together (lesson 6 covers deletes). A cheaper relative is to retrieve a chunk plus its immediate neighbors by chunk index, which the offsets and chunk indexes in your metadata make easy.
+</Listen>
+
+<Listen>
+## Contextual Retrieval
+
+In September 2024, Anthropic published **Contextual Retrieval**, a technique aimed at the "chunk without context" problem. The method: before indexing, give a model the whole document plus one chunk, and ask it for a short context that situates the chunk within the document (typically 50 to 100 tokens). Prepend that context to the chunk, then build both the embedding index (**Contextual Embeddings**) and a BM25 keyword index (**Contextual BM25**) over the contextualized chunks. The post's example: a chunk that says only that revenue grew 3 percent over the previous quarter becomes findable once it is prefixed with which company's filing and which quarter it came from.
+
+Anthropic measured retrieval failure as 1 minus recall@20 (the share of questions whose relevant chunk was not in the top 20) across several datasets. They reported that Contextual Embeddings cut the failure rate by 35 percent (5.7 to 3.7 percent), adding Contextual BM25 cut it by 49 percent (to 2.9 percent), and adding a reranking step cut it by 67 percent (to 1.9 percent). They also found that passing 20 chunks to the model worked better than 10 or 5 in their tests, and that Gemini and Voyage embeddings performed best among those they tried.
+
+The cost is one model call per chunk, but the calls share a document, so prompt caching helps a lot: the post estimated a one-time cost of about $1.02 per million document tokens with Claude 3 Haiku, under stated assumptions (800-token chunks, 8,000-token documents, 100 tokens of context per chunk). Prices and models have changed since, so redo that arithmetic for today's models before you commit. Two caveats in the spirit of this course: these are Anthropic's measurements on Anthropic's chosen datasets, and the post itself tells readers to always run evals and to experiment with settings on their own use case. It also suggests tailoring the context prompt to your domain, for example by including a glossary of key terms. Week 3 adds the BM25 and reranking pieces; you can add the context step to any chunker.
+</Listen>
+
+Here is the shape of the context-generation call with the Claude Python SDK. The document goes first and is marked for caching, so every chunk from the same document reuses it; the chunk and the instruction come after the cache breakpoint.
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+
+def situate(document: str, chunk: str) -> str:
+    response = client.messages.create(
+        model="claude-haiku-5-5",
+        max_tokens=300,
+        output_config={"effort": "low"},
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"<document>\n{document}\n</document>",
+                 "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": (
+                    f"Here is a chunk from the document above:\n<chunk>\n{chunk}\n</chunk>\n"
+                    "Write one or two sentences that situate this chunk within the document, to improve search "
+                    "retrieval of the chunk. Answer only with the context."
+                )},
+            ],
+        }],
+    )
+    if response.stop_reason != "end_turn":
+        raise RuntimeError(f"context generation stopped early: {response.stop_reason}")
+    return "".join(b.text for b in response.content if b.type == "text").strip()
+
+# Embed and BM25-index situate(doc, chunk) + "\n\n" + chunk; store and cite the original chunk text.
+```
+
+<Callout type="tip" title="Checks for generated context">
+The context is model output written into your index, so give it the same scrutiny as any extraction. Confirm caching works by reading `usage.cache_read_input_tokens` on the second chunk of a document (documents shorter than the model's minimum cacheable length are not cached). Spot-check a sample of contexts against their documents, because a wrong context ("This chunk is from the 2023 policy" when it is the 2025 one) actively misleads retrieval. Keep the context separate from the chunk text in storage, so citations quote the source and you can regenerate contexts when the prompt or model changes.
+</Callout>
+
+<Listen>
+## Choose by measuring
+
+Every claim in this lesson came with "on their data." The way to choose for yours is a small retrieval evaluation, and it is the same tool you will use for every retrieval change in this studio.
+
+Build a set of 50 to 100 questions that real users would ask, each labeled with the passage (document plus location) that answers it. Start from real queries if you have logs; otherwise write them with a domain expert, or have a model draft questions from sampled passages and have a person keep only the realistic ones (the Chroma report's machine-generated questions are a reminder that generated sets carry the generator's style). Then hold everything else fixed (embedding model, k, the query side) and vary one thing at a time: strategy, chunk size, overlap. Score each configuration by whether the gold passage appears in the top k, using recall@k and MRR from week 1, and record the index size and indexing cost beside the scores.
+
+Two refinements matter in practice. Define a hit by overlap with the gold location, not by chunk id, because different strategies produce different chunk ids for the same text; your character offsets make this easy. And look at the failures, not just the averages: a strategy that wins on average but loses every table question may be the wrong choice for a finance team.
+
+Finally, choose the simplest configuration within noise of the best. If structure-aware chunking at 400 characters scores the same as semantic chunking at three times the indexing cost, ship the cheaper one and keep the eval set for the next change.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put the steps of choosing a chunking strategy in order"
+  items={[
+    "Collect realistic questions and label the source passage that answers each",
+    "Fix the embedding model, k, and query processing",
+    "Index the corpus with the baseline (recursive or structure-aware) and score recall@k",
+    "Re-index with one change at a time (strategy, size, overlap) and score each",
+    "Read the failures by question type, not only the averages",
+    "Pick the simplest configuration within noise of the best and keep the eval set",
+  ]}
+  explanation="Labels first, then a fixed harness, then one variable at a time. Reading failures is where you discover that one strategy breaks tables or short answers. Keeping the eval set turns the next change into a rerun instead of a debate."
+/>
+
+<GoDeeper title="Propositions and late chunking">
+Two research directions rethink the unit of retrieval. Chen and colleagues (2023), in "Dense X Retrieval," proposed indexing **propositions**: atomic, self-contained factual statements extracted from the text by a model. They reported that indexing propositions significantly outperformed passage-level units on retrieval tasks in their experiments. The cost is a model pass over the whole corpus and more, smaller index entries. **Late chunking** (Günther and colleagues, 2024, from Jina AI) reverses the usual order: run a long-context embedding model over the whole document first, then pool the token embeddings within each chunk's span, so every chunk vector is computed with the full document in view. It aims at the same problem as Contextual Retrieval without a generation step, but it requires an embedding model that exposes token-level outputs and a long input window. Anthropic's embeddings docs point to Voyage AI models, including contextualized chunk embedding models designed for the same goal; check the current model list before choosing.
+</GoDeeper>
+
+<Listen>
+## A default you can defend
+
+If you need a starting configuration today: parse with structure, chunk at headings with a recursive split inside sections at roughly 200 to 500 tokens, use a small overlap, store heading paths and offsets, and prepend the title and heading path when you embed (a free, deterministic first step toward contextual retrieval). Build the eval set in the same week. Then try contextual retrieval or small-to-big, measured against that baseline. The lab does the first half of this and prints statistics for two strategies side by side; the next lesson stores the result.
+</Listen>

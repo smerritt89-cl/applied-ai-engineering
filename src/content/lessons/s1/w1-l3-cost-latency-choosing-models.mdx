@@ -1,0 +1,340 @@
+---
+id: s1-w1-l3
+studio: s1
+week: 1
+order: 3
+title: Tokens, cost, latency, and choosing a model
+summary: Per-token pricing math, caching and batch discounts, where latency comes from, model tiers within a family, what Claude, GPT, Gemini, Grok, and open-weight models each emphasize, how to read leaderboards critically, and how to decide with a small eval on your own task.
+estMinutes: 70
+reviewed: 2026-11-11
+objectives:
+  - Compute the cost of a request and of a monthly workload from token counts and a price table, including cache and batch discounts
+  - Estimate end-to-end latency from time to first token and output speed, and explain why output length dominates
+  - Describe the tier structure inside a model family and when to move up or down a tier
+  - Summarize what each major provider's own documentation emphasizes, and separate those claims from independent evidence
+  - Name the main caveats of arena votes, benchmark scores, and vendor-run evals
+  - Design a small, task-specific eval that weighs quality, cost, latency, data terms, and operational fit
+sources:
+  - { id: claude-pricing-docs, use: summarized, where: "Model pricing, caching multipliers, batch, long context, data residency" }
+  - { id: claude-choosing-model-docs, use: summarized }
+  - { id: claude-rate-limits-docs, use: summarized, where: "Cache-aware ITPM" }
+  - { id: claude-thinking-docs, use: summarized, where: "Thinking billed as output tokens" }
+  - { id: claude-models-docs, use: linked }
+  - { id: openai-models-docs, use: summarized }
+  - { id: openai-pricing-docs, use: summarized }
+  - { id: gemini-models-docs, use: summarized }
+  - { id: gemini-pricing-docs, use: summarized, where: "Standard vs batch, free tier data use, announced price change" }
+  - { id: gemini-openai-compat, use: summarized, where: "Search grounding note" }
+  - { id: xai-models-docs, use: summarized }
+  - { id: xai-x-search-docs, use: summarized }
+  - { id: hf-meta-llama, use: summarized }
+  - { id: qwen-github, use: summarized }
+  - { id: mistral-docs, use: summarized }
+  - { id: deepseek-api-docs, use: summarized }
+  - { id: openai-gpt-oss, use: summarized }
+  - { id: arena-leaderboard, use: linked }
+  - { id: chiang-2024-chatbot-arena, use: summarized }
+  - { id: arena-style-control, use: summarized }
+  - { id: singh-2025-leaderboard-illusion, use: summarized }
+  - { id: artificial-analysis-methodology, use: summarized }
+  - { id: jimenez-2023-swebench, use: summarized }
+  - { id: swebench-verified, use: summarized }
+  - { id: deng-2023-contamination, use: summarized }
+  - { id: yt-karpathy-how-i-use-llms, use: embedded, where: "Opening section on the LLM ecosystem and model tiers" }
+  - { id: hamel-evals, use: linked }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 4, Evaluate AI Systems" }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: Prices are in USD per million tokens. What does this print?
+    code: |
+      price_in, price_out = 2.00, 10.00
+      cost = (10_000 * price_in + 1_000 * price_out) / 1_000_000
+      print(round(cost, 3))
+    options:
+      - id: a
+        text: "`0.03`"
+        correct: true
+        rationale: 10,000 times 2 is 20,000; 1,000 times 10 is 10,000; 30,000 over a million is 0.03 dollars.
+      - id: b
+        text: "`0.012`"
+        rationale: That adds the two prices and multiplies by the larger count. Each token type has its own price.
+      - id: c
+        text: "`30000.0`"
+        rationale: Prices are per million tokens, so you must divide by a million.
+    explanation: >-
+      Cost is a dot product: tokens of each type times that type's price per million, divided by a million. Notice that
+      the 1,000 output tokens cost half as much as the 10,000 input tokens: output prices are often several times input
+      prices, so long answers are expensive.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A vendor's launch post says its new model tops a public leaderboard and a coding benchmark. Your task is
+      extracting fields from scanned insurance forms. What is the best next step?
+    options:
+      - id: a
+        text: Switch to the new model, since it leads on two independent measures.
+        rationale: Neither measure is your task, and one may be vendor-run. Reputation is a prior, not a decision.
+      - id: b
+        text: Ignore leaderboards entirely and pick the cheapest model.
+        rationale: Leaderboards are useful for building a shortlist. Price alone ignores quality.
+      - id: c
+        text: Add it to the shortlist and run your existing set of labeled forms through it and your current model, comparing accuracy, cost per form, latency, and data terms.
+        correct: true
+        rationale: A small eval on your own data answers the question the leaderboard cannot.
+    explanation: >-
+      Public results tell you which models are worth testing. Only your own examples, scored the way your users would
+      score them, tell you which one to ship. Keep the eval set so the next launch takes an afternoon, not a debate.
+  - id: kc3
+    type: multi
+    prompt: Which are documented reasons to be cautious about public model rankings? Select all that apply.
+    options:
+      - id: a
+        text: Human preference votes are influenced by response length and formatting.
+        correct: true
+        rationale: Arena's own style-control analysis found length to be the dominant style factor.
+      - id: b
+        text: Benchmark test items can leak into training data.
+        correct: true
+        rationale: Deng and colleagues found models could guess hidden answer options on common benchmarks.
+      - id: c
+        text: Providers can test many private variants and publish only the best.
+        correct: true
+        rationale: The paper "The Leaderboard Illusion" documents this practice on Chatbot Arena.
+      - id: d
+        text: Leaderboards measure only open-weight models.
+        rationale: The major leaderboards include closed models from all the big providers.
+    explanation: >-
+      Each evidence source has a known bias: arena votes reward style, static benchmarks can be contaminated, and
+      vendor-published numbers use settings the vendor chose. None of this makes them useless; it makes them inputs to
+      your own testing rather than substitutes for it.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The pricing equation
+
+Every hosted model bills you per token, with separate prices for input and output, quoted in dollars per million tokens. The cost of one request is a dot product: input tokens times the input price, plus output tokens times the output price, divided by a million. If you have a math background, this is the easiest lesson in the course, and also the one that saves the most money, because most cost mistakes are arithmetic people never did.
+
+Two properties of real price tables shape your design. First, output is more expensive than input. At time of writing, every current Claude tier charges five times as much per output token as per input token (see the [pricing page](https://platform.claude.com/docs/en/about-claude/pricing)), and other providers show similar ratios. A feature that writes long answers costs more than one that reads long documents and replies briefly. Second, thinking costs output. On reasoning models, the tokens the model spends thinking are billed as output tokens even when you never see their text, so `usage.output_tokens` can be several times the length of the visible answer. Always price from the usage field, never from the text you received.
+
+Third, tiers differ by large factors. At time of writing, Claude Opus 5.5 is listed at 4 dollars input and 20 dollars output per million tokens, and Claude Haiku 5.5 at 0.10 and 0.50 for prompts up to 100,000 tokens. That is a factor of 40. Routing a high-volume, easy task to the smaller tier is often the single biggest cost decision you make.
+</Listen>
+
+<Listen>
+## Discounts and surcharges that change the answer
+
+**Prompt caching** lets you mark a stable prefix (system prompt, tool definitions, a long document) so repeat requests read it from cache. On Claude at time of writing, a cache write costs 1.25 times the base input price for a five-minute lifetime or 2 times for one hour, and a cache read costs a small fraction of base input: 0.05 times on Opus 5.5 and Sonnet 5.5, 0.1 times on most other models. Reads also do not count toward the input-tokens-per-minute rate limit, so caching raises throughput as well as cutting cost. The arithmetic says a five-minute cache pays for itself as soon as the prefix is read once.
+
+**Batch processing** trades latency for price. Anthropic's Batch API processes requests asynchronously at a 50 percent discount on input and output, and the OpenAI and Gemini pricing pages also list batch rates at half their standard prices. If nobody is waiting on the answer (nightly classification, backfills, eval runs), batch is free money. On Claude, batch and caching discounts stack.
+
+**Surcharges** exist too. Some prices depend on prompt length: Claude Haiku 5.5 charges more for prompts over 100,000 tokens, and xAI's model table lists higher rates for prompts of 200,000 tokens or more. Requesting US-only inference on Claude adds a 1.1 times multiplier. Fast modes on several providers raise the price for higher output speed. And prices change: when this lesson was reviewed, Google's pricing page announced that Gemini 4 model prices would double on 1 December 2026. Keep prices in configuration with a "checked on" date, never as constants scattered through code.
+</Listen>
+
+| Model (provider) | Input | Cached input | Output | Notes from the pricing page |
+|---|---|---|---|---|
+| `claude-opus-5-5` (Anthropic) | 4.00 | 0.20 | 20.00 | 1M context at standard price |
+| `claude-sonnet-5-5` (Anthropic) | 2.00 | 0.10 | 10.00 | 1M context at standard price |
+| `claude-haiku-5-5` (Anthropic) | 0.10 | 0.01 | 0.50 | Prompts up to 100K tokens; higher above |
+| `gpt-6.1-sol` (OpenAI) | 2.00 | 0.10 | 10.00 | Short-context rates; batch is half |
+| `gemini-3.8-flash` (Google) | 0.75 | 0.075 | 3.75 | Rates through 31 Dec 2026; cache storage billed separately |
+| `grok-4.3` (xAI) | 1.25 | 0.20 | 2.50 | Rates below 200K-token prompts |
+
+*USD per million tokens, a snapshot taken 2026-11-11 from the [Claude](https://platform.claude.com/docs/en/about-claude/pricing), [OpenAI](https://developers.openai.com/api/docs/pricing), [Gemini](https://aistudio.google.com/docs/pricing), and [xAI](https://docs.x.ai/docs/models) pricing pages. It will go stale; use it for the exercises and check the pages before any real decision. Cache write prices are omitted for brevity.*
+
+<Callout type="pitfall" title="The free tier may be paying with your data">
+Price is not only dollars. Google's pricing page marks, per model, whether content is used to improve Google's products: at time of writing that is "Yes" on the free tier of models such as Gemini 3.8 Flash and "No" on the paid tier. Before you send customer data anywhere, read the data-use and retention terms for the exact tier you are on, and get them in writing for regulated data.
+</Callout>
+
+<Listen>
+## Where latency comes from
+
+For a single response, a good first model of wall-clock time is: **time to first token** (TTFT), plus output tokens divided by **output speed** in tokens per second. TTFT covers network time, queueing, reading your input, and, on reasoning models, the thinking that happens before the first visible word. Output speed is how fast the model generates once it starts.
+
+The second term usually dominates. Suppose a model has a TTFT of one second and generates 50 tokens per second. A 100-token answer takes about 3 seconds. A 1,500-token answer takes about 31. Nothing about the input changed; the answer got longer. That is why the highest-leverage latency fixes are about output: ask for shorter answers, return structured fields instead of prose, lower the reasoning effort on routine requests, and pick a faster model for latency-critical paths. Streaming (lesson 2) does not shrink total time, but it makes TTFT the number users feel.
+
+Input length matters less than output length per token, but it is not free. Long prompts raise TTFT and cost, and prompt caching reduces both for repeated prefixes. Independent services such as Artificial Analysis measure TTFT and output speed across providers' endpoints; its methodology averages recent measurements and counts reasoning tokens in output speed. Use such numbers to shortlist, then measure on your own prompts and from your own region, because latency depends on load, prompt shape, and time of day.
+</Listen>
+
+<Predict
+  title="Estimate the wait"
+  code={`ttft_s = 0.8          # time to first token
+tokens_per_s = 60     # output speed
+answer_tokens = 600   # includes any thinking tokens
+
+total = ttft_s + answer_tokens / tokens_per_s
+print(round(total, 1))`}
+  options={["10.8", "1.4", "0.8", "36.8"]}
+  answer={0}
+>
+600 tokens at 60 per second is 10 seconds of generation, plus 0.8 seconds before the first token: 10.8 seconds. Halving the answer length saves 5 seconds; halving TTFT saves 0.4. When users say "it's slow," look at output length first.
+</Predict>
+
+<Listen>
+## Tiers inside one family
+
+Each major provider sells a ladder of models from the same family: a large, most capable tier; a balanced middle tier; and a small, fast, cheap tier. Anthropic's ladder at time of writing is Claude Opus 5.5 (its documentation's suggested starting point for most workloads, aimed at complex agentic coding and enterprise work), Claude Sonnet 5.5 (speed and capability for everyday coding, agent, and enterprise workloads), and Claude Haiku 5.5 (lowest latency and price, for real-time and high-volume work and sub-tasks). Above them sits Claude Fable 5.2, described as Anthropic's most capable widely available model, for the hardest long-horizon work. OpenAI and Google publish similar ladders.
+
+Anthropic's model-selection guide describes two ways to start. **Capability-first**: build with the strongest model, get the prompt right, then try cheaper settings or smaller tiers and keep them where quality holds. **Efficiency-first**: start with the small tier and move up only where tests show a gap. The first is better for hard, high-stakes tasks; the second for high-volume, well-defined ones. The same guide makes a point that is easy to miss: many current models have an **effort** setting that trades thoroughness for speed and cost within one model, and tuning it is often a better lever than switching models. Whichever path you take, the guide's decisive step is the same one this lesson ends on: build tests from your actual prompts and data.
+</Listen>
+
+<Listen>
+## The cross-provider landscape, in each provider's own words
+
+Here is what each provider's documentation emphasizes at time of writing. Treat this as the claims to test, not as conclusions.
+
+**Anthropic (Claude).** The model guide positions the Opus tier for long-running agentic coding and knowledge work, with a 1M-token context window at standard pricing across current Opus and Sonnet models, and Haiku for speed and price. The documentation leans heavily on agentic and tool-use features, plus controls such as effort and caching.
+
+**OpenAI (GPT).** The models page recommends starting with GPT-6 Astra for complex reasoning and coding, lists cheaper Sol and Terra models and an efficient Luna model, and emphasizes reasoning, coding, tool use, and computer use. All its current models accept text and images, with context windows listed at about 1.05M tokens.
+
+**Google (Gemini).** The models page describes Gemini 4 Carbon as its strongest reasoning model and lists Flash and Flash-Lite models for speed and throughput. The emphasis is native multimodality: the Gemini 4 models accept text, image, audio, video, and PDF input in a 1M-token window. Google also offers grounding with Google Search on Gemini 3 and newer models.
+
+**xAI (Grok).** The models page recommends Grok 4.7 for code and chat, with context windows from 500K to 1M tokens. Its distinctive feature is real-time data: the docs state that Grok has no knowledge of current events beyond training unless you enable the server-side Web Search or X Search tools. X Search lets Grok search posts, users, and threads on X and answer with citations, billed per item fetched plus tokens.
+
+**Open-weight models.** You download the weights and run them yourself or through a host of your choice. Meta's Llama 4 models (Scout and Maverick, both multimodal) are distributed on Hugging Face under a license you must accept. The Qwen team publishes the Qwen3.8 series plus vision and omni (text, audio, image, video) models. Mistral's docs list Mistral Small 4 under Apache 2.0 and Mistral Large 4 under its own open-weight license. DeepSeek serves its models through an OpenAI-compatible API, and Mistral's catalog lists a DeepSeek V4.1 model under the MIT license. OpenAI's gpt-oss models (120B and 20B parameters, Apache 2.0) are documented to fit a single 80 GB GPU and 16 GB of memory respectively. The strengths are control: data never leaves your infrastructure, you can fine-tune, and there is no per-token fee. The costs move to GPUs, operations, and keeping up with releases, and licenses differ in what they allow, so read each one.
+</Listen>
+
+<Video id="EWvNQjAaOHw" title="How I use LLMs" channel="Andrej Karpathy" minutes={15} start={0} source="https://karpathy.ai/">
+Watch the opening part, where Karpathy surveys the ecosystem of assistants from different providers and talks about which model and paid tier you are actually using. The video is from February 2025, so the model names are out of date; the habits (try several, know which tier you are on, check for yourself) are not.
+</Video>
+
+<Callout type="claim" title="Vendor claim: one model to start with">
+**Claim.** Anthropic's model guide (checked 2026-11-11) says most workloads start with Claude Opus 5.5; OpenAI's models page says to start with GPT-6 Astra for complex reasoning and coding. [Anthropic](https://platform.claude.com/docs/en/about-claude/models/choosing-a-model), [OpenAI](https://developers.openai.com/api/docs/models).
+
+**For.** Starting with a strong model separates "the task is hard" from "the model is weak," and both guides pair the advice with optimizing down later.
+
+**Against.** Each vendor recommends its own flagship, and flagship tiers cost the most. Neither page knows your task. Treat both as reasonable defaults for a first prototype, and let your eval decide production.
+</Callout>
+
+<Listen>
+## Independent evidence, and what each kind can tell you
+
+**Arena-style leaderboards.** The Arena leaderboard (formerly LMArena and Chatbot Arena) shows two anonymous models' answers to a user's prompt, asks the user to vote, and fits a statistical rating model (Bradley-Terry) to the accumulated pairwise votes, as described by Chiang and colleagues in 2024. It measures what real people prefer on their own prompts, which static benchmarks miss. Its caveats are documented. The Arena team's own "style control" analysis found that answer length is the dominant style factor in votes, with markdown formatting a smaller effect, and that rankings shift once style is controlled. And "The Leaderboard Illusion" (Singh and colleagues, 2025) reported that some providers privately tested many variants before release and could withhold weaker scores, and that a few large providers received a disproportionate share of the battle data.
+
+**Measurement services.** Artificial Analysis publishes speed, latency, and price comparisons across providers' endpoints, plus an intelligence index built from benchmarks. Its speed figures are measurements; its prices are the providers' listed prices, and its blended price assumes a fixed mix of cache-hit, input, and output tokens that may not match yours.
+
+**Task benchmarks.** SWE-bench (Jimenez and colleagues, 2023) asks models to resolve real GitHub issues and checks the fix by running the repository's tests. SWE-bench Verified is a human-filtered subset of 500 of those tasks, made with OpenAI, after reviewers found that some original tasks were underspecified or had unreliable tests. Benchmarks like this are concrete and reproducible, but any public test set can leak into training data: Deng and colleagues (2023) found commercial models could guess hidden answer options on MMLU far above chance, a sign the items had been seen.
+
+**Provider-published evals.** Launch posts and model cards report scores the vendor ran, with prompts, scaffolds, and settings the vendor chose. They are useful and usually honest, but they are not independent, and different vendors' numbers are rarely run the same way.
+</Listen>
+
+<Mermaid
+  alt="Decision flowchart for choosing a model. Start with hard constraints: if data cannot leave your infrastructure, shortlist open-weight models you can self-host; otherwise check whether the task needs real-time web or social data, long multimodal input such as video or audio, or neither, and shortlist providers whose documented features match. Then build a small eval from 20 to 50 real examples with a rubric, run two or three candidates including one smaller tier, and compare quality, cost per task, p95 latency, and data terms. If several models meet the quality bar, pick the cheapest and fastest that passes; if none does, improve the prompt or context, or try a stronger tier, and re-run the eval. Re-run the eval whenever a new model is released or prices change."
+  caption="A decision aid. Constraints narrow the field; your own eval makes the choice."
+  chart={`flowchart TD
+  A["New task"] --> B{"Must data stay on your own infrastructure?"}
+  B -- "yes" --> C["Shortlist open-weight models you can self-host"]
+  B -- "no" --> D{"Special input or data needs?"}
+  D -- "real-time web or X data" --> E["Include a provider with search tools, such as Grok or a search-grounded model"]
+  D -- "long video, audio, or mixed media" --> F["Include a natively multimodal model, such as Gemini"]
+  D -- "none" --> G["Shortlist two or three general models across tiers"]
+  C --> H["Build an eval: 20 to 50 real examples plus a rubric"]
+  E --> H
+  F --> H
+  G --> H
+  H --> I["Run every candidate, including one smaller tier"]
+  I --> J["Compare quality, cost per task, p95 latency, data terms, operational fit"]
+  J --> K{"Does more than one meet the quality bar?"}
+  K -- "yes" --> L["Ship the cheapest and fastest that passes"]
+  K -- "no" --> M["Improve prompt or context, or try a stronger tier"]
+  M --> I
+  L --> N["Re-run the eval on new releases and price changes"]`}
+/>
+
+<Listen>
+## Decide with a small eval on your task
+
+Everything above narrows the field. The decision comes from testing candidates on your work. A first eval does not need infrastructure. Collect 20 to 50 real inputs that represent your traffic, including the awkward ones (long, ambiguous, adversarial). Write down what a good output looks like as a short rubric: required facts, forbidden content, format, tone. Run the same inputs through two or three candidates, at least one of them a smaller tier, and record five things for each: a quality score from the rubric, cost per task from the usage fields, latency (look at the 95th percentile, not just the average, because slow outliers are what users remember), the provider's data and retention terms, and operational fit (rate limits, regions, SDK support, how the model fails).
+
+Then decide like an engineer, not a fan. If two models pass your quality bar, the cheaper and faster one wins, and the margin funds the review time you will need. If none passes, the problem may be your prompt or missing context rather than the model, which the next weeks address. Keep the eval set: the next model launch becomes an afternoon's rerun instead of a debate. A provider's reputation, a leaderboard rank, or a colleague's favorite is a reasonable prior for what to test first. It is not evidence about your task. Studio 3 turns this into a proper eval harness; the lab below is the first version.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s1-cost-calculator"
+  title="Monthly cost and a break-even point"
+  starter={`# USD per million tokens. Snapshot 2026-11-11; check the pricing pages before real decisions.
+PRICES = {
+    "claude-opus-5-5":   {"input": 4.00, "cached_input": 0.20,  "output": 20.00},
+    "claude-sonnet-5-5": {"input": 2.00, "cached_input": 0.10,  "output": 10.00},
+    "claude-haiku-5-5":  {"input": 0.10, "cached_input": 0.01,  "output": 0.50},
+    "gpt-6.1-sol":       {"input": 2.00, "cached_input": 0.10,  "output": 10.00},
+    "gemini-3.8-flash":  {"input": 0.75, "cached_input": 0.075, "output": 3.75},
+    "grok-4.3":          {"input": 1.25, "cached_input": 0.20,  "output": 2.50},
+}
+
+def request_cost(model, input_tokens, output_tokens, cached_input_tokens=0, batch=False):
+    """Cost in USD of one request. cached_input_tokens is the PART of input_tokens served
+    from cache (priced at cached_input); the rest is priced at input. Batch halves the total.
+    Raise KeyError for an unknown model. Ignore cache-write premiums here."""
+    # TODO
+    pass
+
+def monthly_cost(model, requests_per_day, input_tokens, output_tokens,
+                 cached_input_tokens=0, batch=False, days=30):
+    # TODO
+    pass
+
+def break_even_requests_per_day(model, fixed_monthly_usd, input_tokens, output_tokens,
+                                cached_input_tokens=0, days=30):
+    """Requests per day at which paying per token on this model costs the same as a
+    fixed monthly bill (for example, a self-hosted GPU server for an open-weight model)."""
+    # TODO
+    pass
+
+# A support-ticket summarizer: 20,000 tickets/day, 2,000 tokens in, 300 out.
+for m in PRICES:
+    print(f"{m:18s} {monthly_cost(m, 20_000, 2_000, 300):>10,.2f}")
+print("break-even vs $2,000/month server on sonnet:",
+      round(break_even_requests_per_day("claude-sonnet-5-5", 2_000, 2_000, 300)))
+`}
+  tests={`assert request_cost("claude-haiku-5-5", 2000, 500) is not None, "request_cost returned None"
+assert abs(request_cost("claude-haiku-5-5", 2000, 500) - 0.00045) < 1e-12, "2000*0.10 + 500*0.50, over a million"
+assert abs(request_cost("claude-opus-5-5", 2000, 500, cached_input_tokens=1500) - 0.0123) < 1e-12, "500 uncached at 4.00, 1500 cached at 0.20, 500 out at 20.00"
+assert abs(request_cost("claude-opus-5-5", 2000, 500, batch=True) - 0.009) < 1e-12, "batch halves the total"
+assert abs(monthly_cost("claude-haiku-5-5", 1000, 2000, 500) - 13.5) < 1e-9, "0.00045 * 1000 * 30"
+assert abs(monthly_cost("claude-haiku-5-5", 1000, 2000, 500, days=31) - 13.95) < 1e-9, "days is a parameter"
+be = break_even_requests_per_day("claude-sonnet-5-5", 2000, 3000, 400)
+assert abs(be - 2000 / (30 * 0.01)) < 1e-6, "fixed cost divided by monthly per-request cost"
+try:
+    request_cost("no-such-model", 1, 1)
+    raise AssertionError("unknown models should raise KeyError")
+except KeyError:
+    pass`}
+  solution={`def request_cost(model, input_tokens, output_tokens, cached_input_tokens=0, batch=False):
+    p = PRICES[model]
+    uncached = input_tokens - cached_input_tokens
+    cost = (uncached * p["input"] + cached_input_tokens * p["cached_input"]
+            + output_tokens * p["output"]) / 1_000_000
+    return cost / 2 if batch else cost
+
+def monthly_cost(model, requests_per_day, input_tokens, output_tokens,
+                 cached_input_tokens=0, batch=False, days=30):
+    per = request_cost(model, input_tokens, output_tokens, cached_input_tokens, batch)
+    return per * requests_per_day * days
+
+def break_even_requests_per_day(model, fixed_monthly_usd, input_tokens, output_tokens,
+                                cached_input_tokens=0, days=30):
+    per = request_cost(model, input_tokens, output_tokens, cached_input_tokens)
+    return fixed_monthly_usd / (days * per)`}
+>
+Implement the three functions, run the comparison, and then answer for yourself: how much does the cheapest model save per month over the most expensive one for this workload, and what would it have to get right for that saving to be real? Then change the workload to 1,500 of the 2,000 input tokens cached and see which models move most. The break-even number is a floor, not a recommendation: a self-hosted server also needs people, monitoring, and capacity for peak traffic, none of which is in the fixed price you typed.
+</PyRunner>
+
+<Callout type="pitfall" title="Cost per request is not cost per task">
+A cheaper model that needs two retries, a longer prompt, or a human fix on 10 percent of outputs can cost more than the expensive one. Price the whole task: tokens across every call it takes, retries, and the review time for failures. That is why the eval records quality and cost side by side.
+</Callout>
+
+<LabLink path="labs/studio-1/02-model-bakeoff" title="Lab: a model bake-off on your own prompts" needs={["Anthropic API key", "Optional: OpenAI, Gemini, or xAI keys"]} minutes={60}>
+Build a small harness that runs the same prompts through two or more models, records latency, tokens, cost, and output for each, and writes a CSV you can review side by side. It compares Claude tiers by default and adds OpenAI, Gemini, or Grok automatically if their keys are present. You will score outputs with a short rubric and write a one-paragraph recommendation backed by the numbers. Offline tests cover the scoring and aggregation logic. With the default eight prompts on two Claude tiers, the live run costs under ten US cents at time of writing.
+</LabLink>
+
+<GoDeeper title="Using more than one model in one system">
+Once you can measure, you can mix. Common patterns: route by difficulty (a small model handles routine requests and escalates hard ones), use a large model to plan and small models to do bulk work, and use a different model family as a reviewer or judge, so the checker does not share the generator's blind spots. Anthropic's model guide describes executor-and-advisor and orchestrator-and-worker patterns. Each adds moving parts, so measure the simple option (one strong model at lower effort) first. Hamel Husain's essay on evals and Chip Huyen's chapter on evaluating AI systems are good next reads on making these decisions with data.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+Price from usage, not from intuition, and keep price tables dated. Remember that output tokens, including thinking, drive both cost and latency. Use the tier ladder and the effort setting before reaching for a different provider. Read each provider's docs for what it is built to do, read leaderboards knowing their biases, and treat both as a shortlist. Then decide with a small eval on your own task, and keep it so you can decide again when the landscape moves, which it will before you finish this program.
+</Listen>

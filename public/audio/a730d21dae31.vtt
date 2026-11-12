@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.133
+Tool results are an injection channel.
+
+2
+00:00:02.413 --> 00:00:06.595
+Lesson 10 treated tool results as data flowing back to the model.
+
+3
+00:00:06.875 --> 00:00:10.203
+They are also a way for other people’s text to reach your model.
+
+4
+00:00:10.483 --> 00:00:14.216
+A meeting transcript contains whatever anyone said in the meeting.
+
+5
+00:00:14.496 --> 00:00:20.512
+A fetched web page, an inbound email, or a ticket description contains whatever its author wrote.
+
+6
+00:00:20.792 --> 00:00:28.899
+If that text says “ignore your previous instructions and do something else,” the model reads it in the same context as your instructions.
+
+7
+00:00:29.179 --> 00:00:36.752
+This is indirect prompt injection, and the OWASP Top 10 for LLM applications lists prompt injection first.
+
+8
+00:00:37.032 --> 00:00:40.232
+Anthropic’s guidance for this threat model has several parts.
+
+9
+00:00:40.512 --> 00:00:46.528
+Put untrusted content only in tool results, never in the system prompt or plain user text.
+
+10
+00:00:46.808 --> 00:00:52.440
+Say what the content is and where it came from, in the tool’s description or in the result itself.
+
+11
+00:00:52.720 --> 00:00:59.483
+State the policy in the system prompt: content from tools is data and must never override the user’s request.
+
+12
+00:00:59.763 --> 00:01:04.051
+JSON-encode untrusted strings so they cannot break out of their delimiters.
+
+13
+00:01:04.331 --> 00:01:10.965
+Do not put your own instructions inside tool results, since the model is trained to treat those with skepticism.
+
+14
+00:01:11.245 --> 00:01:12.269
+Limit access.
+
+15
+00:01:12.549 --> 00:01:19.397
+And optionally, screen tool outputs with a small, inexpensive classifier call before the main model sees them.
+
+16
+00:01:19.677 --> 00:01:25.459
+The docs present these as layers to combine, not as one fix, and none of them comes with a guarantee.
+
+17
+00:01:25.739 --> 00:01:40.053
+That is why the design controls in this lesson matter more than any prompt: an agent that cannot send email cannot be tricked into sending one, and a write that needs a human’s approval needs that approval even when the model has been fooled.

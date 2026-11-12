@@ -1,0 +1,105 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.304
+Pydantic: one class, four jobs.
+
+2
+00:00:02.584 --> 00:00:10.456
+Pydantic is a Python library that validates data against type hints (its docs describe it as the most widely used one).
+
+3
+00:00:10.736 --> 00:00:30.149
+You declare a class whose attributes have types, and Pydantic gives you four things from that one declaration: a validator for incoming data, typed Python objects, a JSON Schema (from model_json_schema(), which targets Draft 2020-12), and documentation through field descriptions.
+
+4
+00:00:30.429 --> 00:00:45.000
+The structured-output examples from Anthropic, OpenAI, Google, and xAI all accept a Pydantic model (directly, or through its generated schema), so the same class serves your prompt, your API call, and your tests.
+
+5
+00:00:45.280 --> 00:00:48.885
+That’s why you should treat the model class as the single source of truth.
+
+6
+00:00:49.165 --> 00:00:54.925
+If the schema lives in a prompt string, a JSON file, and a parsing function, they’ll drift apart.
+
+7
+00:00:55.205 --> 00:00:58.171
+If all three are generated from one class, they can’t.
+
+8
+00:00:58.451 --> 00:01:02.077
+The building blocks map directly onto JSON Schema: Types.
+
+9
+00:01:02.357 --> 00:01:04.640
+str, int, bool, datetime.
+
+10
+00:01:04.920 --> 00:01:06.755
+date, lists, and nested models.
+
+11
+00:01:07.035 --> 00:01:13.072
+A date field parses “2026-11-20” into a real datetime.
+
+12
+00:01:13.352 --> 00:01:14.099
+date.
+
+13
+00:01:14.379 --> 00:01:15.189
+Enums.
+
+14
+00:01:15.469 --> 00:01:20.653
+Literal["high", "medium", "low"] (or a Python Enum ) becomes a JSON Schema enum.
+
+15
+00:01:20.933 --> 00:01:22.597
+Required versus optional.
+
+16
+00:01:22.877 --> 00:01:25.181
+A field with no default is required.
+
+17
+00:01:25.461 --> 00:01:27.616
+A field with a default may be omitted.
+
+18
+00:01:27.896 --> 00:01:30.989
+Allowing null is a separate choice: str | None.
+
+19
+00:01:31.269 --> 00:01:32.208
+Constraints.
+
+20
+00:01:32.488 --> 00:01:38.504
+Field(min_length=1), Field(ge=0), and friends add checks beyond the type.
+
+21
+00:01:38.784 --> 00:01:39.787
+Descriptions.
+
+22
+00:01:40.067 --> 00:01:41.901
+Field(description=".")
+
+23
+00:01:42.181 --> 00:01:43.440
+lands in the schema.
+
+24
+00:01:43.720 --> 00:01:47.261
+Write descriptions as instructions to the model, because they are.
+
+25
+00:01:47.541 --> 00:01:48.672
+Closed objects.
+
+26
+00:01:48.952 --> 00:01:56.717
+model_config = ConfigDict(extra="forbid") rejects unknown keys and sets additionalProperties to false.

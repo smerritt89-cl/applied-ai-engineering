@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.029
+Prompt chaining: split the work into steps you can check.
+
+2
+00:00:03.309 --> 00:00:09.325
+Even with strong reasoning models, some tasks are better split into several calls, each with one job.
+
+3
+00:00:09.605 --> 00:00:19.376
+Anthropic’s best-practices page says explicit chaining remains useful when you need to inspect intermediate outputs or enforce a particular pipeline.
+
+4
+00:00:19.656 --> 00:00:34.632
+Anthropic’s “Building effective agents” essay describes prompt chaining as a workflow where each call processes the previous call’s output, with programmatic checks (it calls them gates) between steps, trading some latency for accuracy.
+
+5
+00:00:34.912 --> 00:00:36.789
+Back to the status-report example.
+
+6
+00:00:37.069 --> 00:00:46.157
+One giant prompt that reads a week of updates and writes the executive summary gives you one output to judge, and when a date is wrong you can’t tell why.
+
+7
+00:00:46.437 --> 00:00:48.677
+A chain gives you three checkable steps.
+
+8
+00:00:48.957 --> 00:00:52.861
+Step one extracts every milestone, owner, and date as JSON.
+
+9
+00:00:53.141 --> 00:00:59.200
+A code gate checks that the JSON parses and that each date string actually appears in the source updates.
+
+10
+00:00:59.480 --> 00:01:02.403
+Step two writes the summary from the checked list only.
+
+11
+00:01:02.683 --> 00:01:09.680
+Each step has its own test cases, and you can run the cheap extraction on a smaller model if your tests show it holds up.
+
+12
+00:01:09.960 --> 00:01:21.139
+The most common chain, according to Anthropic’s docs, is self-correction: draft, then have the model review the draft against explicit criteria, then revise based on the review.
+
+13
+00:01:21.419 --> 00:01:25.643
+Each step is a separate call, so you can log it, score it, or stop early.

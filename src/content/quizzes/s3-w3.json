@@ -1,0 +1,369 @@
+{
+  "id": "s3-w3",
+  "studio": "s3",
+  "week": 3,
+  "title": "Week 3 quiz: Comparing systems",
+  "questions": [
+    {
+      "id": "s3w3-q1",
+      "type": "mcq",
+      "prompt": "A regression suite passes 48 of 50 cases. Why is the Wilson interval a better choice than the Wald interval `p \u00b1 1.96 * sqrt(p(1 - p) / n)` here?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Wald is only valid for fractional scores such as F1.",
+          "rationale": "Wald applies to 0/1 scores; its problem is coverage, not the score type."
+        },
+        {
+          "id": "b",
+          "text": "Near p = 1 with small n, Wald's coverage is poor and its interval can extend past 1; Wilson stays inside [0, 1] and has better coverage.",
+          "rationale": "Yes. Wald gives about 0.906 to 1.014 here; Wilson gives about 0.865 to 0.989. Brown, Cai, and DasGupta (2001) recommend Wilson or Jeffreys for small n.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Wilson is always narrower, so it detects regressions sooner.",
+          "rationale": "Here Wilson's lower bound is lower than Wald's. It is more honest, not narrower."
+        },
+        {
+          "id": "d",
+          "text": "Wald requires at least 1,000 questions.",
+          "rationale": "There is no such hard cutoff; Brown, Cai, and DasGupta show its coverage is erratic even at sizes textbooks call safe."
+        }
+      ],
+      "explanation": "Regression suites live near 100 percent, exactly where the plug-in variance p(1 - p) is least reliable. With 50 of 50 the Wald interval has zero width, claiming certainty from 50 cases. Use Wilson for single pass rates.",
+      "week": 3,
+      "tags": [
+        "statistics",
+        "intervals"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w3-q2",
+      "type": "predict-output",
+      "prompt": "Two prompts are scored on the same 200 questions. `d` holds the per-question differences (A minus B). What does this print?",
+      "code": "import math\nd = [1] * 12 + [-1] * 4 + [0] * 184\nn = len(d)\nmean = sum(d) / n\nvar = sum((x - mean) ** 2 for x in d) / (n - 1)\nprint(round(mean, 3), round(math.sqrt(var / n), 3))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.04 0.02`",
+          "rationale": "Yes. The mean difference is 8 / 200 = 0.04 and the paired standard error is about 0.0198.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`0.04 0.04`",
+          "rationale": "That is close to the unpaired standard error, which ignores the correlation between the two systems."
+        },
+        {
+          "id": "c",
+          "text": "`0.08 0.02`",
+          "rationale": "12 minus 4 is 8 questions, but the mean is over all 200 questions."
+        },
+        {
+          "id": "d",
+          "text": "`0.04 0.141`",
+          "rationale": "That is the standard deviation of d, not the standard error of its mean (divide by sqrt(n))."
+        }
+      ],
+      "explanation": "With a paired SE of about 0.020, the 95 percent interval is roughly 0.001 to 0.079: it barely excludes zero. The same 4-point gap with 24 and 16 discordant questions would not. The discordant counts, not the totals, decide.",
+      "week": 3,
+      "tags": [
+        "statistics",
+        "paired"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w3-q3",
+      "type": "code-reading",
+      "prompt": "Each of 100 questions was run K = 5 times. This code computes a standard error for the pass rate. What is wrong with it?",
+      "code": "runs = [r for q in questions for r in q[\"trial_scores\"]]   # 500 values of 0 or 1\np = sum(runs) / len(runs)\nse = (p * (1 - p) / len(runs)) ** 0.5",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing. Five trials per question give 500 independent observations.",
+          "rationale": "Trials of the same question are correlated, so they are not 500 independent draws."
+        },
+        {
+          "id": "b",
+          "text": "It treats repeated trials of the same question as independent, so the SE is too small. Average each question's trials first, then compute the SE across the 100 question means.",
+          "rationale": "Yes. Miller's paper warns that pooling K times n answers is inconsistent; the between-question variance doesn't shrink with K.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It should use the median instead of the mean.",
+          "rationale": "The mean is the right statistic for a pass rate. The error is in the variance."
+        },
+        {
+          "id": "d",
+          "text": "It should divide by K instead of by len(runs).",
+          "rationale": "That gives the wrong scale entirely. The unit of sampling is the question."
+        }
+      ],
+      "explanation": "Resampling each question K times reduces the within-question part of the variance, which is valuable. But the n questions are still the unit of sampling. Compute per-question means, then the standard error across questions.",
+      "week": 3,
+      "tags": [
+        "statistics",
+        "run-to-run variance"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w3-q4",
+      "type": "scenario",
+      "prompt": "A PM sees prompt B score 84.7 percent against prompt A's 82.7 percent on the same 150 questions. The paired 95 percent interval for B minus A is about minus 2 to plus 6 points, and McNemar's exact p is about 0.5. B is also 30 percent more expensive. The PM asks you to ship B because it scored higher. What do you recommend?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ship B. The point estimate is the best guess, and 2 points matters.",
+          "rationale": "The interval includes zero and negative values; the data are consistent with B being slightly worse. The higher cost is certain."
+        },
+        {
+          "id": "b",
+          "text": "Keep A for now: the eval can't distinguish them, and A is cheaper. If a 2-point gain would matter, size a larger eval with a power calculation and rerun.",
+          "rationale": "Yes. \"No detectable difference at this sample size\" is a result, and the cheaper option wins ties. Power analysis tells you how many questions a 2-point difference needs.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Rerun the same 150 questions until the difference is significant.",
+          "rationale": "Rerunning the same questions doesn't add questions, and stopping when you like the answer biases the result."
+        },
+        {
+          "id": "d",
+          "text": "Ship B, because McNemar's test is too conservative.",
+          "rationale": "The exact test is the appropriate one here, and the paired interval agrees with it."
+        }
+      ],
+      "explanation": "Report the difference with its interval, not two point estimates. When an eval can't resolve a difference that would matter, the next step is more questions, sized in advance, not a closer look at the same ones.",
+      "week": 3,
+      "tags": [
+        "statistics",
+        "decisions"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w3-q5",
+      "type": "multi",
+      "prompt": "You want a smaller standard error for the difference between two prompts. Which of these help? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Score both prompts on the same questions and analyze per-question differences",
+          "rationale": "Pairing removes the question-difficulty variance the two systems share.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Add more independent questions",
+          "rationale": "The SE falls like one over the square root of n.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Run each question several times and average within each question",
+          "rationale": "Resampling reduces the within-question variance, with diminishing returns.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Analyze the two prompts' pass rates as independent samples",
+          "rationale": "That discards the correlation and gives a larger SE than the paired analysis."
+        },
+        {
+          "id": "e",
+          "text": "Write ten more questions about each existing source document",
+          "rationale": "Clustered questions add little information, because questions about one document tend to succeed or fail together."
+        }
+      ],
+      "explanation": "Paired design, more independent questions, and resampling all reduce variance. Clustered additions add less than their count suggests; prefer new groups over more questions per group.",
+      "week": 3,
+      "tags": [
+        "statistics",
+        "variance"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w3-q6",
+      "type": "mcq",
+      "prompt": "Your power calculation says 400 questions are needed to detect a 4-point difference at 80 percent power. Roughly how many do you need to detect a 2-point difference, assuming the per-question variance stays about the same?",
+      "options": [
+        {
+          "id": "a",
+          "text": "About 800",
+          "rationale": "Required n scales with one over delta squared, not one over delta."
+        },
+        {
+          "id": "b",
+          "text": "About 1,600",
+          "rationale": "Yes. n is proportional to Var(d) / delta^2, so halving delta multiplies n by four.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "About 400, because power doesn't depend on delta",
+          "rationale": "The detectable difference is the main input to a power calculation."
+        },
+        {
+          "id": "d",
+          "text": "About 200",
+          "rationale": "Smaller effects need more data, not less."
+        }
+      ],
+      "explanation": "Because standard errors shrink like 1 / sqrt(n), resolving half the difference takes four times the questions. That is why small golden sets are smoke tests, and why Miller suggests evals meant to separate frontier models need on the order of 1,000 questions.",
+      "week": 3,
+      "tags": [
+        "statistics",
+        "power"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3w3-q7",
+      "type": "scenario",
+      "prompt": "Your eval suite replays cached model responses on every pull request and has been green for six weeks. Users report that answers became noticeably wordier last week, though nobody changed a prompt. What change to the pipeline would have caught this?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Lower the cache expiry from one week to one day.",
+          "rationale": "Shorter expiry helps a little but still mixes cached and live results, and the PR job still mostly replays."
+        },
+        {
+          "id": "b",
+          "text": "A scheduled run of the full suite with the cache bypassed, compared against the previous run, including a length metric.",
+          "rationale": "Yes. Replays freeze the model's side. Only an uncached scheduled run can see model-side change, and it needs a metric for the property that changed.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "More must-pass cases in the PR suite.",
+          "rationale": "Must-pass cases in a replayed suite still replay the old responses."
+        },
+        {
+          "id": "d",
+          "text": "Rerunning failed PR checks automatically.",
+          "rationale": "Nothing failed. The problem is a blind spot, not flakiness."
+        }
+      ],
+      "explanation": "Record and replay answers \"did my code change the result?\" Live, uncached runs on a schedule answer \"did the system change?\" A pipeline needs both, and the report should show cache hit rates so a fully replayed run is never mistaken for a live one.",
+      "week": 3,
+      "tags": [
+        "ci",
+        "caching"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w3-q8",
+      "type": "code-reading",
+      "prompt": "This cache key is used to replay recorded responses in CI. Which change would wrongly be served an old cached response?",
+      "code": "import hashlib, json\n\ndef cache_key(request):\n    blob = json.dumps(request[\"messages\"], sort_keys=True)\n    return hashlib.sha256(blob.encode()).hexdigest()",
+      "options": [
+        {
+          "id": "a",
+          "text": "Editing the text of the user message",
+          "rationale": "The messages are in the key, so the key changes."
+        },
+        {
+          "id": "b",
+          "text": "Switching the model id or the effort setting while keeping the messages",
+          "rationale": "Yes. Only the messages are hashed, so a different model or setting reads the response recorded for the old one.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Reordering the keys inside a message dict",
+          "rationale": "`sort_keys=True` makes the key insensitive to dict order, which is intended."
+        },
+        {
+          "id": "d",
+          "text": "Adding a new message to the conversation",
+          "rationale": "The messages list changes, so the key changes."
+        }
+      ],
+      "explanation": "Key on everything that changes the output: model id, system prompt, messages, effort, max tokens, tools, output format, and the trial number. Then test the key by changing each field and asserting the key changes. This bug also ignores the system prompt.",
+      "week": 3,
+      "tags": [
+        "caching",
+        "ci"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w3-q9",
+      "type": "predict-output",
+      "prompt": "An agent succeeds on a task 90 percent of the time per trial, independently. Anthropic's agent eval guide calls the probability that all k trials succeed pass^k. What does this print?",
+      "code": "print(round(0.9 ** 5, 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.59`",
+          "rationale": "Yes. 0.9 to the fifth power is about 0.590.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`0.9`",
+          "rationale": "That is the per-trial rate, pass^1."
+        },
+        {
+          "id": "c",
+          "text": "`1.0`",
+          "rationale": "That approximates pass@5 (at least one success in five), which is 1 minus 0.1 to the fifth, or 0.99999."
+        },
+        {
+          "id": "d",
+          "text": "`0.45`",
+          "rationale": "That is 0.9 times 5 divided by 10, not a probability of five successes."
+        }
+      ],
+      "explanation": "pass@k rises with k and pass^k falls. A customer-facing agent that must work every time a user asks should be judged on consistency: at 90 percent per trial, five users in a row all get a correct result only 59 percent of the time.",
+      "week": 3,
+      "tags": [
+        "agents",
+        "trials"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3w3-q10",
+      "type": "mcq",
+      "prompt": "Hugging Face's 2023 analysis of its Open LLM Leaderboard ran MMLU through three implementations. What did it find, and what follows for you?",
+      "options": [
+        {
+          "id": "a",
+          "text": "All three gave the same scores, so benchmark numbers are portable.",
+          "rationale": "The opposite. Scores differed substantially between implementations."
+        },
+        {
+          "id": "b",
+          "text": "Scores differed substantially and even reversed the order of two models, so numbers from different harnesses aren't comparable; compare models in one harness, ideally on your own task.",
+          "rationale": "Yes. Prompt format and answer extraction changed both the scores and the ranking.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The leaderboard was contaminated, so MMLU should never be used.",
+          "rationale": "The analysis was about implementation differences, not contamination."
+        },
+        {
+          "id": "d",
+          "text": "Only closed models were affected.",
+          "rationale": "The examples were open models such as LLaMA 65B and Falcon 40B."
+        }
+      ],
+      "explanation": "A benchmark score is a property of the model, the dataset, and the code that ran it. When a launch post compares its number with competitors' self-reported numbers, the harnesses may differ. A common harness, or your own eval, removes that confound.",
+      "week": 3,
+      "tags": [
+        "benchmarks",
+        "model-selection"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

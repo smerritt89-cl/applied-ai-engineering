@@ -1,0 +1,344 @@
+---
+id: s2-w4-l11
+studio: s2
+week: 4
+order: 11
+title: When RAG fails
+summary: A failure taxonomy you can diagnose from logs, abstaining with "I don't know" on purpose, routing queries before retrieval, and the cost, latency, and accuracy trade-offs between long context, prompt caching, and RAG.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Classify a wrong answer as missing content, retrieval miss, ranking miss, context overflow, synthesis error, or outdated source, using a logged trace
+  - Relate that taxonomy to the seven failure points reported by Barnett and colleagues (2024)
+  - Design abstention as a feature, and measure it with abstention recall and a false-abstention rate
+  - Explain query routing and when a cheap router pays for itself
+  - Compare long context, long context with prompt caching, and RAG on cost, latency, accuracy, and freshness, with numbers
+sources:
+  - { id: lewis-2020-rag, use: summarized }
+  - { id: barnett-2024-rag-failures, use: summarized, where: "Failure points FP1 to FP7; lessons learned" }
+  - { id: li-2024-rag-vs-long-context, use: summarized, where: "Long context versus RAG; Self-Route" }
+  - { id: anthropic-contextual-retrieval, use: summarized, where: "A note on simply using a longer prompt; top-20 chunks" }
+  - { id: claude-prompt-caching-docs, use: summarized, where: "Cache write and read pricing multipliers, TTL, minimum length" }
+  - { id: claude-pricing-docs, use: summarized, where: "Claude Opus 5.5 and Haiku 5.5 prices, read 2026-11-11" }
+  - { id: claude-reduce-hallucinations, use: summarized, where: "Allow Claude to say I don't know" }
+  - { id: liu-2023-lost-middle, use: summarized }
+  - { id: hamel-evals, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      A user asks about the meal limit and gets a wrong answer. Your trace shows the correct passage was retrieved by
+      hybrid search at rank 14, the reranker kept the top 10, and the model answered from what it saw. What is the
+      failure, and where do you look first?
+    options:
+      - id: a
+        text: A synthesis error; rewrite the generation prompt.
+        rationale: The model never saw the right passage, so no prompt change can make it use it.
+      - id: b
+        text: A ranking miss; inspect why the reranker or the cutoff dropped it (score, chunk text, the value of k).
+        correct: true
+        rationale: Yes. The content exists and retrieval found it, but it ranked below the cutoff. Fix ranking or the cutoff, and measure recall at k again.
+      - id: c
+        text: Missing content; add a new document.
+        rationale: The content is already in the corpus. Adding a duplicate would hide the real bug.
+    explanation: >-
+      Diagnose in pipeline order: is the answer in the corpus, did retrieval find it, did it survive ranking, did it
+      fit in the context, did the model use it. The first stage that lost the right passage is the one to fix. This only
+      works if you log ranks and what reached the prompt.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      Lewis and colleagues (2020) describe RAG as combining parametric and non-parametric memory. What is the practical
+      meaning of "non-parametric" for a team maintaining a policy bot?
+    options:
+      - id: a
+        text: The model has no parameters to tune.
+        rationale: The generator is still a trained model with parameters. The term refers to the second memory.
+      - id: b
+        text: Knowledge lives in an external index you can read, inspect, and update without retraining the model.
+        correct: true
+        rationale: Yes. When the travel policy changes, you re-index the document; nothing is retrained.
+      - id: c
+        text: Answers no longer depend on the model's training data.
+        rationale: The model's language ability and any knowledge it brings still come from training, which is why you instruct it to use only the sources.
+    explanation: >-
+      The paper named provenance and updating world knowledge as open problems for models that store facts only in
+      their weights. An external index addresses both, but only if you actually keep it current and remove what is
+      outdated.
+  - id: kc3
+    type: multi
+    prompt: >-
+      Your corpus is 120,000 tokens of product documentation that changes monthly, and you get about 2,000 questions a
+      day. Which statements are reasonable starting points? Select all that apply.
+    options:
+      - id: a
+        text: Putting the whole corpus in a cached prompt prefix is worth testing against RAG, because it removes retrieval misses entirely.
+        correct: true
+        rationale: Anthropic suggests this for knowledge bases under about 200,000 tokens. It removes retrieval as a failure point (synthesis errors remain).
+      - id: b
+        text: With steady traffic the cache stays warm, so most requests pay the cache-read price for the corpus rather than the full input price.
+        correct: true
+        rationale: Yes. A hit refreshes the cache's lifetime at no extra cost, so steady traffic keeps it warm.
+      - id: c
+        text: Long context makes evaluation unnecessary, because the model sees everything.
+        rationale: Seeing everything is not using everything. Models can still miss information in long inputs, so you still measure.
+      - id: d
+        text: Each monthly update invalidates the cached prefix, so the first request after an update pays a cache write.
+        correct: true
+        rationale: Yes. Caching is a prefix match; any change to the corpus text means a new write.
+    explanation: >-
+      For a small, slowly changing corpus with steady traffic, long context with caching is a strong baseline that
+      deletes a whole class of failures. Compare it to RAG on your own eval set for accuracy, cost, and latency
+      before you commit, and keep evaluating either way.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Why RAG exists, and why it fails quietly
+
+The RAG paper (Lewis and colleagues, 2020) framed the problem this studio solves. Language models store a lot of knowledge in their parameters, but they can't easily show where an answer came from or update what they know, and the authors described both as open research problems. Their proposal was a second, **non-parametric** memory: an external index (Wikipedia, in their case) that a retriever reads from and that you can update without retraining. That is what your vector and keyword indexes are.
+
+The catch is that RAG adds stages, and every stage can fail without raising an error. A missed passage doesn't throw an exception. A truncated context doesn't crash. The model writes a fluent answer from whatever it got, and the result looks the same whether the pipeline worked or not. This is why the checks from lesson 10 matter, and why this lesson's main skill is diagnosis: given a wrong answer, find the stage that lost the truth.
+</Listen>
+
+<Listen>
+## A failure taxonomy you can diagnose
+
+Barnett and colleagues (2024) reported seven failure points from building three RAG systems in research, education, and biomedicine. This course uses six categories that map onto them and onto the stages you built in weeks 1 to 3, because each category points at a different fix.
+
+**Missing content.** The answer isn't in the corpus at all. The correct behavior is to abstain, and the failure is answering anyway (Barnett's FP1). Fix: abstention, and a log of unanswerable questions so the content owners know what to write.
+
+**Retrieval miss.** The answer is in the corpus, but no retriever returned it. Common causes are vocabulary mismatch (the user says "per diem," the policy says "meal limit"), chunks that split the answer, and missing metadata. Fix: hybrid search, query rewriting, better chunking (weeks 2 and 3).
+
+**Ranking miss.** Retrieval found the passage but it ranked below the cutoff (Barnett's FP2). Fix: reranking, a larger k, or both, measured with recall at k.
+
+**Context overflow.** The passage made the cut but was dropped or truncated when the prompt was assembled, because of a token budget or a consolidation step (Barnett's FP3). Fix: budget by tokens, not passage count, and log exactly what reached the model.
+
+**Synthesis error.** The right passage was in the context and the model still got it wrong: didn't extract it, merged two facts, answered too generally or too narrowly, left something out, or ignored the requested format (Barnett's FP4 to FP7). Fix: prompt structure, quote-first prompting, a different model, verification.
+
+**Outdated source.** The answer is faithfully drawn from a passage that is no longer true. Barnett's list doesn't name this one, but it's common in company corpora, and lesson 10's lab showed that every mechanical check passes it. Fix: at ingestion (remove or flag superseded documents, store effective dates), and in the prompt (prefer the newest).
+</Listen>
+
+| Category | Where the truth was lost | Barnett et al. (2024) | First fix to try |
+|---|---|---|---|
+| Missing content | Never in the corpus | FP1 Missing content | Abstain; log the gap |
+| Retrieval miss | Not in the candidates | (retrieval stage, before FP2) | Hybrid search, query rewriting, chunking |
+| Ranking miss | In candidates, below the cutoff | FP2 Missed the top ranked documents | Rerank, tune k |
+| Context overflow | Selected, then dropped from the prompt | FP3 Not in context | Token budgeting, log the final context |
+| Synthesis error | In the prompt, misused | FP4 Not extracted, FP5 Wrong format, FP6 Incorrect specificity, FP7 Incomplete | Prompt, model, verification |
+| Outdated source | Faithfully quoted, no longer true | (not in their list) | Ingestion rules, dates as metadata |
+
+<Callout type="pitfall" title="Tuning the prompt when retrieval is broken">
+The most common wasted week in RAG work: answers are wrong, so someone iterates on the generation prompt. If the right passage never reached the model, no prompt can fix it, and every "improvement" is noise you are fitting. Check retrieval first. On your eval set, measure recall at k for the gold passages before you look at a single generated answer. If recall is 70 percent, at least 30 percent of your wrong answers are not the generator's fault.
+</Callout>
+
+<Listen>
+## Reading a trace
+
+Diagnosis needs data, and the data has to be logged at the time, because you can't reconstruct what the retriever returned last Tuesday. For each question, a trace should record: the query as received and as rewritten; the ranked candidates from each retriever with scores; what the reranker kept; the exact passage ids (and token counts) that went into the prompt; the answer, its citations, and the verifier's results; and whether it abstained.
+
+With a labeled question (one where you know the gold passage ids), the diagnosis is a walk down the pipeline. Is there a gold passage at all? If not, the only correct outcome was abstention. Did the answer cite an outdated passage? Was the gold passage among the candidates? Did it rank above the cutoff? Did it reach the prompt? If it reached the prompt and the answer is still wrong, it's synthesis. The first stage that lost the gold passage owns the failure. You'll implement exactly this walk in the exercise, and in Studio 3 you'll run it over hundreds of logged questions to get a failure histogram, which tells you where your next week of work should go.
+
+Barnett and colleagues draw a lesson from their case studies that applies directly: a RAG system can only be fully validated while it runs, because realistic questions arrive only once real users do, and robustness is something you build up over time rather than design in up front. That's an argument for logging traces from the first day.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s2-w4-diagnose-trace"
+  title="Diagnose a failed answer from its trace"
+  starter={`OUTDATED = {"faq-2023"}
+
+def diagnose(trace):
+    """Return one label for a logged question.
+
+    trace keys:
+      gold            list of passage ids that answer the question ([] if the corpus can't answer it)
+      candidates      ranked list of passage ids returned by retrieval (best first)
+      k               how many top candidates were selected for the prompt
+      context         passage ids that actually reached the prompt
+      cited           passage ids the answer cited
+      correct         True if the answer was judged correct
+      abstained       True if the system said it didn't know
+
+    Rules, first match wins:
+      "ok"                if correct, or if gold is empty and the system abstained
+      "missing content"   gold is empty (and it did not abstain)
+      "outdated source"   any cited id is in OUTDATED
+      "retrieval miss"    no gold id is in candidates
+      "ranking miss"      gold ids are in candidates, but none is in the top k
+      "context overflow"  a gold id is in the top k but no gold id reached context
+      "synthesis error"   otherwise (a gold passage was in the context)
+    """
+    # TODO
+    pass
+
+TRACES = [
+    dict(gold=["meal-1"], candidates=["meal-1", "hotel-2"], k=5, context=["meal-1", "hotel-2"],
+         cited=["meal-1"], correct=True, abstained=False),
+    dict(gold=[], candidates=["meal-1"], k=5, context=["meal-1"], cited=[], correct=False, abstained=True),
+    dict(gold=[], candidates=["meal-1"], k=5, context=["meal-1"], cited=["meal-1"], correct=False, abstained=False),
+    dict(gold=["flight-1"], candidates=["faq-2023", "flight-1"], k=5, context=["faq-2023", "flight-1"],
+         cited=["faq-2023"], correct=False, abstained=False),
+    dict(gold=["mileage-1"], candidates=["meal-1", "hotel-2"], k=5, context=["meal-1", "hotel-2"],
+         cited=["meal-1"], correct=False, abstained=False),
+    dict(gold=["receipts-1"], candidates=["a", "b", "c", "receipts-1"], k=3, context=["a", "b", "c"],
+         cited=["a"], correct=False, abstained=False),
+    dict(gold=["receipts-1"], candidates=["receipts-1", "a"], k=3, context=["a"],
+         cited=["a"], correct=False, abstained=False),
+    dict(gold=["hotel-2"], candidates=["hotel-2"], k=3, context=["hotel-2"],
+         cited=["hotel-2"], correct=False, abstained=False),
+    dict(gold=["hotel-2"], candidates=["hotel-2"], k=3, context=["hotel-2"],
+         cited=[], correct=False, abstained=True),
+]
+
+for t in TRACES:
+    print(diagnose(t))
+`}
+  tests={`labels = [diagnose(t) for t in TRACES]
+assert None not in labels, "diagnose returned None"
+assert labels[0] == "ok", "a correct answer is ok"
+assert labels[1] == "ok", "abstaining on an unanswerable question is the right behavior"
+assert labels[2] == "missing content", "answering when the corpus has no answer"
+assert labels[3] == "outdated source", "it cited the archived FAQ"
+assert labels[4] == "retrieval miss", "the gold passage was never a candidate"
+assert labels[5] == "ranking miss", "found at rank 4 with k=3"
+assert labels[6] == "context overflow", "selected at rank 1 but dropped before the prompt"
+assert labels[7] == "synthesis error", "the gold passage was in the prompt and the answer was still wrong"
+assert labels[8] == "synthesis error", "a false abstention with the answer in hand is a synthesis failure too"
+from collections import Counter
+print(Counter(labels))`}
+  solution={`def diagnose(trace):
+    gold = set(trace["gold"])
+    if trace["correct"] or (not gold and trace["abstained"]):
+        return "ok"
+    if not gold:
+        return "missing content"
+    if any(c in OUTDATED for c in trace["cited"]):
+        return "outdated source"
+    if not gold & set(trace["candidates"]):
+        return "retrieval miss"
+    top_k = set(trace["candidates"][: trace["k"]])
+    if not gold & top_k:
+        return "ranking miss"
+    if not gold & set(trace["context"]):
+        return "context overflow"
+    return "synthesis error"`}
+>
+Implement `diagnose`, then press **Check my answer**. Notice what this function needs: gold passage ids for the question, ranks, the cutoff, and the final context. None of that can be recovered after the fact, which is why the project requires you to log it. The last trace is worth a second look: the system abstained with the answer sitting in its context. That's a false abstention, and it costs user trust just as a wrong answer does.
+</PyRunner>
+
+<Listen>
+## Abstaining on purpose
+
+"I don't know based on the provided sources" is a correct answer whenever the sources don't contain one. Anthropic's first recommendation for reducing hallucinations is to give the model explicit permission to admit uncertainty, and in RAG you can go further, because you have signals the model doesn't.
+
+Design abstention in three layers. **In the prompt**, say exactly when to abstain and give one exact sentence, so code can detect it without guessing. **Before generation**, add a cheap gate: if the best retrieval or reranker score is below a threshold you calibrated on your eval set, skip the model call and abstain, or ask a clarifying question. That saves money on questions you can't answer and removes the temptation for the model to improvise. **After generation**, treat an answer whose substantive claims have no verified citations as an abstention in disguise: show the sources you found and say they don't settle it, rather than shipping unsupported text.
+
+Then measure it, in two directions, because each can be gamed alone. **Abstention recall** is the share of unanswerable questions where the system abstained. **False abstention rate** is the share of answerable questions where it abstained anyway. A system that always says "I don't know" has perfect recall and is useless. Your eval set needs both kinds of question for these numbers to exist, which is one of the requirements in lesson 12.
+</Listen>
+
+<Predict
+  title="Two abstention numbers"
+  code={`unanswerable = 12          # questions the corpus cannot answer
+abstained_on_unanswerable = 9
+answerable = 48
+abstained_on_answerable = 6
+
+recall = abstained_on_unanswerable / unanswerable
+false_rate = abstained_on_answerable / answerable
+print(round(recall, 2), round(false_rate, 3))`}
+  options={["0.75 0.125", "0.75 0.1", "0.25 0.125", "0.6 0.125"]}
+  answer={0}
+>
+Recall is 9 of 12 (0.75): a quarter of unanswerable questions still got an answer, which is the missing-content failure. False abstention is 6 of 48 (0.125): one answerable question in eight was refused. Raising the score threshold for the pre-generation gate usually moves both numbers up together; choose the trade-off on purpose, looking at both.
+</Predict>
+
+<Listen>
+## Query routing: not every question should hit the index
+
+A RAG system usually receives several kinds of input: questions the corpus answers, questions it can't (out of scope), small talk, requests that need structured data (a count, a date range, something a database or API answers better than text search), and questions that need several lookups. Sending all of them through the same retrieve-then-generate path wastes money on some and gives poor answers to others.
+
+A **router** is a classification step before retrieval: given the query, pick a path. It can be rules (a regular expression for order numbers), a small classifier, or a call to a small, fast model with a short list of labels and structured output. This is the classic place for the cheapest tier, such as `claude-haiku-5-5`: the task is narrow, the output is a label, and you can measure its accuracy directly on labeled queries. A router you haven't measured just moves errors earlier in the pipeline, where they're harder to see.
+
+Routing can also choose *how* to answer. Li and colleagues (2024) compared RAG with long-context models across several public benchmarks and found that, given enough resources, long context did better on average while RAG cost far less. Their Self-Route method lets the model judge whether the retrieved chunks are enough to answer; if not, the query is escalated to the long-context path. They report much lower compute cost than always using long context with comparable performance. You don't have to copy it to use the idea: try the cheap path first, check a signal you trust, and escalate only when the signal says so.
+</Listen>
+
+<Mermaid
+  alt="Routing flowchart: an incoming query goes to a router (rules or a small model) that picks one of four paths: small talk or out of scope gets a fixed reply or a polite decline; a structured-data question goes to a database or API tool; a document question goes to retrieval, then a score gate; if the top score is below the threshold the system abstains or asks a clarifying question, otherwise it generates an answer with citations, verifies them, and if the verified support is insufficient it escalates to a long-context path or abstains."
+  caption="Route first, retrieve second, and escalate only on a signal you have measured."
+  chart={`flowchart TD
+  Q["Incoming query"] --> R{"Router (rules or small model)"}
+  R -- "small talk / out of scope" --> X["Fixed reply or polite decline"]
+  R -- "needs structured data" --> T["Database or API tool"]
+  R -- "document question" --> S["Hybrid retrieval + rerank"]
+  S --> G{"Top score above threshold?"}
+  G -- "no" --> A["Abstain or ask a clarifying question"]
+  G -- "yes" --> C["Generate with citations"]
+  C --> V{"Claims verified?"}
+  V -- "yes" --> OUT["Answer with sources"]
+  V -- "no" --> E["Escalate (long context) or abstain"]`}
+/>
+
+<Listen>
+## Long context, caching, or RAG?
+
+Current frontier models accept very long inputs (Claude Opus 5.5 has a one-million-token context window), so a fair question for any corpus is: why retrieve at all? Anthropic's own contextual retrieval write-up (September 2024) gives a simple rule of thumb: if the knowledge base is under about 200,000 tokens (around 500 pages), you can include all of it in the prompt, and prompt caching makes that much cheaper and faster. Compare the options on four axes.
+
+**Cost.** Without caching, you pay for the whole corpus on every question. With caching, the corpus is a stable prefix: you pay a cache write when it's created (1.25 times the input price for the five-minute lifetime) and a much lower read price afterwards (on Claude Opus 5.5, 0.05 times the input price at the time of writing; 0.1 times on many other models). Each hit refreshes the lifetime for free, so steady traffic keeps the cache warm.
+
+**Latency.** Processing a long prompt takes time even when it's cheap. Caching helps a lot here (Anthropic reported more than a twofold latency reduction in that write-up), but a RAG prompt of a few thousand tokens is still shorter.
+
+**Accuracy.** Long context removes retrieval misses, ranking misses, and context overflow in one stroke, which is why it often wins on average in studies like Li and colleagues'. It doesn't remove synthesis errors, and "lost in the middle" effects mean the model can still overlook a passage it was given. Barnett and colleagues also noted that larger context windows improved answer accuracy in their systems, which is consistent with this.
+
+**Freshness and scale.** Every change to the corpus invalidates the cached prefix after the point of change. Corpora that are large, change often, or need per-user permissions (each user sees different documents) push you toward retrieval.
+
+The conclusion is not "RAG is obsolete" or "long context is a gimmick." It's that for a small, stable corpus, long context with caching is the baseline your RAG system must beat on your eval set, and for a large or fast-changing one, RAG is the only option that scales.
+</Listen>
+
+```python
+# Back-of-envelope: one question, input side only (output tokens cost the same either way).
+# Claude Opus 5.5 prices from the pricing page on 2026-11-11, dollars per million tokens.
+INPUT, CACHE_WRITE_5M, CACHE_READ = 4.00, 5.00, 0.20
+
+corpus = 150_000          # tokens of documentation
+rag_prompt = 9_000        # 20 retrieved chunks of about 400 tokens, plus instructions and question
+
+full_context = corpus * INPUT / 1e6           # $0.60 per question, every question
+cached_read = corpus * CACHE_READ / 1e6       # $0.03 per question once the cache is warm
+cache_write = corpus * CACHE_WRITE_5M / 1e6   # $0.75 each time the prefix is (re)written
+rag = rag_prompt * INPUT / 1e6                # $0.036 per question
+
+print(full_context, cached_read, cache_write, rag)
+```
+
+<Listen>
+## What the numbers say
+
+With these assumptions, a warm cache makes the whole-corpus prompt about as cheap per question as a RAG prompt sixteen times shorter: 3 cents against 3.6 cents of input. Uncached, it is more than sixteen times the price. Two conditions make the cached number real. Traffic must be steady enough that the five-minute cache rarely expires (otherwise you pay 75 cents in writes again and again, or you pay for the one-hour lifetime at twice the input price per write), and the corpus must stay the same between writes.
+
+Now change one assumption: a 2-million-token corpus. It no longer fits in the context window, and even a cached read would cost 40 cents per question on this model. Retrieval is back. Or switch the generator to `claude-haiku-5-5`: the input price is far lower, but prompts over 100,000 tokens are billed at a higher rate on that model, which is the kind of detail that makes "check the pricing page" a real instruction rather than a disclaimer. Run the numbers for your corpus, then run the eval, because the cheapest configuration that fails your accuracy bar is not cheap.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the questions you ask when diagnosing a wrong RAG answer"
+  items={[
+    "Does the corpus contain the answer at all?",
+    "Did any retriever return the gold passage as a candidate?",
+    "Did the gold passage rank above the cutoff after reranking?",
+    "Did the gold passage actually reach the prompt?",
+    "Given the gold passage, did the model use it correctly and cite it?",
+  ]}
+  explanation="Walk the pipeline in the order data flows through it. The first stage that lost the gold passage owns the failure, and fixing a later stage can't help."
+/>
+
+<GoDeeper title="Lessons from the seven failure points paper">
+Barnett and colleagues' paper is an experience report, not a benchmark, and it's worth reading as one. Their case studies were a tool that helps researchers analyze and rank scientific papers, an AI tutor answering students from course content (piloted with about 200 students), and a larger test on the BioASQ biomedical dataset with roughly 4,000 documents and 1,000 questions. Beyond the failure points, they list practical findings: metadata such as file names and chunk numbers improved retrieval, semantic caching cut cost and latency, and chunking, retrieval, and prompts all needed calibration against real questions. Their two headline lessons (validate during operation; robustness evolves) are the case for this studio's project requirements: an eval set from the start, and logs designed for the evaluation work in Studio 3. For the practice of building evals from real traces, Hamel Husain's "Your AI Product Needs Evals" is a good companion.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+When an answer is wrong, find the stage that lost the truth before touching anything. Log traces that make that possible: ranks, cutoffs, final context, citations, verifier results. Make abstention a designed path with an exact phrase, a score gate, and two numbers you track. Route before you retrieve, with the cheapest model that measurably does the job. And for any corpus small enough to fit, test long context with caching as a baseline, because it deletes three failure categories at once. The last lesson puts these decisions into one design.
+</Listen>

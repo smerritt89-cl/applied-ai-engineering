@@ -1,0 +1,121 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.259
+Stage by stage.
+
+2
+00:00:01.539 --> 00:00:03.139
+Ingest and chunk (code).
+
+3
+00:00:03.419 --> 00:00:10.715
+Parse the transcript into speaker turns with timestamps, and keep the original text untouched so quotes can be checked against it.
+
+4
+00:00:10.995 --> 00:00:18.205
+Current frontier models have context windows large enough for most single meetings, so chunking is not always required.
+
+5
+00:00:18.485 --> 00:00:28.768
+It still helps: smaller chunks put the evidence close to the instruction (recall the “lost in the middle” findings from lesson 1), and they let you run chunks in parallel.
+
+6
+00:00:29.048 --> 00:00:39.096
+If you chunk, overlap chunks slightly so a commitment split across a boundary is not lost, and expect the overlap to create duplicates that a later stage must merge.
+
+7
+00:00:39.376 --> 00:00:42.235
+Extract candidates (model, structured output).
+
+8
+00:00:42.515 --> 00:00:51.859
+This is the stage that needs judgment: telling “I’ll send the deck Friday” (a commitment) from “someone should look at the deck” (not one, or an unowned item).
+
+9
+00:00:52.139 --> 00:01:05.024
+Use the structured outputs you built in week 3 so each candidate has the same fields: a title, the owner as mentioned, the due phrase as spoken, a verbatim evidence quote, and the speaker and timestamp.
+
+10
+00:01:05.304 --> 00:01:09.165
+Ask for the phrase as spoken (“next Friday”), not a resolved date.
+
+11
+00:01:09.445 --> 00:01:15.760
+The model is not the right place for calendar arithmetic, and keeping the raw phrase makes the next stage checkable.
+
+12
+00:01:16.040 --> 00:01:17.661
+Verify evidence (code).
+
+13
+00:01:17.941 --> 00:01:24.427
+For each candidate, confirm the evidence quote occurs in its chunk, after normalizing whitespace and case.
+
+14
+00:01:24.707 --> 00:01:31.320
+A candidate whose quote does not appear is either a paraphrase or an invention, and either way it is not evidence.
+
+15
+00:01:31.600 --> 00:01:33.584
+Reject it with a reason and log it.
+
+16
+00:01:33.864 --> 00:01:39.048
+This one check, which costs nothing, catches a whole class of confident-but-wrong output.
+
+17
+00:01:39.328 --> 00:01:41.355
+Normalize owners and dates (tools).
+
+18
+00:01:41.635 --> 00:01:47.437
+Resolve “Marcus” to a directory entry and “next Friday” to a date, measured from the meeting date.
+
+19
+00:01:47.717 --> 00:01:49.019
+Notice the choice here.
+
+20
+00:01:49.299 --> 00:01:55.869
+If normalization were fully deterministic, you would call these functions directly in code and skip the model.
+
+21
+00:01:56.149 --> 00:02:07.221
+Tools earn their place when judgment is needed, such as two teammates named Marcus, where the surrounding conversation decides which one was meant, or when the right answer is “unassigned.
+
+22
+00:02:07.501 --> 00:02:15.245
+” Whichever way you go, the rules from lesson 11 apply: read-only tools, strict schemas, your own checks, instructive errors.
+
+23
+00:02:15.525 --> 00:02:17.275
+Deduplicate (code first).
+
+24
+00:02:17.555 --> 00:02:24.147
+The same commitment often appears twice: restated at the end of a meeting, or duplicated by chunk overlap.
+
+25
+00:02:24.427 --> 00:02:34.901
+Start with a deterministic key (same owner, same due date, highly similar title) and send only the ambiguous pairs to a model, which keeps that call small and rare.
+
+26
+00:02:35.181 --> 00:02:36.675
+Human review, then write.
+
+27
+00:02:36.955 --> 00:02:43.995
+Show the reviewer each item with its evidence quote, the resolved owner and date, and anything the pipeline was unsure of.
+
+28
+00:02:44.275 --> 00:02:46.920
+Approve, edit, or reject in one pass.
+
+29
+00:02:47.200 --> 00:02:51.552
+Only approved items go to the tracker, through a gated, idempotent write.
+
+30
+00:02:51.832 --> 00:02:59.512
+This is the single meaningful approval lesson 11 argued for, and the reviewer’s decisions are labeled data you will use later.

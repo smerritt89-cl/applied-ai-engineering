@@ -1,0 +1,332 @@
+---
+id: s2-w4-l12
+studio: s2
+week: 4
+order: 12
+title: Designing the Q&A system
+summary: An architecture walkthrough for the Studio 2 project. Evaluation set first, ingestion with stable ids, index and hybrid retrieval, reranking, generation with citations, what to log for Studio 3, and model choice per stage with cost math.
+estMinutes: 50
+reviewed: 2026-11-11
+objectives:
+  - Write an evaluation set before building, with at least 30 questions, expected source passages, and unanswerable cases
+  - Decompose a document Q&A system into stages and name the decision and the check at each one
+  - Design passage ids that survive re-indexing, so evaluation labels stay valid
+  - Specify a per-question log record that an evaluation harness can consume
+  - Estimate per-question and monthly cost for different model choices per stage, and explain why the generator dominates
+sources:
+  - { id: barnett-2024-rag-failures, use: summarized, where: "Validation during operation; metadata in chunks" }
+  - { id: anthropic-contextual-retrieval, use: summarized, where: "Hybrid search plus reranking; top-20 chunks" }
+  - { id: claude-pricing-docs, use: summarized, where: "Model prices, read 2026-11-11" }
+  - { id: claude-adaptive-thinking-w4, use: summarized, where: "Thinking tokens are billed as output" }
+  - { id: voyage-pricing, use: summarized, where: "Embedding and reranker prices, read 2026-11-11" }
+  - { id: claude-citations-docs, use: summarized }
+  - { id: hamel-evals, use: summarized }
+  - { id: anthropic-effective-agents, use: summarized, where: "Start with the simplest solution" }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 6, RAG and Agents" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Two weeks in, you change the chunk size from 800 to 400 tokens. Your chunk ids are sequence numbers
+      (`doc12-chunk7`), and your 40-question eval set lists gold chunk ids. What is the best response?
+    options:
+      - id: a
+        text: Relabel the eval set by hand after every chunking change.
+        rationale: That works once and fails the third time. It also makes old and new runs incomparable.
+      - id: b
+        text: Label gold evidence at a level that survives re-chunking (document plus section anchor, or the exact evidence quote), and count a retrieved chunk as a hit if it contains that evidence.
+        correct: true
+        rationale: Yes. Labels tied to the source text rather than to your current chunker let you compare chunking strategies on the same eval set, which is the point of having one.
+      - id: c
+        text: Keep the old chunk size forever so the labels stay valid.
+        rationale: Freezing a design choice to protect a test is the tail wagging the dog.
+    explanation: >-
+      Chunking is something you will tune, so eval labels must not depend on it. Anchor labels to the document and to
+      evidence text, and make chunk ids deterministic (for example, document id plus section plus a hash of the text)
+      so the same text gets the same id on every run.
+  - id: kc2
+    type: mcq
+    prompt: Why does the project ask for the evaluation set before the pipeline?
+    options:
+      - id: a
+        text: Graders need something to read.
+        rationale: The point is for you, not the grader.
+      - id: b
+        text: Without it, every design choice (chunk size, k, reranker, model) is judged by trying a few questions you remember, which can't tell a real improvement from noise.
+        correct: true
+        rationale: Yes. A fixed labeled set turns each change into a measurement, and writing it before building keeps you from writing questions your system happens to answer well.
+      - id: c
+        text: Models need examples of questions to answer well.
+        rationale: That's few-shot prompting, a different thing. The eval set should not be in the prompt.
+    explanation: >-
+      An eval set written first is also honest: it reflects what users will ask, not what your retriever finds easy.
+      Include questions the corpus cannot answer, so abstention is measured too.
+  - id: kc3
+    type: predict-output
+    prompt: >-
+      What does this print? Prices are dollars per million tokens: the generator at $2 in and $10 out, the reranker at
+      $0.05 per million tokens processed.
+    code: |
+      gen = 5_000 * 2 / 1e6 + 300 * 10 / 1e6
+      rerank = 20_000 * 0.05 / 1e6
+      print(round(gen, 4), round(rerank, 4), round(gen / (gen + rerank), 2))
+    options:
+      - id: a
+        text: "`0.013 0.001 0.93`"
+        correct: true
+        rationale: "Generation is $0.010 input plus $0.003 output; reranking 20,000 tokens is $0.001; generation is about 93 percent of the total."
+      - id: b
+        text: "`0.01 0.001 0.91`"
+        rationale: That forgets the output tokens, which cost five times as much per token here.
+      - id: c
+        text: "`0.013 0.1 0.12`"
+        rationale: Check the reranker arithmetic. 20,000 times 0.05 divided by a million is 0.001.
+    explanation: >-
+      In a typical RAG system the generation call dominates per-question cost, and within it the retrieved passages
+      dominate input. That's why the number of passages you send is a cost lever as big as the model tier.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## What you're building, and who inherits it
+
+The Studio 2 project is a question-answering system over a real, public document set: the Python PEPs, the Kubernetes documentation, a government handbook, or similar. A user asks a question, the system retrieves passages, and it answers with citations that your code has verified, or it says it doesn't know.
+
+This lesson lays out one reasonable architecture, stage by stage, with the decision and the check at each stage. It deliberately doesn't solve the project. The choices that matter most (how to chunk your corpus, which retrievers, what k, which model) depend on your documents, and the only honest way to make them is with measurements.
+
+One constraint shapes everything: this system is the patient for Studio 3. There you'll build an evaluation harness, find failure modes systematically, and improve the system. That only works if the system you build now produces the right data. So design for being measured, starting with the eval set.
+</Listen>
+
+<Mermaid
+  alt="Architecture: offline, source documents go through parse and clean, then chunking with stable ids and metadata, then two indexes are built: a keyword index and a vector index made with an embedding model. Online, a question goes to a router; document questions go to hybrid retrieval over both indexes, then reciprocal rank fusion, then a reranker that keeps the top k; a score gate decides between abstaining and generating; generation uses search result blocks with citations; a verifier checks every citation; the answer is returned. Every online stage writes to a trace log, and an evaluation set of at least 30 questions with gold passages is run against the whole pipeline."
+  caption="Offline ingestion on the left, the online path on the right, and two things that touch every stage: the trace log and the eval set."
+  chart={`flowchart LR
+  subgraph Offline
+    D["Source docs"] --> P["Parse + clean"]
+    P --> C["Chunk: stable ids + metadata"]
+    C --> K[("Keyword index")]
+    C --> E["Embed"] --> VX[("Vector index")]
+  end
+  subgraph Online
+    Q["Question"] --> R{"Router"}
+    R --> H["Hybrid retrieval"]
+    K --> H
+    VX --> H
+    H --> F["Fuse (RRF)"] --> RR["Rerank, keep top k"]
+    RR --> G{"Score gate"}
+    G -- "low" --> AB["Abstain"]
+    G -- "ok" --> GEN["Generate with citations"]
+    GEN --> VER["Verify citations"] --> ANS["Answer + sources"]
+  end
+  Online -.-> LOG[("Trace log")]
+  EV["Eval set: 30+ questions, gold passages"] -.-> Online`}
+/>
+
+<Listen>
+## Stage 0: the evaluation set, before any code
+
+Write at least 30 questions before you build the pipeline. For each one, record the question as a user would phrase it, the gold evidence (which document and section answers it, plus the exact quote that proves it), and a short reference answer. Barnett and colleagues' lesson that RAG can only be fully validated in operation is not an excuse to skip this; it's a reason to start with the best approximation you can make and grow it from real traffic later.
+
+Make the set hard in the ways real users are. A useful mix for 30 questions: about 18 answerable from a single passage, about 5 that need two or more passages combined, at least 4 that the corpus cannot answer (so abstention is measured), and a few traps: questions phrased in different words than the documents use, and questions where an older document disagrees with a newer one. If your corpus is the PEPs, "what replaced PEP X's proposal?" is a good trap, because superseded PEPs are still in the repository.
+
+Label evidence at a level your chunker can't break. If gold labels are chunk ids and you change the chunk size, every label is wrong. Label the document, the section, and the evidence quote instead, and count a retrieved chunk as a hit if it contains the evidence. Then you can compare chunking strategies on the same set, which is one of the most valuable experiments you'll run.
+
+Keep a handful of questions aside and don't look at their results while you tune. Thirty questions is small, and it's easy to overfit a prompt to the ones you stare at. Studio 3 makes this split formal.
+</Listen>
+
+<Listen>
+## Stage 1: ingestion and the index
+
+Ingestion turns documents into passages you can retrieve and cite. **Parse and clean**: extract text from HTML, Markdown, reStructuredText, or PDF; drop navigation, boilerplate, and duplicate pages; keep headings, because they carry meaning. **Chunk** using what you measured in week 2, respecting the document's own structure (sections, list items) where you can. **Attach metadata** to every chunk: document id, title, section path, URL, license, last-modified or effective date, and status (current, superseded, archived). Barnett and colleagues found that metadata such as file names and chunk numbers improved retrieval; dates and status are what let you fix the outdated-source failure from lesson 11.
+
+**Give every chunk a deterministic id**, built from the document id, the section, and a short hash of the chunk text. Re-running ingestion on unchanged text must produce identical ids, or yesterday's logs and today's index stop lining up. **Version the index**: record which ingestion settings and embedding model built it, and log that version on every query.
+
+Then build **two indexes** from the same chunks: a keyword index (BM25) and a vector index from your chosen embedding model. Which embedding model is a week 1 decision you should have evidence for; the important part here is that switching models means re-embedding everything, so record the model id with the index.
+</Listen>
+
+<Listen>
+## Stages 2 and 3: hybrid retrieval and reranking
+
+Run both retrievers, fuse their rankings (reciprocal rank fusion from week 3 is a strong default), and pass a generous candidate list, perhaps 50, to a reranker that orders them by relevance to the question. Keep the top k for generation. Anthropic's contextual retrieval experiments are a useful reference point: they combined embeddings, BM25, and reranking and passed the top 20 chunks to the model, while noting you should test the number for your own case. Your recall at k curve from the eval set is how you choose.
+
+Add the **score gate** from lesson 11 here: if the best reranker score is below a calibrated threshold, abstain (or ask a clarifying question) without calling the generator. Calibrate the threshold on your answerable and unanswerable questions, and record both the score and the decision in the log.
+
+The checks at these stages are measurements, not runtime assertions: recall at k and MRR on the eval set for the fused list and for the reranked list separately. If reranking doesn't improve them on your data, it isn't earning its latency.
+</Listen>
+
+<Listen>
+## Stage 4: generation with citations, verified
+
+Use lesson 10's design. Send the top k passages as `search_result` blocks with your chunk id as the `source`, sources first and the question last, a system prompt that restricts answers to the sources, says how to handle conflicts, and gives one exact abstention sentence. Budget the context in tokens rather than passages, and log exactly which passages were sent (that's how you diagnose context overflow later).
+
+After generation, run the verifier from the lab on every answer: provenance, verbatim fidelity, uncited substantive claims, abstention. Decide what the user sees when verification fails: a warning, a regenerated answer, or the sources alone with a note that they don't settle the question. Whatever you choose, never silently drop a failed check; log it.
+
+This is also where you choose a generator model with evidence. Run the eval set with two tiers, compare correctness, verified citation rate, abstention recall, false abstention rate, latency, and cost, and pick the cheapest that meets your bar.
+</Listen>
+
+<Listen>
+## Logging for Studio 3
+
+Studio 3's harness will replay your eval set, compute retrieval and answer metrics, run judges for support, and produce failure histograms. Everything it needs has to be in your logs, one JSON record per question, written whether the request succeeded, abstained, or failed. The record below is the minimum; add fields, but don't drop any.
+</Listen>
+
+```json
+{
+  "run_id": "2026-11-11T14:02:11Z-7f3a",
+  "question_id": "eval-017",
+  "question": "Which PEP replaced the original proposal for type hints in comments?",
+  "index_version": "peps-2026-11-10-chunk400-voyage-4",
+  "prompt_version": "answer-v3",
+  "route": "documents",
+  "retrieval": {
+    "bm25": [{"id": "pep-0484#s12-3f9c", "rank": 1, "score": 11.2}],
+    "vector": [{"id": "pep-0526#s1-a1b2", "rank": 1, "score": 0.83}],
+    "fused": ["pep-0484#s12-3f9c", "pep-0526#s1-a1b2"],
+    "reranked": [{"id": "pep-0526#s1-a1b2", "score": 0.91}],
+    "k": 10,
+    "context_ids": ["pep-0526#s1-a1b2", "pep-0484#s12-3f9c"],
+    "context_tokens": 4120
+  },
+  "gate": {"top_score": 0.91, "threshold": 0.35, "decision": "generate"},
+  "generation": {
+    "model": "claude-sonnet-5-5",
+    "request_id": "req_...",
+    "stop_reason": "end_turn",
+    "answer": "...",
+    "citations": [{"claim_index": 1, "source": "pep-0526#s1-a1b2", "cited_text": "..."}]
+  },
+  "verification": {"ok": true, "problems": [], "uncited_claims": [], "abstained": false},
+  "usage": {"input_tokens": 4630, "output_tokens": 412, "cache_read_input_tokens": 0},
+  "latency_ms": {"retrieval": 85, "rerank": 140, "generation": 2950, "total": 3210},
+  "cost_usd": 0.0134,
+  "error": null
+}
+```
+
+<Callout type="pitfall" title="Logs that can't be joined to labels">
+The most common reason an evaluation harness stalls is that logged runs can't be matched to anything: no question id, chunk ids that changed between runs, or no record of which index and prompt version produced an answer. Log the question id (for eval questions), the index version, the prompt version, and deterministic chunk ids from day one. Also log failures and abstentions, not just successes; a log of only the good runs measures nothing.
+</Callout>
+
+<Listen>
+## Model choice per stage, with cost math
+
+Each stage has a different job, so each gets its own model decision, made with evidence and checked against cost.
+
+**Embeddings** are a one-time cost per corpus version plus a tiny per-query cost. At the Voyage AI prices listed on the review date ($0.06 per million tokens for `voyage-4`, $0.02 for `voyage-4-lite`), embedding a 3-million-token corpus costs about 18 cents. Choose on retrieval quality, not price.
+
+**Routing** is a narrow classification on a short input: the natural place for the cheapest tier (`claude-haiku-5-5`), measured on labeled queries.
+
+**Reranking** processes the question against every candidate. At $0.05 per million tokens for `rerank-2.5`, 50 candidates of 400 tokens (20,000 tokens) is about a tenth of a cent per question.
+
+**Generation** dominates. With 10 passages of about 400 tokens plus instructions (about 5,000 input tokens) and about 300 output tokens, one question costs roughly 1.3 cents on `claude-sonnet-5-5` ($2 in, $10 out per million), 2.6 cents on `claude-opus-5-5` ($4 and $20), and well under a tenth of a cent on `claude-haiku-5-5` ($0.10 and $0.50). Thinking tokens are billed as output, and current models can think on their own, so measure real output tokens from the `usage` field rather than assuming 300.
+
+At 500 questions a day, that's the difference between roughly $25, $210, and $400 a month. Those numbers matter, but they are not the decision. The decision is the cheapest configuration that meets your accuracy and abstention bars on the eval set. Two cheaper levers to try before dropping a tier: send fewer, better passages (a better reranker can pay for itself in generation tokens), and cache the stable system prompt.
+
+**Judges** for support checks run offline in Studio 3 on samples, so their cost scales with how much you evaluate, not with traffic.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s2-w4-pipeline-cost"
+  title="Cost a RAG pipeline, stage by stage"
+  starter={`# Dollars per million tokens, from the pricing pages on 2026-11-11. Check before reuse.
+PRICES = {
+    "claude-haiku-5-5":  {"in": 0.10, "out": 0.50},   # prompts up to 100,000 tokens
+    "claude-sonnet-5-5": {"in": 2.00, "out": 10.00},
+    "claude-opus-5-5":   {"in": 4.00, "out": 20.00},
+    "rerank-2.5":        {"in": 0.05, "out": 0.0},
+    "voyage-4":          {"in": 0.06, "out": 0.0},
+}
+
+def call_cost(model, input_tokens, output_tokens=0):
+    """Dollar cost of one call."""
+    # TODO
+    pass
+
+def question_cost(config):
+    """Sum the per-question cost of every stage in config.
+
+    config is a list of stages: {"model": ..., "in": tokens, "out": tokens}
+    """
+    # TODO
+    pass
+
+def monthly_cost(config, per_day, days=30):
+    # TODO
+    pass
+
+def cheapest_passing(results, bar):
+    """results: {name: {"accuracy": float, "config": [...]}}.
+    Return the name of the cheapest configuration (by question_cost) whose accuracy >= bar,
+    or None if none passes."""
+    # TODO
+    pass
+
+def pipeline(generator):
+    return [
+        {"model": "claude-haiku-5-5", "in": 300, "out": 10},     # router
+        {"model": "voyage-4", "in": 25},                          # embed the query
+        {"model": "rerank-2.5", "in": 20_000},                    # 50 candidates x 400 tokens
+        {"model": generator, "in": 5_000, "out": 300},            # answer with citations
+    ]
+
+for gen in ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"):
+    cfg = pipeline(gen)
+    print(gen, round(question_cost(cfg) or 0, 5), round(monthly_cost(cfg, 500) or 0, 2))
+`}
+  tests={`assert call_cost("claude-opus-5-5", 1_000_000, 0) == 4.0, "a million input tokens on Opus 5.5 is $4"
+assert abs(call_cost("claude-sonnet-5-5", 5_000, 300) - 0.013) < 1e-12
+sonnet = question_cost(pipeline("claude-sonnet-5-5"))
+assert sonnet is not None, "question_cost returned None"
+assert abs(sonnet - (0.000035 + 0.0000015 + 0.001 + 0.013)) < 1e-9, "sum every stage"
+assert abs(monthly_cost(pipeline("claude-sonnet-5-5"), 500) - sonnet * 500 * 30) < 1e-9
+results = {
+    "haiku":  {"accuracy": 0.78, "config": pipeline("claude-haiku-5-5")},
+    "sonnet": {"accuracy": 0.90, "config": pipeline("claude-sonnet-5-5")},
+    "opus":   {"accuracy": 0.93, "config": pipeline("claude-opus-5-5")},
+}
+assert cheapest_passing(results, 0.88) == "sonnet", "cheapest that meets the bar"
+assert cheapest_passing(results, 0.92) == "opus"
+assert cheapest_passing(results, 0.95) is None, "don't settle for the best of the failures"`}
+  solution={`def call_cost(model, input_tokens, output_tokens=0):
+    p = PRICES[model]
+    return input_tokens * p["in"] / 1e6 + output_tokens * p["out"] / 1e6
+
+def question_cost(config):
+    return sum(call_cost(s["model"], s.get("in", 0), s.get("out", 0)) for s in config)
+
+def monthly_cost(config, per_day, days=30):
+    return question_cost(config) * per_day * days
+
+def cheapest_passing(results, bar):
+    passing = [(question_cost(r["config"]), name) for name, r in results.items() if r["accuracy"] >= bar]
+    return min(passing)[1] if passing else None`}
+>
+Implement the four functions, then press **Check my answer**. Then experiment: halve the generator's input tokens (send 5 passages instead of 10) and compare that saving with switching tiers. The accuracy numbers in the tests are invented for the exercise; in the project they come from your eval set.
+</PyRunner>
+
+<DragOrder
+  client:visible
+  prompt="Put the project's build order in a sensible sequence"
+  items={[
+    "Write the eval set: 30+ questions with gold evidence, including unanswerable ones",
+    "Ingest: parse, clean, chunk with deterministic ids and metadata",
+    "Build keyword and vector indexes, and measure recall at k on the eval set",
+    "Add fusion and reranking, and measure again",
+    "Generate with citations, verify, and add the abstention gate",
+    "Run the full eval with two generator models and compare quality, cost, and latency",
+    "Write up the results, failure analysis, and limitations",
+  ]}
+  explanation="Measure before you build each layer, and measure after. Retrieval is evaluated on its own before any answer is generated, because generation can't recover a passage that retrieval lost."
+/>
+
+<GoDeeper title="A definition of done for the project">
+Write this down before you build, then hold yourself to it. **Retrieval**: recall at k for gold evidence reported for keyword, vector, hybrid, and reranked lists on your eval set. **Answers**: every substantive claim carries a citation that passes provenance and fidelity checks, or the answer is flagged; correctness judged by you on every eval question. **Abstention**: abstention recall and false-abstention rate reported, with the threshold you chose and why. **Robustness**: retries with backoff, refusal and truncation handling, and a clear behavior when the index is empty or a document fails to parse. **Economics**: cost and latency per question measured from logs, with a model choice justified by the comparison. **Data**: a trace log with the fields above for every eval run. Anthropic's advice for agentic systems, to start with the simplest solution that could work and add complexity only when it measurably helps, applies here too: a hybrid retriever and one generator, done well and measured, beats a sprawling pipeline you can't evaluate.
+</GoDeeper>
+
+<Listen>
+## Your turn
+
+You now have the pieces: embeddings and similarity (week 1), ingestion and chunking (week 2), hybrid search and reranking (week 3), and grounded, verified answers with designed failure behavior (week 4). The [Studio 2 project](../../projects/s2-project/) asks you to assemble them over a real corpus, make the decisions this lesson left open, and defend them with numbers. Start with the eval set. Build the thinnest end-to-end version next, measure it, and only then improve the stage your measurements point at.
+</Listen>

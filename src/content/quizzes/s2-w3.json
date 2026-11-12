@@ -1,0 +1,362 @@
+{
+  "id": "s2-w3",
+  "studio": "s2",
+  "week": 3,
+  "title": "Week 3 quiz: Hybrid search and reranking",
+  "questions": [
+    {
+      "id": "s2w3-q1",
+      "type": "mcq",
+      "prompt": "The classic Robertson and Sparck Jones idf, `log((N - n + 0.5) / (n + 0.5))`, has a property that Lucene's BM25 changes by using `log(1 + (N - n + 0.5) / (n + 0.5))`. What is it?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It is undefined for terms that appear in no documents.",
+          "rationale": "With n = 0 the ratio is (N + 0.5) / 0.5, which is finite. The 0.5 terms exist partly to avoid zeros."
+        },
+        {
+          "id": "b",
+          "text": "It ignores document length.",
+          "rationale": "True of idf in both forms; length normalization is the job of b, not idf."
+        },
+        {
+          "id": "c",
+          "text": "It grows without bound as the corpus grows, so scores aren't comparable across indexes.",
+          "rationale": "Both forms grow (slowly) with N. That is a reason not to compare raw BM25 scores across corpora, but it isn't what the Lucene change addresses."
+        },
+        {
+          "id": "d",
+          "text": "It becomes negative for terms that appear in more than half of the documents, so matching a very common word would lower a document's score.",
+          "rationale": "Yes. When n exceeds N/2 the ratio drops below 1 and the log goes negative. Adding 1 inside the log keeps every idf positive.",
+          "correct": true
+        }
+      ],
+      "explanation": "A negative weight for a matched term is odd behavior for a ranking function, and it shows up in small or homogeneous corpora where a word like a product name appears in most documents. Lucene's form is always positive and nearly identical for rare terms, which are the ones that matter.",
+      "week": 3,
+      "tags": [
+        "bm25",
+        "idf"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w3-q2",
+      "type": "predict-output",
+      "prompt": "A document is twice the average length (`ratio = 2`). What does this print?",
+      "code": "def tf_part(tf, ratio, k1=1.2, b=0.75):\n    return tf * (k1 + 1) / (tf + k1 * (1 - b + b * ratio))\n\nprint(round(tf_part(1, 2, b=0), 2), round(tf_part(1, 2), 2), round(tf_part(2, 2), 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`1.0 0.71 1.42`",
+          "rationale": "Doubling tf doesn't double the contribution. Saturation makes the second mention worth less than the first."
+        },
+        {
+          "id": "b",
+          "text": "`1.0 0.71 1.07`",
+          "rationale": "Right. With b = 0 length is ignored; with b = 0.75 a single mention in a long document is discounted to 0.71, and two mentions earn about what one mention earns in an average-length document.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`1.0 1.0 1.38`",
+          "rationale": "That ignores the b argument on the second and third calls; length normalization is on by default here."
+        },
+        {
+          "id": "d",
+          "text": "`0.5 0.5 1.0`",
+          "rationale": "That would be dividing tf by the length ratio outright, which is closer to b = 1 without saturation."
+        }
+      ],
+      "explanation": "b blends the raw term frequency with a length-relative one. At b = 0.75 a document twice the average length needs roughly two mentions to match one mention in an average document, which is the verbosity hypothesis applied with partial strength.",
+      "week": 3,
+      "tags": [
+        "bm25",
+        "length-normalization"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w3-q3",
+      "type": "code-reading",
+      "prompt": "This hybrid search uses raw scores. BM25 scores for typical queries range from about 3 to 25; cosine similarities for candidates range from about 0.70 to 0.85. What does `alpha` actually control here?",
+      "code": "def hybrid(bm25_scores, cos_scores, alpha=0.7):\n    docs = set(bm25_scores) | set(cos_scores)\n    fused = {d: alpha * cos_scores.get(d, 0) + (1 - alpha) * bm25_scores.get(d, 0) for d in docs}\n    return sorted(fused, key=fused.get, reverse=True)",
+      "options": [
+        {
+          "id": "a",
+          "text": "It controls how many results each retriever contributes.",
+          "rationale": "That's a candidate-window parameter, such as Elasticsearch's rank_window_size, not a weight."
+        },
+        {
+          "id": "b",
+          "text": "Very little for documents both retrievers found: BM25 differences of several points swamp cosine differences of hundredths, so ranking is close to BM25's unless alpha is near 1.",
+          "rationale": "Yes. The weight is applied to quantities on different scales, so the effective weight is not the one written down.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It gives the vector retriever 70 percent of the influence, as intended.",
+          "rationale": "That would only hold if both scores had comparable ranges, which they don't here."
+        }
+      ],
+      "explanation": "There is a second bug: a document missing from one retriever gets 0 from it, which on the cosine scale is far below every real candidate. Normalize scores per query (and decide how to treat missing documents), or switch to rank-based fusion such as RRF, then measure on labeled queries.",
+      "week": 3,
+      "tags": [
+        "hybrid",
+        "score-fusion"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w3-q4",
+      "type": "scenario",
+      "prompt": "You're building search over 4,000 vendor contracts for the legal team. Lawyers type queries like `\"Section 14.2(b)\" indemnification` and `Acme Corp MSA termination`. Pilot users say the vector-only search \"finds the right topic but the wrong contract.\" What's the best plan?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Replace vector search with BM25 entirely.",
+          "rationale": "BM25 alone will fail the lawyers' paraphrased questions. The pattern here is complementary strengths, which is the case for hybrid."
+        },
+        {
+          "id": "b",
+          "text": "Add BM25 with an analyzer that keeps section references and company names intact, fuse with the vector results, and evaluate on a labeled set of the lawyers' real queries split by type.",
+          "rationale": "Yes. Clause numbers and party names are exactly where lexical matching helps, the analyzer decides whether they can match at all, and measuring by query type shows where each retriever earns its place.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Fine-tune the embedding model on the contracts before trying anything else.",
+          "rationale": "Fine-tuning may help eventually, but it's slow and expensive, and it addresses the wrong weakness first: exact identifiers."
+        },
+        {
+          "id": "d",
+          "text": "Increase k from 5 to 50 so the right contract is somewhere in the results.",
+          "rationale": "Recall at 50 may rise, but lawyers and the generator still face 49 wrong contracts. Fix ranking, don't just widen it."
+        }
+      ],
+      "explanation": "\"Right topic, wrong document\" is the signature of a retriever that captures meaning but not specifics. Keep the semantic retriever for paraphrases, add a lexical one for identifiers and names, and let a labeled set (by query type) tell you whether the fusion helps.",
+      "week": 3,
+      "tags": [
+        "bm25",
+        "hybrid",
+        "tokenization"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w3-q5",
+      "type": "multi",
+      "prompt": "Which statements about reciprocal rank fusion are supported by Cormack, Clarke, and Buettcher (2009) or follow from its formula? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "It requires labeled training data to set its weights.",
+          "rationale": "No. It is unsupervised, which is why the authors introduced it as a baseline."
+        },
+        {
+          "id": "b",
+          "text": "It uses only each document's rank in each list, so it needs no score normalization across retrievers.",
+          "rationale": "Correct. Ranks are comparable across any systems, which is RRF's main practical advantage.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The authors fixed k = 60 in a pilot and found the choice near-optimal but not critical.",
+          "rationale": "Correct, and Elasticsearch's rank_constant defaults to 60 for the same reason.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "In their TREC experiments, RRF beat Condorcet Fuse and usually beat the best individual system.",
+          "rationale": "Correct. They reported gains of 4 to 5 percent on average, with sign tests.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "It preserves the size of score gaps, so a runaway winner in one list stays far ahead.",
+          "rationale": "No. That is what rank fusion gives up; score-based methods such as normalized weighted sums can keep gaps."
+        }
+      ],
+      "explanation": "RRF's strength is that it needs nothing: no labels, no calibration, no tuning to start. Its cost is the information in the scores. That's why it makes a strong default and a baseline that score-based fusion must beat on your data.",
+      "week": 3,
+      "tags": [
+        "rrf",
+        "fusion"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2w3-q6",
+      "type": "scenario",
+      "prompt": "Your hospital client's policy says patient-adjacent documents may not leave its cloud account. Retrieval recall@50 is good, but answers often cite the 4th or 5th best passage. Latency budget for reranking is about 300 ms for 50 candidates. What do you try first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Skip reranking and pass all 50 passages to the generator.",
+          "rationale": "More context isn't free: cost, latency, and more noise for the generator to sort through."
+        },
+        {
+          "id": "b",
+          "text": "An open cross-encoder (for example a BGE or MS MARCO MiniLM reranker) served inside the client's account, measured on the labeled set for MRR gain and p95 latency.",
+          "rationale": "Yes. It respects the data constraint, fits the use case (good recall, poor ordering), and the decision rests on measured gain and latency.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "A hosted rerank API, because vendor benchmarks show it is the most accurate.",
+          "rationale": "Possibly accurate, but sending documents to an outside API may violate the stated policy. Check the constraint before the leaderboard."
+        },
+        {
+          "id": "d",
+          "text": "An LLM reranker that reads all 50 passages on every query.",
+          "rationale": "It could work on quality, but at tens of thousands of input tokens per query it will likely blow the latency budget, and it raises the same data question if the model is hosted outside."
+        }
+      ],
+      "explanation": "Reranker choice is model selection like any other: constraints first (data handling, latency, cost), then measured quality on your data. A small open cross-encoder is a legitimate baseline that any paid option should have to beat.",
+      "week": 3,
+      "tags": [
+        "reranking",
+        "model-selection"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w3-q7",
+      "type": "predict-output",
+      "prompt": "A query has four relevant chunks: `{\"c2\", \"c5\", \"c8\", \"c9\"}`. What does this print?",
+      "code": "ranked = [\"c5\", \"c1\", \"c2\", \"c7\", \"c3\"]\nrelevant = {\"c2\", \"c5\", \"c8\", \"c9\"}\nhits = sum(1 for c in ranked[:5] if c in relevant)\nprint(hits / 5, hits / len(relevant))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.5 0.4`",
+          "rationale": "That swaps the two: precision divides by k, recall by the number of relevant items."
+        },
+        {
+          "id": "b",
+          "text": "`0.4 1.0`",
+          "rationale": "Recall would be 1.0 only if all four relevant chunks were in the top five."
+        },
+        {
+          "id": "c",
+          "text": "`2 2`",
+          "rationale": "Both lines divide, so the outputs are fractions."
+        },
+        {
+          "id": "d",
+          "text": "`0.4 0.5`",
+          "rationale": "Right. Two of the top five are relevant (precision@5 = 0.4), and two of the four relevant chunks were found (recall@5 = 0.5).",
+          "correct": true
+        }
+      ],
+      "explanation": "For RAG, recall@k answers \"did the evidence reach the model?\" and precision@k answers \"how much of the context is noise?\". Here half the evidence never arrived, which is the more urgent problem if the answer needs all four chunks.",
+      "week": 3,
+      "tags": [
+        "metrics",
+        "recall",
+        "precision"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2w3-q8",
+      "type": "code-reading",
+      "prompt": "This evaluation script reports MRR for a retrieval pipeline. Why is the number it prints misleading?",
+      "code": "def mrr(runs):\n    rrs = []\n    for ranked, relevant in runs:\n        ranks = [i for i, d in enumerate(ranked, start=1) if d in relevant]\n        if not ranks:\n            continue  # nothing relevant retrieved\n        rrs.append(1 / ranks[0])\n    return sum(rrs) / len(rrs)",
+      "options": [
+        {
+          "id": "a",
+          "text": "It skips queries where nothing relevant was retrieved, so the worst failures vanish from the average and MRR is inflated.",
+          "rationale": "Yes. Those queries should contribute 0. The script also crashes with ZeroDivisionError if every query fails.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "It should use the last relevant rank, not the first.",
+          "rationale": "MRR is defined on the first relevant result."
+        },
+        {
+          "id": "c",
+          "text": "Ranks should start at 0.",
+          "rationale": "Then the top result would be 1/0. Ranks start at 1."
+        }
+      ],
+      "explanation": "Silent exclusions are a common way evaluation code flatters a system. Count every labeled query, and handle unanswerable queries (no relevant items at all) separately and explicitly, rather than letting them fall out of the denominator by accident.",
+      "week": 3,
+      "tags": [
+        "metrics",
+        "mrr",
+        "evaluation-bugs"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w3-q9",
+      "type": "mcq",
+      "prompt": "Answers in your HR assistant usually need two or three passages (policy text plus a regional exception), and labelers grade passages 0 to 2. Which metric best reflects ranking quality for this task?",
+      "options": [
+        {
+          "id": "a",
+          "text": "nDCG@10, alongside recall@k for the passages the answer needs",
+          "rationale": "Yes. nDCG uses graded labels and rewards placing all the relevant passages high; recall@k checks the evidence reached the prompt.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Precision@1",
+          "rationale": "It looks only at the top result."
+        },
+        {
+          "id": "c",
+          "text": "The average cosine similarity of the top 10 results",
+          "rationale": "Similarity is the retriever's own opinion, not a measure of relevance against labels."
+        },
+        {
+          "id": "d",
+          "text": "MRR@10",
+          "rationale": "MRR stops at the first relevant passage, so it can't tell whether the regional exception made it in."
+        }
+      ],
+      "explanation": "Match the metric to the task: MRR for \"one right passage\" lookups, nDCG for graded multi-passage needs, recall@k whenever missing evidence is the main risk. Report k and the number of queries with every number.",
+      "week": 3,
+      "tags": [
+        "metrics",
+        "ndcg"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2w3-q10",
+      "type": "scenario",
+      "prompt": "Your eval shows 18 wrong answers out of 120 queries. For 13 of them the gold passage is not among the 100 first-stage candidates; for the other 5 it was in the final context. Where should the next sprint go?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Rewrite the system prompt to tell the model to say \"I don't know\" more often.",
+          "rationale": "Abstention is valuable, but it doesn't make the system find the answer."
+        },
+        {
+          "id": "b",
+          "text": "Retrieval: inspect the 13 misses by query type (identifiers? paraphrases? vague questions?) and test fixes such as tokenizer changes, hybrid search, or query rewriting.",
+          "rationale": "Yes. Most failures happen before ranking, so no reranker or prompt change can fix them; the gold passage was never a candidate.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Add a reranker.",
+          "rationale": "A reranker reorders candidates. It can't surface a passage that isn't in the candidate list, which is the case for 13 of 18."
+        },
+        {
+          "id": "d",
+          "text": "Switch to a stronger generator model.",
+          "rationale": "That targets the 5 generation failures and leaves the 13 retrieval failures untouched."
+        }
+      ],
+      "explanation": "This is the triage from lesson 9: check whether the evidence reached the model. When the gold passage is missing from first-stage candidates, the fix is upstream (what can match, how queries are formed). Also check that those 13 answers are actually in the corpus; some might be missing-content cases that need the system to decline.",
+      "week": 3,
+      "tags": [
+        "failure-analysis",
+        "retrieval"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

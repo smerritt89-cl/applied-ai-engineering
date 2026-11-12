@@ -1,0 +1,383 @@
+{
+  "id": "s3-w2",
+  "studio": "s3",
+  "week": 2,
+  "title": "Week 2 quiz: Graders",
+  "questions": [
+    {
+      "id": "s3w2-q1",
+      "type": "mcq",
+      "prompt": "Anthropic's guide to building evals ranks three grading methods. Which does it describe as the fastest and most reliable, and what is that method's main weakness?",
+      "options": [
+        {
+          "id": "a",
+          "text": "LLM-based grading; it is non-deterministic.",
+          "rationale": "The guide calls LLM grading fast and flexible, but says to test it for reliability before scaling. It is not the most reliable."
+        },
+        {
+          "id": "b",
+          "text": "Code-based grading; it lacks nuance for judgments that need less rule-based rigidity.",
+          "rationale": "Yes. Exact match, string match, and similar checks are fastest, most reliable, and most scalable, but brittle for nuanced criteria.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Human grading; it is slow and expensive.",
+          "rationale": "Human grading is called the most flexible and highest quality, and also slow and expensive. It isn't described as fastest."
+        },
+        {
+          "id": "d",
+          "text": "Reference metrics such as ROUGE; they need human-written references.",
+          "rationale": "The guide's ranking covers code, human, and LLM grading. Overlap metrics are a kind of code check with their own validity problems."
+        }
+      ],
+      "explanation": "Reach for code first, a calibrated judge for what code can't decide, and people for labels and audits. That order is about cost and reproducibility, not about which method is most important.",
+      "week": 2,
+      "tags": [
+        "graders",
+        "code-graders"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3w2-q2",
+      "type": "multi",
+      "prompt": "A support-reply feature has these criteria. Which can a deterministic code grader check reliably on its own? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The reply is under 120 words.",
+          "rationale": "Counting words is deterministic.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "The reply includes the order ID from the ticket, in the format TP- followed by six digits.",
+          "rationale": "A regex with fullmatch on the extracted ID plus an equality check handles this.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The reply actually answers the customer's question.",
+          "rationale": "That needs judgment about meaning, which is what a calibrated judge or a person is for."
+        },
+        {
+          "id": "d",
+          "text": "The JSON output has exactly the keys category, order_id, and reply.",
+          "rationale": "Schema validation is deterministic.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "The reply's tone is appropriately empathetic for an upset customer.",
+          "rationale": "Tone is a judgment call. Decompose what you can (no blame phrases, an apology present), but the rest needs a judge."
+        }
+      ],
+      "explanation": "Decomposition is the first move with any vague criterion: pull out every part code can check, and send only the remainder to a judge. The judge's job gets narrower, cheaper, and easier to calibrate.",
+      "week": 2,
+      "tags": [
+        "graders",
+        "decomposition"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s3w2-q3",
+      "type": "code-reading",
+      "prompt": "This grader is meant to accept only ISO dates such as `2026-11-04` in a `due_date` field. Which input does it wrongly accept?",
+      "code": "import re\n\nDATE = re.compile(r\"\\d{4}-\\d{2}-\\d{2}\")\n\ndef due_date_ok(value):\n    return DATE.match(value) is not None",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`2026-11-04`",
+          "rationale": "That's a valid input and should pass."
+        },
+        {
+          "id": "b",
+          "text": "`2026-11-04 or maybe the 5th`",
+          "rationale": "Yes. `re.match` anchors only at the start, so trailing junk passes. Use `re.fullmatch`.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`Nov 4, 2026`",
+          "rationale": "This correctly fails, because `match` requires the pattern at the start of the string."
+        },
+        {
+          "id": "d",
+          "text": "`11/04/2026`",
+          "rationale": "This correctly fails; it doesn't start with four digits and a hyphen."
+        }
+      ],
+      "explanation": "`re.match` checks the beginning of the string; `re.search` checks anywhere; `re.fullmatch` checks the whole string. Field validators almost always want `fullmatch`. Note that even `fullmatch` accepts `2026-13-45`; parse with `date.fromisoformat` if you need a real date.",
+      "week": 2,
+      "tags": [
+        "regex",
+        "graders"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w2-q4",
+      "type": "predict-output",
+      "prompt": "A judge was compared with an expert's labels (pass is the positive class). What does this print?",
+      "code": "tp, fn, fp, tn = 27, 3, 4, 6\nprint(round(tp / (tp + fn), 3), round(tn / (tn + fp), 3))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.9 0.6`",
+          "rationale": "Yes. TPR = 27/30 = 0.9 and TNR = 6/10 = 0.6.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`0.87 0.67`",
+          "rationale": "Those are precision-style ratios (TP over everything the judge passed, TN over everything it failed). TPR and TNR condition on the human label."
+        },
+        {
+          "id": "c",
+          "text": "`0.825 0.825`",
+          "rationale": "That's accuracy, 33 of 40, printed twice. The rates split it by the human label."
+        },
+        {
+          "id": "d",
+          "text": "`0.6 0.9`",
+          "rationale": "Reversed: TPR uses passes, TNR uses failures."
+        }
+      ],
+      "explanation": "TPR = TP / (TP + FN) answers \"of the outputs the expert passed, how many did the judge pass?\" TNR = TN / (TN + FP) answers \"of the outputs the expert failed, how many did the judge catch?\" This judge lets 4 of 10 bad outputs through, which an 82.5 percent accuracy hides.",
+      "week": 2,
+      "tags": [
+        "calibration",
+        "metrics"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w2-q5",
+      "type": "predict-output",
+      "prompt": "A pairwise judge saw each comparison twice. In order `xy`, system X was shown as A; in order `yx`, system Y was shown as A. What does this print?",
+      "code": "def to_system(answer, order):\n    if answer == \"tie\":\n        return \"tie\"\n    first, second = (\"X\", \"Y\") if order == \"xy\" else (\"Y\", \"X\")\n    return first if answer == \"A\" else second\n\nrecord = {\"xy\": \"B\", \"yx\": \"A\"}\na, b = to_system(record[\"xy\"], \"xy\"), to_system(record[\"yx\"], \"yx\")\nprint(a if a == b and a != \"tie\" else \"tie\")",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`Y`",
+          "rationale": "Yes. In xy, B is Y; in yx, A is Y. Both orders prefer Y, so Y wins.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`X`",
+          "rationale": "Check the mapping: the slot labels mean different systems in the two orders."
+        },
+        {
+          "id": "c",
+          "text": "`tie`",
+          "rationale": "It would be a tie only if the two orders preferred different systems, or either said tie."
+        },
+        {
+          "id": "d",
+          "text": "`B`",
+          "rationale": "The function maps slot answers to systems before comparing them."
+        }
+      ],
+      "explanation": "Swapping the order and counting only consistent wins is the defense against position bias described by Zheng et al. (2023). Here the judge answered different letters in the two orders, which is exactly what a consistent preference for Y looks like.",
+      "week": 2,
+      "tags": [
+        "pairwise",
+        "position-bias"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w2-q6",
+      "type": "scenario",
+      "prompt": "Reading disagreements on the dev split, you notice your judge passes several long, friendly replies that state a wrong refund timeline, and fails two short replies that are correct. What is the best next change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Switch to a 1 to 5 scale so long replies can get partial credit.",
+          "rationale": "The criterion is binary (is every policy claim supported?). A scale wouldn't fix the judge rewarding length."
+        },
+        {
+          "id": "b",
+          "text": "Add to the rubric that length and tone don't count, list the policy claims to check, and keep the short-correct and long-wrong examples in dev to confirm the fix.",
+          "rationale": "Yes. This is verbosity bias. Name it in the rubric, make the criterion checkable, and verify on the same kinds of cases.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Move those examples to the test split so they stop affecting dev metrics.",
+          "rationale": "Moving examples after seeing results contaminates the test split and hides the problem."
+        },
+        {
+          "id": "d",
+          "text": "Replace the judge with ROUGE against reference replies.",
+          "rationale": "Overlap metrics would reward wrong replies that copy reference wording. They don't check policy claims."
+        }
+      ],
+      "explanation": "Judges tend to favor longer answers (Zheng et al. found weaker judges fell for padded answers over 90 percent of the time). The fix is cheap: say that length doesn't count, make the criterion concrete, and measure whether the change worked on the cases that exposed the bias.",
+      "week": 2,
+      "tags": [
+        "llm-judge",
+        "verbosity-bias",
+        "rubric"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w2-q7",
+      "type": "scenario",
+      "prompt": "You calibrated two judges for the same criterion on the same 80-example held-out split. Judge A (a small, cheap model): TPR 0.94, TNR 0.91. Judge B (a frontier model, about 40 times the per-token price): TPR 0.96, TNR 0.92. The criterion runs on 5,000 outputs a night. Which choice is best supported?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Use B. Higher on both rates means better.",
+          "rationale": "B is higher, but by one or two examples' worth on an 80-example split, well within sampling noise, at many times the cost."
+        },
+        {
+          "id": "b",
+          "text": "Use A, record both calibrations, and re-check with a larger or fresh labeled sample if the criterion becomes a release gate.",
+          "rationale": "Yes. The measured difference is smaller than the uncertainty, and A meets the bar at a fraction of the cost. Keep the evidence so the decision can be revisited.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Average both judges' verdicts to get the best of both.",
+          "rationale": "Averaging two binary verdicts doesn't give you a verdict, and doubles the cost. Panels can help, but they're a design you'd calibrate too."
+        },
+        {
+          "id": "d",
+          "text": "Use whichever model generated the outputs, since it understands them best.",
+          "rationale": "Using the generator as its own judge invites self-preference bias."
+        }
+      ],
+      "explanation": "Judge choice is a model-selection decision made with evidence: calibrate the candidates on the same labels, compare TPR, TNR, and cost, and remember that small calibration sets can't resolve small differences. With 80 examples, a difference of 0.01 to 0.02 is about one example.",
+      "week": 2,
+      "tags": [
+        "model-selection",
+        "calibration",
+        "cost"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s3w2-q8",
+      "type": "mcq",
+      "prompt": "The corrected pass rate is p = (q + TNR - 1) / (TPR + TNR - 1), where q is the judge's observed pass rate. Why must TPR + TNR be greater than 1 to use it?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Otherwise the formula can return values above 1.",
+          "rationale": "Clipping handles values outside [0, 1]. The real issue is that the denominator vanishes or flips sign."
+        },
+        {
+          "id": "b",
+          "text": "When TPR + TNR = 1, the judge passes an output with the same probability whatever its true label, so q carries no information about p.",
+          "rationale": "Yes. Then TPR = 1 - TNR, so P(judge says pass) is identical for true passes and true failures; the denominator is zero.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Cohen's kappa is undefined in that case.",
+          "rationale": "Kappa is a separate statistic. The condition comes from the algebra of this estimator."
+        },
+        {
+          "id": "d",
+          "text": "It's a convention from epidemiology with no mathematical reason.",
+          "rationale": "It follows directly from solving q = TPR * p + (1 - TNR)(1 - p) for p."
+        }
+      ],
+      "explanation": "TPR + TNR - 1 measures how much more often the judge says pass for good outputs than for bad ones. At zero, the judge's verdicts are independent of the truth; below zero, the judge is anti-correlated with the expert, and you have a bug, not a judge.",
+      "week": 2,
+      "tags": [
+        "calibration",
+        "correction"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w2-q9",
+      "type": "multi",
+      "prompt": "Which of these are findings reported by Zheng et al. (2023), \"Judging LLM-as-a-Judge\"? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "On MT-Bench, excluding ties, GPT-4 agreed with expert humans about as often as experts agreed with each other (85 versus 81 percent).",
+          "rationale": "Reported in their agreement analysis.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "GPT-4 gave the same verdict after the two answers were swapped in only about 65 percent of cases.",
+          "rationale": "That's their position-bias result.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Judges never favored their own model's answers.",
+          "rationale": "They reported self-enhancement signs (GPT-4 about 10 percent, Claude-v1 about 25 percent higher win rates for themselves), while cautioning the data were limited."
+        },
+        {
+          "id": "d",
+          "text": "Giving the judge a reference answer reduced failures on math questions.",
+          "rationale": "Reference-guided judging cut GPT-4's failures on their 20 math questions from 14 to 3.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "LLM judges match human agreement on every task, so human labels are no longer needed.",
+          "rationale": "The paper makes no such claim, and later studies (Thakur et al. 2024; Bavaresco et al. 2024) found agreement varies widely by task and judge."
+        }
+      ],
+      "explanation": "The headline agreement number is real, but it comes from a specific setting: pairwise chat preferences, mostly excluding ties. The same paper documents the biases you must control for, and the later literature says to validate judges on your own task.",
+      "week": 2,
+      "tags": [
+        "llm-judge",
+        "research"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s3w2-q10",
+      "type": "code-reading",
+      "prompt": "This function scores a judge against human labels. What is the most serious problem with it?",
+      "code": "def judge_accuracy(examples, verdicts):\n    \"\"\"examples: list of (id, human_label); verdicts: dict id -> \"pass\", \"fail\", or None.\"\"\"\n    correct = 0\n    for ex_id, human in examples:\n        judged = verdicts.get(ex_id) or \"fail\"\n        correct += judged == human\n    return correct / len(examples)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "It should use Cohen's kappa instead of accuracy.",
+          "rationale": "Reporting more metrics would help, but the bigger problem is which examples count as failures."
+        },
+        {
+          "id": "b",
+          "text": "Verdicts that are missing because of a refusal, truncation, or API error count as `fail`, so infrastructure problems look like judge behavior and distort both rates.",
+          "rationale": "Yes. A missing verdict isn't a fail. Exclude it from the metrics and count it separately, so an outage or a refusal spike is visible as itself.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It iterates over `examples` instead of `verdicts`.",
+          "rationale": "Iterating over examples is right; it guarantees every labeled example is considered."
+        },
+        {
+          "id": "d",
+          "text": "It doesn't sort the examples by id first.",
+          "rationale": "Order doesn't affect accuracy."
+        }
+      ],
+      "explanation": "Keep three outcomes apart: the judge said pass, the judge said fail, and there is no verdict. Folding the third into fail inflates TNR on failing examples and deflates TPR on passing ones, and a burst of API errors would masquerade as a quality drop.",
+      "week": 2,
+      "tags": [
+        "calibration",
+        "metrics",
+        "errors"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

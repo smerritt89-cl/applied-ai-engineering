@@ -1,0 +1,337 @@
+---
+id: s1-w4-l10
+studio: s1
+week: 4
+order: 10
+title: The tool-use loop
+summary: What tool calling really is (the model asks, your code acts), how to define a tool with JSON Schema, and the loop that runs it, including parallel calls, errors, server tools, and the SDK tool runner.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Explain tool calling as a protocol in which the model requests an action and your code decides whether and how to run it
+  - Write a tool definition with a name, a description, and a JSON Schema for its inputs
+  - Implement the loop from a tool_use stop reason to end_turn, returning every tool_result in one user message
+  - Report tool failures to the model with is_error instead of crashing or hiding them
+  - Distinguish client tools from server tools, and choose between the SDK tool runner and a manual loop
+sources:
+  - { id: anthropic-courses, use: adapted, where: "Tool use module, lessons 1 (overview), 2 (first simple tool), and 4 (complete workflow)" }
+  - { id: ms-genai-beginners, use: adapted, where: "Lesson 11, Integrating with function calling" }
+  - { id: claude-tool-use-overview, use: summarized, where: "How tool use works; When Claude uses tools; Pricing" }
+  - { id: claude-define-tools, use: summarized }
+  - { id: claude-handle-tool-calls, use: summarized, where: "Handling results from client tools; Handling errors with is_error" }
+  - { id: claude-parallel-tool-use, use: summarized, where: "Execution semantics; Troubleshooting" }
+  - { id: claude-strict-tool-use, use: summarized }
+  - { id: claude-tool-runner, use: summarized }
+  - { id: claude-server-tools, use: linked }
+  - { id: claude-stop-reasons, use: summarized, where: "pause_turn" }
+  - { id: json-schema-guide, use: linked }
+  - { id: openai-function-calling, use: linked, where: "The tool calling flow" }
+  - { id: gemini-function-calling, use: linked, where: "Function calling modes; parallel and compositional calling" }
+  - { id: xai-function-calling, use: linked }
+  - { id: yt-ng-agentic, use: embedded }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: Your app defines a `lookup_teammate` tool and sends a request. The response has `stop_reason` equal to `"tool_use"`. What has happened so far?
+    options:
+      - id: a
+        text: Anthropic called your lookup function and the result is in the response.
+        rationale: Anthropic cannot reach code in your application. Only server tools run on Anthropic's side.
+      - id: b
+        text: The model produced a structured request to call your tool; nothing has run yet.
+        correct: true
+        rationale: Yes. A client tool runs only when your code runs it and sends back a tool_result.
+      - id: c
+        text: The request failed because the model could not answer without the tool.
+        rationale: tool_use is a normal stop reason, not an error. The turn is waiting on you.
+    explanation: >-
+      For a client tool, the model's output is a request: a tool name, an id, and an input object that should match
+      your schema. Your code decides whether to run it, runs it, and returns a tool_result with the same id. That
+      gap between "requested" and "executed" is where all of your checks live, which is the subject of the next lesson.
+  - id: kc2
+    type: code-reading
+    prompt: The model returned two `tool_use` blocks in one turn. What is wrong with how this loop sends the results back?
+    code: |
+      messages.append({"role": "assistant", "content": response.content})
+      for block in response.content:
+          if block.type == "tool_use":
+              result = run(block.name, block.input)
+              messages.append({"role": "user", "content": [
+                  {"type": "tool_result", "tool_use_id": block.id, "content": result}
+              ]})
+    options:
+      - id: a
+        text: Nothing. Each result has the right tool_use_id, so order does not matter.
+        rationale: Ids are necessary but not sufficient. The message structure also matters.
+      - id: b
+        text: The assistant message should contain only the text blocks.
+        rationale: The opposite. You must append the full content, including the tool_use blocks.
+      - id: c
+        text: It sends each result in its own user message; all results for a turn belong in one user message.
+        correct: true
+        rationale: Right. Claude's docs say the split form is wrong and that it teaches the model to stop making parallel calls.
+    explanation: >-
+      Collect every tool_result for the turn into one list and append a single user message. Results must come
+      immediately after the assistant message that requested them, and they must come before any text in that user
+      message.
+  - id: kc3
+    type: multi
+    prompt: Which of these are true of the SDK tool runner compared with a manual loop? Select all that apply.
+    options:
+      - id: a
+        text: It runs your tool functions automatically when the model requests them.
+        correct: true
+        rationale: That is its job. Which is exactly why write tools need a gate.
+      - id: b
+        text: It can be bounded with a maximum number of iterations.
+        correct: true
+        rationale: Yes, the runner accepts a max_iterations limit.
+      - id: c
+        text: It makes server tools run on your machine.
+        rationale: Server tools always run on Anthropic's infrastructure, with or without the runner.
+      - id: d
+        text: When a tool raises an exception, it returns the error to the model as a tool_result with is_error set.
+        correct: true
+        rationale: The tool runner docs describe exactly this behavior.
+    explanation: >-
+      The runner is a convenience over the same protocol: call, run tools, return results, repeat. It handles
+      message bookkeeping and error wrapping for you. Writing the manual loop once (this week's lab) is how you learn
+      what it is doing, and it remains the right choice when you want to own every step.
+---
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The model asks, your code acts
+
+Everything you have built so far ends with text: the model writes, your code reads. Tool calling (OpenAI and Google call it function calling) adds one move. You describe some functions to the model, and instead of answering in prose it can reply with a structured request: "call `lookup_teammate` with name equal to Priya." Your code runs the function and sends the result back, and the model continues with the new information.
+
+The important word is *request*. For tools you define, the model executes nothing. It cannot reach your directory, your calendar, or your database. It produces a tool name and a JSON object of arguments, and your application decides whether that call happens. Anthropic's docs put the split simply: Claude returns a structured call that your application runs.
+
+Microsoft's Generative AI for Beginners course frames the benefit in two parts, and both apply to the Studio 1 project. First, consistent shape: the arguments arrive as structured data instead of free text you have to parse. Second, outside data: the model can use facts it never saw in training, like who is on your team or what date "next Friday" is relative to a meeting. In the meeting-notes tool you will build, a transcript says "Marcus will take it." Only a lookup tells you which of your two Marcuses that is.
+</Listen>
+
+<Listen>
+## A tool definition is a contract
+
+You describe each tool with three fields. A **name**, which is how the model refers to it. A **description**, which is how the model decides when to use it. And an **input_schema**, a JSON Schema object that says what arguments the tool takes. JSON Schema is a standard vocabulary for describing JSON: types, required fields, enums, and nested objects.
+
+Treat the description as a prompt, because it is one. It is loaded into the model's context on every request, together with a short tool-use system prompt the API adds for you (a few hundred tokens on current Claude models, per the pricing section of the tool use docs). Anthropic's guidance is to say what the tool does, when to call it, what each parameter means, and what the tool will not do. Lesson 11 goes deep on this.
+
+Two schema settings matter from day one. Mark the fields you need as `required`, and use `enum` when a value comes from a fixed list. And consider `strict: true` on the tool, which makes the API constrain generation so the arguments always match your schema. Strict mode guarantees the *shape* of the input. It does not guarantee the input is *true*: a perfectly formed email address can still belong to nobody on your team.
+</Listen>
+
+```python
+lookup_teammate = {
+    "name": "lookup_teammate",
+    "description": (
+        "Look up a teammate in the team directory by full name, first name, or alias. "
+        "Call this whenever a transcript mentions a person who might own an action item. "
+        "Returns every match; if more than one person matches, ask which one was meant. Read-only."
+    ),
+    "strict": True,
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "The name as spoken, e.g. 'Priya'."}
+        },
+        "required": ["name"],
+        "additionalProperties": False,  # strict mode requires this
+    },
+}
+```
+
+<Listen>
+## The loop, step by step
+
+Anthropic's tool use course builds this up over several notebooks; here is the whole cycle in one place.
+
+One. You send a request with your messages and a `tools` list. Two. The model either answers directly or decides to use a tool. If it uses one, the response has a `stop_reason` of `tool_use`, and its content includes one or more `tool_use` blocks. Each block has an `id`, a `name`, and an `input` object. The content may also include text, such as "Let me look that up," and on current models, thinking blocks.
+
+Three. You append the assistant's *entire* content to your message history, tool_use blocks included. Four. For each tool_use block, you run the matching function. Five. You send a new user message whose content is a list of `tool_result` blocks, each carrying the `tool_use_id` it answers and the result as `content`. Six. You call the API again with the longer history. The model reads the results and either requests more tools or finishes, in which case `stop_reason` is `end_turn`.
+
+Because the API is stateless (lesson 1), the history you resend is the only memory the model has of what it asked for. Two formatting rules from the docs trip people up. The user message with results must come immediately after the assistant message that requested them. And within that user message, the tool_result blocks must come first, before any text you add.
+
+Finally, put a ceiling on it. A model can keep asking for tools, and each round trip costs tokens and time. A maximum iteration count is cheap insurance.
+</Listen>
+
+<Mermaid
+  alt="Sequence diagram of the tool-use loop. The app sends messages plus tool definitions to the Claude API. The API returns stop_reason tool_use with tool_use blocks. The app appends the assistant content, runs each requested tool in its own code, and sends one user message with all tool_result blocks. The API either requests more tools, which repeats the loop, or returns stop_reason end_turn with the final text."
+  caption="The client-tool loop. The model never runs your code; your app does, between API calls."
+  chart={`sequenceDiagram
+  participant App as Your app
+  participant API as Claude API
+  participant Tool as Your tool code
+  App->>API: messages + tools
+  loop until end_turn or max iterations
+    API-->>App: stop_reason tool_use, tool_use blocks (id, name, input)
+    App->>App: append full assistant content
+    App->>Tool: run each requested call
+    Tool-->>App: result or error
+    App->>API: one user message with every tool_result
+  end
+  API-->>App: stop_reason end_turn, final text`}
+/>
+
+Here is the manual loop in Python with the official SDK. It is the shape you will implement and test in this week's lab.
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+messages = [{"role": "user", "content": notes}]
+
+for _ in range(8):  # a hard ceiling on round trips
+    response = client.messages.create(
+        model="claude-opus-5-5",
+        max_tokens=16000,
+        tools=TOOLS,
+        messages=messages,
+    )
+    messages.append({"role": "assistant", "content": response.content})  # full content
+
+    if response.stop_reason == "end_turn":
+        break
+    if response.stop_reason != "tool_use":
+        raise RuntimeError(f"stopped early: {response.stop_reason}")
+
+    results = []
+    for block in response.content:
+        if block.type == "tool_use":
+            content, failed = run_tool(block.name, block.input)  # your dispatcher
+            result = {"type": "tool_result", "tool_use_id": block.id, "content": content}
+            if failed:
+                result["is_error"] = True
+            results.append(result)
+    messages.append({"role": "user", "content": results})  # all results, one message
+
+final_text = "".join(b.text for b in response.content if b.type == "text")
+```
+
+<DragOrder
+  client:visible
+  prompt="Put one round of the client-tool loop in order"
+  items={[
+    "Send the messages and the tools list to the API",
+    "The response arrives with stop_reason tool_use and one or more tool_use blocks",
+    "Append the full assistant content to the message history",
+    "Run each requested tool in your own code",
+    "Append one user message containing a tool_result for every tool_use id",
+    "Call the API again; repeat until stop_reason is end_turn or you hit the iteration limit",
+  ]}
+  explanation="Request, record, execute, report, repeat. Skipping the record step (appending the assistant content) is the classic bug: the API then sees tool_result blocks that answer a request it has no record of, and rejects the call."
+/>
+
+<Listen>
+## Parallel calls: several requests, one reply
+
+Current Claude models may ask for several tools in a single turn. A transcript line like "Priya will send the deck by next Friday" can yield two tool_use blocks at once: look up Priya, and resolve next Friday. The docs leave execution order to you. Independent, read-only calls are usually safe to run concurrently. Calls with side effects or ordering requirements are often better run one at a time.
+
+Whatever order you choose, the reply has one fixed shape: one tool_result per tool_use, all together in the next user message, matched by id. The parallel tool use docs list splitting results across separate user messages as the most common formatting mistake, and say it teaches the model to stop making parallel calls. If you decide not to run one of the calls, perhaps because an earlier one failed, you still return a tool_result for it, marked as an error, with a short explanation.
+
+If you need at most one call per turn, you can set `disable_parallel_tool_use` inside `tool_choice`. Usually you don't need to. Parallel calls save round trips, and round trips are where latency lives.
+</Listen>
+
+<Predict
+  title="How long is the history?"
+  code={`messages = [{"role": "user", "content": "notes"}]
+# The model asks for 3 tools in one turn.
+response_content = ["tool_use A", "tool_use B", "tool_use C"]
+
+messages.append({"role": "assistant", "content": response_content})
+results = [{"type": "tool_result", "tool_use_id": t[-1]} for t in response_content]
+messages.append({"role": "user", "content": results})
+print(len(messages), len(messages[-1]["content"]))`}
+  options={["3 3", "5 1", "3 1", "4 3"]}
+  answer={0}
+>
+Three messages (user, assistant, user) and three results inside the last one. If you had appended one user message per result, you would have five messages with one result each: valid-looking, and exactly the pattern the docs warn against.
+</Predict>
+
+<Listen>
+## Errors are results, not exceptions
+
+Tools fail. The person isn't in the directory, the date phrase is "sometime soon," the downstream API times out. The wrong reaction is to let the exception kill your loop, or to swallow it and return an empty string. The right reaction is to tell the model, in a tool_result with `is_error` set to true and a message it can act on.
+
+Anthropic's docs give two reasons. The model can incorporate the failure into its answer instead of inventing one. And with an instructive message, it can often recover: the docs suggest saying what went wrong and what to try next, rather than a bare "failed." "No teammate matches Jordan. Known teammates: Priya Raman, Marcus Lee..." gives the model a path forward. The docs also note that when Claude sends a call with missing parameters and you report it as an error, it typically retries a few times with corrections before giving up. With strict mode on, malformed calls of that kind should not reach you at all, but your own semantic checks still produce errors, and they follow the same rule.
+
+This is also your first checks-and-balances habit for tools: every call and its error status is a line you can log. When you build evals in Studio 3, "how often does the model call a tool with input that my validator rejects?" is one of the most useful numbers you can have.
+</Listen>
+
+<Callout type="pitfall" title="Four ways the loop breaks">
+1. **Appending only the text.** If you append `response.content[0].text` instead of the full `response.content`, the tool_use blocks vanish from history and the next request fails, because results answer requests the API cannot see.
+2. **Text before results.** In the user message that carries results, tool_result blocks come first. Text you want to add goes after them.
+3. **Forcing a tool on a model that rejects it.** `tool_choice` with type `any` or `tool` returns a 400 on Claude Opus 5.5 and Claude Sonnet 5.5. Keep `auto`, name the tool you expect in the instructions, use `strict: true` for valid arguments, and check that a call actually happened.
+4. **No ceiling.** Without a maximum iteration count, a confused model and a tool that keeps returning errors can loop until your budget notices.
+</Callout>
+
+<Listen>
+## Client tools and server tools
+
+Everything above describes **client tools**: tools that run in your application. That includes tools you define and tools whose schema Anthropic publishes but you still execute, such as the bash and text editor tools. **Server tools**, such as web search, web fetch, and code execution, run on Anthropic's infrastructure. You declare them in the `tools` list by type, and their results arrive inside the same response, with no handler code on your side. Server tools can bill extra on top of tokens; web search, for example, charges per search.
+
+Server tools add one stop reason you should handle: `pause_turn`. The API runs server tools in its own internal loop, and if that loop reaches its iteration limit, the response stops with `pause_turn`. To continue, you send the conversation back as it is, including the paused assistant turn, without adding a "please continue" message, and the server resumes.
+
+The distinction matters for checks and balances. With client tools you hold the gate: nothing runs until your code runs it. With server tools, the model's decision to search or fetch happens on the server, so your controls are the declaration itself (whether you include the tool, and options such as allowed domains and maximum uses) and what you do with the results.
+</Listen>
+
+<Listen>
+## The tool runner, or your own loop
+
+The Anthropic SDKs include a **tool runner** (in beta at the time of writing). You write ordinary functions, decorate them, and the runner generates the schemas, calls the API, runs your functions when the model asks, feeds results back, and stops when the model stops calling tools. When a tool raises an exception, the runner returns it to the model as an error result, the same pattern you just learned. You can cap it with a maximum number of iterations, and you can intervene on each turn: inspect the pending tool calls, take over the message history, or modify results before they go back.
+
+So which should you use? The docs give both answers depending on the page: the runner for most custom-tool agents, and the manual loop when you want complete control over approval, logging, or conditional execution. A reasonable rule: write the manual loop once, by hand, so you know what the runner is doing (that is this week's lab). In production, use the runner when its hooks cover your needs, and keep a manual loop when you want to own every step, or when you would rather not depend on a beta helper.
+
+Either way, remember that a runner runs your functions *automatically*. Any tool that changes something in the world needs its own gate, inside the function or in the per-turn hook. That is lesson 11.
+</Listen>
+
+```python
+import json
+
+import anthropic
+from anthropic import beta_tool
+
+client = anthropic.Anthropic()
+
+@beta_tool
+def lookup_teammate(name: str) -> str:
+    """Look up a teammate by name or alias. Read-only.
+
+    Args:
+        name: The name as spoken in the meeting, e.g. 'Priya'.
+    """
+    return json.dumps(find_people(name))  # your implementation
+
+runner = client.beta.messages.tool_runner(
+    model="claude-opus-5-5",
+    max_tokens=16000,
+    tools=[lookup_teammate],
+    messages=[{"role": "user", "content": notes}],
+)
+final = runner.until_done()  # the last message, after the model stops calling tools
+```
+
+<Listen>
+## The same idea at every provider
+
+Tool calling is not a Claude-specific trick. The vocabulary changes; the protocol does not.
+
+OpenAI's function calling guide describes the same five-step flow: send tools, receive a tool call, run your code, send the output back, receive the final answer. In its Responses API, a call arrives as a `function_call` item with a `call_id`, and you return a `function_call_output` item with the same id. Parallel calls are on by default, and a `parallel_tool_calls` flag limits the model to zero or one call.
+
+Google's Gemini docs describe function calls returned with a name and arguments, which you execute and send back. They cover parallel calling (several functions in one turn) and compositional calling (a chain, where one call's output feeds the next), and modes that let the model decide, force a call, forbid calls, or enforce schema adherence. xAI's Grok docs follow the same request, execute, return pattern, with parallel calls enabled by default.
+
+Two practical consequences. First, your tool *implementations* and your gating logic are portable; only the adapter that translates blocks differs. Second, behavior is not portable. How eagerly a model calls tools, how often it calls them in parallel, and how well it recovers from errors all vary between model families and versions. When you switch models, re-run your tool evals rather than assuming.
+</Listen>
+
+<GoDeeper title="Why this pattern matters beyond chat">
+Andrew Ng's 2024 talk on agentic workflows names tool use as one of four design patterns (with reflection, planning, and multi-agent collaboration) that make model-based systems more capable than a single prompt. Treat his remarks about where the field is heading as one practitioner's view; the part that holds up regardless is the mechanism you just built, which every agent framework wraps.
+
+<Video id="sal78ACtGTc" title="What's next for AI agentic workflows ft. Andrew Ng of AI Fund" channel="Sequoia Capital" minutes={13} source="https://www.youtube.com/watch?v=sal78ACtGTc">
+Listen for how he describes tool use relative to the other patterns, and notice that every pattern he describes still needs a loop like the one above.
+</Video>
+
+If you want to go further into the protocol, read the tool use overview's section on when Claude decides to call a tool. It explains how the system prompt shifts the boundary between "call a tool" and "answer directly," which is the lever you use when a model on `auto` under-calls a tool you need.
+</GoDeeper>
+
+<LabLink path="labs/studio-1/05-tool-loop" title="Lab 05: Write the tool-use loop" needs={["Python 3.10+", "Anthropic API key (live tests only)"]} minutes={60}>
+Implement a manual tool loop with three tools for the Studio 1 project domain: a team-directory lookup, a relative-date resolver, and a write tool that creates tasks only with approval. Offline tests use a fake client that scripts parallel calls, errors, a declined write, a runaway model, and a truncated turn, so you can finish everything without a key.
+</LabLink>

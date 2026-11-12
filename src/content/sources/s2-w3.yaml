@@ -1,0 +1,179 @@
+# Studio 2, week 3 (hybrid search and reranking) sources not already in core.yaml or other source files.
+# Also cited from week 3 (defined elsewhere): hamel-evals, zheng-2023-llm-judge, owasp-llm-top10, huyen-ai-engineering,
+# anthropic-contextual-retrieval and qdrant-filtering (s2-w2.yaml), barnett-2024-rag-failures (s2-w4.yaml).
+# All URLs checked with curl on 2026-11-11. ACM and NOW DOI links return 403 to scripts; their metadata was
+# confirmed through the DOI handle API and Crossref, and free author copies are linked where they exist.
+
+# ---------- Keyword search and BM25 ----------
+- id: robertson-zaragoza-2009-bm25
+  title: "The Probabilistic Relevance Framework: BM25 and Beyond (Foundations and Trends in Information Retrieval, 2009)"
+  author: Stephen Robertson and Hugo Zaragoza
+  url: https://www.staff.city.ac.uk/~sbrp622/papers/foundations_bm25_review.pdf
+  license: Copyright the authors and NOW Publishers (author copy)
+  policy: summarize
+  kind: paper
+  notes: DOI 10.1561/1500000019. Section 3.4 to 3.5 for the BM25 formula, saturation, length normalization, and parameter ranges.
+
+- id: lucene-bm25-similarity
+  title: Apache Lucene BM25Similarity (API documentation)
+  author: Apache Software Foundation
+  url: https://lucene.apache.org/core/9_0_0/core/org/apache/lucene/search/similarities/BM25Similarity.html
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+  notes: Defaults k1 = 1.2, b = 0.75; idf implemented as log(1 + (N - n + 0.5) / (n + 0.5)).
+
+- id: elastic-similarity-docs
+  title: Elasticsearch similarity module (index settings)
+  author: Elastic
+  url: https://www.elastic.co/docs/reference/elasticsearch/index-settings/similarity
+  license: Copyright Elastic
+  policy: summarize
+  kind: docs
+
+
+- id: karpukhin-2020-dpr
+  title: Dense Passage Retrieval for Open-Domain Question Answering (Karpukhin et al., 2020)
+  author: Karpukhin et al.
+  url: https://arxiv.org/abs/2004.04906
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: thakur-2021-beir
+  title: "BEIR: A Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval Models (Thakur et al., 2021)"
+  author: Thakur, Reimers, Rücklé, Srivastava, Gurevych
+  url: https://arxiv.org/abs/2104.08663
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+# ---------- Hybrid search and fusion ----------
+- id: cormack-2009-rrf
+  title: Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods (SIGIR 2009)
+  author: Gordon V. Cormack, Charles L. A. Clarke, Stefan Büttcher
+  url: https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf
+  license: Copyright ACM (author copy)
+  policy: summarize
+  kind: paper
+  notes: DOI 10.1145/1571941.1572114. k = 60 fixed in a pilot; "near-optimal, but the choice was not critical".
+
+- id: elastic-rrf-docs
+  title: Elasticsearch reciprocal rank fusion
+  author: Elastic
+  url: https://www.elastic.co/docs/reference/elasticsearch/rest-apis/reciprocal-rank-fusion
+  license: Copyright Elastic
+  policy: summarize
+  kind: docs
+  notes: rank_constant defaults to 60; rank_window_size controls the per-retriever candidate count.
+
+- id: weaviate-hybrid-concepts
+  title: Weaviate hybrid search concepts (fusion strategies)
+  author: Weaviate
+  url: https://docs.weaviate.io/weaviate/concepts/search/hybrid-search
+  license: Copyright Weaviate
+  policy: summarize
+  kind: docs
+  notes: relativeScoreFusion (min-max normalized scores, default from v1.24) versus rankedFusion (rank based).
+
+- id: gao-2022-hyde
+  title: Precise Zero-Shot Dense Retrieval without Relevance Labels (HyDE; Gao, Ma, Lin, Callan, 2022)
+  author: Luyu Gao, Xueguang Ma, Jimmy Lin, Jamie Callan
+  url: https://arxiv.org/abs/2212.10496
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+
+# ---------- Reranking ----------
+- id: reimers-2019-sbert
+  title: "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks (Reimers and Gurevych, 2019)"
+  author: Nils Reimers and Iryna Gurevych
+  url: https://arxiv.org/abs/1908.10084
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: nogueira-2019-bert-rerank
+  title: Passage Re-ranking with BERT (Nogueira and Cho, 2019)
+  author: Rodrigo Nogueira and Kyunghyun Cho
+  url: https://arxiv.org/abs/1901.04085
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: sbert-retrieve-rerank
+  title: Sentence Transformers documentation, Retrieve and Re-Rank
+  author: Sentence Transformers (UKP Lab / Hugging Face)
+  url: https://sbert.net/examples/sentence_transformer/applications/retrieve_rerank/README.html
+  license: Apache 2.0 (library); documentation copyright the authors
+  policy: summarize
+  kind: docs
+
+- id: cohere-rerank-docs
+  title: An Overview of Cohere's Rerank Model
+  author: Cohere
+  url: https://docs.cohere.com/docs/rerank-overview
+  license: Copyright Cohere
+  policy: summarize
+  kind: docs
+
+- id: voyage-reranker-docs
+  title: Voyage AI Rerankers
+  author: Voyage AI
+  url: https://docs.voyageai.com/docs/reranker
+  license: Copyright Voyage AI
+  policy: summarize
+  kind: docs
+
+- id: bge-reranker-v2-m3
+  title: BAAI/bge-reranker-v2-m3 model card
+  author: Beijing Academy of Artificial Intelligence (BAAI)
+  url: https://huggingface.co/BAAI/bge-reranker-v2-m3
+  license: Apache 2.0
+  policy: summarize
+  kind: repo
+
+- id: msmarco-minilm-cross-encoder
+  title: cross-encoder/ms-marco-MiniLM-L6-v2 model card
+  author: Sentence Transformers
+  url: https://huggingface.co/cross-encoder/ms-marco-MiniLM-L6-v2
+  license: Apache 2.0
+  policy: summarize
+  kind: repo
+
+- id: sun-2023-rankgpt
+  title: "Is ChatGPT Good at Search? Investigating Large Language Models as Re-Ranking Agents (Sun et al., 2023)"
+  author: Sun et al.
+  url: https://arxiv.org/abs/2304.09542
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+# ---------- Measuring retrieval ----------
+- id: jarvelin-2002-ndcg
+  title: Cumulated gain-based evaluation of IR techniques (ACM Transactions on Information Systems, 2002)
+  author: Kalervo Järvelin and Jaana Kekäläinen
+  url: https://doi.org/10.1145/582415.582418
+  license: Copyright ACM
+  policy: summarize
+  kind: paper
+  notes: The paper that introduced (n)DCG. Metadata confirmed via Crossref; the ACM page returns 403 to scripts.
+
+- id: sklearn-ndcg-score
+  title: scikit-learn sklearn.metrics.ndcg_score
+  author: scikit-learn developers
+  url: https://scikit-learn.org/stable/modules/generated/sklearn.metrics.ndcg_score.html
+  license: BSD 3-Clause
+  policy: summarize
+  kind: docs
+
+
+- id: qdrant-filterable-hnsw
+  title: Filterable HNSW Without Recall Loss (2019)
+  author: Andrei Vasnetsov (Qdrant)
+  url: https://qdrant.tech/articles/filterable-hnsw/
+  license: Copyright Qdrant
+  policy: summarize
+  kind: blog
+  notes: Describes the 2019 design; the page notes it is not a full account of current filtered search.

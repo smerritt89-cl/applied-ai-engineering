@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.923
+Three generations of getting JSON out of a model.
+
+2
+00:00:03.203 --> 00:00:05.293
+Generation one: ask nicely.
+
+3
+00:00:05.573 --> 00:00:12.123
+Put “respond only with JSON matching this format” in the prompt, parse the text, and retry on failure.
+
+4
+00:00:12.403 --> 00:00:21.171
+It works most of the time, which is the problem: you saw in lesson 7 how the remaining failures look (preambles, code fences, renamed keys).
+
+5
+00:00:21.451 --> 00:00:25.227
+Every team that shipped this way also shipped a pile of cleanup code.
+
+6
+00:00:25.507 --> 00:00:27.875
+Generation two: borrow tool calling.
+
+7
+00:00:28.155 --> 00:00:36.987
+Tool calling (week 4 covers it properly) lets you describe a function with a JSON Schema for its arguments, and the model returns a structured call.
+
+8
+00:00:37.267 --> 00:00:44.200
+Engineers noticed they could define a fake tool whose “arguments” were the output they wanted, then force the model to call it.
+
+9
+00:00:44.480 --> 00:00:49.259
+Tool arguments came back as parsed JSON, which removed most syntax failures.
+
+10
+00:00:49.539 --> 00:00:56.259
+But the arguments were not guaranteed to match the schema: a required field could still be missing or the wrong type.
+
+11
+00:00:56.539 --> 00:01:00.379
+And forcing a particular tool is no longer available everywhere.
+
+12
+00:01:00.659 --> 00:01:02.003
+On Claude Opus 5.
+
+13
+00:01:02.283 --> 00:01:04.117
+5 and Claude Sonnet 5.
+
+14
+00:01:04.397 --> 00:01:14.957
+5, a tool_choice that forces a tool ( any or a named tool ) is rejected; Anthropic’s guidance is to use structured outputs when you only wanted JSON back.
+
+15
+00:01:15.237 --> 00:01:17.819
+Generation three: constrain the decoder.
+
+16
+00:01:18.099 --> 00:01:24.243
+Instead of hoping the model writes valid output, the serving system makes invalid output impossible.
+
+17
+00:01:24.523 --> 00:01:30.859
+Anthropic’s docs describe compiling your JSON Schema into a grammar and restricting generation to it.
+
+18
+00:01:31.139 --> 00:01:47.139
+The technique is general: Willard and Louf (2023) showed how to turn a regular expression or grammar into a finite-state machine and precompute, for each state, which vocabulary tokens are allowed, so the check adds little overhead per token.

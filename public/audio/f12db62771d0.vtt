@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.432
+Switching models means re-running the tests.
+
+2
+00:00:02.712 --> 00:00:11.928
+You will often want to move a prompt between models: to a cheaper tier for volume, to a newer version, or to another provider for a capability or a price.
+
+3
+00:00:12.208 --> 00:00:15.813
+Treat every such move as a change that needs the full test set.
+
+4
+00:00:16.093 --> 00:00:19.187
+The reasons are documented by the providers themselves.
+
+5
+00:00:19.467 --> 00:00:28.704
+Anthropic’s best-practices page says that where a technique was measured on one model, you should re-check it against your own evals before applying it to another.
+
+6
+00:00:28.984 --> 00:00:34.488
+OpenAI notes that even different snapshots within one family can respond differently.
+
+7
+00:00:34.768 --> 00:00:41.957
+The few-shot ordering research from lesson 5 found that a good example order for one model did not transfer to another.
+
+8
+00:00:42.237 --> 00:00:59.261
+Some differences are mechanical and fail loudly: parameter names for the instruction channel and for reasoning effort, sampling parameters that one API rejects (the current Claude API version), another ignores with a warning (recent Gemini models, per Google’s docs),
+
+9
+00:00:59.541 --> 00:01:03.893
+and a third accepts, or prefill that one stack supports and another rejects.
+
+10
+00:01:04.173 --> 00:01:13.539
+Others are behavioral and fail quietly: one model is more literal, another more verbose, a third more likely to add a preamble before your JSON.
+
+11
+00:01:13.819 --> 00:01:16.059
+Only a test set catches the quiet ones.
+
+12
+00:01:16.339 --> 00:01:24.019
+So a cross-model comparison is the same loop as a prompt comparison: same cases, same checks, one variable changed.
+
+13
+00:01:24.299 --> 00:01:30.016
+Compare pass rate, the specific fixes and regressions, cost per completed task, and latency.
+
+14
+00:01:30.296 --> 00:01:31.256
+Then decide.
+
+15
+00:01:31.536 --> 00:01:38.213
+This is how you will make model-selection decisions all program: with a table of evidence, not a reputation.

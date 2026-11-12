@@ -1,0 +1,321 @@
+---
+id: s1-w3-l9
+studio: s1
+week: 3
+order: 9
+title: When structured output is confidently wrong
+summary: Checks and balances for extraction. Evidence quotes you verify in code, cross-field rules, abstention, why self-reported confidence misleads, self-consistency sampling, second-model checkers and their limits, and when a person should decide.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain why a schema-valid extraction can still contain invented values, and why constrained decoding can make that worse
+  - Require evidence quotes and verify them against the source with an exact, whitespace-normalized substring check
+  - Write cross-field consistency rules and design abstention (null plus a reason) into a schema
+  - Evaluate self-reported confidence, self-consistency sampling, and second-model checking as verification signals, including their costs and limits
+  - Design a routing policy that decides which items are accepted, retried, or sent to a person
+sources:
+  - { id: claude-reduce-hallucinations, use: summarized, where: "Allow uncertainty, direct quotes, verify with citations, best-of-N" }
+  - { id: claude-structured-outputs, use: summarized, where: "Guarantee scope" }
+  - { id: gemini-structured-output, use: summarized, where: "Schema-compliant but semantically incorrect outputs" }
+  - { id: wang-2022-self-consistency, use: summarized }
+  - { id: xiong-2023-confidence, use: summarized }
+  - { id: kadavath-2022, use: summarized }
+  - { id: zheng-2023-llm-judge, use: summarized }
+  - { id: hamel-llm-judge, use: summarized, where: "Treat human labels as ground truth; report TPR and TNR" }
+  - { id: pydantic-docs, use: linked, where: "Validators" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your extractor returns an item with owner "Lee" and evidence "Someone should book the offsite venue." The quote
+      appears verbatim in the transcript, spoken by Lee. Every automated check passes. What is the best way to handle
+      this class of item?
+    options:
+      - id: a
+        text: Accept it. The quote is verified, so the item is grounded.
+        rationale: The quote is real, but "someone should" is a suggestion, not a commitment by Lee. A verified quote proves the words exist, not that they support the claim.
+      - id: b
+        text: Add a rule or a checker step that asks whether the quote states a commitment by the named owner, and send items that fail it to review.
+        correct: true
+        rationale: Yes. Quote verification is necessary but not sufficient. The remaining question (does this quote support this claim?) needs a semantic check, by a model you have calibrated or by a person.
+      - id: c
+        text: Retry the extraction until the owner changes.
+        rationale: Retrying samples another answer; it doesn't tell you which one is right. Without a check, you're just picking the last draw.
+    explanation: >-
+      Mechanical checks catch fabricated quotes, unknown names, and impossible dates cheaply and with certainty. They
+      can't judge meaning. That gap is exactly where a second-model check (measured against human labels) or a human
+      review step belongs.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      You add a `confidence` field (0 to 1) to the schema and plan to auto-accept items above 0.9. What does the
+      research on verbalized confidence suggest?
+    options:
+      - id: a
+        text: It's well calibrated for current models, so a 0.9 threshold means about 90 percent of accepted items are right.
+        rationale: Not established. Calibration has to be measured on your own task.
+      - id: b
+        text: Models asked to state their confidence tend to be overconfident, so the threshold means nothing until you check it against labeled data.
+        correct: true
+        rationale: Xiong et al. (2023) found verbalized confidence tends toward overconfidence; you'd need to measure accuracy at each confidence level on your own gold set.
+      - id: c
+        text: Confidence fields are rejected by structured outputs.
+        rationale: A number field is fine schema-wise. The problem is what the number means, not whether it parses.
+    explanation: >-
+      A number in a JSON field looks precise. Treat it as an uncalibrated signal: plot accuracy against stated
+      confidence on labeled examples, and use it for routing only if higher really means more accurate on your data.
+  - id: kc3
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      def normalize(text):
+          return " ".join(text.split())
+
+      transcript = "Ana: I'll call the vendor\nabout the delayed shipment."
+      quote = "I'll call the vendor about the  delayed shipment."
+      print(normalize(quote) in normalize(transcript))
+    options:
+      - id: a
+        text: "`True`"
+        correct: true
+        rationale: Splitting on whitespace and rejoining with single spaces makes the newline and the double space equivalent.
+      - id: b
+        text: "`False`"
+        rationale: Without normalization it would be False. That's why you normalize whitespace before the substring check.
+      - id: c
+        text: "It raises a `TypeError`"
+        rationale: Both values are strings, so `in` performs a substring check.
+    explanation: >-
+      Whitespace normalization removes false alarms from line breaks and spacing while keeping the check strict about
+      words. Don't normalize further (case, punctuation, paraphrase) without measuring, because each relaxation lets
+      more invented quotes through.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Valid JSON, invented facts
+
+By the end of lesson 8 your extractor can't produce malformed output. Now look at what it can still produce. Picture a transcript where Sam says "I can update the roadmap slide, but I need the final numbers first." A schema-valid extraction might read: task "Update the roadmap slide", owner "Sam", due date 2026-11-14. The owner is plausible. The due date appears nowhere. Nothing in the JSON looks different from a correct item, and the date is formatted perfectly.
+
+This is the central trust problem of extraction. The schema guarantees shape; it doesn't make values true. Google's Gemini docs warn about schema-compliant but semantically incorrect outputs, and Anthropic's own guidance on hallucinations says that even with good techniques you should validate critical information. Constrained decoding can also add pressure to invent: if a field is required and non-nullable, the model must write something.
+
+The studio project grades you on this directly. A list of action items is easy to produce. A list where every item can be traced to what was actually said, with doubtful items flagged instead of silently kept, is the deliverable. This lesson builds the checks, from cheap and certain to expensive and fallible, and ends with how to decide what a person should look at.
+</Listen>
+
+<Listen>
+## Require evidence, then verify it in code
+
+The single most useful check for extraction is also the simplest. Add an `evidence` field to each item: a verbatim quote from the source that supports it. Then check, in deterministic code, that the quote actually appears in the source. Anthropic recommends both halves of this in its guidance on reducing hallucinations: ground answers in direct quotes, and have each claim backed by a supporting quote or retracted.
+
+Asking for the quote helps the model (it has to locate support before committing), but the **verification** is what gives you a guarantee. A model can invent a quote as fluently as it invents a date. Your substring check can't be fooled that way: either the words are in the transcript or they aren't.
+
+Make the check strict and simple. Normalize whitespace on both sides (collapse runs of spaces, tabs, and newlines into one space), because transcripts wrap lines unpredictably. Then require an exact substring match. Resist the urge to use fuzzy matching at first. Every relaxation (ignoring case, punctuation, or small word changes) lets more paraphrases through, and a paraphrase is precisely where meaning drifts. If you later find real quotes failing for trivial reasons, such as curly versus straight apostrophes, add that one normalization and measure the effect.
+
+Know the limit, too. A verified quote proves the words exist. It doesn't prove they support the claim: "Someone should book the venue" is real text, but it isn't a commitment by anyone. That gap needs the semantic checks later in this lesson.
+</Listen>
+
+<Callout type="pitfall" title="A verifier that quietly passes everything">
+Two bugs make evidence checks useless without failing any test you'd think to write. First, an empty quote: `"" in transcript` is always True in Python, so an item with no evidence passes. Check for empty evidence explicitly. Second, verifying against the wrong text: if you chunk a long transcript, verify against the chunk the model saw (or the whole transcript), never against the model's own summary. Test your verifier with items you know should fail.
+</Callout>
+
+<Listen>
+## Cross-field rules and abstention
+
+Evidence checks look at one field. Many errors only show up when fields are compared with each other or with facts you hold. Write these as plain functions, run after validation, with one named rule each:
+
+- The owner must be someone in the meeting (or in your team directory). An unknown name is either a hallucination or a person you need to resolve.
+- A due date can't be before the meeting date. If the transcript says "Friday," resolve it in code from the meeting date, as the project requires, rather than trusting the model's calendar arithmetic.
+- If an item says "done," it shouldn't also have a future due date.
+- The owner should be the speaker of the quoted line, or be named in it. This one is a heuristic; use it to flag, not to reject.
+
+Each rule is cheap, deterministic, and testable, and each catches a class of error that no amount of prompting reliably prevents.
+
+The other half is giving the model a legal way to say "I don't know." Anthropic's first recommendation for reducing hallucinations is to explicitly allow uncertainty. In a schema, that means **abstention fields**: make `owner` and `due_date` nullable, and add a short reason when they're null ("no one volunteered", "date discussed but not agreed"). Abstentions are useful data. A sudden jump in null owners tells you the transcripts changed or the prompt broke; a reason string tells a reviewer what to check.
+</Listen>
+
+```python
+from pydantic import BaseModel, ConfigDict, Field
+
+class ActionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task: str = Field(description="What will be done, as a short imperative phrase")
+    owner: str | None = Field(description="Name of the person who committed, exactly as spoken; null if no one did")
+    owner_missing_reason: str | None = Field(description="If owner is null, a few words on why; otherwise null")
+    due_date_phrase: str | None = Field(description="The deadline wording from the transcript, verbatim, or null")
+    evidence: str = Field(description="A verbatim quote from the transcript that shows this commitment")
+```
+
+<Predict
+  title="Curly quotes and exact matching"
+  code={`def normalize(text):
+    return " ".join(text.split())
+
+transcript = "Priya: I'll send the revised budget."
+quote = "I\\u2019ll send the revised budget."   # U+2019 is a curly apostrophe
+print(normalize(quote) in normalize(transcript))`}
+  options={["True", "False", "It raises a UnicodeError"]}
+  answer={1}
+>
+False. Whitespace normalization doesn't touch apostrophes, and a curly apostrophe (U+2019) is a different character from a straight one. Models sometimes "typeset" quotes like this. If you see real quotes failing for this reason in your logs, map curly quotes to straight ones in `normalize`, add a test for it, and confirm it doesn't let fabricated quotes through.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s1-w3-evidence-verifier"
+  title="Build an evidence verifier"
+  starter={`from datetime import date
+
+def normalize(text):
+    """Collapse every run of whitespace to one space and strip the ends."""
+    # TODO
+    pass
+
+def verify_items(items, transcript, attendees, meeting_date):
+    """Check extracted items against the transcript.
+
+    Each item is a dict with: task, owner (str or None), due_date (ISO string or None), evidence.
+    For each item, collect problems in this order:
+      "no evidence"                 evidence is None or blank
+      "evidence not in transcript"  normalized evidence is not a substring of the normalized transcript
+      "unknown owner"               owner is not None and not in attendees
+      "due date before meeting"     due_date is set and earlier than meeting_date
+    Return a list of {"index": i, "task": ..., "problems": [...]} for items with at least one problem.
+    """
+    # TODO
+    pass
+
+TRANSCRIPT = """Priya: Thanks, everyone. First, the Q4 budget. I'll send the revised budget to finance by November 20.
+Sam: I can update the roadmap slide, but I need the final numbers first.
+Lee: Someone should book the offsite venue.
+Ana: I'll call the vendor about the delayed shipment tomorrow.
+Priya: Great. Let's also confirm the launch date with marketing."""
+
+ATTENDEES = {"Priya", "Sam", "Lee", "Ana"}
+MEETING_DATE = date(2026, 11, 11)
+
+# What a model returned. Every item is schema-valid.
+ITEMS = [
+    {"task": "Send revised budget to finance", "owner": "Priya", "due_date": "2026-11-20",
+     "evidence": "I'll send the revised budget to finance by November 20."},
+    {"task": "Update the roadmap slide", "owner": "Sam", "due_date": None,
+     "evidence": "I will update the roadmap slide"},
+    {"task": "Book the offsite venue", "owner": "Lee", "due_date": None,
+     "evidence": "Someone should book the offsite venue."},
+    {"task": "Call the vendor about the shipment", "owner": "Jordan", "due_date": None,
+     "evidence": "I'll call the vendor  about the delayed\\nshipment tomorrow."},
+    {"task": "Confirm launch date with marketing", "owner": "Priya", "due_date": "2026-11-01",
+     "evidence": "Let's also confirm the launch date with marketing."},
+    {"task": "Circulate meeting notes", "owner": None, "due_date": None, "evidence": ""},
+]
+
+flags = verify_items(ITEMS, TRANSCRIPT, ATTENDEES, MEETING_DATE)
+for f in flags or []:
+    print(f["index"], f["task"], "->", ", ".join(f["problems"]))
+`}
+  tests={`assert normalize("  a \\n b\\t c ") == "a b c", "normalize collapses whitespace and strips the ends"
+flags = verify_items(ITEMS, TRANSCRIPT, ATTENDEES, MEETING_DATE)
+assert flags is not None, "verify_items returned None"
+by_index = {f["index"]: f["problems"] for f in flags}
+assert 0 not in by_index, "item 0 is fully supported"
+assert by_index.get(1) == ["evidence not in transcript"], "item 1 paraphrases: Sam said 'I can update', not 'I will update'"
+assert by_index.get(3) == ["unknown owner"], "item 3's quote matches after whitespace normalization, but Jordan was not in the meeting"
+assert by_index.get(4) == ["due date before meeting"], "item 4 is due before the meeting happened"
+assert by_index.get(5) == ["no evidence"], "item 5 has an empty quote (and an empty string is a substring of everything)"
+assert 2 not in by_index, "item 2 passes every mechanical check; read the discussion after this exercise"
+assert sorted(by_index) == [1, 3, 4, 5], "flag exactly items 1, 3, 4, and 5"`}
+  solution={`def normalize(text):
+    return " ".join(text.split())
+
+def verify_items(items, transcript, attendees, meeting_date):
+    source = normalize(transcript)
+    flagged = []
+    for i, item in enumerate(items):
+        problems = []
+        evidence = normalize(item.get("evidence") or "")
+        if not evidence:
+            problems.append("no evidence")
+        elif evidence not in source:
+            problems.append("evidence not in transcript")
+        owner = item.get("owner")
+        if owner is not None and owner not in attendees:
+            problems.append("unknown owner")
+        due = item.get("due_date")
+        if due is not None and date.fromisoformat(due) < meeting_date:
+            problems.append("due date before meeting")
+        if problems:
+            flagged.append({"index": i, "task": item["task"], "problems": problems})
+    return flagged`}
+>
+Write `normalize` and `verify_items`, then press **Check my answer**. When it passes, look at item 2 again. Lee really did say those words, Lee was in the meeting, and there's no date to check. Yet "someone should" is not a commitment by Lee. Your verifier is right to pass it, because no mechanical rule can see the problem. Keep that item in mind for the rest of the lesson.
+</PyRunner>
+
+<Listen>
+## Confidence the model reports is not confidence you can use
+
+The obvious next idea is to ask the model how sure it is: add a `confidence` field and auto-accept anything above 0.9. The research says to be careful. Xiong and colleagues (2023) benchmarked ways of eliciting confidence from black-box models, including GPT-4, and found that models verbalizing their confidence tend to be **overconfident**, possibly imitating how people talk about certainty. Calibration improved with model scale and with methods that combine several sampled answers, but no method was reliably good, especially on tasks needing specialist knowledge.
+
+There's a nuance worth knowing. Kadavath and colleagues (2022), at Anthropic, showed that large models can be well calibrated when asked in the right format, for example estimating the probability that a proposed answer is true. That's a carefully elicited, measured probability, not a number the model writes into a JSON field mid-extraction.
+
+The practical rule follows from your math background: a confidence score is only meaningful once you've measured its **calibration** on your data. Take a labeled set, bucket items by stated confidence, and compute accuracy per bucket. If the 0.9 bucket is right 70 percent of the time, your threshold is lying to you. Until you've done that, treat the field as a weak signal for sorting a review queue, never as a gate.
+</Listen>
+
+<Listen>
+## Self-consistency: ask several times, trust agreement
+
+A signal that holds up better than self-reported confidence is **agreement across samples**. Wang and colleagues (2022) introduced self-consistency for reasoning: sample several independent chains of thought instead of one, then take the answer most of them reach. On math word problems it raised accuracy substantially (the paper reports gains as large as 17.9 points on the GSM8K benchmark). The intuition: a correct answer can usually be reached in several ways, while errors scatter.
+
+For extraction, the analog is to run the same extraction several times and compare. An action item that appears in five of five runs, with the same owner, is more trustworthy than one that appears once. Disagreement is the useful part: if three runs say the owner is Sam and two say nobody, that item deserves a person's attention. Anthropic's hallucination guidance suggests the same idea, calling it best-of-N verification: inconsistencies across outputs can indicate hallucination.
+
+Two caveats. Agreement isn't truth: a model can be consistently wrong, especially when the transcript is ambiguous in the same way every time. And it multiplies cost by the number of samples, so use it selectively (for high-stakes fields, or for items that already failed a cheap check). Matching items across runs is also real work: two runs may phrase the same task differently, so match on evidence quotes or on owner plus a normalized task, not on exact task text.
+</Listen>
+
+<Listen>
+## A second model as checker, and why it is not a referee
+
+Item 2 from the exercise needs judgment: does this quote show this person committing to this task? A natural tool is a second model call that receives the transcript, one item, and a narrow question ("Does the evidence show the named owner committing to the task? Answer yes, no, or unclear, with the reason"). This is the LLM-as-judge pattern. Making the question narrow and binary, about one item at a time, is far more reliable than asking a model to "review the extraction."
+
+Know its limits before you rely on it. Zheng and colleagues (2023) found that strong judge models agreed with human preferences over 80 percent of the time, about as often as humans agree with each other, but also documented position bias, verbosity bias, and self-enhancement bias (favoring answers like their own), plus limited reasoning on hard questions. Self-enhancement is the reason to consider a checker from a **different** model family than the extractor: errors that come from the same training are more likely to be shared. A Claude extractor checked by a GPT or Gemini model (or the reverse) gives you more independent errors, though not independent ones.
+
+Above all, a checker is another model output that needs checking. Hamel Husain's practical guide to LLM judges describes the discipline: label a set of examples yourself, treat those human labels as ground truth, and measure the judge's true positive and true negative rates separately rather than one overall agreement number, because raw agreement misleads when most items are fine. If the checker misses half the bad items, it is a speed bump, not a safety net.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of a verification and routing pipeline: extraction with structured outputs produces items; schema validation failures trigger one retry with the error, and a second failure goes to human review; valid items go through deterministic checks (evidence found, owner known, dates consistent); failures go to human review; passing items go to a semantic check by a calibrated second model, optionally with multi-sample agreement; items that pass are auto-accepted and a random sample of them is audited by a person; unclear or failing items go to human review."
+  caption="Cheap, certain checks first; expensive, fallible checks next; people for what remains, plus an audit of what was accepted."
+  chart={`flowchart TD
+  E["Extract with structured outputs"] --> V{"Schema valid?"}
+  V -- "no" --> R["Retry once with the validation error"]
+  R --> V2{"Valid now?"}
+  V2 -- "no" --> H["Human review queue"]
+  V2 -- "yes" --> D
+  V -- "yes" --> D{"Deterministic checks: evidence found, owner known, dates consistent"}
+  D -- "fail" --> H
+  D -- "pass" --> S{"Semantic check: calibrated checker model, optional multi-sample agreement"}
+  S -- "unclear or no" --> H
+  S -- "yes" --> A["Auto-accept"]
+  A --> AU["Audit a random sample"]`}
+/>
+
+<Listen>
+## When to route to a person
+
+Human review is not a failure of automation; it's a component you design. Decide the routing policy in advance and write it down:
+
+- **Always review** items that failed a deterministic check, items where the checker said no or unclear, and items where multiple samples disagreed.
+- **Review by stakes.** Some fields cost more when wrong. A due date promised to a client or an owner assigned to a sensitive task may deserve review even when every check passes.
+- **Audit what you accept.** Randomly sample a few auto-accepted items each week and have a person check them. That sample is your estimate of the error rate in the part of the pipeline nobody else looks at, and it's how you notice drift when transcripts, prompts, or models change.
+
+Track two numbers over time: the share of items sent to review (your cost) and the error rate in the audited auto-accepted items (your risk). Tightening checks moves cost up and risk down; your job is to pick the trade-off on purpose, with evidence. In the studio project, the optional interactive review step is exactly this queue.
+
+On model selection: all of these checks are model-agnostic, which is what makes them valuable. They let you try a cheaper extractor and measure, rather than guess, what it costs you in review volume and audited errors.
+</Listen>
+
+<GoDeeper title="Why sampling-based agreement estimates uncertainty">
+If you view each extraction run as a draw from the model's output distribution, agreement across N runs estimates how much probability mass that distribution puts on a given answer. That is a real (if biased) uncertainty measure, because it comes from the model's behavior rather than its self-description. It's the same reason Xiong and colleagues found that consistency among multiple responses helped mitigate overconfidence. Two subtleties matter in practice. First, runs aren't independent of your prompt: an ambiguity in the prompt or transcript shifts every draw the same way, so high agreement can coexist with systematic error. Second, on the current Claude API you can't raise the temperature to get more diverse samples, because sampling parameters are fixed; you still get run-to-run variation (lesson 1), and you can add diversity deliberately by varying the prompt or the order of the transcript chunks.
+</GoDeeper>
+
+<Listen>
+## The checklist you'll use all studio
+
+For any structured extraction: require evidence and verify it as an exact, whitespace-normalized substring, rejecting empty quotes. Encode cross-field rules as named functions with tests. Give every field the source might not cover a legal null, with a reason. Don't gate on self-reported confidence until you've measured its calibration. Use multi-sample agreement and a narrow second-model check where stakes justify the cost, and measure the checker against your own labels. Route the rest to a person, and audit a sample of what you accept. The lab this week builds the first two layers end to end, and the project asks for all of them.
+</Listen>

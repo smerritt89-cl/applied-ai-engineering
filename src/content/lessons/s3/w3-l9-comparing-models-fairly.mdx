@@ -1,0 +1,332 @@
+---
+id: s3-w3-l9
+studio: s3
+week: 3
+order: 9
+title: Comparing models and providers fairly
+summary: A fair bake-off between Claude, GPT, Gemini, Grok, and open models. Same task, per-model prompt tuning with equal budgets, matched reasoning effort, cost per successful task, latency constraints, a critical reading of public benchmarks and leaderboards, and a decision template for "should we switch models?"
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Design a comparison in which each candidate gets the same task, data, graders, and tuning budget, with a held-out test set
+  - Explain why reasoning effort and harness settings must be matched or swept, and compare configurations rather than model names
+  - Compute cost per successful task and a quality-cost Pareto frontier, and apply latency as a constraint
+  - Read public benchmarks and leaderboards critically, naming contamination, saturation, implementation sensitivity, selective reporting, and vendor-run results
+  - Use a written decision template for whether to switch models, with the decision rule fixed before the results arrive
+sources:
+  - { id: miller-2024-error-bars, use: summarized, where: "Paired analysis; reporting pairwise statistics" }
+  - { id: claude-prompting-best-practices, use: linked }
+  - { id: openai-prompting-guide, use: linked }
+  - { id: gemini-prompting-guide, use: linked }
+  - { id: claude-effort-docs, use: summarized }
+  - { id: openai-reasoning-guide, use: summarized }
+  - { id: gemini-thinking-docs, use: summarized }
+  - { id: xai-reasoning-docs, use: summarized }
+  - { id: artificial-analysis-methodology, use: summarized }
+  - { id: deng-2023-contamination, use: summarized }
+  - { id: zhang-2024-gsm1k, use: summarized }
+  - { id: phan-2025-hle, use: summarized, where: "Abstract" }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Eval saturation" }
+  - { id: hf-mmlu-implementations, use: summarized }
+  - { id: singh-2025-leaderboard-illusion, use: summarized }
+  - { id: arena-style-control, use: summarized }
+  - { id: chiang-2024-chatbot-arena, use: linked }
+  - { id: swebench-verified, use: summarized, where: "What the Verified subset is" }
+  - { id: jimenez-2023-swebench, use: linked }
+  - { id: claude-models-docs, use: linked }
+  - { id: openai-models-docs, use: linked }
+  - { id: gemini-models-docs, use: linked }
+  - { id: xai-models-docs, use: linked }
+  - { id: hf-meta-llama, use: linked }
+  - { id: qwen-github, use: linked }
+  - { id: openai-gpt-oss, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your team's prompt was written and tuned on Claude over three months. A colleague runs it unchanged on a model
+      from another provider, sees 6 points lower, and concludes the other model is worse for your task. What is the
+      main flaw?
+    options:
+      - id: a
+        text: None. Running the identical prompt is the only fair comparison.
+        rationale: Identical text is not equal treatment. The prompt carries three months of fitting to one model's habits.
+      - id: b
+        text: The comparison favors the incumbent. Give each model the same tuning budget on a dev set, then compare once on a held-out test set.
+        correct: true
+        rationale: >-
+          Yes. A prompt tuned on one model is a hypothesis on the next. Equal tuning effort, using each provider's
+          prompting guidance, on data separate from the test set, is what makes the comparison about the models.
+      - id: c
+        text: Six points is always within noise, so the models are tied.
+        rationale: It may or may not be; that's a question for the paired interval. The design flaw stands either way.
+    explanation: >-
+      Fairness means equal effort, not identical strings. Fix the task, data, graders, and the tuning budget; let each
+      candidate have its best reasonable prompt and settings; and score everyone once on held-out questions.
+  - id: kc2
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      a = {"cost_per_call": 0.002, "pass_rate": 0.50}
+      b = {"cost_per_call": 0.005, "pass_rate": 0.95}
+      for m in (a, b):
+          print(round(m["cost_per_call"] / m["pass_rate"], 4))
+    options:
+      - id: a
+        text: "`0.004` then `0.0053`"
+        correct: true
+        rationale: 0.002 / 0.5 = 0.004 and 0.005 / 0.95 is about 0.00526, which rounds to 0.0053.
+      - id: b
+        text: "`0.001` then `0.0048`"
+        rationale: That multiplies by the pass rate instead of dividing. Failures make each success more expensive, not less.
+      - id: c
+        text: "`0.002` then `0.005`"
+        rationale: That's the cost per call, which ignores how many calls fail.
+    explanation: >-
+      Cost per success divides spend by successes, so a cheap model that fails half the time costs twice its sticker
+      price per useful result. Here it is still cheaper than b. Add the cost of handling each failure (a human review,
+      an escalation) and the order can flip, which is why the decision template asks for the full cost of a failure.
+  - id: kc3
+    type: multi
+    prompt: A vendor's launch post reports a new state-of-the-art score on a well-known public benchmark. Which questions should you ask before it changes your plans? Select all that apply.
+    options:
+      - id: a
+        text: Was the benchmark run with the same harness, prompt format, and number of attempts as the competitors' numbers it is compared with?
+        correct: true
+      - id: b
+        text: Could the test items have appeared in the model's training data?
+        correct: true
+      - id: c
+        text: Is the benchmark near saturation, so that the remaining differences are a few questions and within noise?
+        correct: true
+      - id: d
+        text: Does the benchmark's task resemble ours at all?
+        correct: true
+      - id: e
+        text: Is the score higher than the vendor's previous model's?
+        rationale: A vendor reporting improvement over its own last model says little about your task or about other providers.
+    explanation: >-
+      Implementation details change MMLU scores and even rankings, test sets leak, saturated benchmarks compress
+      differences into noise, and a benchmark is only evidence about tasks like its own. A public score is a reason to
+      add a model to your shortlist, not a reason to switch.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## What "fair" means
+
+Sooner or later someone asks: should we switch to the new model from another provider? It's on top of a leaderboard, it's cheaper, a competitor uses it. Lessons 7 and 8 gave you the measuring instruments. This lesson is about using them so the comparison measures the models and not your setup.
+
+Start by naming what you're comparing. Users don't experience a model; they experience a **system**: model plus prompt plus settings (reasoning effort, max output tokens, tools) plus harness (retries, parsing, how tool results are fed back). Two systems can share a model and behave very differently, and the question "is model X better than model Y?" only has an answer for specific configurations on a specific task. So the unit of comparison is a configuration, and the claim you're entitled to make is "on our task, configuration A beats configuration B by this much, with this interval."
+
+Fairness has four parts. **Same task and data**: every candidate answers the same questions, graded by the same graders, so the comparison can be paired (lesson 7). **Equal effort**: each candidate gets a comparable chance to be at its best, which is the subject of the next two sections. **Same conditions**: same time window, same region where possible, the same retry and timeout rules, and pinned model ids. And **a decision rule written down before you look**: the quality bar, the cost and latency limits, and how big a difference must be to matter. The last one is easy to skip and does the most to keep you honest, because everyone, engineers included, finds reasons to prefer the result they hoped for.
+</Listen>
+
+<Listen>
+## Per-model prompt tuning, with equal budgets
+
+A prompt tuned for months on one model carries that model's quirks: the phrasing it responds to, the formatting it needs spelled out, the failure modes you patched with extra instructions. Run it unchanged on another model and you're comparing a fitted system with an unfitted one. Each provider publishes its own prompting guide (Anthropic's prompting best practices, OpenAI's prompt engineering guide, Google's prompt design strategies for Gemini), and their advice differs in emphasis, as Studio 1 showed. The incumbent advantage is real, and it biases most informal comparisons toward whatever the team already uses.
+
+The fix is an **equal tuning budget**. Split your questions into a development set and a held-out test set. Give each candidate the same allowance on the dev set: the same number of prompt iterations, or the same engineer-hours, starting from the same task description and following that provider's guidance. Mechanical adaptations (each API's parameter for the system prompt, its structured-output mechanism, its tool format) don't count against the budget, because they are porting, not tuning. Then freeze every configuration and score each **once** on the test set.
+
+Two rules make this work. The test set is touched once, at the end; if you iterate on it, the winner is partly the configuration that best fits those particular questions (lesson 7's GoDeeper on searching). And record the budget each candidate actually used, so a reader can see the comparison was even. When a team can't afford equal tuning, the honest report says "the incumbent prompt, unmodified, on the challenger" and treats a loss as inconclusive rather than as a verdict.
+</Listen>
+
+<Listen>
+## Equal effort budgets: reasoning settings and harnesses
+
+Current models expose a dial for how much they think before answering, under different names. Claude takes an effort setting (low through max), OpenAI's reasoning models take a reasoning effort, Gemini models take a thinking setting, and xAI's Grok reasoning models take a reasoning effort as well. Defaults differ between providers and even between models from the same provider. A comparison of one model at its maximum setting against another at its default isn't a comparison of models; it's a comparison of budgets.
+
+There are two defensible designs. **Matched cost**: pick settings so each candidate spends roughly the same per task, measured from usage on the dev set, then compare quality. **Sweep and compare frontiers**: run each model at two or three effort levels and plot quality against cost per task. The second is more work and much more informative, because the answer is often "model A at low effort matches model B at high effort for a third of the price," which no single run would show. Count thinking tokens in cost and latency; providers generally bill them as output tokens, so check each pricing page.
+
+The harness needs the same scrutiny. Use the same max output tokens (or the documented maximum for each, if your task needs long answers), so no candidate fails by truncation. Use the same retry policy and timeouts, and count retries in cost. Use each provider's native structured outputs or tool format rather than forcing one provider's convention onto another. And log failures by type (wrong answer, refusal, malformed output, timeout): a model that loses on timeouts has a different problem, with a different fix, from one that loses on accuracy.
+</Listen>
+
+<Listen>
+## Cost per successful task, and latency as a constraint
+
+Price per million tokens is an input, not an answer. What you pay for is **completed work**: cost per successful task is total spend (input, output and thinking tokens, retries, any judge calls) divided by the number of tasks that passed. A model with a third of the price per token can cost more per success if it uses more tokens, needs more retries, or fails more often. Measure from usage records on your own tasks rather than computing from list prices, since token counts per task differ across models and tokenizers.
+
+Then include what failure costs downstream. If a failed answer is caught and sent to a person, add the review cost per failure. If it reaches a customer, the cost is harder to price, and that is usually the argument for a higher quality bar rather than a cheaper model. For self-hosted open-weight models, there is no per-token fee, but the cost moves to GPUs (amortized over expected volume, including idle time), operations, and staff time; a fair comparison prices it per successful task at your realistic traffic.
+
+Latency usually works as a **constraint** rather than a score: the product needs p95 under some number of seconds, and configurations above it are out regardless of quality. Measure percentiles from your region, at your prompt sizes, with streaming on or off as the product uses it. Independent services such as Artificial Analysis publish speed and latency measurements across providers' endpoints, which are useful for a shortlist; your own measurements decide.
+
+With quality, cost, and latency in hand, plot each configuration as a point with pass rate up and cost per task to the right. The **Pareto frontier** is the set of configurations that no other configuration beats on both axes at once. Anything off the frontier is dominated and can be dropped. The choice along the frontier is a business decision: how much is another point of quality worth?
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s3-w3-cost-frontier"
+  title="Cost per success, the Pareto frontier, and a constrained pick"
+  starter={`# Results of one fair bake-off: same 300 tasks, same graders, each configuration tuned
+# with the same budget on a separate dev set. total_cost_usd comes from measured usage
+# (thinking tokens and retries included); the self-hosted row includes amortized GPU cost.
+RESULTS = [
+    {"name": "large model, default effort", "passes": 270, "n": 300, "total_cost_usd": 4.50, "p95_s": 9.0},
+    {"name": "mid model, low effort", "passes": 264, "n": 300, "total_cost_usd": 1.20, "p95_s": 4.0},
+    {"name": "mid model, high effort", "passes": 268, "n": 300, "total_cost_usd": 2.40, "p95_s": 7.5},
+    {"name": "other provider, large", "passes": 258, "n": 300, "total_cost_usd": 3.00, "p95_s": 8.0},
+    {"name": "small model", "passes": 222, "n": 300, "total_cost_usd": 0.15, "p95_s": 1.5},
+    {"name": "open-weight, self-hosted", "passes": 246, "n": 300, "total_cost_usd": 0.60, "p95_s": 6.5},
+]
+
+def cost_per_success(row):
+    """Total cost divided by number of passes. Return float('inf') if there are no passes."""
+    # TODO
+    pass
+
+def pareto_front(rows):
+    """Names of rows NOT dominated. Row X dominates row Y if X's pass rate is >= Y's and
+    X's total cost is <= Y's, with at least one of the two strictly better.
+    Return the names sorted by total cost, cheapest first."""
+    # TODO
+    pass
+
+def pick(rows, min_pass_rate, max_p95_s):
+    """Among rows with pass rate >= min_pass_rate and p95_s <= max_p95_s, return the name
+    with the lowest cost per success. Return None if nothing qualifies."""
+    # TODO
+    pass
+
+for r in RESULTS:
+    cps = cost_per_success(r)
+    print(f"{r['name']:28} pass {r['passes'] / r['n']:.3f}  cost/success {cps}")
+print("frontier:", pareto_front(RESULTS))
+print("pick:", pick(RESULTS, 0.85, 8.0))`}
+  tests={`first = cost_per_success(RESULTS[0])
+assert first is not None, "cost_per_success returned None"
+assert abs(first - 4.50 / 270) < 1e-12, "large model: 4.50 / 270"
+assert cost_per_success({"passes": 0, "total_cost_usd": 1.0}) == float("inf"), "no passes means infinite cost per success"
+front = pareto_front(RESULTS)
+assert front is not None, "pareto_front returned None"
+assert "other provider, large" not in front, "it is dominated: the mid model at low effort passes more for less"
+assert front == ["small model", "open-weight, self-hosted", "mid model, low effort", "mid model, high effort", "large model, default effort"], front
+assert pick(RESULTS, 0.85, 8.0) == "mid model, low effort", "cheapest per success among configurations that pass both constraints"
+assert pick(RESULTS, 0.89, 8.0) == "mid model, high effort", "the large model passes 0.90 but fails the latency budget"
+assert pick(RESULTS, 0.95, 20.0) is None, "nothing reaches 95 percent"`}
+  solution={`def cost_per_success(row):
+    return row["total_cost_usd"] / row["passes"] if row["passes"] else float("inf")
+
+def pareto_front(rows):
+    def rate(r):
+        return r["passes"] / r["n"]
+    front = []
+    for y in rows:
+        dominated = any(
+            rate(x) >= rate(y) and x["total_cost_usd"] <= y["total_cost_usd"]
+            and (rate(x) > rate(y) or x["total_cost_usd"] < y["total_cost_usd"])
+            for x in rows
+        )
+        if not dominated:
+            front.append(y)
+    return [r["name"] for r in sorted(front, key=lambda r: r["total_cost_usd"])]
+
+def pick(rows, min_pass_rate, max_p95_s):
+    ok = [r for r in rows if r["passes"] / r["n"] >= min_pass_rate and r["p95_s"] <= max_p95_s]
+    if not ok:
+        return None
+    return min(ok, key=cost_per_success)["name"]`}
+>
+The rows are one bake-off on 300 tasks: configurations, not bare model names. Write the three functions and press **Check my answer**. Then look at the two mid-model rows: 264 against 268 passes on 300 tasks. Before paying twice as much for high effort, you'd want the paired interval from lesson 7. With typical discordance rates that difference is well inside the noise, so the honest reading is "no detectable quality difference, half the cost," and the low-effort configuration wins.
+</PyRunner>
+
+<Predict
+  title="Does the cheap model win once failures cost something?"
+  code={`def cost_per_success(cost_per_call, pass_rate, review_cost_per_failure=0.0):
+    # expected cost of one task, divided by the expected number of successes
+    expected = cost_per_call + (1 - pass_rate) * review_cost_per_failure
+    return expected / pass_rate
+
+cheap = cost_per_success(0.002, 0.80, review_cost_per_failure=0.50)
+strong = cost_per_success(0.010, 0.95, review_cost_per_failure=0.50)
+print("cheap" if cheap < strong else "strong")`}
+  options={["cheap", "strong"]}
+  answer={1}
+>
+Strong. Without review costs the cheap model wins easily (0.0025 against about 0.0105 per success). With 50 cents of human time per failure, the cheap model's expected cost per task is 0.002 + 0.2 times 0.5 = 0.102, or about 0.128 per success, while the strong model's is 0.010 + 0.05 times 0.5 = 0.035, or about 0.037 per success. When failures are handled by people, quality is usually the cheapest thing to buy.
+</Predict>
+
+<Listen>
+## Reading public benchmarks and leaderboards critically
+
+Public results are useful for deciding what to test. They rarely decide what to use. Studio 1 introduced the main sources; here are the five failure modes to check, with the evidence for each.
+
+**Contamination.** Public test items leak into training data. Deng and colleagues (2023) found models could guess masked answer options on common benchmarks far above chance. Zhang and colleagues (2024) wrote GSM1k, a fresh set matched in style and difficulty to the GSM8k math benchmark, and found some models scored up to 8 points lower on it, with signs of systematic overfitting in several model families. They also found frontier models showed minimal overfitting. Contamination is real and uneven, so a fresh, private test set is worth more than an old public one.
+
+**Saturation.** Once top models score above 90 percent, the remaining differences are a handful of questions, and lesson 7's intervals say a handful of questions isn't much. The Humanity's Last Exam paper (Phan and colleagues, 2025) was motivated by exactly this, noting that models exceeded 90 percent on MMLU. Anthropic's agent eval guide describes SWE-bench Verified rising from roughly 40 percent to over 80 percent in about a year. A saturated benchmark tells you a model is competent; it can't rank competent models.
+
+</Listen>
+
+<Listen>
+## Three more ways a public number misleads
+
+**Implementation sensitivity.** The same benchmark run through different code gives different numbers. Hugging Face's 2023 analysis of its Open LLM Leaderboard found that three implementations of MMLU gave substantially different scores for the same models and even reversed the order of two of them. Prompt format, answer extraction, and the number of examples shown all matter. Numbers from different harnesses aren't comparable.
+
+**Selective reporting.** "The Leaderboard Illusion" (Singh and colleagues, 2025) reported that some providers privately tested many variants on the Arena leaderboard before release and could choose which scores to publish. Launch posts naturally feature the benchmarks a model does well on. Arena's own style-control analysis found answer length and formatting sway human votes. None of this makes the numbers false; it makes them a selected sample.
+
+**Vendor-run results.** Most headline numbers are run by the vendor, with the vendor's scaffold, prompts, settings, and sometimes several attempts per task or a custom agent harness. Check the footnotes for the number of attempts, the effort setting, the tools allowed, and whether the comparison numbers came from the competitors' own reports or a common harness. Independent replications and leaderboards that run every model through one common harness help. Even a carefully curated benchmark, such as SWE-bench Verified (a human-filtered subset of SWE-bench tasks made with OpenAI), measures its task, not yours.
+
+And one statistical check on all of them: if a leaderboard shows no intervals, apply lesson 7 yourself. Two models 1 point apart on a 500-question benchmark are almost certainly not distinguishable.
+</Listen>
+
+<Callout type="pitfall" title="Switching on the launch-day number">
+The expensive mistake is not trusting a benchmark; it's acting on one without running your own eval. A model can lead a coding benchmark and be worse on your codebase's conventions, lead an arena and be wordier than your users want, or top a math leaderboard and refuse more of your support tickets. Migration costs (re-tuning prompts, re-validating structured outputs, updating tests, re-certifying with security) are real, so let public results move a model onto your shortlist and let your held-out test set, run as a paired comparison, decide.
+</Callout>
+
+<Listen>
+## Choosing among Claude, GPT, Gemini, Grok, and open models
+
+Studio 1 (lesson 3) surveyed what each provider documents as its focus. For a switching decision, turn that survey into **hard constraints** first, because they remove candidates before any eval runs:
+
+- **Data and deployment.** Where may your data go, and under what terms? If it can't leave your infrastructure, the candidates are open-weight models you host (for example Llama, Qwen, gpt-oss, or Mistral's open-weight models; read each license). If you need a specific cloud, check which providers' models it offers.
+- **Features the task needs.** Structured outputs with the schema features you use, tool use, long context, multimodal inputs, search or real-time data tools, batch processing. Check each provider's current docs; they change with every release.
+- **Operational limits.** Rate limits at your volume, regional availability, and the provider's deprecation schedule for the model you'd adopt.
+
+Then run the eval on what's left. Use at least one configuration from each serious contender at two effort levels, plus your incumbent and one cheaper tier of the incumbent's family, because the strongest alternative to switching is often a smaller model from the provider you already use. Analyze with paired statistics against the incumbent, compute cost per success and p95 latency, and draw the frontier.
+
+A diversity argument also applies. If you use a model as a judge or checker (week 2), a judge from a different model family than the generator shares fewer of its blind spots. A multi-provider setup has an operational benefit too: when one provider has an outage or deprecates a model, you have a tested fallback. Both are reasons to keep a second provider's configuration in your eval suite even when you don't switch.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put the steps of a model-switch decision in order"
+  items={[
+    "Write the trigger and the decision rule: quality bar, cost and latency limits, minimum meaningful difference",
+    "Apply hard constraints (data terms, deployment, required features, rate limits) to build the shortlist",
+    "Tune each candidate with an equal budget on the dev set, sweeping effort where it matters",
+    "Score each frozen configuration once on the held-out test set, as a paired comparison with the incumbent",
+    "Compute paired intervals, cost per success, p95 latency, and the Pareto frontier",
+    "Apply the pre-written rule, then canary or shadow the winner with a rollback plan",
+  ]}
+  explanation="The rule comes first so the results can't shape it. Constraints come before evals because they're cheap and decisive. Tuning happens on dev data, scoring once on test data. The rollout is part of the decision: a canary catches what the test set missed."
+/>
+
+<Listen>
+## A decision template: should we switch models?
+
+Write this down, in this order, and keep it with the eval results. It fits on one page.
+
+1. **Trigger.** Why now? A new release, a price change, a quality problem, a deprecation notice, a contract renewal.
+2. **Decision rule, written before results.** For example: switch if the candidate's paired difference against the incumbent has a 95 percent lower bound above minus 1 point, its cost per success is at least 25 percent lower, and its p95 latency stays under 6 seconds. Or: switch if quality improves by at least 3 points with a lower bound above zero, at no more than 1.5 times the cost.
+3. **Shortlist and constraints.** Which configurations, from which providers (Claude, GPT, Gemini, Grok, open-weight), and what was excluded and why.
+4. **Protocol.** Dataset version and size, dev and test split, tuning budget per candidate, effort levels, harness settings, trials per question, and the power of the test (the smallest difference it can detect).
+5. **Results.** For each configuration: pass rate with interval, paired difference with interval and McNemar p-value against the incumbent, cost per success, p95 latency, failure types. The frontier plot.
+6. **Migration cost and risk.** Prompt and test changes, structured-output and tool differences, security and legal review, monitoring changes, vendor concentration, and the deprecation timeline.
+7. **Decision and rollout.** The rule's verdict, any judgment call made on top of it and why, a canary or shadow period with a live metric to watch, and the rollback trigger.
+8. **Re-evaluation date.** When you'll run the suite again, because the answer has a shelf life.
+
+Two outcomes are common and both are fine. "No detectable difference" is a result: keep the incumbent, or take the cheaper option if the rule says so. "The incumbent's smaller tier wins" happens often enough to be worth the extra row in every bake-off. What's not fine is a decision with no rule, no intervals, and a launch-day screenshot as evidence.
+</Listen>
+
+<GoDeeper title="When the comparison has to include people">
+Some qualities don't reduce to a pass or fail: tone, helpfulness on open-ended requests, how an answer reads to a frustrated customer. For those, pairwise human preference (show two anonymous answers, ask which is better) is the standard design, and it is what the Arena leaderboard does at scale. Run it on your own prompts with your own raters, blind to which configuration produced which answer and with the left-right position randomized, since judges of both kinds show position bias. Analyze win rates with an interval (each comparison is a Bernoulli trial, with ties reported separately), and control for length, since Arena's style-control analysis found that longer answers win more votes. A model judge calibrated against your raters (week 2) can extend the human sample, as long as you report its agreement with them.
+</GoDeeper>
+
+<Listen>
+## The checklist
+
+Compare configurations, not brand names. Fix the task, data, graders, and conditions; give every candidate the same tuning budget on dev data; score once on held-out data, paired against the incumbent. Match or sweep reasoning effort and keep harness settings equal. Price per successful task from measured usage, including thinking tokens, retries, and the cost of failures; treat latency as a constraint; draw the frontier. Read public benchmarks for contamination, saturation, implementation sensitivity, selective reporting, and who ran them, and use them only to build a shortlist. Write the decision rule before you look, and roll out with a canary and a rollback plan. The lab this week gives you the analysis half of this as code you can reuse in every future comparison.
+
+One last habit, the one that makes the rest cheap: keep the bake-off suite after the decision. Store the frozen configurations, the test set, the results, and the decision record together. When the next model is released, rerunning is an afternoon's work, and the decision record tells you exactly which rule to apply. Teams that skip this have the same argument every quarter, with less evidence each time.
+</Listen>

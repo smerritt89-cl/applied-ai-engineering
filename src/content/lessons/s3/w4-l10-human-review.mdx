@@ -1,0 +1,289 @@
+---
+id: s3-w4-l10
+studio: s3
+week: 4
+order: 10
+title: Human review and feedback loops
+summary: Who should review AI outputs, what a good review tool looks like, how to sample production traffic, what user feedback can and cannot tell you, and how every reviewed failure becomes a test case. Plus what review costs, so you can budget it.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Explain why domain experts, not engineers or crowd workers, should own quality judgments, and how one accountable reviewer keeps labels consistent
+  - Specify a minimal custom review tool and say why it often beats a generic labeling platform
+  - Design a review sample from production traffic that mixes random, feedback-driven, and targeted traces
+  - Name the main biases in explicit and implicit user feedback and how each distorts a quality estimate
+  - Turn a reviewed failure into a regression test, and estimate the monthly cost of a review program
+sources:
+  - { id: hamel-field-guide, use: summarized, where: "Custom data viewers; domain experts; binary judgments with critiques" }
+  - { id: hamel-evals-faq, use: summarized, where: "Annotation tools, benevolent dictator, sampling traces, saturation, CI datasets" }
+  - { id: eugeneyan-eval-process, use: summarized }
+  - { id: shankar-2024-validators, use: summarized, where: "Criteria drift" }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Layers of evaluation; user feedback is sparse and skewed" }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 10, AI Engineering Architecture and User Feedback" }
+  - { id: joachims-2005-clickthrough, use: summarized }
+  - { id: zheng-2023-llm-judge, use: linked }
+  - { id: arena-style-control, use: summarized }
+  - { id: rogan-gladen-1978, use: linked }
+  - { id: saad-falcon-2023-ares, use: summarized }
+  - { id: yt-lenny-evals-hamel-shreya, use: embedded, where: "23:54 to 31:39" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your support assistant shows a thumbs up or down after each answer. Last month 3% of conversations got a rating,
+      and 82% of ratings were thumbs up. Your VP wants to report "82% satisfaction." What do you tell them?
+    options:
+      - id: a
+        text: The number is fine; 82% of a large volume is still thousands of ratings.
+        rationale: Volume doesn't fix selection. The 3% who rated are not a random sample of the 100%.
+      - id: b
+        text: It describes the 3% who chose to rate, not all users. Pair it with a random sample of conversations reviewed by an expert before reporting a quality number.
+        correct: true
+        rationale: Explicit feedback is self-selected. A random expert-reviewed sample is the unbiased estimate; feedback is a pointer to traces worth reading.
+      - id: c
+        text: Multiply by 97/3 to extrapolate to all conversations.
+        rationale: Scaling assumes raters and non-raters are alike, which is exactly what you don't know.
+    explanation: >-
+      People who leave ratings differ from people who don't (they are more delighted or more annoyed), so the rate is
+      biased in an unknown direction. Use feedback to find failures, and a random reviewed sample to measure quality.
+  - id: kc2
+    type: mcq
+    prompt: Why do Husain and Shankar recommend that one domain expert (a "benevolent dictator") own the quality standard on a small team?
+    options:
+      - id: a
+        text: Domain experts label faster than engineers.
+        rationale: Speed isn't the point; consistency and correctness of the standard are.
+      - id: b
+        text: One accountable person keeps labels consistent and resolves disagreements, so the standard doesn't fragment across reviewers.
+        correct: true
+        rationale: Yes. Multiple annotators are possible, but then you need agreement measures and a process to reconcile them.
+      - id: c
+        text: It removes the need to calibrate an LLM judge.
+        rationale: You still calibrate the judge; the expert's labels are what you calibrate it against.
+    explanation: >-
+      Quality judgments in a product are often domain calls (is this an acceptable answer for a tenant asking about a
+      lease?). A single accountable expert gives you a consistent target. If you have several reviewers, measure
+      agreement and reconcile disagreements into the rubric.
+  - id: kc3
+    type: multi
+    prompt: An expert flags a production answer that invented a refund policy. Which steps close the loop? Select all that apply.
+    options:
+      - id: a
+        text: Add the conversation (with the expert's label and note) to the eval set as a test case
+        correct: true
+      - id: b
+        text: Fix the prompt or retrieval, then rerun the full eval to check nothing else regressed
+        correct: true
+      - id: c
+        text: Add a few similar cases (paraphrases, other policies) so the fix generalizes
+        correct: true
+      - id: d
+        text: Delete the trace from the logs so it doesn't skew next month's metrics
+        rationale: Deleting evidence hides the failure mode. Keep it, labeled.
+    explanation: >-
+      A reviewed failure is your most valuable data. It becomes a test (so it can't silently return), it motivates a
+      fix (which you verify on the whole set, not just this case), and it suggests neighbors worth testing.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Why humans stay in the loop
+
+Weeks 1 to 3 built the machinery: error analysis, code graders, LLM judges calibrated against human labels, and statistics for comparing systems. Every one of those pieces rests on a human judgment somewhere. The judge is only as good as the labels you calibrated it against, and the test set is only as good as the failures someone noticed and wrote down.
+
+Eugene Yan's essay on eval process makes the point bluntly: an LLM judge does not rescue a product whose team has stopped looking at outputs. Automated evaluators scale a review process that already exists; they don't replace it. Anthropic's guide to agent evals describes the same idea as layers. Automated evals catch known problems fast, production monitoring shows real behavior, user feedback surfaces surprises, and manual transcript review builds the intuition that tells you what to automate next. No single layer catches everything.
+
+There is also a subtler reason humans stay involved. Shankar and colleagues ("Who Validates the Validators?", 2024) observed **criteria drift**: people's grading criteria changed as they graded. Reviewers needed criteria to judge outputs, but judging outputs is how they discovered what their criteria were. So the rubric you write on day one is a draft. Ongoing review is how it gets better, and how your judge's calibration stays honest as the product and its users change.
+
+This lesson is about running that human layer well: who reviews, with what tool, on which traces, how user feedback fits in, how reviewed failures flow back into the test set, and what it all costs.
+</Listen>
+
+<Listen>
+## Who reviews: domain experts, with one accountable owner
+
+The people best placed to judge an AI system's outputs are usually the people who know the domain, not the people who know the model. A leasing assistant should be judged by someone who has run a leasing office; a clinical summarizer by a clinician. Hamel Husain's field guide argues that these experts should review outputs directly, and even edit prompts through an admin version of the product, rather than routing every judgment through an engineer. It also warns against AI jargon when working with them: ask "is this answer acceptable to send to a tenant?", not "rate the faithfulness."
+
+For small and medium teams, Husain and Shreya Shankar's evals FAQ recommends one domain expert as a **benevolent dictator**: the person who sets the quality bar and makes the final call. One owner keeps labels consistent. If you have several reviewers, you need what week 2 taught: have them label the same items independently, measure agreement (Cohen's kappa), discuss the disagreements, update the rubric, and relabel. The FAQ discourages outsourcing this error analysis to people outside the team, because the point is to learn what goes wrong in your product.
+
+Two practical rules from the same sources. Use **binary pass or fail judgments with a written critique**, not 1 to 5 scales: reviewers struggle to separate adjacent scale points, and the business needs a threshold anyway. And keep engineers in the room for the first rounds, because the critiques often point at a bug (a retrieval filter, a missing tool) rather than a prompt.
+
+For you as a PM leader, this is a staffing decision. Name the quality owner, protect their time, and treat their labels as a product asset.
+</Listen>
+
+<Video id="BsWxPI9UM4c" title="Why AI evals are the hottest new skill for product builders | Hamel Husain & Shreya Shankar" channel="Lenny's Podcast" minutes={8} start={1434} source="https://www.youtube.com/watch?v=BsWxPI9UM4c">
+Watch from 23:54 to about 31:40: the chapters on why an LLM can't replace humans in the first pass of error analysis, the "benevolent dictator," and theoretical saturation (when to stop reviewing). Notice that their argument for a single owner is about consistency of judgment, not about speed. This is an interview on the host's official channel, so treat it as the practitioners' own account of their practice.
+</Video>
+
+<Listen>
+## The review tool: small, custom, and fast
+
+Most teams start reviewing in a spreadsheet or a generic labeling platform, and both get in the way. The field guide's complaint about generic tools is that a reviewer has to jump between systems to see the context for one interaction: the user's message here, the retrieved documents there, the tool calls somewhere else. Its prescription is a simple purpose-built viewer that shows everything about one trace on one screen, renders it the way the product does, takes a pass or fail in one keystroke, has a free-text box for the critique, and lets you filter (show me every failed trace that called the calendar tool). The FAQ adds progress indicators and keyboard shortcuts, and says off-the-shelf tools fit best when you coordinate many distributed annotators with access controls.
+
+Husain reports that teams with good custom viewers iterate much faster, and that such tools can be built in hours with an AI coding assistant. Treat the speedup as his informal observation (see the callout below), but the cost side is easy to check yourself: a review page for your traces is a small web app, and you have a coding agent.
+
+Here is a minimal specification you could hand to Claude Code for your Studio 2 system. One trace per page: question, final answer, each retrieved chunk with its source and rank, the model and prompt version, latency and cost. A pass and a fail button with hotkeys, a required critique box on fail, an optional failure tag from your error-analysis categories. Next and previous, a counter ("37 of 120"), and filters by tag and by judge verdict. Labels saved to a JSONL file or a table, with reviewer, timestamp, and trace id. That is enough. Add features only when their absence slows the reviewer down.
+</Listen>
+
+<Callout type="claim" title="Custom viewers and 10x iteration (Hamel Husain, March 2025)">
+In "A Field Guide to Rapidly Improving AI Products," Husain says teams with well-designed data viewers iterate about 10x faster; the evals FAQ (Husain and Shankar, 2026) repeats it and labels it an informal observation. **For:** his worked example (a property-management assistant whose date-handling success rose from 33% to 95% after the team reviewed conversations in a simple viewer) and the practical logic that review friction limits how many traces anyone reads. **Against:** it is consultant experience, not a controlled study, and the comparison group is unclear. **Verdict:** the direction is plausible and cheap to test; the multiplier is not evidence.
+</Callout>
+
+<Listen>
+## Which traces to review: sampling production traffic
+
+You can't read everything, so the question is which traces to read. The evals FAQ lists sampling strategies from most exploratory to most targeted, and each has a blind spot. **Random** sampling gives you an unbiased picture but can miss rare failures. **Clustering** traces by topic or embedding shows you groups you didn't know existed, but depends on how you cluster. **Outliers** in latency, cost, or number of tool calls are cheap to find, though an unusual trace isn't always a bad one. **Classifier or judge flags** find failures you already know how to detect, and nothing else. **Negative user feedback** finds what users bothered to report.
+
+The FAQ's recommendation is to mix them: keep some random traces in every batch, so you keep measuring the overall rate and keep finding the unknown, and add targeted traces to dig into rare or known failure modes. Its rough cadence for a live product is a fresh batch of at least 100 traces every two to four weeks, plus a small weekly look at outliers. Stop a review round at **theoretical saturation**: when new traces stop revealing new failure types.
+
+Keep the two purposes separate in your analysis. The **random** slice is your measurement: its pass rate, with a confidence interval from week 3, is your estimate of production quality. The **targeted** slices are for discovery: they are deliberately enriched with failures, so their pass rate says nothing about overall quality. Mixing them into one number is a classic way to scare or reassure yourself for no reason.
+
+Two more rules. Sample from the traffic you actually care about (filter out internal testing). And watch privacy: production traces contain customer data, so reviewers need the same access controls as anyone else who sees it, and you should redact what the review doesn't need.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s3-w4-review-queue"
+  title="Build a weekly review queue"
+  starter={`import random
+
+def build_review_queue(traces, n_random, n_outliers, seed=0):
+    """traces: list of dicts with keys id, feedback ("down", "up", or None), latency_s, judge_pass (bool).
+    Return a list of (trace_id, reason) with:
+      1. every trace with feedback == "down", reason "feedback"
+      2. every trace the judge failed (judge_pass is False) not already included, reason "judge_fail"
+      3. the n_outliers slowest traces not already included, reason "outlier"
+      4. n_random traces chosen uniformly from ALL traces not already included, reason "random"
+         (use random.Random(seed).sample on the remaining traces, sorted by id first, so runs are reproducible)
+    No trace appears twice. If fewer traces remain than requested, take what's left."""
+    # TODO
+    return []
+
+
+def random_slice_pass_rate(queue, labels):
+    """labels maps trace_id -> True (pass) / False (fail) from the expert.
+    Return the pass rate over the RANDOM slice only (None if it is empty)."""
+    # TODO
+    return None
+
+
+traces = [
+    {"id": f"t{i:02d}", "feedback": ("down" if i in (3, 17) else "up" if i % 7 == 0 else None),
+     "latency_s": 2.0 + (i % 5) + (9 if i == 11 else 0), "judge_pass": i not in (5, 17)}
+    for i in range(30)
+]
+q = build_review_queue(traces, n_random=5, n_outliers=2)
+for item in q:
+    print(item)
+`}
+  tests={`traces = [
+    {"id": f"t{i:02d}", "feedback": ("down" if i in (3, 17) else "up" if i % 7 == 0 else None),
+     "latency_s": 2.0 + (i % 5) + (9 if i == 11 else 0), "judge_pass": i not in (5, 17)}
+    for i in range(30)
+]
+q = build_review_queue(traces, n_random=5, n_outliers=2, seed=1)
+ids = [t for t, _ in q]
+reasons = dict(q)
+assert len(ids) == len(set(ids)), "no trace should appear twice"
+assert reasons.get("t03") == "feedback" and reasons.get("t17") == "feedback", "every thumbs-down goes in, first"
+assert reasons.get("t05") == "judge_fail", "t05 failed the judge"
+assert sum(1 for r in reasons.values() if r == "judge_fail") == 1, "t17 failed the judge too, but it is already in as feedback"
+assert reasons.get("t11") == "outlier", "t11 is by far the slowest trace"
+assert sum(1 for r in reasons.values() if r == "outlier") == 2
+assert sum(1 for r in reasons.values() if r == "random") == 5
+assert q == build_review_queue(traces, n_random=5, n_outliers=2, seed=1), "same seed, same queue"
+big = build_review_queue(traces, n_random=100, n_outliers=0)
+assert len(big) == 30, "if fewer traces remain than requested, take what is left"
+labels = {t: (t not in ("t03", "t05", "t17")) for t in ids}
+rand = [t for t, r in q if r == "random"]
+expected = sum(labels[t] for t in rand) / len(rand)
+assert abs(random_slice_pass_rate(q, labels) - expected) < 1e-9, "use only the random slice"
+assert random_slice_pass_rate([("t03", "feedback")], {"t03": False}) is None, "no random slice, no estimate"`}
+  solution={`def build_review_queue(traces, n_random, n_outliers, seed=0):
+    queue, seen = [], set()
+
+    def add(t, reason):
+        if t["id"] not in seen:
+            seen.add(t["id"])
+            queue.append((t["id"], reason))
+
+    for t in traces:
+        if t["feedback"] == "down":
+            add(t, "feedback")
+    for t in traces:
+        if not t["judge_pass"]:
+            add(t, "judge_fail")
+    remaining = [t for t in traces if t["id"] not in seen]
+    for t in sorted(remaining, key=lambda t: -t["latency_s"])[:n_outliers]:
+        add(t, "outlier")
+    remaining = sorted((t for t in traces if t["id"] not in seen), key=lambda t: t["id"])
+    k = min(n_random, len(remaining))
+    for t in random.Random(seed).sample(remaining, k):
+        add(t, "random")
+    return queue
+
+
+def random_slice_pass_rate(queue, labels):
+    rand = [t for t, r in queue if r == "random"]
+    if not rand:
+        return None
+    return sum(1 for t in rand if labels[t]) / len(rand)`}
+>
+Write `build_review_queue` and `random_slice_pass_rate`. The queue mixes targeted traces (thumbs-down, judge failures, latency outliers) with a random slice. The second function encodes the rule from the reading: only the random slice estimates production quality, because the targeted slices are enriched with failures by design.
+</PyRunner>
+
+<Listen>
+## User feedback: useful pointer, biased measurement
+
+Users give you two kinds of signal. **Explicit** feedback is what they tell you: thumbs, star ratings, "report a problem," free-text comments. **Implicit** feedback is what they do: copy the answer, click a cited source, rephrase the same question, abandon the session, escalate to a human, accept or reject a suggested edit. Chip Huyen's *AI Engineering* (chapter 10) treats feedback design as an engineering concern for exactly this reason: it is one of the few signals that comes from real use at scale.
+
+Each kind is biased in its own way. Explicit feedback is **self-selected**: a few percent of users rate anything, and they skew toward the delighted and the annoyed. Anthropic's agent-evals guide calls user feedback sparse and skewed toward severe problems. Ratings also reward style: the Chatbot Arena team's own analysis found that answer length was the dominant style factor in human votes, and a reader often can't tell a confident wrong answer from a right one. (LLM judges share related biases, as Zheng and colleagues documented in 2023.) Implicit signals are **ambiguous**: a user who doesn't rephrase may be satisfied or may have given up; a copied answer may be copied into a complaint. And they carry **position and presentation bias**: in a classic eye-tracking study of web search, Joachims and colleagues (2005) found people clicked top-ranked results more even when the ranking was deliberately made worse, so clicks partly measure position and trust, not relevance. Your cited-source click rate has the same problem.
+
+There is also a feedback loop hazard: if you tune toward what users rate highly, you can amplify the bias (more confident, more agreeable answers) instead of quality.
+
+So use feedback for what it is good at. Thumbs-down and escalations are excellent **pointers**: every one goes into the review queue. Rephrase and abandonment rates are useful **trend alarms** when they move suddenly. But the **quality number** you report comes from expert review of a random sample, and the judge you calibrated against it.
+</Listen>
+
+<Callout type="pitfall" title="Reporting the satisfaction rate as the quality rate">
+"92% of ratings are positive" describes the few people who rated, under the product's current presentation, on the days they rated. It is not your accuracy, and it can rise while accuracy falls (a longer, more confident style can win thumbs). Report the expert-reviewed random-sample pass rate with its interval, and show feedback alongside it as a separate signal.
+</Callout>
+
+<Listen>
+## Closing the loop into the test set
+
+Review only pays off if what you learn changes the system and stays learned. The loop has four steps. A reviewer marks a trace as failed and writes a critique. Someone tags it with a failure category from your error analysis (or adds a new category, which is criteria drift doing its job). The trace, its label, and the critique go into the eval set: the evals FAQ recommends feeding new production failures back into the CI dataset so the same regression can't return unnoticed. Then the fix is made and verified against the whole set, not just the failing case.
+
+A few habits keep this healthy. Store the **reviewed version** of each case: the input, what the system did, what it should have done (or the rule it broke), and who decided. Add **neighbors**: if the assistant invented a refund policy, add a few paraphrases and a question about a different policy, so the fix generalizes rather than memorizes. Mark where each case came from (production, synthetic, red team), so you can report results by source. And keep a **held-out** slice that you don't look at while iterating, because a test set you tune against stops measuring generalization. Lesson 12 returns to that risk.
+
+Finally, recalibrate. Each review batch is also fresh human labels, so rerun your judge on them and recompute agreement. If the judge's true negative rate is slipping, that is judge drift (a new model version, a changed prompt, or a shifted mix of questions), and you want to find it before your dashboard does.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order the steps that turn one production failure into lasting protection"
+  items={[
+    "A reviewer marks the trace as failed and writes a critique",
+    "The failure is tagged with a category from your error analysis",
+    "The trace, label, and critique are added to the eval set, with a few similar cases",
+    "The prompt, retrieval, or tool is changed to fix the failure",
+    "The full eval runs, confirming the fix and checking nothing else regressed",
+    "The judge is rechecked against the new human labels",
+  ]}
+  explanation="The test case is added before the fix, so you can watch it go from failing to passing. The full rerun guards against fixing one case by breaking others, and the recheck keeps the automated judge honest as the data changes."
+/>
+
+<Listen>
+## What review costs, and how to budget it
+
+Human review is the most expensive layer, so estimate it like any other cost. The inputs are traces per batch, minutes per trace, batches per month, and the reviewer's loaded hourly cost. A domain expert reading a RAG trace (question, answer, five chunks) and writing a one-line critique might take two to four minutes; an agent transcript with a dozen tool calls can take ten. Measure your own number in the first session with your review tool, because it varies widely.
+
+A worked example with stated assumptions: 120 traces every two weeks, 3 minutes each, is 6 hours a batch, or about 12 hours a month. At a loaded cost of $100 an hour, that is $1,200 a month, likely more than the model spend on many internal tools. The comparison that matters is not review versus zero; it is review versus shipping undetected failures, and versus the judge-calibration labels you would need anyway.
+
+Three levers reduce the cost without losing the signal. **Better tooling**: one-screen context and hotkeys cut minutes per trace. **Better sampling**: once your judge is calibrated, let it screen everything and send humans the disagreements, the low-confidence cases, and the random slice. **Saturation**: stop a round when new traces stop teaching you anything new. What you should not cut is the random slice, because it is the only unbiased estimate you have.
+
+In a real team, put the review cadence on the calendar, name the owner, track hours, and report what each round found. A review program that produces a list of new failure modes and new test cases every two weeks justifies itself.
+</Listen>
+
+<GoDeeper title="Correcting for an imperfect judge, and ARES">
+If an LLM judge screens production traffic, its raw pass rate is biased by its own errors. Week 2 showed how to correct an observed rate using the judge's true positive and true negative rates measured against human labels (the Rogan and Gladen estimator). ARES (Saad-Falcon and colleagues, 2023) does something similar at scale for RAG: lightweight fine-tuned judges score many examples, and a few hundred human labels correct their estimates through prediction-powered inference, with confidence intervals. The common idea: many cheap automated judgments plus a small number of careful human ones beat either alone.
+</GoDeeper>

@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.451
+Keep keys out of your code.
+
+2
+00:00:01.731 --> 00:00:09.987
+An API key is a bearer credential: anyone who has it can spend your money and read whatever your organization’s data settings allow.
+
+3
+00:00:10.267 --> 00:00:11.632
+Treat it like a password.
+
+4
+00:00:11.912 --> 00:00:22.557
+The SDK reads ANTHROPIC_API_KEY from the environment when you construct the client with no arguments, so the key never needs to appear in source code.
+
+5
+00:00:22.837 --> 00:00:25.035
+For these labs, put it in labs/.
+
+6
+00:00:25.315 --> 00:00:28.749
+env, which is gitignored, and let the shared test setup load it.
+
+7
+00:00:29.029 --> 00:00:36.069
+In deployed services, use your platform’s secret manager and inject the key as an environment variable at runtime.
+
+8
+00:00:36.349 --> 00:00:38.696
+Three rules cover most real incidents.
+
+9
+00:00:38.976 --> 00:00:53.547
+Never commit a key, including in notebooks, test fixtures, or a “temporary” script; if one leaks, revoke it in the Console and issue a new one, because deleting the commit does not remove it from history or from anyone who cloned it.
+
+10
+00:00:53.827 --> 00:00:58.819
+Never put a key in a prompt, a log line, or an error message you send to a user.
+
+11
+00:00:59.099 --> 00:01:09.488
+And use separate keys, ideally in separate workspaces with their own spend limits, for development and production, so a runaway test loop cannot drain your production budget.
+
+12
+00:01:09.768 --> 00:01:15.272
+The Console lets you set a monthly spend limit below your tier’s cap for exactly this reason.

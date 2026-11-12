@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.091
+Errors are results, not exceptions.
+
+2
+00:00:02.371 --> 00:00:03.395
+Tools fail.
+
+3
+00:00:03.675 --> 00:00:09.925
+The person isn’t in the directory, the date phrase is “sometime soon,” the downstream API times out.
+
+4
+00:00:10.205 --> 00:00:16.029
+The wrong reaction is to let the exception kill your loop, or to swallow it and return an empty string.
+
+5
+00:00:16.309 --> 00:00:22.859
+The right reaction is to tell the model, in a tool_result with is_error set to true and a message it can act on.
+
+6
+00:00:23.139 --> 00:00:25.165
+Anthropic’s docs give two reasons.
+
+7
+00:00:25.445 --> 00:00:29.712
+The model can incorporate the failure into its answer instead of inventing one.
+
+8
+00:00:29.992 --> 00:00:38.184
+And with an instructive message, it can often recover: the docs suggest saying what went wrong and what to try next, rather than a bare “failed.
+
+9
+00:00:38.464 --> 00:00:40.235
+” “No teammate matches Jordan.
+
+10
+00:00:40.515 --> 00:00:44.803
+Known teammates: Priya Raman, Marcus Lee…” gives the model a path forward.
+
+11
+00:00:45.083 --> 00:00:54.981
+The docs also note that when Claude sends a call with missing parameters and you report it as an error, it typically retries a few times with corrections before giving up.
+
+12
+00:00:55.261 --> 00:01:04.477
+With strict mode on, malformed calls of that kind should not reach you at all, but your own semantic checks still produce errors, and they follow the same rule.
+
+13
+00:01:04.757 --> 00:01:11.797
+This is also your first checks-and-balances habit for tools: every call and its error status is a line you can log.
+
+14
+00:01:12.077 --> 00:01:18.605
+When you build evals in Studio 3, “how often does the model call a tool with input that my validator rejects?
+
+15
+00:01:18.885 --> 00:01:21.360
+” is one of the most useful numbers you can have.

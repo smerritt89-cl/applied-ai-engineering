@@ -1,0 +1,350 @@
+---
+id: s2-w2-l4
+studio: s2
+week: 2
+order: 4
+title: "Ingestion: getting text out of real documents"
+summary: Parsing PDFs, HTML, Office files, tables, and scans; when to use a text-layer parser, a layout-aware parser, OCR, or a vision model; cleaning without losing meaning; the metadata you will need later; deduplication; and keeping a link back to the original for citations.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Explain why PDF text extraction is lossy, and diagnose the common failures (reading order, tables, scans, repeated headers)
+  - Choose between a text-layer parser, a layout-aware parser, OCR, and a vision model for a document set, using cost estimates and a measured sample
+  - Clean extracted text and detect silent extraction failures with deterministic checks
+  - Design a metadata record per document (source, location, date, permissions, hash) that supports filtering, freshness, deletes, and citations
+  - Remove exact and near-duplicate documents, and state the policy for which copy wins
+sources:
+  - { id: pypdf-extract-text, use: summarized, where: "Limitations; why text extraction is hard" }
+  - { id: docling-docs, use: summarized }
+  - { id: auer-2024-docling, use: linked }
+  - { id: unstructured-docs, use: summarized }
+  - { id: tesseract-docs, use: linked }
+  - { id: claude-pdf-support, use: summarized, where: "PDF requirements, how PDF support works, cost estimation, best practices" }
+  - { id: gemini-document-processing, use: summarized, where: "Technical details" }
+  - { id: openai-pdf-files, use: summarized }
+  - { id: claude-citations-docs, use: linked }
+  - { id: trafilatura-docs, use: linked }
+  - { id: lee-2021-dedup, use: summarized, where: "Abstract" }
+  - { id: datasketch-lsh, use: linked }
+  - { id: owasp-llm08-vector, use: summarized, where: "Data validation" }
+  - { id: anthropic-contextual-retrieval, use: summarized, where: "A note on simply using a longer prompt" }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 6, RAG and Agents" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You index 2,000 vendor contracts with a text-layer PDF parser. Retrieval tests look fine, but a user reports that
+      questions about one supplier always come back with "I could not find that." The supplier's contract is in the
+      folder you ingested. What should you check first?
+    options:
+      - id: a
+        text: Whether the embedding model understands legal language.
+        rationale: Possible later, but the cheaper and more likely cause is upstream. Nothing may have been extracted at all.
+      - id: b
+        text: The characters extracted per page for that file. A scanned contract has no text layer, so the parser returns almost nothing and no chunks are created, without raising an error.
+        correct: true
+        rationale: Yes. Silent empty extraction is the classic ingestion failure, and a per-page character check catches it at ingest time.
+      - id: c
+        text: Raise top-k from 5 to 50 so the contract has more chances to appear.
+        rationale: If the document produced no chunks, no value of k will retrieve it.
+    explanation: >-
+      The pypdf docs are explicit that the library is not OCR software, so scanned pages yield little or no text.
+      Track characters per page at ingest, route low-text pages to OCR or a vision model, and alert on any document
+      that produces zero chunks.
+  - id: kc2
+    type: multi
+    prompt: Which metadata fields are worth attaching to every chunk at ingest time? Select all that apply.
+    options:
+      - id: a
+        text: The permission groups allowed to read the source document
+        correct: true
+        rationale: Retrieval must filter on permissions before ranking, so the permissions have to travel with every chunk.
+      - id: b
+        text: A stable source identifier and the location in the source (page, heading path, or character offsets)
+        correct: true
+        rationale: Citations and "open the original" links are built from these.
+      - id: c
+        text: A content hash and the document date or version
+        correct: true
+        rationale: Hashes drive deduplication and change detection; dates drive freshness filters and tie-breaking between copies.
+      - id: d
+        text: The full text of every other chunk from the same document
+        rationale: That multiplies storage for no benefit. Store a document id and fetch neighbors when you need them.
+    explanation: >-
+      Metadata is cheap to capture during ingestion and expensive to reconstruct later. The fields that pay off are
+      the ones that filtering, freshness, deletes, deduplication, and citations depend on.
+  - id: kc3
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      def shingles(text, n=3):
+          w = text.lower().split()
+          return {tuple(w[i:i+n]) for i in range(len(w) - n + 1)}
+
+      a = shingles("refunds go to the original card")
+      b = shingles("refunds go to the original payment method")
+      print(round(len(a & b) / len(a | b), 2))
+    options:
+      - id: a
+        text: "`0.6`"
+        rationale: That is shared shingles over the size of b (3 of 5). Jaccard divides by the union.
+      - id: b
+        text: "`0.75`"
+        rationale: That is shared over the size of a (3 of 4).
+      - id: c
+        text: "`0.5`"
+        correct: true
+        rationale: a has 4 three-word shingles and b has 5; they share 3, so the union has 6 and the ratio is 3/6.
+    explanation: >-
+      Six words give four 3-word shingles, seven words give five. The first three shingles match, the rest differ,
+      so the Jaccard similarity is 3 / (4 + 5 - 3) = 0.5. Real near-duplicate detection uses longer documents and
+      shingles of about five words, where a one-line edit barely moves the score.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Retrieval can only find what ingestion kept
+
+Week 1 gave you embeddings and similarity search over clean strings. Real knowledge lives in PDFs exported from slide decks, scanned contracts, wiki pages wrapped in navigation menus, spreadsheets, and the same policy saved in four places. **Ingestion** is everything between "a file exists" and "clean text with metadata is ready to chunk": parsing, cleaning, attaching metadata, and removing duplicates.
+
+It deserves a whole lesson because it sets a ceiling on everything after it. If the parser dropped a table, no embedding model will retrieve the number that was in it. If a scanned page came back empty, the document silently does not exist as far as search is concerned. If a navigation menu was kept, every chunk from that site shares the same twenty words of noise, and similarity scores drift toward boilerplate. Teams that debug retrieval quality by swapping embedding models often find the problem was upstream.
+
+Before building any of this, ask whether you need retrieval at all. Anthropic's Contextual Retrieval post makes a point worth repeating: if the whole knowledge base fits in the prompt (it suggests a rough threshold of 200,000 tokens, about 500 pages), you can often skip retrieval and send everything, using prompt caching to keep it affordable. Ingestion still matters in that case, since the model reads whatever your parser produced, but chunking and vector stores may not.
+
+This lesson works through the formats in order of difficulty, then covers the three things you add on the way out: cleaning checks, metadata, and deduplication. The lab at the end of the week builds the whole pipeline on a small fictional corpus.
+</Listen>
+
+<Listen>
+## Why PDFs are hard
+
+A PDF is a set of instructions for painting a page: put these glyphs at these coordinates in this font. It is not a document with paragraphs and headings. The pypdf documentation puts it plainly: PDF files have no semantic layer, so headings, paragraphs, and tables have to be inferred from positions. That one fact explains most of what goes wrong:
+
+- **Reading order.** Two-column layouts, sidebars, and figure captions can come out interleaved, because the extractor has to guess which block follows which.
+- **Whitespace.** Spaces are often positioning adjustments rather than characters, so words get glued together or split apart, and hyphenated line breaks survive as broken words.
+- **Tables.** A table is usually just text placed at positions. A naive extractor flattens it into a stream of cells with no rows or columns, and the number "60" loses the label "days" two columns away.
+- **Headers and footers.** "Confidential, page 3 of 40" repeats on every page and lands in the middle of sentences that cross page breaks.
+- **Scans.** A scanned page is an image. A text-layer parser such as pypdf is not OCR software and returns little or nothing, without raising an error.
+
+pypdf is still the right first tool for digitally born PDFs: it is local, fast, free, and reads the real characters, which is more reliable than OCR when a text layer exists. The point is to know which of these failures your documents trigger, and to check for them.
+</Listen>
+
+<Listen>
+## The toolbox, from cheap to expensive
+
+Think of four tiers, and route documents to the cheapest tier that handles them well.
+
+**Text-layer parsers** (pypdf and similar) read the embedded characters. Use them for born-digital, single-column documents. Cost is near zero, so run them on everything first and use their output to decide what needs more.
+
+**Layout-aware parsers** run layout models to recover structure. Docling, started at IBM Research Zurich and now hosted by the LF AI and Data Foundation, parses PDF, DOCX, PPTX, XLSX, HTML, images, and more; recovers reading order, table structure, code, and formulas; runs OCR for scanned pages; and exports Markdown or lossless JSON. It is MIT licensed and runs locally, which matters for sensitive documents. Unstructured partitions documents into typed elements (titles, narrative text, tables) with metadata; note that its own docs describe the open-source library as suited to prototyping, with stronger table extraction in its paid API. These tools turn "a stream of characters" into "headings, paragraphs, and tables", which the structure-aware chunking in lesson 5 depends on.
+
+**OCR engines** such as Tesseract turn page images into text. They are local and cheap but struggle with complex layouts, and they introduce character errors (an "l" read as "1") that a text layer would not have.
+
+**Vision-capable models** read the rendered page. Claude's PDF support converts each page to an image and also passes the extracted text, so the model sees both; Gemini and OpenAI document inputs work similarly. They handle charts, handwriting, and messy layouts that defeat rule-based tools, and they can transcribe a page into clean Markdown. They are also the most expensive tier per page, they have request limits, and, like any model output, a transcription can be fluent and wrong.
+</Listen>
+
+<Listen>
+## Costing the vision tier before you use it
+
+Do the arithmetic before routing a corpus to a model. At the time of writing, Anthropic's PDF docs estimate 1,500 to 3,000 text tokens per page, plus image tokens for each page image, with limits of 600 pages per request (100 when the request's context window is under one million tokens) and no password-protected or encrypted files. Google's docs count each PDF page as 258 tokens and allow up to 1,000 pages or 50 MB per document. OpenAI's file inputs send both extracted text and page images to vision-capable models, with a 50 MB limit per request. These numbers change, so check the pages linked in the sources before you budget.
+
+A worked example: 10,000 pages at roughly 3,000 total tokens per page is 30 million input tokens, before any output. At the review-date list price for Claude Haiku 5.5 ($0.10 per million input tokens for prompts up to 100,000 tokens) that is about three dollars of input; on a frontier model it is tens to hundreds of dollars, and the output (the transcribed Markdown) is billed at the higher output rate. That is often worth paying for the 5 percent of pages a cheap parser mangles, and rarely worth paying for the 95 percent it handles fine.
+
+Model selection here is an evidence question, not a brand question. Take 30 to 50 pages that represent your corpus (include the ugly ones: tables, scans, two-column layouts), run two or three candidates (pypdf, Docling, one or two vision models), and score each page on the things your application needs: are the numbers in the tables right, is the reading order right, did anything get dropped? A half-day of this beats a month of debugging retrieval on bad text.
+</Listen>
+
+Here is the shape of a vision-tier call with the Claude Python SDK, transcribing one PDF to Markdown. It follows the PDF support docs: the document block goes before the instruction, and a small model keeps per-page cost down.
+
+```python
+import base64
+import pathlib
+
+import anthropic
+
+client = anthropic.Anthropic()
+pdf_b64 = base64.standard_b64encode(pathlib.Path("q3-review.pdf").read_bytes()).decode("utf-8")
+
+response = client.messages.create(
+    model="claude-haiku-5-5",
+    max_tokens=16000,
+    messages=[{
+        "role": "user",
+        "content": [
+            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64}},
+            {"type": "text", "text": (
+                "Transcribe this document into Markdown. Keep every heading, keep tables as Markdown tables, "
+                "copy numbers exactly, and drop repeated page headers, footers, and page numbers. "
+                "Write [illegible] for anything you cannot read. Output only the Markdown."
+            )},
+        ],
+    }],
+)
+if response.stop_reason != "end_turn":
+    raise RuntimeError(f"transcription incomplete: {response.stop_reason}")
+markdown = "".join(block.text for block in response.content if block.type == "text")
+```
+
+<Callout type="tip" title="Verify a transcription the way you verified extractions">
+A model transcription is model output, so check it like the Studio 1 extractions. When the PDF has a text layer, compare: every number in the transcription should appear in the pypdf text of the same page, and a large gap in character counts means something was dropped or invented. When there is no text layer, spot-check a random sample of pages by eye, prioritizing tables, and keep the page images so a reviewer can compare. Track the "[illegible]" rate per document as a quality signal.
+</Callout>
+
+<Listen>
+## HTML, Office files, and tables
+
+**HTML** looks easier because the structure is explicit, but web and intranet pages wrap a little content in a lot of chrome: navigation, cookie banners, footers, related-article lists, scripts. Keep the main content, and keep the structure: convert headings to Markdown headings rather than flattening them, because headings become chunk boundaries and context in lesson 5. Libraries such as Trafilatura specialize in extracting the main text from web pages; for an intranet with one template, a few lines of parser code that skip `nav`, `footer`, `script`, and `style` are often enough, which is what the lab does.
+
+**Office files** (DOCX, PPTX, XLSX) are zipped XML with real structure, so layout-aware tools like Docling read them well. Two traps: slide decks put meaning in visual arrangement and speaker notes (decide whether notes are content), and spreadsheets are tables, not prose. A model given a raw CSV dump of a 5,000-row sheet will not retrieve well; a sheet is often better served by a SQL or tool lookup than by embedding.
+
+**Tables** deserve their own rule: never split a table across chunks without its header row. A row like "Unused, no receipt | 60 days | Store credit" is answerable; the same row without the header is a riddle. Common approaches are to convert each table to Markdown and keep it whole if it fits, or to emit one line per row with the header repeated ("Item type: Unused, no receipt. Return window: 60 days. Refund type: Store credit."). Test with real questions about your tables, because which one works better depends on the embedding model.
+</Listen>
+
+<Listen>
+## Cleaning without losing meaning, and catching silent failures
+
+Cleaning should remove noise and leave the words alone. A safe default set: Unicode normalization (NFKC turns the "fi" ligature that PDF extractors often emit back into "f" and "i"), consistent line endings, removing soft hyphens, collapsing runs of blank lines, and stripping headers, footers, and page numbers that repeat across pages. Be careful with anything more aggressive. Lowercasing, removing punctuation, or "fixing" typos changes what a citation can quote, and the Studio 1 rule still holds: if you will verify quotes against the source later, the stored text has to be the source.
+
+The more important job is detecting failures that raise no error. Run deterministic checks per page and per document at ingest time:
+
+- **Characters per page.** A page with almost no text is probably a scan or an image-only slide. Route it to OCR or the vision tier.
+- **Replacement characters.** A high share of U+FFFD (the "unknown character" symbol) means the font encoding defeated the extractor.
+- **Zero chunks.** Any document that produces no chunks should be an alert, not a log line.
+- **Hidden text.** OWASP's guidance on vector and embedding weaknesses recommends extracting text in ways that expose hidden content and auditing the knowledge base for poisoning. White-on-white text or tiny fonts in an uploaded file can carry instructions that end up in your model's context. Decide whether ingested text may contain instructions (it may) and treat retrieved text as data in your prompts, as Studio 1 taught for tool results.
+
+The exercise below builds the first three checks.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s2-w2-page-cleaner"
+  title="Strip repeated headers and flag broken pages"
+  starter={`import re
+from collections import Counter
+
+PAGE_NUMBER = re.compile(r"^(page\s+)?\d+(\s+of\s+\d+)?$", re.IGNORECASE)
+
+def find_boilerplate(pages, min_share=0.6):
+    """Return the set of stripped, non-empty lines that appear on at least
+    min_share of the pages (count a line at most once per page).
+    With fewer than 3 pages there is not enough evidence: return an empty set."""
+    # TODO
+    pass
+
+def clean_pages(pages, min_share=0.6):
+    """Remove boilerplate lines and page-number lines (PAGE_NUMBER) from each page.
+    Keep the other lines in order, stripped of trailing spaces; join them with newlines
+    and strip the result. Return one cleaned string per page."""
+    # TODO
+    pass
+
+def flag_pages(cleaned, min_chars=100, max_bad_share=0.05):
+    """Return (page_number, reason) pairs, numbering pages from 1:
+      "little or no text"  if the page has fewer than min_chars characters
+      "encoding problems"  otherwise, if more than max_bad_share of its characters are U+FFFD
+    """
+    # TODO
+    pass
+
+HEADER = "Harbor & Pine | Q3 Operations Review"
+FOOTER = "Internal use only"
+BODY = [
+    "Store traffic rose 6 percent over the quarter, led by the coastal store. Rain-shell sales were strong in "
+    "September after an early storm, and boot sales held steady. Staffing was tight during the back-to-school weeks.",
+    "The warehouse shipped 41,200 orders. Label printing failed twice, once for 40 minutes, and the team switched "
+    "one carrier to manual labels. Damaged-in-transit claims fell after the packing change in July.",
+    "",
+    "Returns were 7.9 percent of sales. The largest category was used gear that failed in normal use \\ufffd\\ufffd "
+    "\\ufffd\\ufffd\\ufffd\\ufffd \\ufffd\\ufffd\\ufffd\\ufffd\\ufffd\\ufffd \\ufffd\\ufffd\\ufffd\\ufffd\\ufffd\\ufffd \\ufffd\\ufffd\\ufffd\\ufffd mostly tent poles and zippers, which the supplier has agreed to credit.",
+]
+PAGES = [f"{HEADER}\\n{body}\\n{FOOTER}\\nPage {i} of 4" for i, body in enumerate(BODY, start=1)]
+
+cleaned = clean_pages(PAGES)
+for i, page in enumerate(cleaned or [], start=1):
+    print(f"--- page {i} ({len(page)} chars)")
+    print(page)
+print(flag_pages(cleaned or []))
+`}
+  tests={`assert find_boilerplate(PAGES) == {HEADER, FOOTER}, "the header and footer repeat on every page; page numbers differ, so they are not boilerplate"
+assert find_boilerplate(PAGES[:2]) == set(), "two pages are not enough evidence"
+cleaned = clean_pages(PAGES)
+assert cleaned is not None and len(cleaned) == 4, "return one string per page"
+assert cleaned[0] == BODY[0], "page 1 should be exactly its body text"
+assert all(HEADER not in p and FOOTER not in p and "of 4" not in p for p in cleaned), "remove header, footer, and page numbers"
+assert cleaned[2] == "", "page 3 had no text layer"
+assert clean_pages(["Page 7", "7 of 9", "page 12", "Pages 7 to 9 cover returns."]) == ["", "", "", "Pages 7 to 9 cover returns."], "only whole-line page numbers are removed"
+assert flag_pages(cleaned) == [(3, "little or no text"), (4, "encoding problems")]
+assert flag_pages(["x" * 250]) == [], "a normal page is not flagged"`}
+  solution={`def find_boilerplate(pages, min_share=0.6):
+    if len(pages) < 3:
+        return set()
+    counts = Counter()
+    for page in pages:
+        counts.update({line.strip() for line in page.splitlines() if line.strip()})
+    return {line for line, n in counts.items() if n / len(pages) >= min_share}
+
+def clean_pages(pages, min_share=0.6):
+    boiler = find_boilerplate(pages, min_share)
+    out = []
+    for page in pages:
+        keep = []
+        for line in page.splitlines():
+            s = line.strip()
+            if s in boiler or PAGE_NUMBER.match(s):
+                continue
+            keep.append(line.rstrip())
+        out.append("\\n".join(keep).strip())
+    return out
+
+def flag_pages(cleaned, min_chars=100, max_bad_share=0.05):
+    flags = []
+    for i, page in enumerate(cleaned, start=1):
+        if len(page) < min_chars:
+            flags.append((i, "little or no text"))
+        elif page.count("\\ufffd") / len(page) > max_bad_share:
+            flags.append((i, "encoding problems"))
+    return flags`}
+>
+Each string in `PAGES` is the text a parser returned for one page of a four-page report. Write `find_boilerplate` (lines that repeat on most pages), `clean_pages` (remove those and page-number lines), and `flag_pages` (find pages that need OCR or a second look). Page 3 is a scan with no text layer, and page 4 has an encoding problem. Notice that the page-number lines differ on every page, so frequency alone does not catch them; a pattern does.
+</PyRunner>
+
+<Callout type="pitfall" title="Boilerplate detection that eats real content">
+A line that repeats on most pages is usually a header, but not always. A contract that says "Subject to Section 12" on every page, or a table whose header row repeats across page breaks, would lose meaningful text. Require at least three pages of evidence, compare full lines rather than words, and log what you removed so you can audit it. When in doubt, keep the line: a little noise costs less than missing content.
+</Callout>
+
+<Listen>
+## Metadata you will want later
+
+Every document, and every chunk cut from it, should carry a metadata record. Capturing it now is cheap; reconstructing it after a million chunks are indexed is not. A record that pays for itself:
+
+- **Source identity.** A stable id, the original location (path, URL, or system record id), and the title. Week 4's citations link here.
+- **Location within the source.** Page number for PDFs, heading path for structured documents, and character offsets into the cleaned text. Claude's citations feature, for example, reports page ranges for PDFs and character ranges for plain text, so offsets let you map a citation back to the exact place in the original.
+- **Time and version.** Document date or version, plus when you ingested it. Retrieval can then prefer the current policy over last year's, and you can find stale content.
+- **Permissions.** The groups or users allowed to read the source, copied from the source system. Lesson 6 makes the store filter on this before ranking. If a document has no permission record, fail closed: make it visible to nobody until someone fixes the record.
+- **Provenance.** A content hash, the parser and its version, and the strategy used. When you upgrade a parser, you can find exactly which chunks to rebuild.
+
+A useful test: for every field, name the query, filter, or audit that will use it. Fields nobody uses are clutter; filters without fields are bugs waiting for a deadline.
+</Listen>
+
+<Listen>
+## Deduplication, and which copy wins
+
+Enterprise corpora are full of copies: the same policy in the wiki and the shared drive, a contract and its signed scan, a deck and its PDF export. Duplicates hurt retrieval directly. If five copies of one paragraph are the most similar chunks to a question, they fill all five top-k slots and crowd out the second source the answer needed. They also make conflicts invisible: two near-identical copies that disagree on one number look like agreement.
+
+Research on training data shows how common this is at scale. Lee and colleagues (2021) found a single 61-word sentence repeated over 60,000 times in the C4 dataset, and reported that models trained on deduplicated data emitted memorized text about ten times less often. Retrieval corpora are smaller, but the same lesson applies: you will not know how much duplication you have until you measure it.
+
+Two levels catch most of it. **Exact duplicates**: hash the cleaned text (SHA-256) and keep one copy per hash. **Near duplicates**: break each document into word **shingles** (overlapping runs of about five words), and compare sets with the Jaccard similarity, the size of the intersection over the size of the union. Pairs above a threshold (0.8 is a reasonable start, then inspect what it catches) are near copies. Comparing every pair is quadratic, so at scale use MinHash with locality-sensitive hashing, which estimates Jaccard similarity from small signatures and finds candidate pairs without comparing everything; the datasketch library implements it.
+
+Then decide, and write down, which copy wins: the newest by date, the one from the system of record, or the one with the most permissive or most restrictive access (careful: merging copies with different permissions can leak). When two near copies disagree on content, consider keeping both and flagging the conflict for an owner rather than silently picking one.
+</Listen>
+
+<LabLink path="labs/studio-2/02-ingest-and-chunk" title="Lab: ingest, chunk, and store a small corpus" needs={["Python 3.10+", "No API key"]} minutes={75}>
+Ingest six fictional company documents (Markdown, HTML with navigation and a table, and plain text) into clean text with source, title, date, and permission metadata; remove a near-duplicate copy; chunk with fixed-size and structure-aware strategies; embed with a local stand-in embedder; and store the results in a small vector store with access control, upserts, deletes, and JSON persistence. You will finish it after lesson 6, but the ingestion half (steps 1 and 2) fits here. Offline tests cover the cleaning, metadata, deduplication, chunking, and store logic.
+</LabLink>
+
+<GoDeeper title="Evaluating parsers like a team would">
+For a production corpus, build a small parsing gold set: 30 to 100 pages chosen to cover every document type and every ugly case, with a human-checked reference transcription for each (Markdown with tables). Score each candidate parser on character error rate against the reference, table cell accuracy (pick 50 cells and check them), and reading-order errors. Keep the gold set in the repo and rerun it whenever a parser or model version changes, exactly as you would a prompt regression suite from Studio 1. The Docling technical report (Auer and colleagues, 2024) describes the layout and table-structure models behind one open-source pipeline, which is useful background for understanding why layout-aware parsers fail where they do. Chip Huyen's chapter on RAG in *AI Engineering* covers data preparation as part of the wider retrieval system.
+</GoDeeper>
+
+<Listen>
+## What a working engineer does on day one
+
+Inventory before you build. List the document types and their counts, open ten of each, and note which ones are scanned, which have tables that matter, and which systems hold their permissions. Route each type to the cheapest parser that passes a small measured sample. Add the silent-failure checks before the first full run, attach the metadata record, deduplicate with a written policy, and keep offsets back into the source. Then, and only then, start chunking, which is the next lesson.
+</Listen>

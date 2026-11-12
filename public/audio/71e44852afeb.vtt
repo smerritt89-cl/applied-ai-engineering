@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.731
+Return what helps the next step, including errors.
+
+2
+00:00:03.011 --> 00:00:08.856
+What a tool returns lands in the model’s context, so it costs tokens and steers the next decision.
+
+3
+00:00:09.136 --> 00:00:21.317
+The engineering post recommends returning high-signal fields and natural-language identifiers rather than opaque internal ones: name and file_type instead of uuid and mime_type.
+
+4
+00:00:21.597 --> 00:00:28.701
+It reports that resolving cryptic IDs into meaningful language improved Claude’s precision in retrieval tasks.
+
+5
+00:00:28.981 --> 00:00:42.827
+For tools that can return a lot, use pagination, filtering, or truncation with sensible defaults; the post mentions that Claude Code caps tool responses at 25,000 tokens by default.
+
+6
+00:00:43.107 --> 00:00:50.275
+One option it describes is a response_format parameter that lets the agent ask for concise or detailed output.
+
+7
+00:00:50.555 --> 00:00:52.197
+Errors deserve the same care.
+
+8
+00:00:52.477 --> 00:00:55.805
+A traceback or “error 400” tells the model nothing.
+
+9
+00:00:56.085 --> 00:01:05.792
+The handle-tool-calls docs suggest saying what went wrong and what to try next, and you saw why in lesson 10: the model reads the error and adjusts its next call.
+
+10
+00:01:06.072 --> 00:01:11.043
+For the meeting-notes tool, compare “Invalid input” with “No teammate matches ‘Jordan’.
+
+11
+00:01:11.323 --> 00:01:14.907
+Known teammates: Priya Raman, Marcus Lee, Dana Whitfield.
+
+12
+00:01:15.187 --> 00:01:18.579
+If the person is not on the team, leave the owner unassigned.
+
+13
+00:01:18.859 --> 00:01:28.907
+” The second turns a dead end into a decision rule, and it encodes your product policy (unknown owners stay unassigned) where the model will see it at the moment it matters.

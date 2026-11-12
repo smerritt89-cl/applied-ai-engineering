@@ -1,0 +1,318 @@
+---
+id: s2-w3-l9
+studio: s2
+week: 3
+order: 9
+title: Reranking and measuring retrieval
+summary: Bi-encoders versus cross-encoders, hosted and open rerankers, LLMs as rerankers and what they cost, the retrieval metrics (precision@k, recall@k, MRR, nDCG) with formulas, building a small labeled retrieval set, and telling retrieval failures from generation failures.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Explain why a cross-encoder ranks more accurately than a bi-encoder and why it can only be used on a short candidate list
+  - Compare hosted rerankers, open rerankers, and LLM-as-reranker on quality, cost, latency, and data handling, and decide with a measurement
+  - Compute precision@k, recall@k, MRR, and nDCG@k by hand and in code, and say what each one rewards
+  - Build a small labeled retrieval set that survives re-chunking and includes queries with no answer
+  - Classify a bad RAG answer as a retrieval failure or a generation failure using the retrieved context
+sources:
+  - { id: reimers-2019-sbert, use: summarized }
+  - { id: nogueira-2019-bert-rerank, use: summarized }
+  - { id: sbert-retrieve-rerank, use: summarized, where: "Retrieve & Re-Rank pipeline" }
+  - { id: voyage-reranker-docs, use: summarized }
+  - { id: cohere-rerank-docs, use: summarized }
+  - { id: bge-reranker-v2-m3, use: summarized }
+  - { id: msmarco-minilm-cross-encoder, use: linked }
+  - { id: anthropic-contextual-retrieval, use: summarized, where: "Reranking results and cost and latency considerations" }
+  - { id: thakur-2021-beir, use: summarized }
+  - { id: sun-2023-rankgpt, use: summarized }
+  - { id: zheng-2023-llm-judge, use: summarized, where: "Position bias" }
+  - { id: jarvelin-2002-ndcg, use: summarized }
+  - { id: sklearn-ndcg-score, use: linked }
+  - { id: barnett-2024-rag-failures, use: summarized }
+  - { id: hamel-evals, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: Why don't you run a cross-encoder over the whole corpus instead of using embeddings for the first stage?
+    options:
+      - id: a
+        text: Cross-encoders can only read short queries.
+        rationale: Query length isn't the constraint. Many rerankers accept long inputs.
+      - id: b
+        text: A cross-encoder must run the model on every (query, document) pair at query time, so cost grows with the corpus; a bi-encoder embeds documents once, ahead of time.
+        correct: true
+        rationale: Right. That is the trade Reimers and Gurevych quantified for sentence pairs, and why retrieve-then-rerank exists.
+      - id: c
+        text: Cross-encoders are less accurate than bi-encoders on large corpora.
+        rationale: Per pair they are usually more accurate. The issue is cost, not accuracy.
+    explanation: >-
+      A bi-encoder turns each text into a vector independently, so documents can be indexed in advance and a query is
+      one encoding plus a nearest-neighbor search. A cross-encoder reads the query and the document together, which
+      lets it model their interaction but means no work can be done in advance. Use the cheap model for recall, the
+      expensive one for order.
+  - id: kc2
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      def reciprocal_rank(ranked, relevant):
+          for i, doc in enumerate(ranked, start=1):
+              if doc in relevant:
+                  return 1 / i
+          return 0.0
+
+      runs = [(["a", "b", "c"], {"b"}), (["d", "e", "f"], {"x"}), (["g", "h"], {"g", "h"})]
+      print(round(sum(reciprocal_rank(r, rel) for r, rel in runs) / len(runs), 2))
+    options:
+      - id: a
+        text: "`0.5`"
+        correct: true
+        rationale: The reciprocal ranks are 0.5, 0, and 1, so the mean is 1.5 / 3 = 0.5.
+      - id: b
+        text: "`0.75`"
+        rationale: That averages only the two queries that found something. A query with no relevant result counts as 0, not as missing.
+      - id: c
+        text: "`0.83`"
+        rationale: MRR uses only the first relevant result per query; the second relevant document in the third run doesn't add anything.
+    explanation: >-
+      MRR rewards putting one relevant result near the top. It ignores everything after the first hit, which suits
+      "find me the one right passage" tasks and undersells retrieval when an answer needs several passages; use recall@k
+      or nDCG for those.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      A user reports a wrong answer about the parental leave policy. You open the trace: the correct policy chunk was
+      retrieved at rank 2 and was in the prompt, but the answer quotes an outdated figure from the chunk at rank 1, an
+      archived 2023 policy. Where is the failure, and what is the best first fix?
+    options:
+      - id: a
+        text: Generation failure only; tune the prompt so the model picks the right chunk.
+        rationale: The model did make a bad choice, but the archived document should never have been a candidate. A prompt fix leaves the cause in place.
+      - id: b
+        text: Primarily a retrieval and data problem; add an effective-date or status filter so archived policies aren't retrieved, and add this query to the labeled set.
+        correct: true
+        rationale: Yes. Conflicting context is a known cause of extraction errors, and the cheapest reliable fix is upstream. Then the eval set guards against regressions.
+      - id: c
+        text: Retrieval failure; increase k so more chunks reach the model.
+        rationale: The right chunk was already there. More context adds more noise, not less.
+    explanation: >-
+      Look at the trace before assigning blame. If the right evidence never reached the prompt, it's retrieval. If it
+      reached the prompt and the answer still went wrong, it's generation, but check whether retrieval handed the model
+      conflicting or stale context, which is often the root cause and the easier fix.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Two kinds of encoder
+
+Everything you've built so far in this studio ranks with a **bi-encoder**: a model encodes the query into a vector, a model encodes each document into a vector, independently, and similarity is a dot product. The independence is the whole point. Documents can be embedded once, ahead of time, and a query costs one encoding plus a nearest-neighbor search.
+
+A **cross-encoder** reads the query and the document together, as one input, and outputs a relevance score. Because every layer can attend across both texts, it can notice that the document answers this particular question, not just that it is about the same topic. Voyage's reranker docs describe their rerankers in exactly these terms, and BAAI's model card for its open reranker says the same thing in different words: the reranker takes question and document as input and outputs a similarity directly, instead of an embedding.
+
+The price is that nothing can be computed in advance. Reimers and Gurevych put a number on the gap in the Sentence-BERT paper (2019): finding the most similar pair among 10,000 sentences took about 65 hours with BERT used as a cross-encoder, and about 5 seconds with their bi-encoder, at similar accuracy on their benchmarks. Scoring a whole corpus with a cross-encoder for every query is out of the question.
+
+Hence the standard two-stage design, the "retrieve and re-rank" pipeline in the Sentence Transformers docs: a fast first stage (BM25, vectors, or the hybrid from lesson 8) retrieves maybe 50 to 100 candidates for recall, and a cross-encoder reorders just those for precision. Nogueira and Cho (2019) showed how strong the second stage can be: a BERT reranker took the top spot on the MS MARCO passage ranking leaderboard, improving MRR@10 by 27 percent relative to the previous best.
+</Listen>
+
+<Listen>
+## Choosing a reranker
+
+You have three broad options. As with embedding models, treat the vendor's benchmark claims as a reason to try a model, not as evidence it suits your data.
+
+**Hosted rerank APIs.** Cohere and Voyage both offer a rerank endpoint: send a query and a list of documents, get back the documents ordered by relevance with scores. Voyage, for example, lists a full model and a faster "lite" variant. Check both providers' docs for today's model names, prices, and context limits, which change often. Hosted rerankers are the quickest to try, and the main questions are per-call cost, latency (an extra network round trip on every query), and whether your documents may leave your environment.
+
+**Open rerankers you run yourself.** BAAI's `bge-reranker-v2-m3` is a multilingual cross-encoder released under Apache 2.0, and the Sentence Transformers project publishes small cross-encoders trained on MS MARCO, such as `cross-encoder/ms-marco-MiniLM-L6-v2`, that run acceptably on a CPU for short candidate lists. You control the data and the cost; you also own the serving, batching, and upgrades.
+
+**An LLM as reranker.** You can ask a general model to rank passages. Sun and colleagues (2023) found that properly instructed GPT-4 could match or beat strong supervised rerankers on standard benchmarks, and built a new test set from recent material to address the worry that the models had memorized benchmark data. The cost is the catch: every candidate passage is input tokens on every query, so reranking 50 chunks of 300 tokens adds about 15,000 input tokens per question, plus the model's latency. The same paper distilled the ranking ability into a small 440M-parameter model that outperformed a 3B supervised model on BEIR, which is often the practical end state: use a large model to label or rank offline, and a small model online.
+
+Does reranking help? Anthropic's contextual retrieval experiments are one data point: adding a reranker on top of hybrid contextual retrieval cut their top-20 retrieval failure rate from 2.9 to 1.9 percent, and the post explicitly flags the added latency and cost. The BEIR authors reached a similar conclusion across 18 datasets: reranking architectures had the best average zero-shot results, at high computational cost.
+</Listen>
+
+<Callout type="pitfall" title="LLM rerankers inherit LLM judge biases">
+When you ask a model to rank passages listed in a prompt, the order you list them in can influence the result. Zheng and colleagues (2023) documented position bias in LLM judges comparing two answers, and the same risk applies to ranking a list. Two cheap checks: shuffle the candidate order and confirm the ranking is stable, and compare the LLM's ranking against your labeled set rather than assuming it's better than a cross-encoder. Also enforce the output in code: parse the returned ids, reject any id that wasn't in the input, and fall back to the first-stage order if parsing fails.
+</Callout>
+
+<Listen>
+## Measuring retrieval: the four metrics you'll use
+
+Fix a query, a ranked list of retrieved items, and a set of items labeled relevant. Let rel_i be the relevance of the item at rank i (1 or 0 for binary labels, or a grade such as 0 to 3).
+
+**Precision@k** is the fraction of the top k that is relevant: the number of relevant items in the top k, divided by k. It answers "how much of what I pass to the model is useful?", which matters because irrelevant context costs tokens and can mislead the generator.
+
+**Recall@k** is the fraction of all relevant items that appear in the top k: relevant items in the top k, divided by the total number of relevant items. It answers "did the evidence make it into the prompt?" For RAG this is usually the metric to watch first, because a generator can't use what it never saw. Anthropic's contextual retrieval experiments report 1 minus recall@20 as their failure rate.
+
+**MRR** (mean reciprocal rank) averages, over queries, 1 divided by the rank of the first relevant item, counting 0 when none is retrieved within the cutoff. It rewards getting one right answer near the top, and ignores everything after it.
+
+**nDCG@k** handles graded relevance and position together. Discounted cumulative gain is DCG@k = sum for i from 1 to k of rel_i / log2(i + 1), so a highly relevant item at rank 1 counts fully and the same item at rank 3 counts half. Divide by IDCG@k, the DCG of the ideal ordering of the labeled items, so the result lies between 0 and 1. Järvelin and Kekäläinen introduced cumulated-gain measures in 2002. A common variant uses 2 to the power rel_i, minus 1, as the gain, which rewards highly relevant items more steeply; scikit-learn's `ndcg_score` uses the linear gain above. Say which one you report.
+
+Average each metric over the query set, and report k. "Recall 0.9" means nothing without the k.
+</Listen>
+
+```text
+precision@k = |relevant ∩ top_k| / k
+recall@k    = |relevant ∩ top_k| / |relevant|
+MRR         = (1/|Q|) Σ_q 1 / rank_q(first relevant)          (0 if none in the cutoff)
+DCG@k       = Σ_{i=1..k} rel_i / log2(i + 1)
+nDCG@k      = DCG@k / IDCG@k                                    (IDCG = DCG of the ideal order)
+```
+
+<Predict
+  title="nDCG by hand"
+  code={`import math
+
+def dcg(gains):
+    return sum(g / math.log2(i + 2) for i, g in enumerate(gains))
+
+# graded labels: d1 = 3, d2 = 2, d5 = 1; everything else 0
+ranked = ["d3", "d1", "d7", "d2", "d9"]
+labels = {"d1": 3, "d2": 2, "d5": 1}
+gains = [labels.get(d, 0) for d in ranked]
+ideal = sorted(labels.values(), reverse=True)
+print(round(dcg(gains) / dcg(ideal), 2))`}
+  options={["0.58", "0.4", "1.0", "0.83"]}
+  answer={0}
+>
+The gains are 0, 3, 0, 2, 0. DCG = 3 / log2(3) + 2 / log2(5), about 1.89 + 0.86 = 2.75. The ideal order is 3, 2, 1, giving 3 + 2 / log2(3) + 1 / log2(4), about 3 + 1.26 + 0.5 = 4.76. The ratio is about 0.58. Note that d5 was never retrieved, and it still counts in the ideal, which is how nDCG penalizes missed relevant items.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s2-w3-retrieval-metrics"
+  title="Implement the retrieval metrics"
+  starter={`import math
+
+def precision_at_k(ranked, relevant, k):
+    """ranked: list of doc ids, best first. relevant: set of relevant ids."""
+    # TODO
+    pass
+
+def recall_at_k(ranked, relevant, k):
+    """Return 0.0 when there are no relevant ids (the query is unanswerable)."""
+    # TODO
+    pass
+
+def reciprocal_rank(ranked, relevant, k=None):
+    """1 / rank of the first relevant id within the first k (all if k is None); 0.0 if none."""
+    # TODO
+    pass
+
+def ndcg_at_k(ranked, grades, k):
+    """grades: {doc_id: graded relevance}. Linear gain, log2(rank + 1) discount.
+    IDCG uses the best possible ordering of all graded docs. Return 0.0 if IDCG is 0."""
+    # TODO
+    pass
+
+def evaluate(runs, k):
+    """runs: list of (ranked, grades) per query; relevant = ids with grade > 0.
+    Return the mean of each metric over queries as a dict with keys
+    "precision", "recall", "mrr", "ndcg"."""
+    # TODO
+    pass
+
+RUNS = [
+    (["kb-7", "kb-2", "kb-9", "kb-4", "kb-1"], {"kb-2": 2, "kb-4": 1}),
+    (["kb-3", "kb-8", "kb-5", "kb-6", "kb-0"], {"kb-5": 3}),
+    (["kb-1", "kb-6", "kb-2", "kb-3", "kb-9"], {"kb-11": 2}),
+]
+print(evaluate(RUNS, k=3))
+`}
+  tests={`assert precision_at_k(["a", "b", "c", "d"], {"b", "d", "z"}, 2) == 0.5, "1 of the top 2 is relevant"
+assert abs(recall_at_k(["a", "b", "c", "d"], {"b", "d", "z"}, 4) - 2/3) < 1e-12, "2 of 3 relevant found"
+assert recall_at_k(["a"], set(), 5) == 0.0, "no relevant docs: define recall as 0.0, don't divide by zero"
+assert reciprocal_rank(["a", "b", "c"], {"c"}) == 1/3
+assert reciprocal_rank(["a", "b", "c"], {"c"}, k=2) == 0.0, "a hit outside the cutoff doesn't count"
+g = ndcg_at_k(["d3", "d1", "d7", "d2", "d9"], {"d1": 3, "d2": 2, "d5": 1}, 5)
+assert g is not None and abs(g - 0.5783754) < 1e-6, "check gains, the log2(rank + 1) discount, and IDCG over all graded docs"
+assert abs(ndcg_at_k(["d1", "d2", "d5"], {"d1": 3, "d2": 2, "d5": 1}, 3) - 1.0) < 1e-12, "ideal order scores 1"
+assert ndcg_at_k(["a", "b"], {}, 2) == 0.0, "no graded docs: 0.0"
+m = evaluate(RUNS, k=3)
+assert m is not None and set(m) == {"precision", "recall", "mrr", "ndcg"}
+assert abs(m["recall"] - (0.5 + 1.0 + 0.0) / 3) < 1e-12, "mean recall@3 over the three queries"
+assert abs(m["mrr"] - (1/2 + 1/3 + 0) / 3) < 1e-12, "a query with no hit contributes 0 to MRR"
+assert abs(m["precision"] - (1/3 + 1/3 + 0) / 3) < 1e-12`}
+  solution={`def precision_at_k(ranked, relevant, k):
+    return sum(1 for d in ranked[:k] if d in relevant) / k
+
+def recall_at_k(ranked, relevant, k):
+    if not relevant:
+        return 0.0
+    return sum(1 for d in ranked[:k] if d in relevant) / len(relevant)
+
+def reciprocal_rank(ranked, relevant, k=None):
+    for i, d in enumerate(ranked[:k] if k else ranked, start=1):
+        if d in relevant:
+            return 1 / i
+    return 0.0
+
+def _dcg(gains):
+    return sum(g / math.log2(i + 2) for i, g in enumerate(gains))
+
+def ndcg_at_k(ranked, grades, k):
+    ideal = _dcg(sorted(grades.values(), reverse=True)[:k])
+    if ideal == 0:
+        return 0.0
+    return _dcg([grades.get(d, 0) for d in ranked[:k]]) / ideal
+
+def evaluate(runs, k):
+    totals = {"precision": 0.0, "recall": 0.0, "mrr": 0.0, "ndcg": 0.0}
+    for ranked, grades in runs:
+        relevant = {d for d, g in grades.items() if g > 0}
+        totals["precision"] += precision_at_k(ranked, relevant, k)
+        totals["recall"] += recall_at_k(ranked, relevant, k)
+        totals["mrr"] += reciprocal_rank(ranked, relevant, k)
+        totals["ndcg"] += ndcg_at_k(ranked, grades, k)
+    return {name: value / len(runs) for name, value in totals.items()}`}
+>
+Write the five functions and press **Check my answer**. Look at the third query in `RUNS`: its only relevant document, kb-11, was never retrieved. Every metric scores it 0, which is correct, and it drags the averages down, which is also correct. If you dropped such queries "because retrieval found nothing", you'd be hiding exactly the failures you need to see.
+</PyRunner>
+
+<Listen>
+## Building a small labeled retrieval set
+
+None of the comparisons in this week mean anything without a labeled set. It doesn't need to be large to be useful: a few dozen to a couple of hundred queries is enough to catch big regressions and compare configurations, though small differences between configurations will be within the noise. Hamel Husain's writing on evals makes the general case well: look at real data, and build the evaluation from it. For retrieval, that means:
+
+1. **Collect real queries.** Search logs, support tickets, questions people ask in team channels. If you have no traffic yet, ask the people who will use the system to write the questions they'd actually ask. Cover the query types from lesson 7: identifiers, how-to questions, policy questions, vague questions.
+2. **Label what would answer each query.** For each query, find the passages that contain the answer, and grade them if you're using nDCG (for example 2 = fully answers, 1 = partially). The fastest workflow is to pool candidates from several retrievers (BM25, vectors, hybrid) and label the union, then search by hand for queries where nothing relevant came up.
+3. **Anchor labels to something stable.** If you label chunk ids, your labels break the moment you change chunking, which is precisely when you most need them. Label a document id plus the answering text span, and map spans to whatever chunks the current pipeline produces.
+4. **Include queries with no answer.** Some real questions aren't covered by your corpus. They have no relevant items, so retrieval metrics don't apply to them, but they're essential for testing whether the full system declines to answer (Studio 2's week 4 topic).
+5. **Check the labels.** Have a second person label a sample, and discuss disagreements. Where people disagree, the query is ambiguous, and that's worth knowing.
+
+You can use a model to draft synthetic queries from chunks to bootstrap a set. Treat them with care: a question generated from a chunk tends to reuse that chunk's wording, which flatters keyword search and makes retrieval look easier than real user queries are. Mix in real queries, and report metrics on the two groups separately.
+</Listen>
+
+<Listen>
+## Retrieval failure or generation failure?
+
+When a RAG system gives a bad answer, the first diagnostic question is whether the evidence reached the model. Barnett and colleagues (2024), in an experience report on three RAG systems in research, education, and biomedical domains, list seven failure points. They sort cleanly into the two stages:
+
+**Retrieval-side failures.** *Missing content*: the answer isn't in the corpus, and the system answers anyway instead of declining. *Missed the top ranked documents*: the answer is in the corpus but ranks too low to be passed on. *Not in context*: relevant documents were retrieved but dropped when results were consolidated into the prompt.
+
+**Generation-side failures.** *Not extracted*: the answer was in the context but the model didn't pull it out, often because of noise or conflicting information. *Wrong format*, *incorrect specificity* (too broad or too narrow for the question), and *incomplete* answers that leave out available information.
+
+The test that separates them is mechanical, which makes it a good check: for each failed query in your labeled set, look up the gold passage, and ask whether it was in the context the model received. If not, fix retrieval (recall@k tells you how often). If it was, fix generation, the prompt, or the context you hand over, and suspect conflicting or stale passages first. Log the retrieved ids with every answer in production, so you can run this triage on real failures, not just on the eval set. The Barnett paper's broader lesson fits here too: they found a RAG system's robustness evolves through operation rather than being designed in at the start, which is an argument for that logging from day one.
+</Listen>
+
+<Mermaid
+  alt="Decision flowchart for triaging a bad RAG answer: first, is the answer in the corpus at all? If no, it is missing content and the fix is to add content or make the system decline. If yes, was the gold passage retrieved in the first-stage candidates? If no, fix retrieval (tokenizer, hybrid, query rewriting). If yes, was it in the final context passed to the model? If no, fix fusion, reranking, or k. If yes, it is a generation failure: check for conflicting or stale context, then fix the prompt or model."
+  caption="Triage a bad answer from the data back to the model."
+  chart={`flowchart TD
+  A["Bad answer"] --> B{"Is the answer in the corpus?"}
+  B -- "no" --> C["Missing content: add content, or make the system decline"]
+  B -- "yes" --> D{"Gold passage in first-stage candidates?"}
+  D -- "no" --> E["Retrieval: tokenizer, hybrid, query rewrite"]
+  D -- "yes" --> F{"In the final context?"}
+  F -- "no" --> G["Fusion, reranker, or k"]
+  F -- "yes" --> H["Generation: check for conflicting or stale context, then prompt or model"]`}
+/>
+
+<LabLink path="labs/studio-2/03-hybrid-retrieval" title="Lab: hybrid retrieval, measured" minutes={75}>
+Implement BM25 and vector search over a small policy corpus (vectors are precomputed and shipped as JSON, so everything runs offline), fuse them with RRF and with normalized score fusion, optionally rerank with an open cross-encoder, and compare recall@5 and MRR across configurations on a labeled query set. Offline tests cover BM25, fusion, and the metrics.
+</LabLink>
+
+<GoDeeper title="How many queries do you need to trust a difference?">
+Each query's metric is a draw from some distribution, so a mean over n queries has a standard error of roughly the per-query standard deviation over the square root of n. Reciprocal rank and recall on small k are lumpy (often exactly 0 or 1), so the per-query standard deviation is large: for a metric that is 0 or 1 with equal odds it is 0.5. With 50 queries and a standard deviation near 0.4, the standard error of the mean is about 0.06, and a 0.03 improvement in MRR is well within noise. Because you evaluate two configurations on the same queries, use a paired comparison: compute the per-query difference and look at its mean and spread, or run a sign test or a paired bootstrap. Cormack and colleagues used a simple sign test on exactly this kind of comparison in the RRF paper. The practical rule: report the number of queries next to every metric, and be skeptical of small gains on small sets.
+</GoDeeper>
+
+<Listen>
+## The working loop
+
+Here is the loop a working team runs, and the one this week's lab makes concrete. Keep a labeled query set in the repository, versioned with the code. Measure each retriever alone, then the hybrid, then the hybrid plus a reranker, reporting recall@k, MRR, and nDCG with k and the query count. Pick the reranker (hosted, open, or LLM) by measured gain per unit of latency and cost on your data, and remember that a cheap open cross-encoder is a legitimate baseline for any paid option. Log what was retrieved for every production answer, and triage failures with the flowchart above. Then add every new failure to the labeled set, so the system can only get better at the things it once got wrong.
+</Listen>

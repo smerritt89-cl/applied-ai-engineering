@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.581
+Backoff with jitter, and why the jitter matters.
+
+2
+00:00:02.861 --> 00:00:10.093
+The standard retry schedule is exponential backoff: wait a base delay, then double it on each attempt, up to a cap.
+
+3
+00:00:10.373 --> 00:00:12.485
+If attempt 0 waits up to 0.
+
+4
+00:00:12.765 --> 00:00:15.432
+5 seconds, attempt 3 waits up to 4.
+
+5
+00:00:15.712 --> 00:00:18.827
+The doubling gives an overloaded service room to recover.
+
+6
+00:00:19.107 --> 00:00:32.568
+Backoff alone has a flaw that Marc Brooker described on the AWS Architecture Blog: if many clients fail at the same moment, they all retry on the same schedule and arrive together again, in synchronized waves.
+
+7
+00:00:32.848 --> 00:00:35.493
+Adding randomness, called jitter, spreads them out.
+
+8
+00:00:35.773 --> 00:00:47.763
+His “full jitter” variant picks the delay uniformly between zero and the exponential value, and his simulations showed it reduced both total work and completion time compared with no jitter.
+
+9
+00:00:48.043 --> 00:00:56.363
+In symbols: delay for attempt n is a uniform random number in the interval from 0 to min(cap, base times 2 to the n).
+
+10
+00:00:56.643 --> 00:00:59.800
+If the server sent retry-after, wait at least that long.

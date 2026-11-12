@@ -1,0 +1,351 @@
+---
+id: s3-w4-l12
+studio: s3
+week: 4
+order: 12
+title: "Putting it together: an eval harness for your RAG system"
+summary: A design walkthrough for the Studio 3 project. The dataset, the graders, judge calibration, the statistics, a CI gate, an experiment log, and how to present eval results to people who don't read confidence intervals for fun.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Specify an eval dataset for a RAG system, with its sources, labels, splits, and versioning
+  - Choose a grader for each quality property and say how each one will be checked
+  - Correct an LLM judge's observed pass rate using its measured TPR and TNR
+  - Write a CI gate rule that uses paired comparisons and a tolerance, and decide what runs on every change versus nightly
+  - Keep an experiment log that makes every result reproducible, and guard against overfitting to the eval set
+  - Present eval results to a non-engineering stakeholder as a decision, with uncertainty in plain language
+sources:
+  - { id: eugeneyan-eval-process, use: summarized, where: "Eval-driven development" }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Starting with 20 to 50 tasks; capability vs regression evals; eval-driven development" }
+  - { id: hamel-evals-faq, use: summarized, where: "CI datasets, run frequency, judge correction" }
+  - { id: rogan-gladen-1978, use: summarized }
+  - { id: miller-2024-error-bars, use: summarized }
+  - { id: es-2023-ragas, use: linked }
+  - { id: github-actions-docs, use: summarized, where: "Workflows, secrets, artifacts" }
+  - { id: claude-eval-criteria-docs, use: linked }
+  - { id: yt-lenny-evals-hamel-shreya, use: embedded, where: "1:00:51 to 1:07:41" }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapters 3 and 4, evaluation methodology" }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: A judge passes 90% of answers. Against expert labels, its TPR (passes that experts also pass) is 1.0 and its TNR (fails that experts also fail) is 0.5. What does this print?
+    code: |
+      def corrected(observed, tpr, tnr):
+          return (observed + tnr - 1) / (tpr + tnr - 1)
+      print(round(corrected(0.90, 1.0, 0.5), 2))
+    options:
+      - id: a
+        text: "`0.9`"
+        rationale: That's the raw judge rate, which counts the judge's missed failures as passes.
+      - id: b
+        text: "`0.8`"
+        correct: true
+        rationale: (0.90 + 0.5 - 1) / (1.0 + 0.5 - 1) = 0.4 / 0.5 = 0.8.
+      - id: c
+        text: "`0.45`"
+        rationale: That multiplies the observed rate by TNR, which isn't the correction.
+    explanation: >-
+      A lenient judge (low TNR) lets failures through, so its observed pass rate is too high. Solving
+      observed = TPR times true + (1 minus TNR) times (1 minus true) for the true rate gives the Rogan and Gladen
+      estimator. Here the true pass rate is about 0.80, not 0.90. The correction is only as good as your TPR and TNR
+      estimates, which come from a labeled sample, so they carry uncertainty too.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      After 15 rounds of prompt tweaks, your faithfulness on the 120-question dev set rose from 0.82 to 0.93. On the
+      40-question held-out set you haven't looked at since round 1, it went from 0.81 to 0.84. What do you conclude?
+    options:
+      - id: a
+        text: The prompt improved faithfulness by 11 points; ship it and report 0.93.
+        rationale: The dev set has been used to choose among many variants, so its score is optimistic.
+      - id: b
+        text: Much of the dev gain is overfitting to the dev set. Report the held-out estimate with its interval, and check whether the held-out gain is distinguishable from zero.
+        correct: true
+        rationale: The held-out set is the honest estimate. With 40 questions, a 3-point gain may well be noise.
+      - id: c
+        text: The held-out set is too small, so ignore it.
+        rationale: Small means wide intervals, which you should report, not a reason to prefer the contaminated number.
+    explanation: >-
+      Every time you pick a variant because it scored higher on a set, that set's score becomes a biased estimate of
+      the chosen variant. Keep a held-out set, look at it rarely, report it as the headline, and refresh both sets with
+      new production failures.
+  - id: kc3
+    type: mcq
+    prompt: Your VP asks "is the new version better?" Which answer is best?
+    options:
+      - id: a
+        text: "\"Faithfulness rose from 0.84 to 0.88, p = 0.03, recall@5 is flat.\""
+        rationale: Accurate, but it makes the VP translate metrics into a decision.
+      - id: b
+        text: "\"Yes: answers stick to the handbook more often, about 88 in 100 versus 84, and the gain holds up on fresh questions. Cost per answer is unchanged. It still misses when the right page isn't found, which is next month's work. I recommend shipping.\""
+        correct: true
+        rationale: Decision first, plain-language metric, uncertainty acknowledged, cost, known limits, and a recommendation.
+      - id: c
+        text: "\"The eval suite is green.\""
+        rationale: Says nothing about how much better, how sure you are, or what is still broken.
+    explanation: >-
+      Stakeholders need the decision, what changes for users, how confident you are, what it costs, and what remains
+      broken. Keep the metric names for the appendix and translate them in the headline.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## What you are building, and why it comes first
+
+An **eval harness** is the code that runs your system over a fixed set of inputs, grades every output, aggregates the grades with honest uncertainty, and records the result so you can compare it with the last run. Once it exists, every change you consider (a new chunker, a reranker, a prompt edit, a cheaper model) becomes an experiment with a number attached, rather than an argument.
+
+Eugene Yan calls the habit **eval-driven development**: like test-driven development, you define what success looks like before you build, measure a baseline, and check every change against it. Anthropic's agent-evals guide recommends the same and adds a practical starting point: 20 to 50 tasks drawn from real failures is enough to begin, because early improvements tend to be large enough to see with a small set. You grow the set as you learn what fails.
+
+The Studio 3 project asks you to build this harness for your Studio 2 RAG system and use it to make at least two measured improvements. This lesson sets up the design without solving it for you: the dataset, the graders, judge calibration, the statistics, the CI gate, the experiment log, and the write-up for a stakeholder. Every part reuses something from weeks 1 to 3 or from the lab.
+</Listen>
+
+<Mermaid
+  alt="Harness architecture. A versioned dataset (questions, relevant chunk labels, reference answers, should-abstain flags) split into dev and held-out sets feeds a runner that calls the RAG system under a named configuration. Outputs go to graders: code graders for retrieval metrics, citation checks, and abstention; calibrated LLM judges for faithfulness and correctness. Scores go to a statistics step (means, paired bootstrap intervals, judge correction). Results go to an experiment log and a report. A CI gate reads the comparison against the baseline and passes or blocks the change. Human review of sampled outputs feeds new cases back into the dataset and new labels into judge calibration."
+  caption="One reasonable harness. The dashed arrows are the human loop from lesson 10."
+  chart={`flowchart TD
+  D[("Dataset v3: dev + held-out")] --> R["Runner: RAG system under config X"]
+  R --> O["Outputs + traces + cost"]
+  O --> CG["Code graders: recall@k, MRR, citations, abstention"]
+  O --> JG["LLM judges: faithfulness, correctness (calibrated)"]
+  CG --> S["Statistics: means, paired bootstrap CI, judge correction"]
+  JG --> S
+  S --> L[("Experiment log")]
+  S --> RP["Report for stakeholders"]
+  S --> G{"CI gate vs baseline"}
+  O -.-> HR["Human review of a sample"]
+  HR -.-> D
+  HR -.-> JG`}
+/>
+
+<Listen>
+## The dataset
+
+Start with what you have. Your Studio 2 project produced a corpus, a question-answering system, and probably a handful of test questions. Grow that into a set with four kinds of cases, and tag each case with its kind and source so you can report by slice.
+
+**Real questions**, from users, logs, or colleagues who would actually use the system. **Synthetic questions** generated from documents (lesson 11), checked by hand, especially for questions that need two chunks. **Regression cases**: every failure you found in error analysis and review, with the rule it broke. **Should-abstain cases**: questions the corpus can't answer, where the right behavior is to say so. Without these, a system that always answers looks better than one that knows its limits.
+
+Each case needs labels. At minimum: the relevant chunks (for retrieval metrics), and either a reference answer or a list of facts a correct answer must contain (for correctness). Add a should-abstain flag, and notes from whoever labeled it. Labels are the expensive part, so spend them where they matter: a domain expert on reference answers, synthetic generation plus spot checks for retrieval labels.
+
+Split the set. A **dev set** you iterate against freely, and a **held-out set** you run rarely (say, once per candidate you are seriously considering) and never tune against. Version both, as files in the repository with a version number in the log, because a number without its dataset version can't be compared to anything. When chunking changes, regenerate retrieval labels with a script, not by hand, and record that as a new dataset version.
+
+How big? Large enough that the differences you care about show up outside the noise. That is a statistics question, covered below.
+</Listen>
+
+<Listen>
+## The graders, and how each one is checked
+
+Assign one grader per quality property, and prefer the cheapest grader that is trustworthy for it. Week 2's rule of thumb holds: code where the answer is exact, a calibrated judge where judgment is needed, humans to calibrate the judge.
+
+**Retrieval** (recall@k, precision@k, MRR): code, against the relevant-chunk labels. Check it with unit tests on hand-computed cases, as in the lab. **Citations**: code checks that every cited id exists and was among the retrieved chunks; a judge (or the faithfulness judge) checks that the cited passage supports the sentence. **Abstention**: code, comparing the system's abstain flag (or a detected refusal phrase) with the should-abstain label, reported as two numbers: abstained when it should (good) and abstained when it shouldn't (lost answers). **Faithfulness**: an LLM judge per claim, as in the lab. **Correctness**: an LLM judge comparing the answer with the reference answer or required facts, with a binary verdict and a reason.
+
+Each judge gets the treatment from week 2. Write the rubric in plain terms with examples. Label 50 to 100 or more examples with your domain expert, split them so you tune the judge prompt on some and measure on the rest, and report TPR and TNR on the measuring split. Pin the judge's model id, prompt version, and settings in the log. A judge from a different model family than the system it grades reduces the risk of self-preference, which week 2 discussed. And rerun the calibration whenever the judge model, its prompt, or the kind of questions change, because that is how **judge drift** gets caught.
+
+When you report a judge-based rate, correct it. A judge with TPR and TNR below 1 produces a biased observed rate. The Rogan and Gladen estimator from epidemiology, which lesson 6 used and Husain and Shankar's FAQ recommends for judges, solves for the true rate: observed plus TNR minus 1, divided by TPR plus TNR minus 1. Report the raw rate, the corrected rate, and the TPR and TNR you used.
+</Listen>
+
+<Predict
+  title="When the correction misbehaves"
+  code={`def corrected(observed, tpr, tnr):
+    return (observed + tnr - 1) / (tpr + tnr - 1)
+
+print(round(corrected(0.70, 0.55, 0.50), 2))`}
+  options={["0.70", "4.0", "0.39", "Division by zero"]}
+  answer={1}
+>
+(0.70 + 0.50 - 1) / (0.55 + 0.50 - 1) = 0.20 / 0.05 = 4.0, an impossible "rate" above 1. When TPR + TNR is close to 1, the judge is barely better than a coin flip and the denominator is tiny, so the correction amplifies noise into nonsense. Clip to the interval from 0 to 1 if you must, but the real message is: this judge isn't usable. Improve it before you report anything it graded.
+</Predict>
+
+<Listen>
+## The statistics
+
+Week 3 gave you the tools; here is how they fit the harness.
+
+**Compare systems on the same questions, paired.** When you test a change, run the baseline and the candidate on the same cases and analyze the per-question differences. Evan Miller's "Adding Error Bars to Evals" (2024) makes the case for paired analysis: questions vary enormously in difficulty, and pairing removes that variation from the comparison, which shrinks the interval a lot. In code: for each question, candidate score minus baseline score, then a bootstrap interval on the mean difference by resampling questions.
+
+**Report intervals, always.** A mean without an interval invites people to read noise as signal. Miller also recommends clustered standard errors when questions come in groups (several questions about the same document), because grouped questions are not independent; resample whole groups in your bootstrap if your set has that structure.
+
+**Size the set for the effect you care about.** Before you run an experiment, ask what difference would change your decision. If a 2-point gain in faithfulness wouldn't change anything, you don't need the sample size to detect one. If you need to detect 5 points and your interval half-width at n = 100 is 6 points, either add cases or accept that this eval can only detect large changes. Say which in your write-up.
+
+**Handle non-determinism.** If outputs vary between runs, one run per question adds noise. Either run each question a few times and average per question, or at least rerun the baseline to see how much it moves on its own. A "gain" smaller than the baseline's run-to-run movement is not a gain.
+
+**Decide your stopping rule in advance.** Running the eval repeatedly and stopping when the number looks good is a way to manufacture a result. Fix the dataset version and the comparison before you look.
+</Listen>
+
+<Listen>
+## The CI gate
+
+A gate turns the harness into a guardrail: a change that makes quality measurably worse doesn't merge. Design it in two tiers, because judges cost money and time.
+
+**On every pull request: the fast suite.** Deterministic graders only, on a small set: retrieval metrics on the dev set (no generation needed if you cache or rerun only retrieval), citation-format checks, and the regression cases with exact checks. The evals FAQ recommends deterministic assertions for CI for exactly this reason, and feeding each new production failure into the CI dataset. Regression cases should pass at or near 100%. Anthropic's guide makes the same split: capability evals start low and give you something to climb, regression evals stay near 100% and guard against backsliding.
+
+**Nightly, or when prompts, models, or the judge change: the full suite.** Generation plus judges on the dev set, with the paired comparison against the stored baseline. The held-out set runs only when you are deciding whether to ship a candidate.
+
+**The rule.** Write it down before you need it. Lesson 8's non-inferiority gate is the baseline: must-pass cases first, then fail if the lower confidence bound on the paired difference falls below minus a margin chosen in advance. On a small RAG set that bound is often wide, so a three-way version can work better for a team: block if any regression case fails, or if the whole paired 95% interval is below zero (a clear regression); send the change to human review, rather than blocking it, if the interval includes a drop larger than your tolerance (say 2 points) but isn't clearly negative; pass otherwise. Blocking on noise trains people to ignore the gate, and so does never blocking. Lesson 8's advice on replaying cached responses for pull-request runs applies here too, since it makes the fast suite deterministic and nearly free.
+
+On GitHub, this is a workflow file in `.github/workflows/` that runs on pull requests, installs dependencies, reads the API key from a repository secret (never from the code), runs the suite, uploads the report as an artifact, and exits non-zero when the rule says block. Put a spending cap in the harness itself (a maximum number of model calls per run), so a bug in a loop can't run up a bill.
+</Listen>
+
+```yaml
+# .github/workflows/evals.yml  (sketch: adapt paths and commands to your repo)
+name: evals
+on:
+  pull_request:
+jobs:
+  fast-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m harness run --suite fast --dataset data/v3 --compare-to baseline.json --out report.md
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # only needed if the fast suite calls a model
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: report.md
+```
+
+<PyRunner
+  client:visible
+  id="s3-w4-ci-gate"
+  title="Write the gate rule"
+  starter={`import random
+
+def paired_diff_ci(baseline, candidate, n_resamples=2000, seed=0):
+    """baseline and candidate: dicts question_id -> score, over the SAME questions.
+    Return (mean_diff, lo, hi): the mean of candidate minus baseline per question, and a 95%
+    percentile bootstrap interval from resampling question ids (sorted, with random.Random(seed)).
+    Raise ValueError if the question ids differ."""
+    # TODO
+    return 0.0, 0.0, 0.0
+
+def gate(baseline, candidate, regression_results, tolerance=0.02, seed=0):
+    """Return ("block" | "review" | "pass", reasons).
+      block:  any regression case failed (reason "regression failed: <id>", one per failure, sorted by id)
+              or hi < 0 (reason "clear drop")
+      review: otherwise, if lo < -tolerance (reason "possible drop beyond tolerance")
+      pass:   otherwise (reasons empty)"""
+    # TODO
+    return "pass", []
+
+base = {f"q{i}": 1.0 if i % 4 else 0.0 for i in range(40)}
+cand = dict(base, q1=0.0, q2=0.0, q4=1.0)
+print(paired_diff_ci(base, cand))
+print(gate(base, cand, {"reg-1": True, "reg-2": True}))
+`}
+  tests={`base = {f"q{i}": 1.0 if i % 4 else 0.0 for i in range(40)}
+m, lo, hi = paired_diff_ci(base, dict(base))
+assert m == 0 and lo == 0 and hi == 0, "identical systems: zero difference, zero width"
+better = dict(base, **{f"q{i}": 1.0 for i in range(0, 40, 4)})
+m, lo, hi = paired_diff_ci(base, better)
+assert abs(m - 0.25) < 1e-9 and lo > 0, "candidate fixed 10 of 40 questions"
+assert paired_diff_ci(base, better, seed=3) == paired_diff_ci(base, better, seed=3), "reproducible"
+try:
+    paired_diff_ci({"a": 1.0}, {"b": 1.0})
+    raise AssertionError("different question ids must raise ValueError")
+except ValueError:
+    pass
+worse = dict(base, **{f"q{i}": 0.0 for i in range(1, 40, 4)} , **{f"q{i}": 0.0 for i in range(2, 40, 4)})
+assert gate(base, worse, {"r": True}) == ("block", ["clear drop"])
+assert gate(base, better, {"r2": False, "r1": False}) == ("block", ["regression failed: r1", "regression failed: r2"]), "regressions block even when the metric improves"
+noisy = dict(base, q1=0.0, q2=0.0, q4=1.0)
+decision, reasons = gate(base, noisy, {"r": True})
+assert decision == "review" and reasons == ["possible drop beyond tolerance"], "small, uncertain drop: a human decides"
+assert gate(base, better, {"r": True}) == ("pass", [])`}
+  solution={`def paired_diff_ci(baseline, candidate, n_resamples=2000, seed=0):
+    if set(baseline) != set(candidate):
+        raise ValueError("compare on the same questions")
+    ids = sorted(baseline)
+    diffs = [candidate[q] - baseline[q] for q in ids]
+    mean = sum(diffs) / len(diffs)
+    rng = random.Random(seed)
+    means = sorted(sum(rng.choices(diffs, k=len(diffs))) / len(diffs) for _ in range(n_resamples))
+    lo = means[int(0.025 * (n_resamples - 1))]
+    hi = means[int(0.975 * (n_resamples - 1))]
+    return mean, lo, hi
+
+def gate(baseline, candidate, regression_results, tolerance=0.02, seed=0):
+    failed = sorted(r for r, ok in regression_results.items() if not ok)
+    mean, lo, hi = paired_diff_ci(baseline, candidate, seed=seed)
+    reasons = [f"regression failed: {r}" for r in failed]
+    if hi < 0:
+        reasons.append("clear drop")
+    if reasons:
+        return "block", reasons
+    if lo < -tolerance:
+        return "review", ["possible drop beyond tolerance"]
+    return "pass", []`}
+>
+Implement the paired bootstrap and the three-way gate from the reading (a variation on lesson 8's non-inferiority gate, with bootstrap intervals instead of a normal approximation). The `noisy` candidate in the tests breaks two questions and fixes one: the mean drops slightly, the interval straddles zero, and its lower end is below the tolerance. That is a "review" (a person looks at the changed answers), not a hard block. Regression failures block regardless of the metric.
+</PyRunner>
+
+<Listen>
+## The experiment log
+
+Every run of the harness writes one row to an experiment log, and the log is what makes your results reproducible and your write-up honest. A row holds: a run id and timestamp; the git commit; the dataset name and version, and which split; the system configuration (chunker and its parameters, embedding model, retriever, k, reranker, generator model id, effort setting, prompt version); the judge model id and prompt version, with the TPR and TNR used for correction; every metric with its interval and n; total cost and median latency; and a one-line **hypothesis** written before the run ("a reranker will raise recall@5 without hurting latency much"), plus the outcome.
+
+A JSONL file in the repository is enough, with a short script that prints the last few runs as a table. A spreadsheet works too, as long as rows are written by the harness, not typed by hand.
+
+The log also protects you from the most common way eval-driven development goes wrong: **overfitting to the eval set**. If you try twenty variants and keep the best dev-set score, the winning score is biased upward, because some of its margin is luck on those particular questions. Defenses: the held-out set, run rarely; a log that shows how many variants you tried (so the write-up can say so); refreshing the dev set with new production failures so it keeps resembling reality; and reading a sample of the changed outputs for every claimed improvement, to confirm the gain is real behavior and not a judge quirk.
+</Listen>
+
+<Callout type="pitfall" title="Overfitting to the eval set, and judge drift">
+Two failures make an eval report confidently wrong. **Overfitting**: many rounds of tuning against the same dev questions until the score reflects those questions rather than the system; the held-out score stops moving while the dev score climbs. **Judge drift**: the judge changes (a new model version, an edited rubric, a new mix of questions) and scores shift with no change to the system. Guard against both by logging the judge version with every result, rerunning calibration on fresh labels, rescoring the baseline whenever the judge changes, and keeping a held-out set you rarely touch.
+</Callout>
+
+<DragOrder
+  client:visible
+  prompt="Order one improvement cycle in eval-driven development"
+  items={[
+    "Read failures from the last run and pick the most common category",
+    "Write a hypothesis and the change you expect it to improve",
+    "Run baseline and candidate on the dev set with the same dataset version",
+    "Compute the paired difference with a confidence interval and log the run",
+    "Read a sample of the answers that changed, to confirm the gain is real",
+    "If it holds, confirm on the held-out set before adopting it as the new baseline",
+  ]}
+  explanation="Failures pick the target, the hypothesis is written before the number exists, the comparison is paired and logged, a human confirms the change in behavior, and the held-out set gives the honest estimate before the baseline moves."
+/>
+
+<Listen>
+## Presenting results to people who don't read confidence intervals
+
+You will present eval results to people who make decisions without reading code: a VP, a client, a compliance lead. You already know this audience from PM work. The eval adds three translation problems: metric names mean nothing to them, uncertainty is easy to drop, and averages hide the failures they care about.
+
+**Lead with the decision.** "I recommend shipping the reranker" or "not ready: it invents policy details too often." Then the evidence.
+
+**Translate metrics into user outcomes, with natural frequencies.** Not "faithfulness 0.88," but "about 88 answers in 100 stick to what the handbook says; in the rest, the assistant adds something the handbook doesn't say." Not "recall@5 of 0.81," but "for about 1 question in 5, the system doesn't find the right page, and then it either says it doesn't know or guesses."
+
+**Say how sure you are, in words, with the range.** "Somewhere between 82 and 93 in 100, based on 120 test questions." If the interval includes "no change," say "we can't tell yet" rather than reporting a gain.
+
+**Show two examples.** One answer that is now right and was wrong, one failure that remains. Examples are what people remember, and the remaining failure sets expectations honestly.
+
+**Cover cost and risk.** Cost per answer and per month, latency, and what the eval does not cover (questions about topics not in the set, adversarial users, the abstention rate on real traffic).
+
+**End with what would change your recommendation**, and when you will report again. This turns a one-time number into an operating rhythm, which is what leaders actually want from an eval program.
+
+Put metric definitions, intervals, judge calibration, and the experiment log in an appendix for the technical reviewers. The lab's report structure (bottom line first, details after, caveats last) is a template for exactly this.
+</Listen>
+
+<Video id="BsWxPI9UM4c" title="Why AI evals are the hottest new skill for product builders | Hamel Husain & Shreya Shankar" channel="Lenny's Podcast" minutes={7} start={3651} source="https://www.youtube.com/watch?v=BsWxPI9UM4c">
+Watch from 1:00:51 to about 1:07:40: the chapters "Why evals are the new PRDs for AI products" and "How many evals you actually need." Listen for how they connect eval criteria to product requirements, which is the bridge between your PM experience and this studio.
+</Video>
+
+<Callout type="claim" title='"Evals are the new PRDs" (Husain and Shankar, September 2025)'>
+The idea is that for AI products, the evaluation criteria (what counts as a good or bad output, with examples) do the job a product requirements document used to: they define the product's behavior precisely enough to build and check against. **For:** an eval set is executable and unambiguous where prose requirements are not, and Anthropic's agent-evals guide independently recommends defining planned capabilities as evals before the system can meet them. **Against:** evals capture what you thought to test; product strategy, user research, and non-functional requirements still need a home, and criteria drift (lesson 10) means the "spec" keeps moving. **Take:** treat the eval set as the most precise part of the requirements, not all of it.
+</Callout>
+
+<GoDeeper title="More on error bars for evals">
+Miller's paper is short and practical. Beyond paired differences and clustered errors, it discusses reducing variance by sampling several answers per question, and running a power analysis before an experiment to choose the number of questions. Chip Huyen's *AI Engineering* (chapters 3 and 4) covers evaluation methodology and building an evaluation pipeline, and Anthropic's "Define success criteria and build evaluations" page walks through writing criteria and test cases for a Claude application.
+</GoDeeper>
+
+<Listen>
+## Your turn
+
+The [Studio 3 project](../../projects/s3-project/) asks you to build this harness around your Studio 2 system and use it to make at least two improvements you can defend with intervals. Build in this order: the dataset and labels first, then the code graders, then one calibrated judge, then the comparison and log, then the gate, then the improvements. The order matters, because an improvement measured by an unchecked judge on an unversioned dataset isn't evidence of anything. Finish with the stakeholder write-up, and ask someone outside engineering to read the first paragraph.
+</Listen>

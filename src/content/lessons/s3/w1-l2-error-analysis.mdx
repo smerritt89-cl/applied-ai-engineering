@@ -1,0 +1,282 @@
+---
+id: s3-w1-l2
+studio: s3
+week: 1
+order: 2
+title: "Error analysis: look at your data"
+summary: Reading traces, open coding, axial coding into a failure taxonomy, counting failure modes to decide what to fix, and who should be doing the judging.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Sample and read traces efficiently, judging each as pass or fail and noting the first thing that went wrong
+  - Turn open-ended notes (open coding) into a small failure taxonomy with definitions (axial coding)
+  - Count failure modes per trace and rank them by frequency and by a stated severity weighting
+  - Explain criteria drift and why criteria must come from reading outputs, not only from a spec written in advance
+  - Decide who should annotate (one domain expert as the "benevolent dictator") and where an LLM can help and where it can't
+sources:
+  - { id: hamel-evals-faq, use: summarized, where: "Why is error analysis so important, and how is it performed?; How many people should annotate?; How many examples do I need?; Why binary evaluations?" }
+  - { id: hamel-field-guide, use: summarized, where: "Error analysis; bottom-up taxonomies; data viewers" }
+  - { id: hamel-evals, use: summarized, where: "Looking at data; removing friction from data review" }
+  - { id: shankar-2024-validators, use: summarized }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Read transcripts" }
+  - { id: yt-lenny-evals-hamel-shreya, use: embedded, where: "Chapters from the trace demo (about 09:56) through axial coding (about 44:39)" }
+  - { id: yt-ng-error-analysis, use: embedded }
+  - { id: hamel-llm-judge, use: linked, where: "Forward pointer to week 2" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your legal-intake assistant produces about 2,000 conversations a week. A vendor offers to have contractors label
+      them against a ten-category rubric you'd write today. The in-house paralegal lead could review 100 conversations
+      herself this week. What is the better first step?
+    options:
+      - id: a
+        text: Use the vendor. More labels means more statistical power.
+        rationale: Volume helps later. Right now you don't know what the categories should be, and a rubric written before reading will miss the failures that matter.
+      - id: b
+        text: Have the paralegal lead read a diverse sample of about 100 conversations, write open notes, and build the first taxonomy herself.
+        correct: true
+        rationale: Yes. A domain expert doing open and axial coding on a sample finds the real failure modes. Outsourcing can come later for well-defined, mechanical labels.
+      - id: c
+        text: Ask an LLM to label all 2,000 against generic categories like hallucination and toxicity.
+        rationale: Generic, top-down categories miss domain-specific failures, and an unvalidated LLM labeler is another output you'd need to check.
+    explanation: >-
+      Husain and Shankar's evals FAQ says outsourcing core error analysis is usually a big mistake, because the value
+      is in an expert discovering what failure means for this product. Scale (contractors, LLM judges) comes after the
+      taxonomy exists and you can check the labelers against the expert.
+  - id: kc2
+    type: mcq
+    prompt: You have open-coded 60 traces. The last 20 produced no new kinds of failure and didn't change any definitions. What does that suggest?
+    options:
+      - id: a
+        text: You've probably reached theoretical saturation for now, so it's reasonable to move on to counting and building evals.
+        correct: true
+        rationale: Yes. Saturation means new traces stop revealing new failure modes. Keep sampling fresh traces in later cycles.
+      - id: b
+        text: Your annotators are tired; discard the last 20.
+        rationale: Fatigue is real, but no new codes is the stopping signal you're looking for, not evidence of bad labels.
+      - id: c
+        text: The system has no remaining failure modes.
+        rationale: It means this sample has stopped surprising you. Rare failures may need more or different traces to surface.
+    explanation: >-
+      Saturation is a stopping rule for the discovery phase, borrowed from qualitative research. It is about your
+      categories, not about the system being fixed. New features, new users, and new models bring new failures, which
+      is why error analysis repeats on fresh traces.
+  - id: kc3
+    type: code-reading
+    prompt: This function is meant to count how many failing traces show each mode. Which bug does it have?
+    code: |
+      from collections import Counter
+
+      def mode_counts(annotated):
+          counts = Counter()
+          for t in annotated:
+              counts.update(t["modes"])
+          return counts
+    options:
+      - id: a
+        text: A trace that lists the same mode twice is counted twice, and modes on passing traces are counted too.
+        correct: true
+        rationale: Yes. It counts labels, not traces, and doesn't check the outcome. Use `set(t["modes"])` and skip passes (or reject passes that have modes).
+      - id: b
+        text: Counter can't be updated with a list.
+        rationale: "`Counter.update` accepts any iterable and counts each element."
+      - id: c
+        text: It returns proportions instead of counts.
+        rationale: It returns raw counts. Dividing by the number of traces is a separate step.
+    explanation: >-
+      "How many traces show this failure" and "how many times was this label typed" diverge as soon as annotators
+      repeat a code or multi-label a trace. Report traces per mode, and decide on purpose what to do with
+      inconsistent rows (a pass with failure modes is usually a labeling mistake worth surfacing).
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The highest-value hour in the project
+
+Most teams, asked to "add evals," start by choosing metrics or a tool. Husain and Shankar's evals FAQ argues for the opposite order, calling error analysis "the most important activity in evals": before you decide what to measure, read what your system actually does and find out how it fails.
+
+The reason is that you can't measure what you haven't named. A support bot's real problems are rarely "hallucination" in the abstract. They are things like "tells customers about integrations we don't have" or "tries to fix account lockouts instead of handing off." Those are product-specific, and you only find them by reading. Husain's field guide gives a striking example: in one client's assistant, error analysis showed that three issues accounted for over 60 percent of all problems, which told the team where to spend its time.
+
+The unit you read is a **trace**: the complete record of one interaction. For a chat assistant that is the user message, what was retrieved, any tool calls and their results, and the reply. For an agent it is every step. Anthropic's evals post makes the same point from the other direction: read many transcripts, because a score alone can't tell you whether a failure is the system's fault or the grader's.
+
+This lesson walks through the method: sample traces, write open notes, group them into a taxonomy, count, and decide. Then the lab has you do it on 36 traces from a fictional support bot.
+</Listen>
+
+<Video id="BsWxPI9UM4c" title="Why AI evals are the hottest new skill for product builders | Hamel Husain & Shreya Shankar" channel="Lenny's Podcast" minutes={35} start={596} source="https://www.lennysnewsletter.com/p/why-ai-evals-are-the-hottest-new-skill">
+Watch from the trace demo (about 09:56) through "The results" (about 44:39). Husain and Shankar review real traces from a property management assistant, write notes, explain why they think a person (not an LLM) should do the first pass, introduce the "benevolent dictator" and theoretical saturation, and then group their notes with axial coding. Chapter times come from the episode page and may be slightly off on YouTube. Notice how mundane the notes are: that is the point.
+</Video>
+
+<Listen>
+## Step 1: get traces in front of a person
+
+Start by sampling. The FAQ suggests beginning with roughly 100 diverse traces and annotating at least the first 30 yourself. "Diverse" matters more than random: make sure the sample covers your main features, user types, and channels, and include traces users complained about. If you only sample the happy path, you'll learn about the happy path.
+
+Next, remove friction. Husain's field guide calls a simple custom data viewer one of the most valuable investments a team can make: everything about one trace on one screen, a quick pass or fail, a free-text note, and hotkeys to move on. It also says a spreadsheet beats nothing, and for a first pass of a hundred traces a spreadsheet is fine. The lab gives you a CSV template for exactly this.
+
+Then judge each trace with a **binary** label, pass or fail. The FAQ recommends binary judgments over 1 to 5 scales because they force a decision, make labels more consistent between sessions and people, and avoid the drift toward the middle that rating scales invite. If you want to track gradual progress, use several specific binary checks rather than one scale.
+</Listen>
+
+<Listen>
+## Step 2: open coding
+
+For every failing trace, write a short note about what went wrong. This is **open coding**, a term the FAQ borrows from qualitative research, where it compares the activity to journaling. The rules are few and they matter:
+
+- **Don't start with categories.** Write what you see in plain words: "Says QuickBooks Desktop sync exists; it doesn't." Husain's field guide contrasts this bottom-up approach with top-down lists like "hallucination, toxicity, verbosity," which tend to miss the failures specific to your product.
+- **Note the first thing that went wrong.** In a multi-step trace, one early mistake (bad retrieval, a misread question) causes the visible ones downstream. Fixing the first error often fixes the rest.
+- **Be specific enough to act on.** "Bad answer" is useless. "Answered about multi-currency when asked about per-line tax" points at a fix.
+- **Note good behavior that surprised you.** A bot that correctly says "I can't find that, let me connect you with the team" is worth protecting with a regression test.
+
+This is slow at first and gets fast. It is also where a domain expert earns their keep, because "is this answer correct?" often needs product knowledge an engineer doesn't have.
+</Listen>
+
+<Listen>
+## Step 3: axial coding into a failure taxonomy
+
+When you have notes on enough failures, read them all and group similar ones. This is **axial coding**: finding the categories that connect your open codes. The output is a **failure taxonomy**, a short list of failure modes, each with a one-line definition precise enough that two people would usually agree on whether a trace shows it. The FAQ calls this grouping step the most important part, and the next step is to count failures in each category.
+
+A good taxonomy for one product usually has five to ten modes. Too few, and a category like "wrong answer" hides two different problems with two different fixes. Too many, and you're back to individual notes. Write the definitions down, because they become the spec for the graders you'll build next week.
+
+An LLM can help here, after you've done the first pass yourself. The FAQ suggests annotating at least 30 traces by hand before letting a model cluster notes or suggest matches, and then accepting or rejecting its suggestions. In the video they explain why the first pass should be a person: the model doesn't know your product's rules, and the act of reading is how *you* learn what failure means. Model choice matters little for this clustering step; any strong general model with enough context to hold your notes will do, and you are the check on its groupings.
+
+Keep going until new traces stop producing new codes or changing your definitions. The FAQ calls this **theoretical saturation**, and treats it as the signal to stop the discovery phase for this cycle (it suggests reviewing at least 100 traces and continuing past that while you're still learning).
+</Listen>
+
+<Mermaid
+  alt="Pipeline from raw traces to a ranked list: sample about 100 diverse traces; a domain expert labels each pass or fail and writes an open note for failures; notes are grouped into a failure taxonomy with definitions (axial coding), optionally with an LLM suggesting clusters that the expert accepts or rejects; if new traces still produce new codes, sample more; once saturated, count failing traces per mode and rank by frequency and severity, which feeds fixes and test cases."
+  caption="Error analysis, end to end. The loop back to sampling ends at saturation."
+  chart={`flowchart TD
+  S["Sample ~100 diverse traces"] --> J["Expert labels pass or fail, writes open notes"]
+  J --> A["Group notes into a taxonomy with definitions (axial coding)"]
+  L["LLM suggests clusters"] -.-> A
+  A --> Q{"New traces still adding codes?"}
+  Q -- "yes" --> S
+  Q -- "no: saturated" --> C["Count failing traces per mode"]
+  C --> R["Rank by frequency and severity"]
+  R --> F["Fix, and turn top modes into test cases"]`}
+/>
+
+<Listen>
+## Your criteria will move, and that's expected
+
+Shreya Shankar and colleagues studied people building LLM evaluators in "Who Validates the Validators?" (2024). Their tool, EvalGen, proposes candidate graders (code or LLM prompts) and asks the user to grade a sample of outputs, then picks the graders that best agree with the user's grades. The striking finding was **criteria drift**: people need criteria to grade outputs, but grading outputs changes their criteria. Some criteria only appeared once participants saw particular outputs.
+
+Two practical consequences follow. First, a rubric written entirely before reading outputs will be incomplete, which is one more argument for doing error analysis first. Second, your taxonomy is a living document. Version it, note when a definition changes, and expect to revise it when the product, the users, or the model changes. Re-labeling a few old traces after a definition change keeps your counts comparable.
+</Listen>
+
+<Listen>
+## Step 4: count, then decide what to do
+
+With a taxonomy, counting is mechanical: for each failure mode, how many failing traces show it. Count traces, not labels, so a note that mentions the same mode twice doesn't double-count. Divide by the number of traces reviewed to get a rate, and keep the denominator visible; "9 of 36" is more honest than "25 percent" on a sample this small.
+
+Frequency alone isn't priority. An invented refund policy hurts more than an over-polite reply, even if the polite reply is more common. A simple, transparent way to rank is to give each mode a severity (say 1 for cosmetic, 3 for harmful or costly) and sort by rate times severity. The weights are a judgment, so write down who set them and why. The FAQ suggests something similar when combining checks: report release-blocking failures separately from tolerable ones, rather than averaging everything together.
+
+Then decide, mode by mode. Some failures have an obvious, cheap fix (a missing rule in the prompt, a retrieval filter) that you can make and verify on the same traces. Others recur after fixes or need judgment to detect; those deserve an automated eval so you can track them over time. Next week you'll build graders for exactly those modes, and Husain's guide to LLM judges explains how to check a judge against the expert's labels.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s3-w1-failure-frequencies"
+  title="From annotated traces to the top issues"
+  starter={`# 15 annotated traces from the Studio 1 action-item extractor.
+ANNOTATED = [
+    {"id": "a01", "outcome": "pass", "modes": []},
+    {"id": "a02", "outcome": "fail", "modes": ["suggestion_as_commitment"]},
+    {"id": "a03", "outcome": "fail", "modes": ["missed_item"]},
+    {"id": "a04", "outcome": "fail", "modes": ["missed_item", "wrong_due_date"]},
+    {"id": "a05", "outcome": "pass", "modes": []},
+    {"id": "a06", "outcome": "fail", "modes": ["paraphrased_evidence"]},
+    {"id": "a07", "outcome": "fail", "modes": ["missed_item"]},
+    {"id": "a08", "outcome": "fail", "modes": ["suggestion_as_commitment", "missed_item"]},
+    {"id": "a09", "outcome": "pass", "modes": []},
+    {"id": "a10", "outcome": "fail", "modes": ["wrong_due_date"]},
+    {"id": "a11", "outcome": "fail", "modes": ["invented_owner"]},
+    {"id": "a12", "outcome": "fail", "modes": ["missed_item", "missed_item"]},
+    {"id": "a13", "outcome": "pass", "modes": []},
+    {"id": "a14", "outcome": "fail", "modes": ["paraphrased_evidence"]},
+    {"id": "a15", "outcome": "fail", "modes": ["suggestion_as_commitment"]},
+]
+
+# 1 = cosmetic, 3 = harmful. A team judgment: write down who set these and why.
+SEVERITY = {"invented_owner": 3, "wrong_due_date": 3, "suggestion_as_commitment": 2,
+            "missed_item": 2, "paraphrased_evidence": 1}
+
+def mode_counts(annotated):
+    """{mode: number of FAILING traces showing it}. Count each trace at most once per mode.
+    Raise ValueError if a passing trace lists any modes (that's a labeling mistake to surface)."""
+    # TODO
+    pass
+
+def top_issues(annotated, severity, k):
+    """The k highest-priority modes as dicts {"mode", "count", "rate", "score"}.
+    rate = count / number of annotated traces; score = count * severity (an integer).
+    Sort by score (high first), then count (high first), then mode name (A to Z)."""
+    # TODO
+    pass
+
+print(mode_counts(ANNOTATED))
+for row in top_issues(ANNOTATED, SEVERITY, 3) or []:
+    print(f"{row['mode']:26s} {row['count']} traces  {row['rate']:.0%}  score {row['score']}")
+`}
+  tests={`c = mode_counts(ANNOTATED)
+assert c is not None, "mode_counts returned None"
+assert dict(c) == {"missed_item": 5, "suggestion_as_commitment": 3, "wrong_due_date": 2,
+                   "paraphrased_evidence": 2, "invented_owner": 1}, "count traces, not labels (a12 lists missed_item twice)"
+try:
+    mode_counts([{"id": "x", "outcome": "pass", "modes": ["missed_item"]}])
+    raise AssertionError("a pass with failure modes should raise ValueError")
+except ValueError:
+    pass
+top = top_issues(ANNOTATED, SEVERITY, 3)
+assert top is not None, "top_issues returned None"
+assert [t["mode"] for t in top] == ["missed_item", "suggestion_as_commitment", "wrong_due_date"], "suggestion_as_commitment and wrong_due_date tie at score 6; the higher count wins"
+assert top[0] == {"mode": "missed_item", "count": 5, "rate": 5 / 15, "score": 10}
+assert len(top_issues(ANNOTATED, SEVERITY, 10)) == 5, "only modes that actually occur"
+assert top_issues([{"id": "y", "outcome": "fail", "modes": ["b"]}, {"id": "z", "outcome": "fail", "modes": ["a"]}], {"a": 1, "b": 1}, 2)[0]["mode"] == "a", "name breaks the last tie"`}
+  solution={`from collections import Counter
+
+def mode_counts(annotated):
+    counts = Counter()
+    for t in annotated:
+        if t["outcome"] == "pass":
+            if t["modes"]:
+                raise ValueError(f"{t['id']}: pass with failure modes")
+            continue
+        counts.update(set(t["modes"]))
+    return counts
+
+def top_issues(annotated, severity, k):
+    n = len(annotated)
+    rows = [{"mode": m, "count": c, "rate": c / n, "score": c * severity[m]}
+            for m, c in mode_counts(annotated).items()]
+    rows.sort(key=lambda r: (-r["score"], -r["count"], r["mode"]))
+    return rows[:k]`}
+>
+Implement `mode_counts` and `top_issues`, then press **Check my answer**. When it passes, change `SEVERITY` so that `invented_owner` is 5 and run again: one trace now jumps up the list. That is the right behavior if a wrong owner really is that costly, and the wrong behavior if someone picked the number on a whim. Severity weights deserve the same scrutiny as the counts.
+</PyRunner>
+
+<Callout type="pitfall" title="Letting the model do the reading for you">
+The tempting shortcut is to paste 500 traces into a long-context model and ask for "the main failure modes." You'll get a tidy, plausible list, and it will lean toward generic categories, because the model doesn't know your refund policy, your escalation list, or what your users actually needed. Worse, you'll skip the step where you learn those things. Do the first 30 to 50 traces yourself. Then use a model to speed up clustering and matching, and check its suggestions against your notes. Its output is one more thing to verify.
+</Callout>
+
+<Listen>
+## Who judges: the benevolent dictator
+
+Error analysis needs a decision-maker for "is this a failure?" The FAQ's recommendation for most small and medium teams is a single domain expert who acts as the **benevolent dictator** of quality: they set the standard, and their labels are the ground truth. The episode covers this at about 25:16. The FAQ's reasoning: one expert avoids endless annotation conflicts, and if you feel you need five experts to judge one interaction, your product's scope may be too broad.
+
+That expert should be whoever best knows what a correct answer looks like for users: often a product manager, a support lead, or a subject-matter specialist, not necessarily an engineer. The FAQ describes engineers and PMs catching different problems (technical versus product failures) and favors a domain expert or PM leading over time. It also calls outsourcing core error analysis to a labeling vendor usually a big mistake, with exceptions for mechanical labels that don't need product context.
+
+When you do have several annotators, measure their agreement before trusting combined labels (the FAQ mentions Cohen's kappa, a chance-corrected agreement statistic), hold alignment sessions on disagreements, and let the expert make the final call. Disagreements are useful: they usually point at a fuzzy definition in your taxonomy.
+
+For model selection, error analysis is also your best comparison tool. When you trial a second model or provider, run the same traces through it and code its failures with the same taxonomy. Two models with the same pass rate can fail in completely different ways, and the ways matter.
+</Listen>
+
+<LabLink path="labs/studio-3/01-error-analysis" title="Lab: error analysis on a support bot" needs={["Nothing for the core lab", "Anthropic API key (optional synthetic-data step)"]} minutes={90}>
+Annotate 36 traces from Tallyhub, a fictional invoicing app's support bot, against its help center: pass or fail, an open note, then failure modes from your own taxonomy. Compare your labels with a reference reviewer's, then build a small toolkit that validates the annotation CSV (unknown trace ids, passes with failure modes, codes missing from the taxonomy), counts failing traces per mode, ranks them by severity-weighted rate, and writes a Markdown report. All of that runs offline. An optional live step generates synthetic test inputs from defined dimensions with Claude, which leads into lesson 3; it costs a few cents at time of writing.
+</LabLink>
+
+<GoDeeper title="Error analysis before LLMs">
+Error analysis is older than LLM evals. In classic supervised learning, Andrew Ng taught the same habit: take around a hundred examples the model got wrong, tag each with the reasons, and count, so you know how much fixing each category could improve the system at most before you spend weeks on it. The vocabulary differs (dev set, ceiling on performance) but the logic is identical to this lesson's: count the failures you actually have before choosing what to build.
+
+<Video id="JoAxZsdw_3w" title="Carrying Out Error Analysis (C3W2L01)" channel="DeepLearningAI" minutes={10} />
+</GoDeeper>

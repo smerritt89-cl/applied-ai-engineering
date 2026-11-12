@@ -1,0 +1,308 @@
+---
+id: s3-w1-l1
+studio: s3
+week: 1
+order: 1
+title: "Why evals: the eval-driven development loop"
+summary: Vibes versus measurement, the loop that turns failures into progress, unit-test-style versus benchmark-style evals, and why a public leaderboard can't tell you how a model does on your task.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Explain why spot-checking outputs stops working once a product has more than a handful of behaviors to protect
+  - Describe the eval-driven development loop and why each iteration changes one thing
+  - Distinguish unit-test-style evals from benchmark-style evals, and capability evals from regression evals
+  - Write success criteria that are specific and measurable, and compute per-check pass rates that exclude cases where a check does not apply
+  - Explain what public benchmarks are good for (shortlisting models) and why they don't predict performance on your task
+sources:
+  - { id: hamel-evals, use: summarized, where: "The Rechat case study, three levels of evaluation, the virtuous cycle" }
+  - { id: hamel-evals-faq, use: summarized, where: "What are AI evals?; Should I use ready-to-use evaluation metrics?" }
+  - { id: anthropic-demystifying-evals, use: summarized, where: "Key terms; capability vs regression evals; getting started; benchmark grading bugs" }
+  - { id: claude-eval-criteria-docs, use: summarized, where: "Success criteria; eval design principles; grading methods" }
+  - { id: huyen-ai-engineering, use: summarized, where: "Chapter 3, Evaluation Methodology; Chapter 4, Navigate Public Benchmarks" }
+  - { id: deng-2023-contamination, use: summarized }
+  - { id: singh-2025-leaderboard-illusion, use: summarized }
+  - { id: yt-lenny-evals-hamel-shreya, use: embedded, where: "Chapter: What are evals? (about 04:57)" }
+  - { id: miller-2024-error-bars, use: linked }
+  - { id: anthropic-courses, use: linked, where: "Prompt evaluations course" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your team changed the system prompt, the retrieval chunk size, and the model in one release. The eval pass rate
+      went from 71 to 78 percent. A stakeholder asks which change helped. What is the most honest answer?
+    options:
+      - id: a
+        text: The model change, since models matter most.
+        rationale: That is a guess. Three changes moved together, so the eval can't attribute the gain to any one of them.
+      - id: b
+        text: We can't tell from this run. To attribute it, re-run with one change at a time (or at least the model change alone) on the same eval set.
+        correct: true
+        rationale: Yes. Changing one thing per iteration is what lets an eval explain a result, not just report it.
+      - id: c
+        text: All three helped equally, about 2.3 points each.
+        rationale: Effects don't split evenly, and some changes may have hurt while others helped more.
+    explanation: >-
+      An eval run is an experiment. With several changes at once you learn only that the bundle helped (and, at
+      small sample sizes, maybe not even that). Iterate one change at a time, keep the eval set fixed, and record what
+      changed in each run.
+  - id: kc2
+    type: mcq
+    prompt: A model leads a public leaderboard by a wide margin. What does that tell you about your support bot?
+    options:
+      - id: a
+        text: It will do best on your support bot, because the leaderboard measures general ability.
+        rationale: General ability is one input. Your task's inputs, rules, and failure modes are not in the benchmark.
+      - id: b
+        text: It is a reasonable candidate to shortlist, but you still need your own eval to know how it does on your traffic.
+        correct: true
+        rationale: Yes. Benchmarks help you choose what to try; your eval decides.
+      - id: c
+        text: Nothing; public benchmarks are all contaminated.
+        rationale: Contamination is a real risk, but benchmarks still carry signal for shortlisting.
+    explanation: >-
+      Public benchmarks measure fixed tasks that may overlap with training data, may have grading bugs, and rarely
+      resemble your inputs. Use them to narrow the field, then compare the finalists on an eval built from your own data.
+  - id: kc3
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      results = {"c1": True, "c2": None, "c3": False, "c4": True}  # None = check not applicable
+      applicable = [v for v in results.values() if v is not None]
+      print(round(sum(applicable) / len(applicable), 2))
+    options:
+      - id: a
+        text: "`0.5`"
+        rationale: That divides by all four cases, counting the not-applicable case as a failure.
+      - id: b
+        text: "`0.67`"
+        correct: true
+        rationale: Two passes out of three applicable cases.
+      - id: c
+        text: "`0.75`"
+        rationale: That would count the not-applicable case as a pass.
+    explanation: >-
+      A check that doesn't apply to a case should leave the denominator. Counting it as a pass inflates the rate;
+      counting it as a failure deflates it. Either way you'd be measuring your test mix, not your system.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## When vibes stop working
+
+Every team starts the same way. You write a prompt, try it on a few inputs, read the answers, and adjust. This works well at first, because early problems are obvious and one look tells you whether a change helped. Studio 1 had you do exactly this, plus a little more: the prompt test harness in week 2 was a small eval.
+
+Then it stops working. Hamel Husain describes this arc in his essay "Your AI Product Needs Evals," using Rechat's real estate assistant, Lucy, as the case study. Prompt engineering brought quick gains, then progress stalled. Fixing one failure exposed or caused others. Nobody could see how the system behaved across the full range of requests, and the prompt grew long and fragile. The team's way out was to build evaluation into how they worked.
+
+The mechanism is simple. A product with a dozen behaviors to protect has too many interactions to hold in your head. Each change helps some inputs and hurts others, and spot-checking five examples samples almost none of the space. Without measurement you can't tell progress from churn, and you tend to keep whichever version you looked at last.
+
+An **eval** replaces the spot check with a repeatable measurement: a fixed set of inputs, a way to grade each output, and a number you can compare across versions. This studio teaches you to build them, starting this week with the step most teams skip: looking at your data.
+</Listen>
+
+<Video id="BsWxPI9UM4c" title="Why AI evals are the hottest new skill for product builders | Hamel Husain & Shreya Shankar" channel="Lenny's Podcast" minutes={5} start={297} source="https://www.lennysnewsletter.com/p/why-ai-evals-are-the-hottest-new-skill">
+Watch the "What are evals?" chapter (it starts at about 04:57; chapter times come from the episode page and may be off by a few seconds on YouTube). Husain and Shankar are practitioners who teach a widely taken evals course, so treat this as experienced opinion. You'll come back to this episode in lesson 2 for the error analysis demo.
+</Video>
+
+<Listen>
+## What an eval is, precisely
+
+Anthropic's engineering post "Demystifying evals for AI agents" gives a vocabulary worth adopting. A **task** is one test case: defined inputs plus success criteria. A **trial** is one attempt at a task; you often run several, because outputs vary. A **grader** is the logic that scores some aspect of an attempt, and one task can have several. The **transcript** is the full record of a trial (outputs, tool calls, reasoning), and the **outcome** is the end state you actually care about, such as whether a refund was really issued.
+
+Before you can grade, you need criteria. Anthropic's eval docs say good success criteria are specific, measurable, achievable, and relevant, and that most real applications need several at once. "The bot should be helpful" fails every one of those tests. "On our held-out set, the bot hands off every request on the escalation list, and invents no product features" passes them. The docs also give three design principles you'll see throughout this studio: make evals task-specific (mirror your real distribution, including edge cases), automate grading where you can, and prefer more cases with a decent automated grader over a few hand-graded ones.
+
+Graders come in three kinds, which week 2 covers in depth. **Code-based** graders (exact match, a regex, a JSON check, "is this quote in the source") are fast and reliable but can't judge nuance. **Model-based** graders (an LLM judge) handle nuance but must themselves be checked against people. **Human** graders are the most flexible and the slowest. A good eval uses the cheapest grader that is trustworthy for each criterion.
+</Listen>
+
+<Listen>
+## The eval-driven development loop
+
+The working loop has five steps, and it's worth memorizing because every lesson in this studio hangs off it.
+
+1. **Look at data.** Read real outputs (traces) before deciding what to measure. Lesson 2 is entirely about this.
+2. **Define failure modes.** Name the ways the system fails, specifically enough that two people would agree on whether a trace shows one.
+3. **Measure.** Build a test set and graders for the failure modes that matter most, and record a baseline.
+4. **Change one thing.** A prompt edit, a retrieval setting, a model swap. One.
+5. **Re-measure** on the same set, compare with the baseline, keep or revert, and go back to step 1 with fresh traces.
+
+Husain's essay frames this as a virtuous cycle of evaluating quality, debugging, and changing the system, and argues that doing all three well is what separates products that keep improving from products that plateau.
+
+"Change one thing" deserves a moment, because it is just experimental design. If you change the prompt and the model together and the score rises, you have one observation and two candidate causes. The eval can tell you the bundle helped; it can't tell you why. On small test sets it may not even tell you that much, because a few cases flipping can be noise. Week 3 makes this quantitative with confidence intervals, following the approach in Evan Miller's "Adding Error Bars to Evals."
+</Listen>
+
+<Mermaid
+  alt="A cycle of five steps: look at data (read traces), define failure modes, measure (test set, graders, baseline), change one thing, and re-measure against the baseline. Re-measure leads back to look at data with fresh traces."
+  caption="The eval-driven development loop. The arrow back to the data is the part teams skip."
+  chart={`flowchart LR
+  A["Look at data: read traces"] --> B["Define failure modes"]
+  B --> C["Measure: test set, graders, baseline"]
+  C --> D["Change one thing"]
+  D --> E["Re-measure on the same set"]
+  E -- "keep or revert, then fresh traces" --> A`}
+/>
+
+<DragOrder
+  client:visible
+  prompt="Put one iteration of eval-driven development in order"
+  items={[
+    "Read a sample of recent production traces",
+    "Write down the failure modes you see, with a one-line definition each",
+    "Add test cases and graders for the most important failure mode",
+    "Run the eval to record a baseline",
+    "Make a single change to the system",
+    "Re-run the same eval and compare with the baseline",
+  ]}
+  explanation="Data first, then definitions, then measurement, then one change, then the same measurement again. Running the eval before you have a baseline, or changing several things at once, leaves you with a number you can't interpret."
+/>
+
+<Listen>
+## Two shapes of eval
+
+Evals come in two broad shapes, and you need both.
+
+**Unit-test-style evals** are assertions: specific, fast, cheap checks on specific inputs. "The output parses." "Every evidence quote appears in the transcript." "When the user asks to delete their data, the reply offers a handoff." Husain calls these level 1 in his essay and recommends running them on every code change, organized by feature and scenario. One difference from software unit tests: the target pass rate is a product decision, not automatically 100 percent, because some checks cover behavior the model gets right most but not all of the time.
+
+**Benchmark-style evals** are scored sets: a few hundred representative cases, a grader, and an aggregate number (accuracy, pass rate, a failure-mode rate) you compare across versions and models. They answer "is version B better than version A overall?" and "which model should we use?"
+
+Anthropic's post adds a second axis. **Capability evals** target things the system can't yet do well, so they start with low pass rates and give you a hill to climb. **Regression evals** protect things that already work and should stay near 100 percent. When a capability eval's pass rate gets high, its cases "graduate" into the regression suite. An eval that every version passes (a saturated eval) still guards against regressions but no longer tells you how to improve, so you add harder cases.
+
+In practice you start small. The same post suggests 20 to 50 simple tasks drawn from real failures as a good beginning, and warns that waiting for a perfect set of hundreds only makes evals harder to start.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s3-w1-unit-evals"
+  title="Unit-test-style checks with honest pass rates"
+  starter={`# Outputs from the Studio 1 action-item extractor on five test transcripts.
+CASES = [
+    {"id": "c1", "attendees": ["Priya", "Sam"], "expect_items": True,
+     "transcript": "Priya: I'll send the budget by Friday. Sam: I'll update the slide.",
+     "items": [{"owner": "Priya", "evidence": "I'll send the budget by Friday."},
+               {"owner": "Sam", "evidence": "I'll update the slide."}]},
+    {"id": "c2", "attendees": ["Lee"], "expect_items": False,
+     "transcript": "Lee: Great meeting, nothing to follow up on.",
+     "items": []},
+    {"id": "c3", "attendees": ["Ana", "Sam"], "expect_items": True,
+     "transcript": "Ana: I can call the vendor tomorrow.",
+     "items": [{"owner": "Jordan", "evidence": "I can call the vendor tomorrow."}]},
+    {"id": "c4", "attendees": ["Priya"], "expect_items": False,
+     "transcript": "Priya: Status update only, no decisions today.",
+     "items": [{"owner": "Priya", "evidence": "Status update only"}]},
+    {"id": "c5", "attendees": ["Sam"], "expect_items": True,
+     "transcript": "Sam: I will draft the launch email.",
+     "items": [{"owner": "Sam", "evidence": "I'll draft the launch email."}]},
+]
+
+# Each check returns True (pass), False (fail), or None (does not apply to this case).
+def owners_are_attendees(case):
+    if not case["items"]:
+        return None
+    return all(i["owner"] is None or i["owner"] in case["attendees"] for i in case["items"])
+
+def evidence_in_transcript(case):
+    # TODO: None when there are no items; otherwise True only if every item's evidence
+    # is non-empty and appears verbatim in the transcript.
+    pass
+
+def no_items_when_none_expected(case):
+    if case["expect_items"]:
+        return None
+    return len(case["items"]) == 0
+
+def run_suite(cases, checks):
+    """Return {check_name: {"pass_rate": float, "applicable": int, "failed": [case ids]}}.
+    pass_rate is passes / applicable cases (0.0 if none apply). Use check.__name__ as the key."""
+    # TODO
+    pass
+
+CHECKS = [owners_are_attendees, evidence_in_transcript, no_items_when_none_expected]
+for name, r in (run_suite(CASES, CHECKS) or {}).items():
+    print(f"{name:30s} {r['pass_rate']:.0%} of {r['applicable']}  failed: {r['failed']}")
+`}
+  tests={`assert evidence_in_transcript(CASES[1]) is None, "no items: the check does not apply"
+assert evidence_in_transcript(CASES[0]) is True
+assert evidence_in_transcript(CASES[4]) is False, "c5 paraphrases: 'I'll' vs 'I will'"
+assert evidence_in_transcript({"items": [{"owner": "A", "evidence": ""}], "transcript": "x"}) is False, "empty evidence must fail"
+r = run_suite(CASES, [owners_are_attendees, evidence_in_transcript, no_items_when_none_expected])
+assert r is not None, "run_suite returned None"
+assert set(r) == {"owners_are_attendees", "evidence_in_transcript", "no_items_when_none_expected"}
+assert r["owners_are_attendees"]["applicable"] == 4 and r["owners_are_attendees"]["failed"] == ["c3"]
+assert abs(r["owners_are_attendees"]["pass_rate"] - 0.75) < 1e-9
+assert r["evidence_in_transcript"]["failed"] == ["c5"]
+assert r["no_items_when_none_expected"] == {"pass_rate": 0.5, "applicable": 2, "failed": ["c4"]}, "only c2 and c4 expect no items"
+assert run_suite([CASES[0]], [no_items_when_none_expected])["no_items_when_none_expected"]["pass_rate"] == 0.0`}
+  solution={`def evidence_in_transcript(case):
+    if not case["items"]:
+        return None
+    return all(i["evidence"] and i["evidence"] in case["transcript"] for i in case["items"])
+
+def run_suite(cases, checks):
+    out = {}
+    for check in checks:
+        applicable, passed, failed = 0, 0, []
+        for case in cases:
+            result = check(case)
+            if result is None:
+                continue
+            applicable += 1
+            if result:
+                passed += 1
+            else:
+                failed.append(case["id"])
+        out[check.__name__] = {"pass_rate": passed / applicable if applicable else 0.0,
+                               "applicable": applicable, "failed": failed}
+    return out`}
+>
+Fill in `evidence_in_transcript` and `run_suite`, then press **Check my answer**. Notice two habits that carry through the studio. Each check tests one thing, so a failure tells you what broke. And each check can say "not applicable," so a suite full of no-action-item meetings doesn't make your owner check look perfect.
+</PyRunner>
+
+<Callout type="pitfall" title="Grabbing a generic metric off the shelf">
+It is tempting to start with a framework's built-in "helpfulness," "coherence," or similarity score, because it produces a number on day one. Husain and Shankar's evals FAQ argues that such generic metrics usually don't track the failures your users hit and can create false confidence; they suggest using them at most to find interesting traces to read. A score that rises while your support bot keeps inventing features is worse than no score, because it tells everyone things are fine. Derive what you measure from your own failure modes (lesson 2).
+</Callout>
+
+<Listen>
+## Why public benchmarks don't tell you how a model does on your task
+
+Leaderboards are where most people first meet "evaluation," and Studio 1 already showed you their caveats. Here is the summary in eval terms.
+
+A public benchmark is a fixed set of tasks with a fixed grader. Your task has different inputs, different rules (your refund policy, your escalation list), and different failure modes. Chip Huyen's *AI Engineering* treats public benchmarks as one input to model selection (chapter 4 has a section on navigating them), alongside evaluating candidates on your own application. The reason is distribution: a benchmark tells you how a model does on the benchmark's inputs, and your inputs are not those.
+
+Three specific problems make benchmark numbers weaker evidence than they look. **Contamination:** Deng and colleagues (2023) found signs that benchmark content had leaked into training data for some models, which inflates scores without reflecting real ability. **Leaderboard practices:** Singh and colleagues (2025) documented ways the Chatbot Arena leaderboard's rules let some providers test many private variants and report the best, which distorts rankings. **Grading bugs:** Anthropic's evals post reports that one model's score on the CORE-Bench benchmark rose from 42 to 95 percent after the team fixed grading bugs and loosened a constrained scaffold, so the original number measured the harness as much as the model.
+
+None of this makes benchmarks useless. The evals FAQ says they can help you choose a promising model to start with. That is the right role: shortlist two or three models (say, a Claude, a GPT, and an open-weight model you could self-host) using benchmarks, price, and latency, then let an eval built from your traffic pick the winner. The same eval then tells you, months later, whether a new model release is worth switching to.
+</Listen>
+
+<Predict
+  title="How much does one case move a small eval?"
+  code={`a = [1] * 17 + [0] * 3    # version A: 17 of 20 cases pass
+b = [1] * 18 + [0] * 2    # version B: 18 of 20 cases pass
+gain = (sum(b) - sum(a)) / len(a)
+print(f"{gain:.0%}", sum(x != y for x, y in zip(a, b)))`}
+  options={["5% 1", "1% 1", "5% 2", "18% 1"]}
+  answer={0}
+>
+Version B looks five points better, and the entire difference is one case flipping. Any single case can flip between runs because outputs vary, so on 20 cases a five-point gain is not evidence of improvement. Small sets are fine for finding failures and for regression checks; comparing versions needs more cases or repeated trials, which week 3 quantifies.
+</Predict>
+
+<Callout type="claim" title='"Evals are the new PRDs"'>
+**Claim.** In the September 2025 Lenny's Podcast episode above (chapter "Why evals are the new PRDs for AI products," about 1:00:51), Husain and Shankar argue that eval criteria, including the prompts for LLM judges, act as a living requirements document for an AI product: they say precisely what the system must and must not do, and they are checked continuously.
+
+**For.** A product requirements document is only as good as its testability, and eval criteria are testable by construction. Anthropic's eval docs push in the same direction: specific, measurable success criteria come before building anything.
+
+**Against.** Evals capture what you thought to test. Shankar and colleagues' own research (lesson 2) finds that people's criteria shift as they read outputs, so an eval suite is a snapshot of current understanding, not a complete spec. Strategy, user research, and scope decisions still need a document.
+
+**Take.** Treat your eval suite as the executable part of the requirements, owned and reviewed like the rest of them.
+</Callout>
+
+<Listen>
+## What this looks like on a real team
+
+A few working habits make the loop survive contact with a busy team.
+
+**Keep the eval in the repo**, next to the prompt and code it tests, so a change and its eval result are reviewed together. **Give it an owner.** Anthropic's post recommends clear ownership of eval suites and letting domain experts contribute tasks, because they know what "correct" means better than the engineers do. **Start from real failures.** Bug reports, support tickets, and things a reviewer flagged are the best first test cases, because they are known to happen. **Write unambiguous tasks.** Anthropic's test for a good task is that two domain experts would independently reach the same pass or fail verdict; if they wouldn't, fix the task before trusting its score. **Read transcripts, not just scores.** A score drop can be a real regression or a broken grader, and only reading tells you which.
+
+For a PM, this is familiar territory: it is acceptance criteria and a release checklist, made executable. Your leverage is in steps 1 and 2 of the loop, deciding what failure means for users. The rest of this week does exactly that: lesson 2 turns raw traces into a ranked list of failure modes, and lesson 3 turns those into test sets.
+</Listen>
+
+<GoDeeper title="Further reading on evaluation methodology">
+Chip Huyen's *AI Engineering* devotes chapter 3 to evaluation methodology (why evaluating open-ended outputs is hard, exact versus subjective evaluation, comparative evaluation) and chapter 4 to designing an evaluation pipeline and selecting models; it is the most complete book-length treatment. Anthropic's open [prompt evaluations course](https://github.com/anthropics/courses/tree/master/prompt_evaluations) walks through code-graded and model-graded evals with runnable notebooks. For the statistics you'll use in week 3, read the abstract and introduction of Evan Miller's [Adding Error Bars to Evals](https://arxiv.org/abs/2411.00640) now; it treats eval questions as a sample from a larger population, which is exactly the right mental model for a mathematician.
+</GoDeeper>

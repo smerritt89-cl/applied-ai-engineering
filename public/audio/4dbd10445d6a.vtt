@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.899
+Cross-field rules and abstention.
+
+2
+00:00:02.179 --> 00:00:04.035
+Evidence checks look at one field.
+
+3
+00:00:04.315 --> 00:00:09.221
+Many errors only show up when fields are compared with each other or with facts you hold.
+
+4
+00:00:09.501 --> 00:00:18.867
+Write these as plain functions, run after validation, with one named rule each: The owner must be someone in the meeting (or in your team directory).
+
+5
+00:00:19.147 --> 00:00:23.883
+An unknown name is either a hallucination or a person you need to resolve.
+
+6
+00:00:24.163 --> 00:00:26.403
+A due date can’t be before the meeting date.
+
+7
+00:00:26.683 --> 00:00:35.792
+If the transcript says “Friday,” resolve it in code from the meeting date, as the project requires, rather than trusting the model’s calendar arithmetic.
+
+8
+00:00:36.072 --> 00:00:39.741
+If an item says “done,” it shouldn’t also have a future due date.
+
+9
+00:00:40.021 --> 00:00:43.520
+The owner should be the speaker of the quoted line, or be named in it.
+
+10
+00:00:43.800 --> 00:00:47.448
+This one is a heuristic; use it to flag, not to reject.
+
+11
+00:00:47.728 --> 00:00:55.771
+Each rule is cheap, deterministic, and testable, and each catches a class of error that no amount of prompting reliably prevents.
+
+12
+00:00:56.051 --> 00:00:59.848
+The other half is giving the model a legal way to say “I don’t know.
+
+13
+00:01:00.128 --> 00:01:06.379
+” Anthropic’s first recommendation for reducing hallucinations is to explicitly allow uncertainty.
+
+14
+00:01:06.659 --> 00:01:16.792
+In a schema, that means abstention fields: make owner and due_date nullable, and add a short reason when they’re null (“no one volunteered”, “date discussed but not agreed”).
+
+15
+00:01:17.072 --> 00:01:18.971
+Abstentions are useful data.
+
+16
+00:01:19.251 --> 00:01:27.037
+A sudden jump in null owners tells you the transcripts changed or the prompt broke; a reason string tells a reviewer what to check.

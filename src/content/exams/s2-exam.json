@@ -1,0 +1,1403 @@
+{
+  "id": "s2-exam",
+  "studio": "s2",
+  "title": "Studio 2 exam: Retrieval & RAG",
+  "draw": 20,
+  "timeLimitMinutes": 40,
+  "passing": 0.8,
+  "questions": [
+    {
+      "id": "s2x-w1-01",
+      "type": "scenario",
+      "prompt": "A product manager asks you to 'just use the Anthropic embedding model' for a new RAG feature, since the team already generates answers with Claude. What do you tell them?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Anthropic doesn't offer its own embedding model; its docs point to Voyage AI as one option and advise assessing several vendors. Shortlist a few (provider and open), and pick with a labeled test set.",
+          "correct": true,
+          "rationale": "Yes. The embedding model and the generator are independent choices."
+        },
+        {
+          "id": "b",
+          "text": "Use Claude's hidden states as embeddings through the Messages API.",
+          "rationale": "The Messages API doesn't return embeddings."
+        },
+        {
+          "id": "c",
+          "text": "Embeddings must come from the same provider as the generator or the answers will be wrong.",
+          "rationale": "The generator only sees retrieved text, not vectors. Mixing providers is normal."
+        },
+        {
+          "id": "d",
+          "text": "Skip embeddings and paste the whole document set into the context window.",
+          "rationale": "Sometimes viable for small corpora, but it doesn't answer the question and scales poorly in cost and latency."
+        }
+      ],
+      "explanation": "Anthropic's embeddings guide says it doesn't make an embedding model and introduces Voyage AI as one provider, while recommending you evaluate several. Retrieval produces text passages, and any LLM can read them.",
+      "week": 1,
+      "tags": [
+        "model-selection",
+        "providers"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2x-w1-02",
+      "type": "scenario",
+      "prompt": "Six months after launch, you want to upgrade from one embedding model version to a newer one from the same provider. Your index holds 4 million chunk vectors. What does the upgrade require?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Only new queries need the new model; old document vectors stay valid.",
+          "rationale": "Different models (and usually different versions) produce vectors in unrelated spaces. Mixing them makes similarity meaningless."
+        },
+        {
+          "id": "b",
+          "text": "Re-embed all 4 million chunks with the new model (unless the provider explicitly documents compatibility between the two), rebuild the index, and rerun your labeled evaluation before switching traffic.",
+          "correct": true,
+          "rationale": "Yes. Treat it as a migration with a measured go or no-go decision."
+        },
+        {
+          "id": "c",
+          "text": "Apply a linear rescaling to the old vectors so they match the new model's norms.",
+          "rationale": "Norms aren't the issue; the coordinate systems themselves differ."
+        },
+        {
+          "id": "d",
+          "text": "Nothing, as long as the dimensions are the same.",
+          "rationale": "Same dimension count doesn't mean the same space."
+        }
+      ],
+      "explanation": "This is why the embedding choice is sticky. A few vendors claim compatibility within a model family (Voyage says this of its voyage-4 models); verify such a claim on your own labeled set before relying on it.",
+      "week": 1,
+      "tags": [
+        "operations",
+        "embeddings"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w1-03",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "import math\nv = [3.0, 4.0]\nw = [6.0, 8.0]\ndot = sum(a * b for a, b in zip(v, w))\ncos = dot / (math.hypot(*v) * math.hypot(*w))\nprint(dot, round(cos, 3))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`50.0 1.0`",
+          "correct": true,
+          "rationale": "18 + 32 = 50. The vectors are parallel, so the cosine is 1 regardless of their lengths (5 and 10)."
+        },
+        {
+          "id": "b",
+          "text": "`50.0 0.5`",
+          "rationale": "Cosine divides by both norms (5 times 10 = 50), giving exactly 1."
+        },
+        {
+          "id": "c",
+          "text": "`1.0 1.0`",
+          "rationale": "The dot product depends on length; only cosine is length-invariant."
+        }
+      ],
+      "explanation": "Cosine measures direction only. The dot product scales with both vectors' lengths, which is why the two disagree on unnormalized embeddings.",
+      "week": 1,
+      "tags": [
+        "similarity",
+        "math"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2x-w1-04",
+      "type": "scenario",
+      "prompt": "You test `intfloat/e5-base-v2` for retrieval and its scores are disappointing compared with its published results. Your code calls `model.encode(texts)` on raw queries and passages. What should you check first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Whether you added the prefixes its model card requires: `query: ` before queries and `passage: ` before documents.",
+          "correct": true,
+          "rationale": "Yes. Asymmetric models trained with role prefixes underperform without them, and nothing errors to warn you."
+        },
+        {
+          "id": "b",
+          "text": "Whether you should switch to Euclidean distance.",
+          "rationale": "On normalized vectors the ranking is the same, and the model card's usage is the first thing to check."
+        },
+        {
+          "id": "c",
+          "text": "Whether the batch size is too small.",
+          "rationale": "Batch size affects speed, not the resulting vectors."
+        },
+        {
+          "id": "d",
+          "text": "Whether the GPU is producing different results from the CPU.",
+          "rationale": "Numeric differences are tiny and don't explain a large quality gap."
+        }
+      ],
+      "explanation": "Read the model card's usage section before benchmarking. E5 uses `query: ` and `passage: `, Nomic uses `search_query: ` and `search_document: `, BGE adds an instruction to queries, and provider APIs use parameters such as Voyage's `input_type`.",
+      "week": 1,
+      "tags": [
+        "open-models",
+        "asymmetric-retrieval"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w1-05",
+      "type": "scenario",
+      "prompt": "To build an evaluation set quickly, a teammate runs Model A on 50 real queries, reviews A's top 5 results for each, and marks which are relevant. They then score Models A and B against these labels. Model A wins easily. What is wrong?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; the queries are real, so the labels are fair.",
+          "rationale": "Real queries help, but the labels only cover documents A retrieved."
+        },
+        {
+          "id": "b",
+          "text": "Relevant documents that A missed were never seen or labeled, so B gets no credit for finding them. Label from the corpus or pool the top results of all candidates before labeling.",
+          "correct": true,
+          "rationale": "Yes. The labeling process is biased toward the model whose results were reviewed."
+        },
+        {
+          "id": "c",
+          "text": "50 queries is too many; use 10.",
+          "rationale": "Fewer queries makes the comparison noisier, not fairer."
+        },
+        {
+          "id": "d",
+          "text": "They should have used MRR instead of recall.",
+          "rationale": "Both metrics inherit the biased labels."
+        }
+      ],
+      "explanation": "Pooling (labeling the union of all candidates' top results) is the standard way to make relevance labels fair to every system under test. Then compare per query and read the disagreements.",
+      "week": 1,
+      "tags": [
+        "evaluation",
+        "labeling"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s2x-w1-06",
+      "type": "code-reading",
+      "prompt": "This helper shortens stored Matryoshka embeddings to save space. The rest of the system ranks by dot product, assuming unit vectors. What's wrong?",
+      "code": "def shrink(vectors, dim=256):\n    return [v[:dim] for v in vectors]",
+      "options": [
+        {
+          "id": "a",
+          "text": "The prefixes are no longer unit length, so dot products stop equaling cosine and long prefixes are favored. Renormalize each truncated vector.",
+          "correct": true,
+          "rationale": "Yes. OpenAI's and Voyage's docs both say to normalize again after truncating."
+        },
+        {
+          "id": "b",
+          "text": "It should keep the last 256 dimensions, not the first.",
+          "rationale": "Matryoshka training puts the coarse information in the leading dimensions."
+        },
+        {
+          "id": "c",
+          "text": "Truncation is never allowed; you must call the API again.",
+          "rationale": "Requesting the size from the API is often simpler, but truncating plus renormalizing is documented and valid."
+        },
+        {
+          "id": "d",
+          "text": "List slicing copies the data, which wastes memory.",
+          "rationale": "A minor efficiency point, not a correctness bug."
+        }
+      ],
+      "explanation": "After truncation, divide each vector by its norm. Then measure recall@k on your labeled set at both sizes, because the quality cost depends on your data.",
+      "week": 1,
+      "tags": [
+        "matryoshka",
+        "debugging"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w1-07",
+      "type": "multi",
+      "prompt": "You are comparing two embedding models on 40 labeled queries. Model A's recall@5 is 0.80 and Model B's is 0.775. Which conclusions are justified? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The gap could be a single query, since each query is 2.5 points of recall here.",
+          "correct": true,
+          "rationale": "With one relevant document per query, one query changes recall@5 by 1/40."
+        },
+        {
+          "id": "b",
+          "text": "A is better and should be chosen.",
+          "rationale": "Not on this evidence alone; the difference is within what one query can move."
+        },
+        {
+          "id": "c",
+          "text": "Listing the queries each model wins and loses is more informative than the means.",
+          "correct": true,
+          "rationale": "Patterns (for example, B fails every non-English query) tell you what matters for your users."
+        },
+        {
+          "id": "d",
+          "text": "If the difference isn't clearly real, cost, latency, and data constraints can reasonably decide.",
+          "correct": true,
+          "rationale": "When quality is a tie, the other factors are the decision."
+        }
+      ],
+      "explanation": "A paired comparison per query, and if needed a paired bootstrap over queries, tells you whether a difference is evidence or noise. Small labeled sets are for finding failure patterns and catching regressions, not for detecting tiny average differences.",
+      "week": 1,
+      "tags": [
+        "evaluation",
+        "statistics"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w1-08",
+      "type": "scenario",
+      "prompt": "An internal policy-search tool has 30,000 chunks with 1,024-dimensional embeddings and about 2 queries per minute. An engineer proposes standing up a dedicated vector database with an HNSW index. What's your recommendation?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Agree: any production system needs an ANN index.",
+          "rationale": "Not at this scale. ANN trades away recall for speed you don't need."
+        },
+        {
+          "id": "b",
+          "text": "Start with exact search (in memory or in the database you already run, such as Postgres with pgvector, which searches exactly by default). About 120 MB of vectors and 30 million multiply-adds per query is cheap, and recall is perfect.",
+          "correct": true,
+          "rationale": "Yes. Do the arithmetic first; add an index only when measurements show you need it."
+        },
+        {
+          "id": "c",
+          "text": "Use product quantization to compress the vectors first.",
+          "rationale": "Compression costs accuracy and solves a memory problem this system doesn't have."
+        },
+        {
+          "id": "d",
+          "text": "Reduce the embeddings to 64 dimensions so search is fast.",
+          "rationale": "Unmeasured quality loss to fix a speed problem that doesn't exist."
+        }
+      ],
+      "explanation": "30,000 times 1,024 float32 values is about 123 MB. Faiss describes flat (exact) search as the only exact option and the right baseline; pgvector does exact search unless you add an index. Re-evaluate when the corpus or query rate grows by orders of magnitude.",
+      "week": 1,
+      "tags": [
+        "ann",
+        "architecture"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w1-09",
+      "type": "mcq",
+      "prompt": "In an IVF index, what happens as you raise `nprobe` from 1 toward `nlist`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "More buckets are scanned per query, so recall against exact search rises and latency rises with it; at nprobe equal to nlist the search is exact.",
+          "correct": true,
+          "rationale": "Yes. nprobe is IVF's query-time dial between speed and recall."
+        },
+        {
+          "id": "b",
+          "text": "The index retrains its centroids, improving recall at no cost.",
+          "rationale": "Centroids are trained once at build time; nprobe only changes how many buckets a query visits."
+        },
+        {
+          "id": "c",
+          "text": "Each vector is compressed more aggressively.",
+          "rationale": "Compression is a PQ setting, not nprobe."
+        },
+        {
+          "id": "d",
+          "text": "Recall falls, because more candidates add noise.",
+          "rationale": "Candidates are re-scored exactly, so scanning more can't lose true neighbors."
+        }
+      ],
+      "explanation": "IVF partitions vectors by nearest k-means centroid. Neighbors just across a bucket boundary are missed at low nprobe. pgvector's IVFFlat index calls this setting probes and defaults it to 1.",
+      "week": 1,
+      "tags": [
+        "ann",
+        "ivf"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2x-w1-10",
+      "type": "scenario",
+      "prompt": "End-to-end retrieval recall@10 on your labeled set is 0.71. Index recall@10 against exact search is 0.99. A colleague wants to spend the sprint tuning HNSW parameters. What do you suggest?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Tune HNSW: raise M and efSearch until labeled recall improves.",
+          "rationale": "The index already returns 99 percent of the exact neighbors, so tuning it can recover at most about one point."
+        },
+        {
+          "id": "b",
+          "text": "Look upstream: the embedding model, chunking, query and document roles, and keyword or hybrid search for the queries that fail. Read the failing queries first.",
+          "correct": true,
+          "rationale": "Yes. With near-perfect index recall, the losses come from what exact search itself ranks, not from approximation."
+        },
+        {
+          "id": "c",
+          "text": "Switch to an IVF index.",
+          "rationale": "Changing index type addresses approximation error, which is already near zero."
+        },
+        {
+          "id": "d",
+          "text": "Lower k to 5 so recall goes up.",
+          "rationale": "Recall at a smaller k can only stay the same or fall."
+        }
+      ],
+      "explanation": "Measuring both recalls tells you where to work. Index recall isolates the ANN index; labeled recall measures the whole retrieval pipeline. Here the gap is in the model, the chunks, or the search strategy, which is the subject of weeks 2 and 3.",
+      "week": 1,
+      "tags": [
+        "ann",
+        "evaluation",
+        "debugging"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s2x-w2-01",
+      "type": "scenario",
+      "prompt": "After launching a policy assistant, you find that questions about one regional office always fail. Its 12 policy PDFs are in the source folder, but the index contains zero chunks from them, and the ingestion job reported success. What is the best fix to the pipeline?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Add per-document and per-page checks at ingest (characters extracted, chunk count), alert on any document with zero chunks or near-empty pages, and route those pages to OCR or a vision model.",
+          "rationale": "Yes. The files are probably scans with no text layer. The pipeline needs to detect silent failures, not just exceptions.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Switch to a larger embedding model so the regional policies are better represented.",
+          "rationale": "No chunks exist to embed. The failure happened before embedding."
+        },
+        {
+          "id": "c",
+          "text": "Add a system prompt line telling the assistant to search harder for regional policies.",
+          "rationale": "The model cannot retrieve text that was never indexed."
+        }
+      ],
+      "explanation": "Text-layer parsers return little or nothing for scanned pages and do not raise an error. Ingestion needs its own checks and alerts, because downstream retrieval failures look like \"no answer exists.\"",
+      "week": 2,
+      "tags": [
+        "ingestion",
+        "verification"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w2-02",
+      "type": "scenario",
+      "prompt": "You plan to transcribe 3,000 pages of financial reports with a vision model because their tables defeat your text parser. How should you verify the transcriptions before indexing them?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Trust them; vision models are reliable at reading tables.",
+          "rationale": "A transcription is model output and can be fluent and wrong, especially on numbers."
+        },
+        {
+          "id": "b",
+          "text": "Where a text layer exists, check that every number in the transcription appears in that page's extracted text and compare character counts; spot-check a random sample of pages against the page images, prioritizing tables; and track the rate of [illegible] markers per document.",
+          "rationale": "Yes. Deterministic cross-checks catch invented or dropped numbers cheaply, and a human sample estimates the remaining error rate.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Ask the same model to confirm that its transcription is accurate.",
+          "rationale": "Self-review by the same model shares its blind spots and is not evidence of accuracy."
+        }
+      ],
+      "explanation": "The Studio 1 rule applies to ingestion: verify model output against the source with code where you can, and with a measured human sample where you can't. Keep the page images so reviewers can compare.",
+      "week": 2,
+      "tags": [
+        "ingestion",
+        "verification",
+        "model-selection"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w2-03",
+      "type": "mcq",
+      "prompt": "Why should the text you store for a chunk be an exact slice of the cleaned source, even when you embed a modified version (for example, with a heading path or generated context prepended)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "So citations quote the real source, offsets map back to the original location, and you can regenerate the embedded version when the prompt or model changes.",
+          "rationale": "Yes. Keep what you show and cite separate from what you embed.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Because vector stores reject text that differs from the embedded input.",
+          "rationale": "Stores accept any text payload. This is a design choice, not a constraint."
+        },
+        {
+          "id": "c",
+          "text": "Because prepending context to embedded text lowers retrieval quality.",
+          "rationale": "Anthropic reported the opposite on its datasets. The point is to keep the stored text faithful."
+        }
+      ],
+      "explanation": "Store the source slice and its offsets; compute the embedding text from it plus whatever context helps retrieval. That separation keeps citations verifiable and makes the context step replaceable.",
+      "week": 2,
+      "tags": [
+        "chunking",
+        "citations",
+        "metadata"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w2-04",
+      "type": "scenario",
+      "prompt": "Two near-identical copies of the travel policy exist: one in the wiki (updated March) and one on a shared drive (January). They differ only in the hotel limit for high-cost cities. Your deduplication step would keep one. What should you do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Keep whichever the pipeline sees first.",
+          "rationale": "Then the answer to a factual question depends on file listing order."
+        },
+        {
+          "id": "b",
+          "text": "Keep both so retrieval can return either.",
+          "rationale": "Both would compete for top-k slots and the model might quote the outdated limit with confidence."
+        },
+        {
+          "id": "c",
+          "text": "Apply a written policy (for example, keep the copy from the system of record or the newest date), record the dropped copy and what it duplicated, and flag the conflicting value to the policy owner.",
+          "rationale": "Yes. A stated rule makes the outcome predictable, the log makes it auditable, and the conflict goes to someone who can resolve it.",
+          "correct": true
+        }
+      ],
+      "explanation": "Near-duplicates that disagree are a data quality issue, not just a storage issue. Deduplication should be deterministic, logged, and paired with a way to surface conflicts.",
+      "week": 2,
+      "tags": [
+        "ingestion",
+        "deduplication"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w2-05",
+      "type": "predict-output",
+      "prompt": "An HNSW scan returns its 40 best candidates (ids 0 to 39, best first) before a metadata filter is applied. The filter matches every tenth row. What does this print?",
+      "code": "candidates = list(range(40))\nallowed = set(range(0, 400, 10))\nhits = [c for c in candidates if c in allowed][:10]\nprint(len(hits))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`10`",
+          "rationale": "Only candidates already in the list can survive the filter, and just four of them match."
+        },
+        {
+          "id": "b",
+          "text": "`4`",
+          "rationale": "Yes. Ids 0, 10, 20, and 30 survive, so a request for 10 results gets 4.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`40`",
+          "rationale": "The filter removes the 36 candidates that don't match."
+        }
+      ],
+      "explanation": "This is the post-filter shortfall described in the pgvector README: with the default candidate list of 40 and a filter matching 10 percent of rows, you get about 4 results. Iterative index scans, a larger candidate list, partial indexes, or exact search on the filtered subset fix it.",
+      "week": 2,
+      "tags": [
+        "vector-stores",
+        "filtering"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w2-06",
+      "type": "scenario",
+      "prompt": "You're asked to pick chunking for a 600-document engineering wiki. You have time for one week of work. Which plan is the strongest?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Implement semantic chunking and contextual retrieval together in week one, since both are reported to help.",
+          "rationale": "Two changes at once, without a baseline or eval set, leave you unable to tell what helped or hurt."
+        },
+        {
+          "id": "b",
+          "text": "Use 800-token chunks with 400-token overlap, the most common default.",
+          "rationale": "Chroma's report found that setting among the lowest on precision-oriented scores, and the 50 percent overlap doubles storage."
+        },
+        {
+          "id": "c",
+          "text": "Ship structure-aware chunking at headings with recursive splits inside sections, store heading paths and offsets, and build a 50 to 100 question eval set with gold passages so later changes are measured against this baseline.",
+          "rationale": "Yes. A defensible default plus the measurement that makes every future change an experiment.",
+          "correct": true
+        }
+      ],
+      "explanation": "Wikis have structure, so use it. The most valuable output of week one is the eval set, because it turns chunk size, overlap, small-to-big, and contextual retrieval into measurable options instead of opinions.",
+      "week": 2,
+      "tags": [
+        "chunking",
+        "evaluation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w2-07",
+      "type": "multi",
+      "prompt": "Which of these are good reasons to move from a NumPy array to a database such as pgvector or Qdrant? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Many processes need to read and write the index concurrently, with backups.",
+          "rationale": "Yes. Concurrency and durability are operational needs a file-backed array doesn't meet.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Documents change continuously and you need deletes and updates without rebuilding.",
+          "rationale": "Yes. Incremental updates are what databases are for.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "A database will return more relevant results than exact search.",
+          "rationale": "Exact search is the accuracy ceiling. ANN indexes trade some recall for speed."
+        },
+        {
+          "id": "d",
+          "text": "You need access control, tenancy isolation, and audit logging managed in one place.",
+          "rationale": "Yes. Row-level security, namespaces, and payload partitioning are database features.",
+          "correct": true
+        }
+      ],
+      "explanation": "Vector databases solve operational problems: concurrency, persistence, updates, filtering at scale, and access control. They do not improve the quality of nearest-neighbor results over brute force.",
+      "week": 2,
+      "tags": [
+        "vector-stores",
+        "operations"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w2-08",
+      "type": "scenario",
+      "prompt": "A Postgres-backed RAG service uses row-level security for tenant isolation. In a security review, you learn the application connects as the role that owns the `chunks` table. What should you change?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; row-level security is enabled on the table.",
+          "rationale": "Table owners bypass row security by default, so the policy may not be applied to the application's queries at all."
+        },
+        {
+          "id": "b",
+          "text": "Connect as an ordinary role that does not own the table (or set FORCE ROW LEVEL SECURITY), set the tenant from the authenticated session per transaction, and add a canary test that fails if one tenant can read another's rows.",
+          "rationale": "Yes. The Postgres docs note owners bypass row security unless forced, and superusers or BYPASSRLS roles always do.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Add a WHERE tenant_id clause in the application code and drop the policy.",
+          "rationale": "That moves the guarantee back into code paths that can forget it. Keep the database policy and fix the role."
+        }
+      ],
+      "explanation": "Isolation mechanisms fail through configuration. Verify who the policy applies to, bind the tenant to identity on the server, and prove isolation with planted canary documents in CI.",
+      "week": 2,
+      "tags": [
+        "vector-stores",
+        "access-control",
+        "security"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s2x-w2-09",
+      "type": "code-reading",
+      "prompt": "This ingestion code builds the metadata for each document. Which line creates a leak risk?",
+      "code": "def build_metadata(path, manifest):\n    entry = manifest.get(path.name, {})\n    return {\n        \"source\": path.name,\n        \"title\": entry.get(\"title\", path.stem),\n        \"date\": entry.get(\"date\"),\n        \"groups\": entry.get(\"groups\", [\"all-staff\"]),\n    }",
+      "options": [
+        {
+          "id": "a",
+          "text": "`\"title\": entry.get(\"title\", path.stem)`",
+          "rationale": "A fallback title is harmless."
+        },
+        {
+          "id": "b",
+          "text": "`\"date\": entry.get(\"date\")`",
+          "rationale": "A missing date is a freshness issue, not a leak."
+        },
+        {
+          "id": "c",
+          "text": "`\"groups\": entry.get(\"groups\", [\"all-staff\"])`",
+          "rationale": "Yes. A file with no permission record becomes visible to everyone. Default to no groups and alert instead.",
+          "correct": true
+        }
+      ],
+      "explanation": "Permissions must fail closed. A document dropped into the source folder without a permission entry (a salary spreadsheet, say) should be visible to nobody until an owner fixes the record.",
+      "week": 2,
+      "tags": [
+        "ingestion",
+        "access-control",
+        "metadata"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w2-10",
+      "type": "mcq",
+      "prompt": "Your team switches embedding models from one provider to another. What has to happen to the existing index?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Re-embed every chunk with the new model (ideally into a new index), validate it against the eval set, then switch queries over; store the model name in each record's metadata.",
+          "rationale": "Yes. Queries and documents must come from the same model, and the eval set tells you whether the switch helped.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Nothing, if both models produce 1,024-dimensional vectors.",
+          "rationale": "Matching dimensions don't make vector spaces comparable. Distances between vectors from different models are meaningless."
+        },
+        {
+          "id": "c",
+          "text": "Re-embed only new documents from now on.",
+          "rationale": "Queries embedded by the new model would be compared against old vectors from a different space."
+        }
+      ],
+      "explanation": "An embedding model change is a full re-index. Building the new index alongside the old one lets you compare recall@k before cutting over, and the stored model name prevents mixing vectors by accident.",
+      "week": 2,
+      "tags": [
+        "vector-stores",
+        "embeddings",
+        "operations"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2x-w3-01",
+      "type": "scenario",
+      "prompt": "An internal assistant retrieves from all HR documents, including salary bands visible only to managers. A teammate proposes adding \"Do not reveal content from documents the user lacks access to\" to the system prompt. What do you do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Enforce access in retrieval: filter both the BM25 and vector retrievers by the user's permissions before fusion, and add a test asserting a restricted document never appears for a non-manager.",
+          "rationale": "Yes. Permissions are filters enforced in code; anything that reaches the model's context can reach its answer.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Accept the prompt change and spot-check a few answers.",
+          "rationale": "A prompt is a request, not a control, and spot checks won't catch the rare leak."
+        },
+        {
+          "id": "c",
+          "text": "Filter only the vector retriever, since BM25 results are usually lower ranked.",
+          "rationale": "The keyword side can still return restricted documents, and fusion will rank them."
+        },
+        {
+          "id": "d",
+          "text": "Remove the reranker so fewer documents are processed.",
+          "rationale": "Reranking isn't the leak; unrestricted candidates are."
+        }
+      ],
+      "explanation": "Access control belongs before the model sees anything. Apply the same filter to every retriever, and write a regression test with a restricted best-match document so the guarantee is checked, not assumed.",
+      "week": 3,
+      "tags": [
+        "filters",
+        "security",
+        "hybrid"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w3-02",
+      "type": "scenario",
+      "prompt": "Users filtering a product-docs search to `product = \"Ledger\"` (2 percent of the corpus) often get one or zero results, though dozens of Ledger docs exist. The code retrieves the top 20 by vector similarity, then drops non-Ledger results. What is the best fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Lower the similarity threshold.",
+          "rationale": "There may be no threshold involved; the problem is that the top 20 rarely contains Ledger docs at all."
+        },
+        {
+          "id": "b",
+          "text": "Apply the filter inside the search (the engine's filtered query) so the top 20 is chosen among Ledger docs, index the product field, and check recall with the most selective filters.",
+          "rationale": "Yes. Post-filtering a small top-k with a selective filter leaves almost nothing; filtering during search fixes the order of operations.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Retrieve the top 20 and ask the model to ignore non-Ledger results.",
+          "rationale": "The model would see irrelevant documents and still have too few relevant ones."
+        },
+        {
+          "id": "d",
+          "text": "Retrieve the top 1,000 and filter afterwards, permanently.",
+          "rationale": "It can paper over the problem at higher cost, and very selective filters can still come up short."
+        }
+      ],
+      "explanation": "With a filter that matches 2 percent of documents, a top-20 list is expected to contain well under one matching document on average if similarity is unrelated to the filter. Filter during search, index filtered fields, and test recall with selective filters, since approximate indexes can lose recall under heavy filtering.",
+      "week": 3,
+      "tags": [
+        "filters",
+        "vector-search"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w3-03",
+      "type": "scenario",
+      "prompt": "A blog post claims HyDE \"always improves RAG\". Your pipeline is already hybrid (BM25 + a strong embedding model + RRF) with a p95 latency target of 800 ms. What is the most defensible next step?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Adopt HyDE, since the paper shows large gains.",
+          "rationale": "The paper's gains were for zero-shot dense retrieval against unsupervised baselines. Your setting differs, and HyDE adds a generation call to every query."
+        },
+        {
+          "id": "b",
+          "text": "Reject HyDE, since generated documents may contain false details.",
+          "rationale": "The paper anticipates that: the hypothetical document is only a search key. That risk is manageable; the question is whether it helps you."
+        },
+        {
+          "id": "c",
+          "text": "Run HyDE against your labeled query set and compare recall@k, MRR, and p95 latency with the current pipeline, keeping it only if the gain exceeds run-to-run noise within the latency budget.",
+          "rationale": "Yes. A claim from a different setting is a hypothesis; your labeled set and latency budget decide.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Use HyDE only for queries containing error codes.",
+          "rationale": "Exact codes are where BM25 already does well; a generated passage could even dilute the code's signal."
+        }
+      ],
+      "explanation": "Gao and colleagues showed HyDE helping in zero-shot dense retrieval. Whether it pays off on top of a strong hybrid pipeline is an empirical question about your data, and latency is part of the answer.",
+      "week": 3,
+      "tags": [
+        "hyde",
+        "query-expansion",
+        "evaluation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w3-04",
+      "type": "scenario",
+      "prompt": "Your team labeled 150 queries with the chunk ids that answer them. After switching from 800-token to 400-token chunks, recall@5 drops from 0.82 to 0.31. What is most likely going on?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Smaller chunks are much worse; revert.",
+          "rationale": "Possibly a little worse, but a drop this large right after re-chunking points at the labels first."
+        },
+        {
+          "id": "b",
+          "text": "The embedding model has a bug with short inputs.",
+          "rationale": "Unlikely to produce this pattern; check the measurement before the model."
+        },
+        {
+          "id": "c",
+          "text": "The labels reference old chunk ids that no longer exist, so correct retrievals are scored as misses. Relabel as document id plus answer span and map spans to current chunks.",
+          "rationale": "Yes. Labels tied to a chunking scheme break when chunking changes, exactly when you need them.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "BM25 needs retuning for shorter chunks.",
+          "rationale": "k1 and b may deserve retuning, but that wouldn't explain a near-collapse in recall."
+        }
+      ],
+      "explanation": "Make the labeled set independent of implementation details you expect to change. A span within a document survives re-chunking; a chunk id does not. When a metric moves dramatically after a change, validate the measurement before believing the result.",
+      "week": 3,
+      "tags": [
+        "labeled-set",
+        "evaluation",
+        "chunking"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w3-05",
+      "type": "scenario",
+      "prompt": "To bootstrap an eval set, you have a model write one question per chunk and label that chunk as the answer. BM25 scores recall@5 of 0.95 on this set; on 40 real user questions it scores 0.58. How should you read this?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Generated questions tend to reuse the source chunk's wording, which flatters lexical retrieval. Report the synthetic and real sets separately and grow the real set.",
+          "rationale": "Yes. The synthetic set measures something easier than your users' queries.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "The real questions are mislabeled, because the synthetic set is larger and so more reliable.",
+          "rationale": "Size doesn't fix a biased sample. Check the real labels, but the gap has a simpler explanation."
+        },
+        {
+          "id": "c",
+          "text": "BM25 is overfitting the synthetic set.",
+          "rationale": "BM25 has no training step to overfit; its parameters were not tuned on this set."
+        },
+        {
+          "id": "d",
+          "text": "Average the two numbers and report 0.77.",
+          "rationale": "That hides the most important finding: performance on real queries is much lower."
+        }
+      ],
+      "explanation": "Synthetic queries are useful for coverage and smoke tests, but they share vocabulary with the chunk they came from. Real queries use different words, which is the case embeddings and hybrid search are for. Keep the groups separate in every report.",
+      "week": 3,
+      "tags": [
+        "labeled-set",
+        "synthetic-data",
+        "bm25"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w3-06",
+      "type": "scenario",
+      "prompt": "You prototype an LLM reranker: the prompt lists 30 passages with ids and asks for the ids in relevance order. In testing, it sometimes returns an id that wasn't in the list, and reversing the input order changes the top 3 for about a fifth of queries. What should the production version do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Trust the model's output; LLMs outperform cross-encoders.",
+          "rationale": "Some studies show strong LLM reranking, but these specific failures need handling regardless of average quality."
+        },
+        {
+          "id": "b",
+          "text": "Validate returned ids against the input and fall back to first-stage order on failure, measure order sensitivity, and compare against an open cross-encoder on the labeled set before choosing.",
+          "rationale": "Yes. Enforce the output contract in code, treat order sensitivity as position bias to measure, and pick the reranker with evidence.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Ask the model to double-check its ranking in the same prompt.",
+          "rationale": "More model output is not a check. Validate in code and measure against labels."
+        },
+        {
+          "id": "d",
+          "text": "Send all 30 passages through the reranker twice and keep the second answer.",
+          "rationale": "Taking another sample doesn't tell you which ranking is right."
+        }
+      ],
+      "explanation": "LLM rerankers have the same weaknesses as LLM judges, including sensitivity to presentation order, plus the usual risk of malformed output. Validation, a fallback, and a measured comparison with a cheaper cross-encoder turn a prototype into something you can defend.",
+      "week": 3,
+      "tags": [
+        "reranking",
+        "llm-reranker",
+        "verification"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w3-07",
+      "type": "mcq",
+      "prompt": "In a retrieve-then-rerank pipeline, which division of labor is standard, and why?",
+      "options": [
+        {
+          "id": "a",
+          "text": "A cross-encoder retrieves from the whole corpus; a bi-encoder reorders the top results.",
+          "rationale": "Reversed. Cross-encoders can't precompute anything, so they're too slow for the whole corpus."
+        },
+        {
+          "id": "b",
+          "text": "A fast first stage (BM25, a bi-encoder, or both) maximizes recall over the corpus; a cross-encoder reorders a few dozen candidates for precision, because it must read each query-document pair together at query time.",
+          "rationale": "Yes. Cheap and broad first, expensive and precise second.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Both stages use the same model; the second pass just uses a larger k.",
+          "rationale": "The stages use different model types with different cost profiles."
+        },
+        {
+          "id": "d",
+          "text": "The reranker filters out documents the user isn't allowed to see.",
+          "rationale": "Access control is a filter in retrieval, not a reranker's job."
+        }
+      ],
+      "explanation": "A bi-encoder embeds documents once, ahead of time; a cross-encoder can't. That is why the cross-encoder only sees a short list, and why a reranker can't recover a passage the first stage missed.",
+      "week": 3,
+      "tags": [
+        "reranking",
+        "bi-encoder",
+        "cross-encoder"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2x-w3-08",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "def rrf(lists, k):\n    s = {}\n    for lst in lists:\n        for i, d in enumerate(lst, start=1):\n            s[d] = s.get(d, 0) + 1 / (k + i)\n    return sorted(s, key=lambda d: -s[d])\n\nlists = [[\"p\", \"q\", \"r\", \"s\"], [\"r\", \"s\", \"q\", \"t\"]]\nprint(rrf(lists, 0)[:3], rrf(lists, 60)[:3])",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`['r', 'p', 'q'] ['r', 'q', 's']`",
+          "rationale": "Right. With k = 0, being first in one list is worth 1.0, so p ranks second. With k = 60, rank differences shrink and documents found by both lists (q, s) pass p.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`['r', 'p', 'q'] ['r', 'p', 'q']`",
+          "rationale": "k changes how much top positions matter relative to agreement, so the order changes here."
+        },
+        {
+          "id": "c",
+          "text": "`['p', 'r', 'q'] ['r', 'q', 's']`",
+          "rationale": "With k = 0, r scores 1/3 + 1 = 1.33, ahead of p's 1.0."
+        },
+        {
+          "id": "d",
+          "text": "`['r', 'q', 's'] ['r', 'p', 'q']`",
+          "rationale": "Reversed: small k favors single top positions, large k favors agreement."
+        }
+      ],
+      "explanation": "As k grows, 1 / (k + r) flattens, so appearing in several lists outweighs a single high rank. Cormack and colleagues chose k = 60 to limit the influence of one system's outlier rankings.",
+      "week": 3,
+      "tags": [
+        "rrf",
+        "fusion"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w3-09",
+      "type": "code-reading",
+      "prompt": "This nDCG implementation passes a test where every relevant document is retrieved. What is wrong with it?",
+      "code": "import math\n\ndef ndcg_at_k(ranked, grades, k):\n    gains = [grades.get(d, 0) for d in ranked[:k]]\n    dcg = sum(g / math.log2(i + 2) for i, g in enumerate(gains))\n    ideal = sorted(gains, reverse=True)\n    idcg = sum(g / math.log2(i + 2) for i, g in enumerate(ideal))\n    return dcg / idcg if idcg else 0.0",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "The discount should be log10, not log2.",
+          "rationale": "The log base scales DCG and IDCG equally, so it cancels in the ratio."
+        },
+        {
+          "id": "b",
+          "text": "It should divide by k instead of IDCG.",
+          "rationale": "Dividing by k would not normalize to the ideal ranking."
+        },
+        {
+          "id": "c",
+          "text": "IDCG is computed from the retrieved documents' gains only, so relevant documents that were never retrieved don't count against the system, and nDCG is inflated.",
+          "rationale": "Yes. The ideal ordering must come from all labeled relevant documents, not just those retrieved.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Gains should be binary.",
+          "rationale": "Graded gains are a feature of nDCG, not a bug."
+        }
+      ],
+      "explanation": "If the system retrieves one relevant document at rank 1 and misses three others, this code reports a perfect 1.0. Compute IDCG from the full label set (truncated at k). Test metric code with cases that should score badly, not only with perfect retrievals.",
+      "week": 3,
+      "tags": [
+        "metrics",
+        "ndcg",
+        "evaluation-bugs"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s2x-w3-10",
+      "type": "multi",
+      "prompt": "For which of these queries would you expect BM25 to outperform a general-purpose embedding model, before you measure? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "`\"PO-2026-11873 status\"` (a purchase order number)",
+          "rationale": "Correct. An exact identifier with high idf is BM25's strong case.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`\"how do I get reimbursed for a client dinner\"` against a document titled \"Expense policy: meals and entertainment\"",
+          "rationale": "Paraphrase with little word overlap favors embeddings."
+        },
+        {
+          "id": "c",
+          "text": "`\"Project Kestrel launch checklist\"` where Kestrel is an internal codename coined last month",
+          "rationale": "Correct. A rare, new name the embedding model has no special representation for.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "A question in Spanish against English documents, with a multilingual embedding model",
+          "rationale": "Cross-lingual matching is an embedding strength; BM25 needs shared tokens."
+        },
+        {
+          "id": "e",
+          "text": "`\"ERR_CERT_DATE_INVALID\"` from a browser error message",
+          "rationale": "Correct. An exact error string, as in Anthropic's TS-999 example.",
+          "correct": true
+        }
+      ],
+      "explanation": "These are hypotheses to check with a labeled set split by query type, which is how you justify hybrid search to a team: show each retriever winning a different slice.",
+      "week": 3,
+      "tags": [
+        "bm25",
+        "embeddings",
+        "model-selection"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s2x-w4-01",
+      "type": "scenario",
+      "prompt": "A product manager reports that your docs bot \"makes things up.\" You pull 40 wrong answers from the trace log. Recall at 10 for their gold passages is 0.55. What do you tell the team to work on first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The generation prompt, since that's where the made-up text appears.",
+          "rationale": "Nearly half of the gold passages never reached the model, so prompt work can't fix those answers."
+        },
+        {
+          "id": "b",
+          "text": "A larger generator model.",
+          "rationale": "A larger model can't cite a passage it was never given, though it may write a more convincing wrong answer."
+        },
+        {
+          "id": "c",
+          "text": "Retrieval: query rewriting, hybrid search, chunking, and the reranker, measured by recall at k on the eval set.",
+          "rationale": "Yes. The first stage that lost the truth owns the failure, and here most failures start in retrieval.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "A stricter citation verifier.",
+          "rationale": "Verification will flag more answers, which is useful, but it won't make them right."
+        }
+      ],
+      "explanation": "Diagnose before fixing. With recall at 10 of 0.55, about 45 percent of these failures are retrieval or ranking misses. Fix those, then look at synthesis errors among the questions where the gold passage reached the prompt.",
+      "week": 4,
+      "tags": [
+        "failure-modes",
+        "diagnosis"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-02",
+      "type": "scenario",
+      "prompt": "Legal wants every answer from your policy assistant to be checkable by a reviewer in under a minute. Answers currently cite whole 1,500-token passages sent as single search result text blocks. What change helps most?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Split each passage into one text block per sentence inside its search result, so citations point at the specific sentences used.",
+          "rationale": "Yes. A text block is the smallest unit Claude can cite in a search result, so finer blocks give shorter, faster-to-check citations.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Ask the model to bold the important words.",
+          "rationale": "Formatting doesn't change what was cited or make it verifiable."
+        },
+        {
+          "id": "c",
+          "text": "Switch to structured outputs with a citations field.",
+          "rationale": "Citations and structured outputs can't be combined on the Claude API."
+        },
+        {
+          "id": "d",
+          "text": "Send fewer passages.",
+          "rationale": "That may help cost, but each citation would still cover a whole 1,500-token passage."
+        }
+      ],
+      "explanation": "Citation granularity follows how you package the text: sentence-chunked plain-text documents, or search results and custom content split into the blocks you want to be citable.",
+      "week": 4,
+      "tags": [
+        "citations",
+        "granularity"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-03",
+      "type": "scenario",
+      "prompt": "You run the same RAG pipeline with two generators on 40 eval questions. Model A: 88 percent correct, abstention recall 0.9, false abstention 0.05, $0.026 per question. Model B: 89 percent correct, abstention recall 0.5, false abstention 0.02, $0.013 per question. Your bars are 85 percent correct and abstention recall at least 0.8. Which do you ship?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Model B, because it's cheaper and slightly more accurate.",
+          "rationale": "It fails the abstention bar: half of unanswerable questions get an answer anyway, which is the missing-content failure."
+        },
+        {
+          "id": "b",
+          "text": "Model A, because it is the only one that meets both bars; then try to improve B's abstention with prompt changes and re-run the same eval.",
+          "rationale": "Yes. Choose the cheapest configuration that meets every bar, and keep the eval so you can revisit.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Neither; correctness differs by only one point, so the eval is useless.",
+          "rationale": "The correctness difference is small, but the abstention difference is large and decision-relevant. Small sample sizes are a reason to add questions, not to ignore clear gaps."
+        },
+        {
+          "id": "d",
+          "text": "Model B with the abstention bar lowered to 0.5.",
+          "rationale": "Changing the requirement to fit the result defeats the point of having one."
+        }
+      ],
+      "explanation": "Report several numbers, not one. A cheaper model that answers questions it should refuse can be the more expensive choice once you count the cost of confident wrong answers.",
+      "week": 4,
+      "tags": [
+        "model-selection",
+        "abstention"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-04",
+      "type": "scenario",
+      "prompt": "Your corpus is 4 million tokens of documentation for a product that ships weekly, and different customers may see different documents depending on their plan. A colleague proposes dropping retrieval and putting everything in a cached prompt. What's the strongest objection?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Prompt caching doesn't work with documents.",
+          "rationale": "Caching works on any stable prefix, documents included."
+        },
+        {
+          "id": "b",
+          "text": "Long-context models are always less accurate than RAG.",
+          "rationale": "Studies such as Li and colleagues (2024) found long context often did better on average when resources allowed; the objection here is practical, not about accuracy."
+        },
+        {
+          "id": "c",
+          "text": "Citations don't work on long prompts.",
+          "rationale": "Citations work with long documents; that isn't the constraint here."
+        },
+        {
+          "id": "d",
+          "text": "The corpus doesn't fit in a single context window, weekly changes would invalidate the cache constantly, and per-customer permissions mean the prompt differs by customer anyway.",
+          "rationale": "Yes. Size, change rate, and permissions are the three classic reasons retrieval remains necessary.",
+          "correct": true
+        }
+      ],
+      "explanation": "Long context with caching is a strong baseline for small, stable, shared corpora. Large, fast-changing, or permissioned corpora are where retrieval earns its complexity.",
+      "week": 4,
+      "tags": [
+        "long-context",
+        "prompt-caching",
+        "architecture"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-05",
+      "type": "scenario",
+      "prompt": "During a design review, someone suggests verifying citations by checking whether each quote appears anywhere in the concatenated text of all retrieved passages, because it's simpler. What do you say?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Fine, since the passages are all from your corpus anyway.",
+          "rationale": "A quote can then span two passages and pass, even though no single cited source contains it."
+        },
+        {
+          "id": "b",
+          "text": "Skip verification for API citations because they're guaranteed.",
+          "rationale": "The guarantee covers live API citations' pointers; the verifier also protects logged, replayed, and other-provider answers, and it is cheap."
+        },
+        {
+          "id": "c",
+          "text": "Use fuzzy matching against the concatenated text to be more forgiving.",
+          "rationale": "That combines two relaxations, each of which lets more unsupported text through."
+        },
+        {
+          "id": "d",
+          "text": "Check each quote against the passage it cites, after whitespace normalization; concatenation lets stitched quotes and wrong source attributions pass.",
+          "rationale": "Yes. Provenance and fidelity are per citation, so the check must be too.",
+          "correct": true
+        }
+      ],
+      "explanation": "A citation says \"this text came from this passage.\" Verify exactly that statement: the named passage exists and contains the quote. Anything looser checks a different, weaker claim.",
+      "week": 4,
+      "tags": [
+        "verification"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-06",
+      "type": "code-reading",
+      "prompt": "This RAG prompt builder is used in production. What is the most serious problem?",
+      "code": "def build(question, passages):\n    system = \"You are a helpful assistant.\\n\" + \"\\n\".join(p.text for p in passages)\n    return {\"system\": system, \"messages\": [{\"role\": \"user\", \"content\": question}]}",
+      "options": [
+        {
+          "id": "a",
+          "text": "Retrieved passages are placed in the system prompt, where the model treats them with operator authority, so instructions inside a document can override your rules.",
+          "rationale": "Yes. Retrieved text is untrusted data; keep it in the user turn, clearly delimited, and keep your rules in the system prompt.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "The f-string is slow.",
+          "rationale": "String formatting cost is negligible next to a model call."
+        },
+        {
+          "id": "c",
+          "text": "The question should come before the documents.",
+          "rationale": "Guidance for long inputs is the opposite: documents first, question last."
+        },
+        {
+          "id": "d",
+          "text": "Passages should be sorted alphabetically.",
+          "rationale": "Order by relevance (or a deliberate placement strategy), not alphabet."
+        }
+      ],
+      "explanation": "Indirect prompt injection arrives through your own corpus: a wiki page, a support ticket, a scraped doc. Keep data and instructions in separate channels and never give retrieved text the authority of your system prompt.",
+      "week": 4,
+      "tags": [
+        "prompt-injection",
+        "prompt-structure"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-07",
+      "type": "predict-output",
+      "prompt": "A trace diagnosis helper. What does this print?",
+      "code": "def stage(gold, candidates, k, context):\n    if gold not in candidates:\n        return \"retrieval miss\"\n    if gold not in candidates[:k]:\n        return \"ranking miss\"\n    if gold not in context:\n        return \"context overflow\"\n    return \"synthesis error\"\n\nprint(stage(\"p9\", [\"p1\", \"p4\", \"p7\", \"p9\"], 3, [\"p1\", \"p4\", \"p7\"]))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`retrieval miss`",
+          "rationale": "The gold passage is among the candidates, so retrieval found it."
+        },
+        {
+          "id": "b",
+          "text": "`ranking miss`",
+          "rationale": "Yes. The gold passage is a candidate at rank 4 (index 3), but only the top 3 were selected.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`context overflow`",
+          "rationale": "It never made the top k, so it was lost in ranking, before prompt assembly."
+        },
+        {
+          "id": "d",
+          "text": "`synthesis error`",
+          "rationale": "The gold passage never reached the prompt."
+        }
+      ],
+      "explanation": "Walk the pipeline in order: candidates, top k, context, answer. The first stage that loses the gold passage names the failure.",
+      "week": 4,
+      "tags": [
+        "failure-modes",
+        "diagnosis"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-08",
+      "type": "multi",
+      "prompt": "Which fields must a per-question log record contain for an evaluation harness to diagnose retrieval and generation failures later? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "The passage ids (with ranks or scores) returned by each retriever and by the reranker",
+          "rationale": "Needed to tell retrieval misses from ranking misses.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "The exact passage ids that went into the prompt",
+          "rationale": "Needed to detect context overflow.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The index version and prompt version",
+          "rationale": "Needed to compare runs and attribute changes.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "The user's full browser history",
+          "rationale": "Not needed, and collecting it is a privacy problem."
+        },
+        {
+          "id": "e",
+          "text": "The answer's citations and the verifier's results",
+          "rationale": "Needed to measure citation quality and to sample for support checks.",
+          "correct": true
+        }
+      ],
+      "explanation": "Log what each stage decided, in terms that survive re-indexing, plus versions. That is what lets Studio 3 turn logs into failure histograms instead of anecdotes.",
+      "week": 4,
+      "tags": [
+        "logging",
+        "evaluation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-09",
+      "type": "mcq",
+      "prompt": "What did Gao and colleagues' ALCE benchmark (2023) find about citation quality on its ELI5 questions?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Citations from strong models were almost always fully supported.",
+          "rationale": "The opposite: support was often incomplete."
+        },
+        {
+          "id": "b",
+          "text": "Citations made answers less fluent, so they should be avoided.",
+          "rationale": "ALCE measures fluency, correctness, and citation quality together; it doesn't recommend dropping citations."
+        },
+        {
+          "id": "c",
+          "text": "Even the best models lacked complete citation support about half the time.",
+          "rationale": "Yes. That's the headline result, and the reason support needs checking even when citations look right.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Automatic citation metrics did not correlate with human judgments.",
+          "rationale": "The authors reported strong correlation with human judgments."
+        }
+      ],
+      "explanation": "A citation is a claim about support, and claims need checking. Mechanical checks catch fabricated quotes; support needs a judge you've calibrated or a person, at least on a sample.",
+      "week": 4,
+      "tags": [
+        "citations",
+        "research"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s2x-w4-10",
+      "type": "mcq",
+      "prompt": "Why is the cheapest model tier (for example, `claude-haiku-5-5`) a common choice for the query router in a RAG system?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The router's job is a narrow classification on a short input, its output is a label you can score directly, and it runs on every query, so cost and latency matter most there.",
+          "rationale": "Yes. That combination makes it the natural place for the cheapest model that measures well on labeled queries.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Small models are more accurate than large ones at every task.",
+          "rationale": "Not true in general; the argument is about fit for this narrow task."
+        },
+        {
+          "id": "c",
+          "text": "Routers don't need evaluation because mistakes are rare.",
+          "rationale": "A router error sends the question down the wrong path entirely; measure its accuracy like any classifier."
+        },
+        {
+          "id": "d",
+          "text": "Large models can't produce labels.",
+          "rationale": "They can; they're simply more expensive and slower than the task needs."
+        }
+      ],
+      "explanation": "Match the model to the stage. Narrow, high-volume, checkable tasks go to the cheapest tier that meets the bar; generation, where subtle errors matter, gets compared across tiers on the eval set.",
+      "week": 4,
+      "tags": [
+        "routing",
+        "model-selection"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

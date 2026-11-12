@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.051
+Parallel calls: several requests, one reply.
+
+2
+00:00:03.331 --> 00:00:07.064
+Current Claude models may ask for several tools in a single turn.
+
+3
+00:00:07.344 --> 00:00:16.347
+A transcript line like “Priya will send the deck by next Friday” can yield two tool_use blocks at once: look up Priya, and resolve next Friday.
+
+4
+00:00:16.627 --> 00:00:18.760
+The docs leave execution order to you.
+
+5
+00:00:19.040 --> 00:00:23.221
+Independent, read-only calls are usually safe to run concurrently.
+
+6
+00:00:23.501 --> 00:00:28.536
+Calls with side effects or ordering requirements are often better run one at a time.
+
+7
+00:00:28.816 --> 00:00:37.797
+Whatever order you choose, the reply has one fixed shape: one tool_result per tool_use, all together in the next user message, matched by id.
+
+8
+00:00:38.077 --> 00:00:48.915
+The parallel tool use docs list splitting results across separate user messages as the most common formatting mistake, and say it teaches the model to stop making parallel calls.
+
+9
+00:00:49.195 --> 00:00:58.944
+If you decide not to run one of the calls, perhaps because an earlier one failed, you still return a tool_result for it, marked as an error, with a short explanation.
+
+10
+00:00:59.224 --> 00:01:05.389
+If you need at most one call per turn, you can set disable_parallel_tool_use inside tool_choice.
+
+11
+00:01:05.669 --> 00:01:07.184
+Usually you don’t need to.
+
+12
+00:01:07.464 --> 00:01:11.773
+Parallel calls save round trips, and round trips are where latency lives.

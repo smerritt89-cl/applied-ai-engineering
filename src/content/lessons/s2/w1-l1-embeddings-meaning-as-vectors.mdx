@@ -1,0 +1,285 @@
+---
+id: s2-w1-l1
+studio: s2
+week: 1
+order: 1
+title: "Embeddings: meaning as vectors"
+summary: What an embedding is, how contrastive training shapes the space, how cosine similarity, dot product, and Euclidean distance relate (and when they rank identically), and what dimensionality does and doesn't buy you.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Describe an embedding model as a function from text to a fixed-length vector, and explain why that makes semantic search possible
+  - Explain contrastive training with in-batch negatives, and write down the InfoNCE loss
+  - Prove that cosine similarity, dot product, and Euclidean distance give the same ranking on unit vectors, and show where they disagree otherwise
+  - Reason about dimensionality, storage cost, and why raw similarity scores are not comparable across models
+  - Implement cosine similarity and a brute-force top-k search
+sources:
+  - { id: claude-embeddings-docs, use: summarized, where: "How to get embeddings with Anthropic; FAQ on similarity functions and input_type" }
+  - { id: voyage-embeddings-docs, use: summarized }
+  - { id: openai-embeddings-guide, use: summarized, where: "Embedding models; FAQ on normalization and distance functions" }
+  - { id: gemini-embeddings-docs, use: summarized, where: "Output dimensions and normalization" }
+  - { id: sbert-similarity-docs, use: summarized, where: "Similarity calculation" }
+  - { id: mikolov-2013-word2vec, use: summarized }
+  - { id: reimers-2019-sbert, use: summarized }
+  - { id: oord-2018-infonce, use: summarized }
+  - { id: karpukhin-2020-dpr, use: summarized, where: "Training with in-batch negatives" }
+  - { id: gao-2021-simcse, use: summarized }
+  - { id: wang-2022-e5, use: summarized }
+  - { id: thakur-2021-beir, use: summarized }
+  - { id: hf-all-minilm-l6-v2, use: summarized }
+  - { id: yt-3b1b-gpt, use: embedded, where: "Word embeddings and Embeddings beyond words, 12:27 to 20:22" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      Your embedding provider's docs say its vectors are normalized to length 1. You rank documents for a query three
+      ways: by dot product, by cosine similarity, and by Euclidean distance (smallest first). What happens?
+    options:
+      - id: a
+        text: All three produce the same ranking.
+        correct: true
+        rationale: "For unit vectors, the squared distance is 2 minus 2 times the cosine, and the dot product equals the cosine. All three are monotone in one quantity."
+      - id: b
+        text: Dot product and cosine agree, but Euclidean distance can order documents differently.
+        rationale: Euclidean distance on unit vectors is a decreasing function of cosine, so it can't reorder them.
+      - id: c
+        text: They disagree whenever documents have different lengths in tokens.
+        rationale: Token length doesn't matter after normalization; every vector has norm 1.
+    explanation: >-
+      Expand the squared distance: the squared norm of a minus b equals the squared norm of a, plus the squared norm of
+      b, minus twice their dot product. With both norms equal to 1 that is 2 minus 2 cos(a, b). So on normalized vectors
+      the choice of metric is about speed (the dot product skips two square roots), not about results.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      A teammate proposes a rule for your support search: "only show articles with cosine similarity above 0.75." The
+      threshold was tuned on one embedding model last quarter, and you are now evaluating a different model. What do
+      you tell them?
+    options:
+      - id: a
+        text: Keep 0.75. Cosine similarity is a standard scale from -1 to 1, so the threshold transfers.
+        rationale: The range is standard; the distribution of scores within it is not. Different models bunch scores in different places.
+      - id: b
+        text: Re-derive any threshold for the new model on labeled query and document pairs, and prefer ranking (top-k) over absolute cutoffs where you can.
+        correct: true
+        rationale: Yes. A score's meaning depends on the model's geometry, so thresholds must be measured per model.
+      - id: c
+        text: Double it to 1.5 to be safe.
+        rationale: Cosine similarity can't exceed 1.
+    explanation: >-
+      Two models can rank the same documents in the same order while putting typical scores in very different ranges
+      (for example, all scores between 0.6 and 0.9 for one model, between 0.1 and 0.5 for another). Treat raw scores as
+      model-specific. Ranking is far more portable than thresholding.
+  - id: kc3
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      import math
+      def cos(a, b):
+          dot = sum(x * y for x, y in zip(a, b))
+          return dot / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
+
+      q = [1.0, 0.0]
+      docs = {"short": [0.9, 0.1], "long": [3.0, 2.0]}
+      by_dot = max(docs, key=lambda d: sum(x * y for x, y in zip(q, docs[d])))
+      by_cos = max(docs, key=lambda d: cos(q, docs[d]))
+      print(by_dot, by_cos)
+    options:
+      - id: a
+        text: "`long short`"
+        correct: true
+        rationale: "The dot product rewards the long vector (3.0 versus 0.9). Cosine ignores length: short points almost exactly along q (about 0.994), long does not (about 0.832)."
+      - id: b
+        text: "`short short`"
+        rationale: The dot product is not length-invariant, so the vector with norm about 3.6 wins on dot product.
+      - id: c
+        text: "`long long`"
+        rationale: Cosine divides out length, and long's direction is further from q.
+    explanation: >-
+      On unnormalized vectors, the dot product mixes direction (meaning) with magnitude. Some models are trained for dot
+      product and use magnitude deliberately; most general-purpose text embeddings are meant for cosine. Use whichever
+      metric the model card or provider docs specify.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The problem embeddings solve
+
+Studio 1 ended with a limit you can't prompt your way around: a model only knows what is in its weights or its context window. To answer questions about your company's documents, you have to find the right few passages among thousands and put them in the prompt. That is **retrieval**, and this studio is about doing it well.
+
+Keyword search finds passages that share words with the question. It works surprisingly well, and you will use it in week 3. But it misses a question like "my package never showed up" when the help article is titled "Late or missing deliveries." The words differ; the meaning is the same.
+
+An **embedding model** addresses that gap. It is a function that maps a piece of text to a fixed-length vector of real numbers, say 1,024 of them, trained so that texts with similar meaning land near each other. Once every document is a point in that space, "find documents about this question" becomes "find the points nearest to the question's point." That is a geometry problem, and you have the background to reason about it precisely.
+
+Two properties make this practical. Every input, a three-word query or a two-page policy, becomes a vector of the same length, so comparing any two texts costs one vector operation. And the document vectors are computed once, at indexing time, and stored. At query time you embed only the question. This week covers the vectors and how to compare them (this lesson), how to choose a model with evidence (lesson 2), and how to search millions of vectors quickly (lesson 3).
+</Listen>
+
+<Listen>
+## From word vectors to sentence embeddings
+
+The idea that meaning can live in vector geometry predates large language models. Mikolov and colleagues at Google (2013) introduced efficient ways to learn a vector per word from large text corpora and showed that the vectors captured syntactic and semantic similarity, including analogies that show up as roughly constant offsets between word vectors.
+
+Retrieval needs vectors for whole passages, not words. A transformer like BERT can judge whether two sentences match if you feed it both at once, but that doesn't scale: Reimers and Gurevych (2019) estimated that finding the most similar pair among 10,000 sentences that way takes about 50 million model calls, roughly 65 hours. Their Sentence-BERT model instead encodes each sentence separately into a vector that can be compared with cosine similarity, which cut the same job to about 5 seconds.
+
+That separation is the architecture you will use all studio. A **bi-encoder** (or dual encoder) embeds query and document independently, so documents can be embedded ahead of time. A **cross-encoder** reads the query and document together and outputs a relevance score; it is more accurate but must run once per candidate at query time. In week 3 you will combine them: a bi-encoder retrieves a shortlist cheaply, then a cross-encoder reranks it.
+</Listen>
+
+<Video id="wjZofJX0v4M" title="Transformers, the tech behind LLMs | Deep Learning Chapter 5" channel="3Blue1Brown" minutes={8} start={747} source="https://www.youtube.com/watch?v=wjZofJX0v4M">
+Watch from "Word embeddings" (12:27) through "Embeddings beyond words" (ending at 20:22). The video shows the token embeddings inside a language model, which are a cousin of the passage embeddings in this lesson rather than the same thing. Watch for two ideas that carry over: directions in a high-dimensional space can encode meaning, and the dot product is the natural measure of how well two vectors align.
+</Video>
+
+<Listen>
+## How embedding models are trained: contrastive learning
+
+Most modern text embedding models are trained with a **contrastive** objective. You need pairs that should be close: a question and the passage that answers it, a title and its article, two paraphrases. The model is rewarded for putting each pair close together and pushing everything else apart.
+
+The standard loss is InfoNCE, introduced by van den Oord and colleagues (2018). For a query q with its positive passage p, and a set of other passages that serve as negatives, let s be the similarity score (usually cosine) and tau a temperature. The loss for one query is the negative log of exp(s(q, p) / tau) divided by the sum of exp(s(q, d) / tau) over the positive and all the negatives. If that looks familiar, it is: it's cross-entropy for a softmax classifier whose "classes" are the candidate passages, with the same temperature you met in Studio 1. Minimizing it makes the correct passage win the softmax.
+
+Where do negatives come from? A cheap and effective trick is **in-batch negatives**: in a batch of B question and passage pairs, each question's positive is every other question's negative, which gives B minus 1 negatives per question for free. Karpukhin and colleagues used this in Dense Passage Retrieval (2020), whose dual encoder beat a strong BM25 keyword baseline by 9 to 19 points on top-20 passage retrieval accuracy across open-domain QA datasets. **Hard negatives**, passages that look relevant but aren't, teach finer distinctions. SimCSE (Gao and colleagues, 2021) used contradiction pairs from natural language inference data as hard negatives, and showed that the contrastive objective spreads embeddings more uniformly through the space while pulling positive pairs together.
+
+Scale of data matters as much as the loss. Microsoft's E5 models (Wang and colleagues, 2022) were trained contrastively on a large curated set of naturally occurring text pairs, and were reported as the first model to beat BM25 on the BEIR retrieval benchmark without labeled data. The practical takeaway for you: a model's notion of "similar" is whatever its training pairs said was similar. If your domain's idea of relevance differs (legal citations, part numbers, internal jargon), expect weaker results, and measure.
+</Listen>
+
+<Listen>
+## Three ways to compare vectors, and when they agree
+
+You will meet three similarity measures in provider docs and vector databases.
+
+- **Dot product**: the sum of the elementwise products of a and b. It grows with both alignment and length.
+- **Cosine similarity**: the dot product divided by the product of the two norms. It is the cosine of the angle between the vectors, between -1 and 1, and it ignores length entirely.
+- **Euclidean distance**: the norm of a minus b. Smaller means closer, so you rank ascending.
+
+The relationship is one line of algebra. The squared norm of a minus b equals the squared norm of a plus the squared norm of b minus twice the dot product of a and b. If every vector has norm 1, that's 2 minus 2 cos(a, b), and the dot product equals the cosine. So on **unit vectors, all three give identical rankings**. Off the unit sphere they can disagree: the dot product favors long vectors, and Euclidean distance penalizes vectors whose length differs from the query's.
+
+This is why provider docs say what they say. OpenAI's embeddings guide and the Voyage AI section of Anthropic's embeddings guide both state that their embeddings are normalized to length 1, so dot product and cosine are the same and Euclidean distance yields the same ranking; the dot product is simply faster. Google's Gemini docs say that `gemini-embedding-001` vectors truncated below the full 3,072 dimensions must be renormalized by you, while the newer `gemini-embedding-2` normalizes truncated outputs itself. Sentence Transformers uses cosine as its default similarity, and its docs recommend the dot product when the model already ends in a normalization layer.
+
+The working rule: use the metric the model was trained and documented for, and if you aren't sure, normalize vectors once at write time and use the dot product everywhere. Then your vector store, your offline evals, and your production code all agree.
+</Listen>
+
+<Predict
+  title="Does the metric change the winner?"
+  code={`import math
+dot = lambda a, b: sum(x * y for x, y in zip(a, b))
+norm = lambda a: math.sqrt(dot(a, a))
+cos = lambda a, b: dot(a, b) / (norm(a) * norm(b))
+dist = lambda a, b: norm([x - y for x, y in zip(a, b)])
+
+q = [0.6, 0.8]
+docs = {"A": [0.8, 0.6], "B": [1.2, 1.6]}   # B points exactly along q, but is twice as long
+print(max(docs, key=lambda d: cos(q, docs[d])),
+      max(docs, key=lambda d: dot(q, docs[d])),
+      min(docs, key=lambda d: dist(q, docs[d])))`}
+  options={["B B A", "B B B", "A A A", "B A B"]}
+  answer={0}
+>
+Cosine picks B (cosine 1.0, versus 0.96 for A). The dot product picks B too (2.0 versus 0.96), because B is both aligned and long. Euclidean distance picks A: B sits 1.0 away from q, A only about 0.28 away, because B overshoots q's length. Normalize B to unit length and all three agree on B.
+</Predict>
+
+<Listen>
+## Dimensionality: what the number of coordinates buys
+
+Embedding sizes in current use range from 384 (the popular open model `all-MiniLM-L6-v2`) through 1,024 (the default for Voyage AI's current models) to 3,072 (OpenAI's `text-embedding-3-large` and Google's Gemini embedding models). More dimensions can hold finer distinctions, but they cost memory, storage, and search time linearly. Stored as 32-bit floats, one million 1,024-dimensional vectors take about 4.1 GB before any index overhead. Lesson 2 shows how Matryoshka-trained models let you keep only a prefix of the vector and trade a little quality for a lot of space.
+
+Your math background helps with a counterintuitive fact about high dimensions. Draw two random unit vectors in d dimensions: their cosine has mean 0 and variance 1/d, so in 1,024 dimensions nearly every random pair is close to orthogonal. Meaning in an embedding space shows up as structured, measurable departures from that baseline, which is why ranking works even when the absolute differences between scores look small.
+
+Real models are not random, though, and their scores rarely spread evenly over -1 to 1. SimCSE's authors described pretrained embedding spaces as **anisotropic** (not spread evenly in all directions) and showed that contrastive training makes them more uniform. Different models end up with different score distributions. The consequence is the most common embedding bug in practice, and it's the subject of the pitfall below.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s2-w1-cosine-topk"
+  title="Cosine similarity and brute-force top-k"
+  starter={`import math
+
+def cosine(a, b):
+    """Cosine similarity of two equal-length vectors.
+    Raise ValueError if the lengths differ or either vector is all zeros."""
+    # TODO
+    pass
+
+def top_k(query, docs, k):
+    """Return the k most similar documents as a list of (doc_id, score) pairs,
+    highest cosine first. Break ties by doc_id, alphabetically, so results are
+    deterministic. Round scores to 4 decimal places."""
+    # TODO
+    pass
+
+# Hand-made 4-dimensional "embeddings". Pretend the axes mean
+# billing, shipping, account, outages (real models' axes mean nothing so tidy).
+DOCS = {
+    "refund-policy":    [0.9, 0.1, 0.0, 0.1],
+    "invoice-download": [0.7, 0.0, 0.4, 0.0],
+    "late-delivery":    [0.1, 0.9, 0.0, 0.2],
+    "change-address":   [0.0, 0.6, 0.6, 0.0],
+    "reset-password":   [0.0, 0.0, 0.95, 0.1],
+    "status-page":      [0.0, 0.1, 0.1, 0.95],
+    "long-billing-faq": [3.0, 1.5, 1.5, 1.0],   # a long, unnormalized vector
+}
+QUERY = [0.8, 0.3, 0.1, 0.0]   # "I was charged twice, can I get my money back?"
+
+print(top_k(QUERY, DOCS, 3))
+`}
+  tests={`assert cosine([1, 0], [0, 1]) == 0, "orthogonal vectors have cosine 0"
+assert abs(cosine([1, 2, 3], [2, 4, 6]) - 1) < 1e-12, "parallel vectors have cosine 1, whatever their lengths"
+assert abs(cosine([1, 0], [-1, 0]) + 1) < 1e-12, "opposite vectors have cosine -1"
+try:
+    cosine([0, 0], [1, 1])
+    assert False, "a zero vector should raise ValueError"
+except ValueError:
+    pass
+try:
+    cosine([1, 2], [1, 2, 3])
+    assert False, "vectors of different lengths should raise ValueError"
+except ValueError:
+    pass
+res = top_k(QUERY, DOCS, 3)
+assert res is not None, "top_k returned None"
+assert [d for d, _ in res] == ["refund-policy", "long-billing-faq", "invoice-download"], f"wrong order: {res}"
+assert res[0][1] == 0.957, f"expected score 0.957 for refund-policy, got {res[0][1]}"
+tie = top_k([1, 0], {"b": [2, 0], "a": [1, 0], "c": [0, 1]}, 2)
+assert [d for d, _ in tie] == ["a", "b"], "break ties alphabetically by doc_id"
+assert len(top_k(QUERY, DOCS, 50)) == len(DOCS), "k larger than the corpus returns every document"`}
+  solution={`import math
+
+def cosine(a, b):
+    if len(a) != len(b):
+        raise ValueError("vectors must have the same length")
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0 or nb == 0:
+        raise ValueError("cosine is undefined for a zero vector")
+    return sum(x * y for x, y in zip(a, b)) / (na * nb)
+
+def top_k(query, docs, k):
+    scored = [(cosine(query, vec), doc_id) for doc_id, vec in docs.items()]
+    scored.sort(key=lambda pair: (-pair[0], pair[1]))
+    return [(doc_id, round(score, 4)) for score, doc_id in scored[:k]]`}
+>
+Write `cosine` and `top_k`, then press **Check my answer**. Afterwards, swap cosine for a plain dot product and run again: `long-billing-faq` jumps to first place with a score of 3.0, purely because its vector is long. That is the failure the normalization rule prevents. This brute-force loop is also exactly what lesson 3 makes faster.
+</PyRunner>
+
+<Callout type="pitfall" title="Scores that don't mean what you think">
+Three mistakes cause most early embedding bugs. **Fixed thresholds**: "cosine above 0.8 means relevant" depends entirely on the model; re-derive any threshold on labeled pairs whenever the model changes, and prefer top-k ranking where you can. **Mixed vector spaces**: vectors from two different models (or two versions of one model) live in unrelated coordinate systems, so comparing them is meaningless; switching models means re-embedding the whole corpus. **Asymmetric inputs ignored**: many retrieval models expect queries and documents to be marked differently (Voyage's `input_type`, Gemini's task types, prefixes such as `query: ` for E5). Leaving that out often costs quality silently; lesson 2 covers it.
+</Callout>
+
+<Listen>
+## What embeddings miss, and how to check
+
+A single vector per passage compresses a lot of text into a few kilobytes, and something has to give. Be suspicious of how well an embedding represents exact identifiers (error codes, SKUs, ticket numbers), rare names, numbers, and fine logical distinctions such as negation. Don't assume either way: test pairs from your own data, such as "error E-417" against the article about E-417 and the article about E-416, and see whether the scores separate them.
+
+The research gives a reason for caution. The BEIR benchmark (Thakur and colleagues, 2021) evaluated retrieval systems on 18 datasets from domains they weren't trained on, and found BM25 keyword search was a robust baseline that dense retrievers often failed to beat out of domain. Models have improved a lot since, but the lesson stands: semantic and keyword search fail differently, which is why week 3 combines them.
+
+The checks and balances for this lesson are simple and worth doing every time you touch embeddings. Look at actual nearest neighbors for a handful of real queries, not just aggregate scores. Confirm vector norms (if the docs say unit length, assert it in a test). And confirm the metric your vector store uses matches the one your model expects. Lesson 2 turns "look at neighbors" into a measured evaluation.
+</Listen>
+
+<GoDeeper title="Why InfoNCE is a bound on mutual information, and why the temperature matters">
+Van den Oord and colleagues introduced InfoNCE as a lower bound on the mutual information between the paired views: with N candidates, the bound is at most log N, which is one formal reason larger batches (more negatives) help. The temperature tau sets how sharply the softmax concentrates on the highest-scoring candidate. Cosine similarity is bounded in [-1, 1], so without a small tau the logits can't spread far enough for the softmax to become confident. SimCSE's ablation makes this concrete: with cosine similarity, tau = 0.05 gave the best result on their development set, while tau = 1 was dramatically worse (a Spearman correlation of 64.0 versus 86.2).
+
+If you want to see the geometry argument in full, SimCSE's paper analyzes the contrastive loss in terms of **alignment** (positives close together) and **uniformity** (embeddings spread over the sphere), and shows how the objective improves the second without destroying the first.
+</GoDeeper>
+
+<Listen>
+## What to carry forward
+
+An embedding model maps text to a point on (or near) a high-dimensional sphere, trained contrastively so that related texts are close. On normalized vectors, dot product, cosine, and Euclidean distance are interchangeable for ranking; off the sphere they are not, so follow the model's documentation. Scores are model-specific, so rank rather than threshold, and never mix models in one index. And a vector is a lossy summary: check it against real queries from your domain. Next lesson: how to pick among dozens of embedding models without trusting a leaderboard blindly.
+</Listen>

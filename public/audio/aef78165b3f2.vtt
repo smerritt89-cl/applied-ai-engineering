@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.027
+Multi-turn is resent history.
+
+2
+00:00:02.307 --> 00:00:03.800
+The API is stateless.
+
+3
+00:00:04.080 --> 00:00:16.752
+It does not remember your previous request, so a “conversation” is something your code builds: after each reply, append the assistant’s turn to your list, append the user’s next turn, and send the whole list again.
+
+4
+00:00:17.032 --> 00:00:23.005
+The model sees the full history every time, which is exactly why it can refer back to earlier turns.
+
+5
+00:00:23.285 --> 00:00:26.165
+That design has two consequences you should plan for.
+
+6
+00:00:26.445 --> 00:00:37.432
+Cost and latency grow with every turn, because you pay for the entire history as input on each request; a 30-turn support chat bills its first message 30 times.
+
+7
+00:00:37.712 --> 00:00:48.421
+And you control memory completely: you can drop, summarize, or edit old turns, which is powerful and also a way to confuse the model if you rewrite history carelessly.
+
+8
+00:00:48.701 --> 00:00:57.555
+When you append the assistant’s turn, append the full content list the API returned (all blocks, unchanged), not just the text you extracted.
+
+9
+00:00:57.835 --> 00:01:03.403
+Current models check that returned blocks such as thinking come back exactly as they were produced.
+
+10
+00:01:03.683 --> 00:01:08.760
+Prompt caching (week 2) is the standard way to make long, stable prefixes cheap.

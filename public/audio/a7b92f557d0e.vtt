@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.197
+Streaming: same work, sooner feedback.
+
+2
+00:00:02.477 --> 00:00:07.619
+By default the SDK waits until the whole response is finished and then returns it.
+
+3
+00:00:07.899 --> 00:00:15.835
+With streaming, the API sends server-sent events as tokens are produced, so your code can show text while the model is still writing.
+
+4
+00:00:16.115 --> 00:00:19.336
+The total time to produce the response is about the same.
+
+5
+00:00:19.616 --> 00:00:26.805
+What changes is time to first token, the delay before anything appears, which is what users perceive as responsiveness.
+
+6
+00:00:27.085 --> 00:00:36.131
+For a long answer, the difference between a blank screen for twenty seconds and text appearing after one second is the difference between “broken” and “working.
+
+7
+00:00:36.411 --> 00:00:36.708
+”.
+
+8
+00:00:36.988 --> 00:00:41.020
+Streaming is also a reliability tool, not only a UX choice.
+
+9
+00:00:41.300 --> 00:00:56.148
+Anthropic’s docs recommend streaming (or the Batches API) for long requests, because some networks drop idle connections, and the Python SDK refuses non-streaming requests that it expects to exceed a ten-minute timeout.
+
+10
+00:00:56.428 --> 00:01:01.591
+A useful default: stream whenever output might be long or max_tokens is large.
+
+11
+00:01:01.871 --> 00:01:11.535
+The SDK’s stream helper accumulates the events for you and can hand back the same final message object a non-streaming call would, so you lose nothing.
+
+12
+00:01:11.815 --> 00:01:14.823
+The raw event sequence is worth knowing for debugging.
+
+13
+00:01:15.103 --> 00:01:28.095
+A stream starts with message_start (carrying the message shell and initial usage), then for each content block a content_block_start, a series of content_block_delta events with the new text, and a content_block_stop.
+
+14
+00:01:28.375 --> 00:01:35.842
+A message_delta carries the stop_reason and final output token count (cumulative), and message_stop ends the stream.
+
+15
+00:01:36.122 --> 00:01:37.828
+ping events may appear anywhere.
+
+16
+00:01:38.108 --> 00:01:48.199
+And an error can arrive mid-stream, after the HTTP 200, as an error event such as overloaded_error, so stream handling needs its own error path.
