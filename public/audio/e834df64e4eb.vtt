@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.792
+How Claude Code does all of this.
+
+2
+00:00:02.072 --> 00:00:06.616
+You have used Claude Code for a year, so here is the same machinery in the tool you know.
+
+3
+00:00:06.896 --> 00:00:07.664
+CLAUDE.
+
+4
+00:00:07.944 --> 00:00:09.437
+md is the up-front half.
+
+5
+00:00:09.717 --> 00:00:11.232
+Claude Code loads CLAUDE.
+
+6
+00:00:11.512 --> 00:00:22.008
+md files (project, user, and organization scopes) at the start of every session, in full, on every request, where prompt caching keeps the repeat cost down.
+
+7
+00:00:22.288 --> 00:00:35.003
+The docs suggest keeping each file under 200 lines, because longer files cost context and reduce adherence, and moving instructions that apply to only part of a codebase into path-scoped rules under.
+
+8
+00:00:35.283 --> 00:00:40.019
+claude/rules/, which load only when Claude works on matching files.
+
+9
+00:00:40.299 --> 00:00:46.805
+@path imports help organize a file but do not reduce its cost, because imported files load with it.
+
+10
+00:00:47.085 --> 00:00:50.989
+Auto memory is the note-taking half: Claude writes its own MEMORY.
+
+11
+00:00:51.269 --> 00:00:56.027
+md, and the first 200 lines or 25KB load each session.
+
+12
+00:00:56.307 --> 00:00:59.251
+Glob, grep, and reads are the just-in-time half.
+
+13
+00:00:59.531 --> 00:01:04.181
+That is why Claude Code can work in a large repository without loading it.
+
+14
+00:01:04.461 --> 00:01:09.432
+Compaction happens automatically near the limit, and you can trigger it with /compact.
+
+15
+00:01:09.712 --> 00:01:19.675
+The Agent SDK docs warn that compaction can lose specific instructions from early in a conversation, and recommend putting persistent rules in CLAUDE.
+
+16
+00:01:19.955 --> 00:01:23.539
+md, which is re-injected, rather than in a first message.
+
+17
+00:01:23.819 --> 00:01:25.803
+You can also add a section to CLAUDE.
+
+18
+00:01:26.083 --> 00:01:28.472
+md telling the compactor what to preserve.
+
+19
+00:01:28.752 --> 00:01:30.885
+Subagents are the isolation half.
+
+20
+00:01:31.165 --> 00:01:39.720
+Built-in ones such as Explore (read-only search) and Plan run in their own context windows and return a summary; you can define your own in.
+
+21
+00:01:40.000 --> 00:01:44.544
+claude/agents/ with a description, an allowed tool list, and a model.
+
+22
+00:01:44.824 --> 00:01:50.904
+A subagent starts fresh and does not see your conversation, so the task you give it must stand on its own.
+
+23
+00:01:51.184 --> 00:01:53.701
+Practical habits that follow: keep CLAUDE.
+
+24
+00:01:53.981 --> 00:02:04.904
+md short and about rules, not history; send broad searches to a subagent; and start a fresh session for an unrelated task rather than dragging an old context along.

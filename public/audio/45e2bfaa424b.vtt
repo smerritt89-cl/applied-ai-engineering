@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.453
+Why divide by the square root of the head size.
+
+2
+00:00:02.733 --> 00:00:08.195
+Suppose the components of q and k are independent with mean 0 and variance 1.
+
+3
+00:00:08.475 --> 00:00:09.328
+Then q.
+
+4
+00:00:09.608 --> 00:00:17.139
+k is a sum of d independent products, each with mean 0 and variance 1, so it has mean 0 and variance d.
+
+5
+00:00:17.419 --> 00:00:24.203
+That’s the argument in footnote 4 of “Attention Is All You Need” (Vaswani and colleagues, 2017).
+
+6
+00:00:24.483 --> 00:00:28.920
+For a head size of 64, raw scores have a standard deviation of 8.
+
+7
+00:00:29.200 --> 00:00:37.456
+Feed scores like that into a softmax and it saturates: the largest score wins by a wide margin and the weights are nearly one-hot.
+
+8
+00:00:37.736 --> 00:00:38.973
+Two things go wrong.
+
+9
+00:00:39.253 --> 00:00:44.992
+Each token attends to essentially one other token from the very start, before it has learned anything.
+
+10
+00:00:45.272 --> 00:00:55.725
+And the softmax’s Jacobian, diag(p) minus p p transpose, is nearly zero when p is nearly one-hot, so gradients through the attention weights vanish.
+
+11
+00:00:56.005 --> 00:01:06.672
+Dividing by the square root of d restores unit variance and keeps the softmax in its responsive range (lecture note 6, at 01:16:56).
+
+12
+00:01:06.952 --> 00:01:13.501
+This is the same variance bookkeeping as Kaiming initialization in lesson 5, applied to a different product.
+
+13
+00:01:13.781 --> 00:01:23.936
+Once you see deep learning as a long chain of operations whose scales must be kept near 1, a surprising amount of transformer design reads as variance control.

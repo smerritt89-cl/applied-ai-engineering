@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.219
+Routing: classify, then specialize.
+
+2
+00:00:02.499 --> 00:00:06.467
+Routing classifies an input and sends it to a specialized follow-up.
+
+3
+00:00:06.747 --> 00:00:17.008
+The post says it fits when there are distinct categories that are better handled separately, and when classification can be done accurately, by a model or by conventional code.
+
+4
+00:00:17.288 --> 00:00:31.603
+Its examples: sending different kinds of customer-service queries (general questions, refunds, technical support) to different processes, and sending easy questions to smaller, cheaper models and hard ones to more capable models.
+
+5
+00:00:31.883 --> 00:00:36.683
+That second example is the model-selection theme of this program in one pattern.
+
+6
+00:00:36.963 --> 00:00:41.016
+A router lets you spend frontier-model money only where it buys something.
+
+7
+00:00:41.296 --> 00:00:55.845
+For a PM team’s intake channel, a request for a quick status line goes to claude-haiku-5-5 at a fraction of the cost, while a request to draft a client-facing escalation goes to claude-opus-5-5.
+
+8
+00:00:56.125 --> 00:00:59.901
+At the prices on Anthropic’s pricing page today, Haiku 5.
+
+9
+00:01:00.181 --> 00:01:03.744
+5’s input tokens cost one fortieth of Opus 5.
+
+10
+00:01:04.024 --> 00:01:05.368
+5’s ($0.
+
+11
+00:01:05.648 --> 00:01:14.032
+10 versus $4 per million for prompts under 100,000 tokens; check the page before you rely on this).
+
+12
+00:01:14.312 --> 00:01:21.011
+Whether the cheap route is good enough is an empirical question, answered by an eval per route, never by assumption.
+
+13
+00:01:21.291 --> 00:01:27.499
+Routing has a specific failure mode: the classifier says something your code doesn’t expect, such as “Billing.
+
+14
+00:01:27.779 --> 00:01:31.064
+” with a capital letter and a period, or “probably a bug”.
+
+15
+00:01:31.344 --> 00:01:34.267
+The check is a strict parser with an explicit fallback.
+
+16
+00:01:34.547 --> 00:01:47.069
+Normalize obvious formatting, accept only known labels, and send anything else to a safe default (a general handler, or a human queue), logging it so you can see how often the router is confused.
+
+17
+00:01:47.349 --> 00:01:55.691
+Structured outputs with an enum remove most formatting problems, but you still need a fallback for the input that genuinely fits no category.
+
+18
+00:01:55.971 --> 00:02:07.405
+Then measure the router alone: build a labeled set of inputs and report its accuracy and confusion matrix, because a misroute silently sends a request down the wrong specialized path.

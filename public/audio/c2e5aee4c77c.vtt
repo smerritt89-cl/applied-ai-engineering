@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.219
+Before you install: a review routine.
+
+2
+00:00:02.499 --> 00:00:07.789
+Most of the risk in your daily work comes not from servers you write but from servers you add.
+
+3
+00:00:08.069 --> 00:00:16.069
+The MCP docs’ local-server guide gives a routine that takes a few minutes per server, and it maps directly onto Claude Code.
+
+4
+00:00:16.349 --> 00:00:18.333
+Ask whether it needs to run locally.
+
+5
+00:00:18.613 --> 00:00:23.499
+A server that only wraps a remote API gains nothing from running on your laptop.
+
+6
+00:00:23.779 --> 00:00:33.080
+If a remote version exists, use it: no code runs on your machine, and it uses the protocol’s authorization instead of a token in a config file.
+
+7
+00:00:33.360 --> 00:00:40.485
+A third-party server that needs nothing local yet ships only as a stdio process is worth a second look.
+
+8
+00:00:40.765 --> 00:00:41.789
+Check provenance.
+
+9
+00:00:42.069 --> 00:00:49.813
+A registry listing is not an endorsement, and the guide notes that even curated catalogs describe their vetting as best effort.
+
+10
+00:00:50.093 --> 00:01:00.525
+Tie the package to a source repository and a real maintainer, verify the exact package name (typosquatting is the cheapest attack there is), and pin the version.
+
+11
+00:01:00.805 --> 00:01:15.547
+Know what the pin covers: pinning a package run through npx or uvx fixes the top-level package, while its dependencies may still resolve fresh at install time; a container image pinned by digest freezes the whole tree.
+
+12
+00:01:15.827 --> 00:01:16.872
+Read the tools.
+
+13
+00:01:17.152 --> 00:01:22.656
+Open the server in the Inspector, read every description, and run an audit like the one above.
+
+14
+00:01:22.936 --> 00:01:27.053
+Remove servers whose descriptions say things unrelated to their job.
+
+15
+00:01:27.333 --> 00:01:28.208
+Contain it.
+
+16
+00:01:28.488 --> 00:01:40.627
+Run third-party servers in a container with only the directory they need mounted, no network unless they need it, and their own narrowly scoped credentials passed through the host’s per-server environment setting.
+
+17
+00:01:40.907 --> 00:01:41.931
+Keep watching.
+
+18
+00:01:42.211 --> 00:01:49.379
+Re-check after updates, remove servers you no longer use, and rotate the credentials a server held when you remove it.
+
+19
+00:01:49.659 --> 00:01:52.965
+Research tools are emerging to automate parts of this.
+
+20
+00:01:53.245 --> 00:02:08.776
+Radosevich and Halloran (2025) showed that leading models could be coerced through MCP tools into malicious code execution, remote access, and credential theft, and proposed a scanner that probes a server before deployment.
+
+21
+00:02:09.056 --> 00:02:12.384
+Treat such tools as one more check, not a certification.

@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.880
+Environments: development, preview, production.
+
+2
+00:00:03.160 --> 00:00:12.483
+Most teams run at least three environments: development on a laptop, preview or staging deployments for each branch or pull request, and production.
+
+3
+00:00:12.763 --> 00:00:19.995
+Vercel, for example, scopes each environment variable to Production, Preview, Development, or custom environments.
+
+4
+00:00:20.275 --> 00:00:24.925
+For an LLM service, separating them is about more than databases.
+
+5
+00:00:25.205 --> 00:00:26.656
+Separate keys and spend.
+
+6
+00:00:26.936 --> 00:00:32.248
+Give each environment its own API key, ideally in its own Anthropic workspace.
+
+7
+00:00:32.528 --> 00:00:44.368
+The rate-limits docs describe per-workspace spend and rate limits below the organization’s, so a runaway preview deployment or a load test can’t consume production’s rate limit or budget.
+
+8
+00:00:44.648 --> 00:00:51.261
+A preview build should never hold the production key: preview deployments often run code that hasn’t been reviewed yet.
+
+9
+00:00:51.541 --> 00:00:54.997
+Model ids are config, and changing them is a deploy.
+
+10
+00:00:55.277 --> 00:01:10.381
+Pin exact model ids per environment in reviewed configuration, keep an allowlist of models you’ve evaluated, and promote a model change the way you promote code: run the Studio 3 eval and regression gate in preview, then ship.
+
+11
+00:01:10.661 --> 00:01:17.595
+A model swap that arrives through an unreviewed environment-variable edit is a behavior change nobody tested.
+
+12
+00:01:17.875 --> 00:01:19.688
+Same image, different config.
+
+13
+00:01:19.968 --> 00:01:25.835
+Build once and promote the same artifact from preview to production, changing only configuration.
+
+14
+00:01:26.115 --> 00:01:29.123
+That is what makes “it worked in staging” mean something.
+
+15
+00:01:29.403 --> 00:01:31.173
+Know which environment answered.
+
+16
+00:01:31.453 --> 00:01:43.144
+Log the environment, model id, and deploy version with every request (week 3 builds this into traces), so an incident review can tell a preview experiment from production traffic.

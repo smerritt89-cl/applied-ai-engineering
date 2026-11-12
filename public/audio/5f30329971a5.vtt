@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.237
+Clustered questions.
+
+2
+00:00:01.517 --> 00:00:04.611
+The formulas so far assume independent questions.
+
+3
+00:00:04.891 --> 00:00:17.605
+Real evals often aren’t built that way: ten questions about each of 40 documents, several turns from the same conversation, many tickets from the same customer, or several variants of one template.
+
+4
+00:00:17.885 --> 00:00:31.475
+Questions in a group tend to succeed or fail together (a model that misreads a document gets most of its questions wrong), so 400 clustered questions carry much less information than 400 independent ones.
+
+5
+00:00:31.755 --> 00:00:41.547
+Miller’s second recommendation is to compute clustered standard errors whenever questions are drawn in related groups, clustering on the unit of randomization.
+
+6
+00:00:41.827 --> 00:00:57.443
+The clustered variance adds the within-cluster covariances to the usual term: for each cluster, sum the cross products of residuals for every pair of distinct questions in it, add these over clusters, divide by n squared, and add to the squared naive SE.
+
+7
+00:00:57.723 --> 00:01:01.861
+Positive within-cluster correlation makes the clustered SE larger.
+
+8
+00:01:02.141 --> 00:01:16.243
+The companion post reports that on popular evals the clustered standard errors can be more than three times the naive ones, so an interval reported as plus or minus 2 points might honestly be plus or minus 6.
+
+9
+00:01:16.523 --> 00:01:25.163
+The bootstrap version is easy to get right: resample whole clusters with replacement, then pool their questions and recompute the statistic.
+
+10
+00:01:25.443 --> 00:01:30.072
+If you have 40 documents, each bootstrap replicate draws 40 documents.
+
+11
+00:01:30.352 --> 00:01:44.837
+A useful sanity check is the design effect, the ratio of clustered to naive variance; a value near 1 says clustering doesn’t matter for this eval, and a value of 4 says your 400 questions behave like about 100.
+
+12
+00:01:45.117 --> 00:01:47.976
+Designing around it is cheaper than correcting for it.
+
+13
+00:01:48.256 --> 00:01:57.067
+When you write an eval, prefer more groups with fewer questions each, and record the group id with every question so the analysis is possible later.

@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.624
+Backoff with jitter, and retrying at one layer.
+
+2
+00:00:02.904 --> 00:00:12.845
+When many clients fail at once, say during a provider overload, and all retry after exactly one second, they all arrive again at the same instant and fail again.
+
+3
+00:00:13.125 --> 00:00:21.659
+Exponential backoff spreads retries out over time: wait about base times 2 to the power n before retry n, capped at some maximum.
+
+4
+00:00:21.939 --> 00:00:42.333
+Jitter spreads them across clients: Marc Brooker’s 2015 analysis on the AWS Architecture Blog simulated contending clients and found that adding randomness sharply reduced the work done, with “full jitter” (a uniform random wait between zero and the capped exponential) a simple, effective choice.
+
+5
+00:00:42.613 --> 00:00:49.888
+If the provider sends retry-after, it knows more than your formula does: the rate-limits docs say earlier retries fail.
+
+6
+00:00:50.168 --> 00:00:51.853
+Treat it as a minimum wait.
+
+7
+00:00:52.133 --> 00:00:54.608
+The bigger risk is retry amplification.
+
+8
+00:00:54.888 --> 00:01:07.773
+In the Amazon Builders’ Library article on timeouts and retries, Brooker works through a five-layer stack where each layer retries three times: load on the bottom layer can multiply by 243.
+
+9
+00:01:08.053 --> 00:01:19.723
+LLM services stack layers too: the browser retries your endpoint, your endpoint retries a helper, the helper calls the SDK, and the SDK retries the provider.
+
+10
+00:01:20.003 --> 00:01:36.749
+Google’s SRE book chapter on cascading failures gives the standard remedies: retry at one layer only, cap retries per request, and keep a server-wide retry budget so that once retries exceed some fraction of traffic, requests fail instead of retrying.
+
+11
+00:01:37.029 --> 00:01:48.763
+Pick the layer that knows the most (usually your service, which knows the deadline and the fallback options) and turn the others off, which is why the snippet above sets max_retries=0.
+
+12
+00:01:49.043 --> 00:01:54.504
+Finally, give the whole request one deadline and make every attempt fit inside what remains.
+
+13
+00:01:54.784 --> 00:02:04.341
+The SRE chapter calls this deadline propagation: checking the remaining time before each stage, because work finished after the caller gave up helps no one.

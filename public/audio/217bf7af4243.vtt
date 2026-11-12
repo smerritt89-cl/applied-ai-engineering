@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.283
+Measure percentiles, not averages.
+
+2
+00:00:02.563 --> 00:00:07.853
+Latency distributions are skewed: most requests are quick and a few are very slow.
+
+3
+00:00:08.133 --> 00:00:22.192
+The Google SRE book’s chapter on service level objectives makes the case directly: an average can hide the tail and changes in it, while the median shows the typical case and high percentiles (the 99th, the 99.
+
+4
+00:00:22.472 --> 00:00:24.499
+9th) show a plausible worst case.
+
+5
+00:00:24.779 --> 00:00:33.525
+Report p50, p95, and p99 (the values below which 50, 95, and 99 percent of requests fall).
+
+6
+00:00:33.805 --> 00:00:37.005
+The same chapter gives the vocabulary for targets.
+
+7
+00:00:37.285 --> 00:00:45.115
+A service level indicator (SLI) is a carefully defined measure, such as the time to first visible output of chat responses.
+
+8
+00:00:45.395 --> 00:00:53.565
+A service level objective (SLO) is a target for it, such as “99 percent of chat responses show text within 2 seconds.
+
+9
+00:00:53.845 --> 00:00:58.773
+” A service level agreement is a contract with consequences for missing an SLO.
+
+10
+00:00:59.053 --> 00:01:10.211
+The chapter suggests stacking targets at several percentiles to capture the shape of the curve, which suits LLM features well: one target for the typical wait and one for the tail.
+
+11
+00:01:10.491 --> 00:01:12.005
+Two pieces of math matter.
+
+12
+00:01:12.285 --> 00:01:32.211
+Sample size: the p99 of 100 samples is decided by the one or two largest values, so you need roughly ten observations beyond a percentile before it means much: on the order of 20 samples for p50, 200 for p95, and 1,000 for p99.
+
+13
+00:01:32.491 --> 00:01:36.971
+Repeated runs of the same task don’t count as new samples of your traffic.
+
+14
+00:01:37.251 --> 00:01:49.496
+Fan-out: Dean and Barroso’s “The Tail at Scale” (2013) argued that rare slow events, harmless in small systems, come to dominate as a request depends on more components.
+
+15
+00:01:49.776 --> 00:01:59.419
+If each call in an agent has a 1 percent chance of being very slow, a task with 10 calls hits at least one slow call with probability 1 minus 0.
+
+16
+00:01:59.699 --> 00:02:01.725
+99 to the 10th, about 9.
+
+17
+00:02:02.005 --> 00:02:03.072
+6 percent.
+
+18
+00:02:03.352 --> 00:02:07.832
+Agents turn a call-level p99 into a task-level p90.
+
+19
+00:02:08.112 --> 00:02:24.880
+The paper’s tail-tolerant techniques include hedged requests (sending a backup copy of a slow request); with LLMs a hedge bills a second attempt and must never duplicate a side effect, so reserve it for idempotent, read-only calls with high variance.

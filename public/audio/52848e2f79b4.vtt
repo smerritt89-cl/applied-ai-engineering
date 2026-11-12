@@ -1,0 +1,121 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.221
+Standard error and a confidence interval for a pass rate.
+
+2
+00:00:03.501 --> 00:00:09.624
+If each question scores 0 or 1, the pass rate p-hat is the mean of n Bernoulli variables.
+
+3
+00:00:09.904 --> 00:00:20.784
+By the central limit theorem it is approximately normal with standard error SE = sqrt(p(1 - p) / n), which you estimate by plugging in p-hat.
+
+4
+00:00:21.064 --> 00:00:23.347
+For prompt A: sqrt(0.
+
+5
+00:00:23.627 --> 00:00:25.269
+82 * 0.
+
+6
+00:00:25.549 --> 00:00:28.152
+18 / 200) is about 0.
+
+7
+00:00:28.432 --> 00:00:32.208
+027, so the 95 percent interval is 0.
+
+8
+00:00:32.488 --> 00:00:34.301
+82 plus or minus 1.
+
+9
+00:00:34.581 --> 00:00:36.160
+96 times 0.
+
+10
+00:00:36.440 --> 00:00:38.851
+027, or roughly 0.
+
+11
+00:00:39.131 --> 00:00:41.221
+767 to 0.
+
+12
+00:00:41.501 --> 00:00:42.995
+873.
+
+13
+00:00:43.275 --> 00:00:50.485
+That is the first of Miller’s recommendations: report the standard error of the mean, and an interval, with every eval score.
+
+14
+00:00:50.765 --> 00:01:01.283
+If scores are fractional (an F1 score, a rubric average), use the sample standard deviation of the per-question scores in place of sqrt(p(1 - p)).
+
+15
+00:01:01.563 --> 00:01:05.296
+That formula is the Wald interval, and you should know where it breaks.
+
+16
+00:01:05.576 --> 00:01:21.149
+Brown, Cai, and DasGupta (2001) showed that its actual coverage behaves erratically, falling well below the nominal 95 percent even at sample sizes textbooks call safe, and worst when p is near 0 or 1.
+
+17
+00:01:21.429 --> 00:01:23.840
+That is exactly where regression suites live.
+
+18
+00:01:24.120 --> 00:01:27.000
+With 48 of 50 passing, Wald gives 0.
+
+19
+00:01:27.280 --> 00:01:28.795
+906 to 1.
+
+20
+00:01:29.075 --> 00:01:32.488
+014, an interval that leaves the unit interval.
+
+21
+00:01:32.768 --> 00:01:37.909
+With 50 of 50, it gives a width of zero, claiming certainty from 50 questions.
+
+22
+00:01:38.189 --> 00:01:42.968
+The authors recommend the Wilson interval (or the Jeffreys interval) for small n.
+
+23
+00:01:43.248 --> 00:01:50.075
+Wilson inverts the score test instead of plugging p-hat into the variance, and for 48 of 50 it gives 0.
+
+24
+00:01:50.355 --> 00:01:52.296
+865 to 0.
+
+25
+00:01:52.576 --> 00:01:55.605
+989; for 50 of 50, 0.
+
+26
+00:01:55.885 --> 00:01:57.720
+929 to 1.
+
+27
+00:01:58.000 --> 00:01:58.768
+0.
+
+28
+00:01:59.048 --> 00:02:06.579
+The practical rule: use Wilson for any single pass rate, and always for small suites or rates above about 90 percent.
+
+29
+00:02:06.859 --> 00:02:18.187
+Keep the Wald formula in your head for quick estimates, because its structure (the error shrinks like one over the square root of n) is what drives every sample-size decision later in this lesson.
+
+30
+00:02:18.467 --> 00:02:21.197
+Quadrupling the questions only halves the interval.

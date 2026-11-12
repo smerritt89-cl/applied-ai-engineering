@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.499
+Input validation: the boring checks that do the most work.
+
+2
+00:00:03.779 --> 00:00:06.147
+Start with checks that need no model at all.
+
+3
+00:00:06.427 --> 00:00:11.973
+They cost microseconds, they never hallucinate, and they close whole categories of problems.
+
+4
+00:00:12.253 --> 00:00:13.320
+Size limits.
+
+5
+00:00:13.600 --> 00:00:18.528
+Cap the characters or tokens a user can send, and the number of turns you will resend.
+
+6
+00:00:18.808 --> 00:00:32.824
+The OWASP entry on unbounded consumption (LLM10) lists oversized and variable-length inputs as a way to exhaust compute and run up cost, and its first mitigation is validating and capping input size.
+
+7
+00:00:33.104 --> 00:00:37.541
+Pair it with per-user rate limits and the per-request timeouts you built in week 1.
+
+8
+00:00:37.821 --> 00:00:39.016
+Format and type.
+
+9
+00:00:39.296 --> 00:00:44.181
+If a field should be a booking number, validate it as one before it ever goes near a prompt.
+
+10
+00:00:44.461 --> 00:00:48.003
+If uploads should be PDFs under 10 MB, enforce that.
+
+11
+00:00:48.283 --> 00:00:52.763
+Every input you can reject on type is one the model never has to interpret.
+
+12
+00:00:53.043 --> 00:00:54.429
+PII redaction.
+
+13
+00:00:54.709 --> 00:01:04.288
+If the task doesn’t need the user’s card number, phone, or government ID, remove it before it reaches the model, your logs, or a third-party classifier.
+
+14
+00:01:04.568 --> 00:01:10.392
+Regular expressions plus checksums (the Luhn check for card numbers) catch the structured kinds.
+
+15
+00:01:10.672 --> 00:01:26.075
+Libraries such as Microsoft’s Presidio, now a community project, combine named-entity recognition, patterns, and context, and its own documentation states that “there is no guarantee that Presidio will find all sensitive information.
+
+16
+00:01:26.355 --> 00:01:29.427
+” Treat redaction as risk reduction, not a guarantee.
+
+17
+00:01:29.707 --> 00:01:34.507
+Know the trade-off too: once you replace a phone number with [PHONE], the model can’t use it.
+
+18
+00:01:34.787 --> 00:01:39.587
+Systems that need the value swap it for a reversible token kept server side.
+
+19
+00:01:39.867 --> 00:01:41.317
+Injection heuristics.
+
+20
+00:01:41.597 --> 00:01:51.944
+A handful of narrow patterns (“ignore previous instructions”, fake </system> tags, long base64 runs) block the laziest attacks at no cost.
+
+21
+00:01:52.224 --> 00:01:56.555
+They are trivially bypassed by rephrasing or translation, so they are a floor.
+
+22
+00:01:56.835 --> 00:02:01.635
+The lab measures exactly how much they catch and how many real customers they block.

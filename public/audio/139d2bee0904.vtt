@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+The tools: five kinds of agency.
+
+2
+00:00:02.456 --> 00:00:20.013
+Claude Code’s docs group the built-in tools into five categories: file operations (read, edit, create, rename), search (find files by pattern, search contents with regular expressions), execution (shell commands, servers, tests, git), web (search, fetch documentation),
+
+3
+00:00:20.293 --> 00:00:26.736
+and code intelligence (type errors after edits, jump to definition, which needs a language-server plugin).
+
+4
+00:00:27.016 --> 00:00:32.008
+There are also orchestration tools for spawning subagents and asking you questions.
+
+5
+00:00:32.288 --> 00:00:37.088
+Two design choices are worth noticing because they explain everyday behavior.
+
+6
+00:00:37.368 --> 00:00:42.381
+First, the agent searches like a developer rather than querying a pre-built index.
+
+7
+00:00:42.661 --> 00:00:52.752
+When you say “fix the failing tests,” a typical sequence is: run the suite, read the error, search for the relevant source, read those files, edit, run the tests again.
+
+8
+00:00:53.032 --> 00:00:56.168
+Each tool result is new evidence for the next decision.
+
+9
+00:00:56.448 --> 00:01:05.792
+This is why agents are good at unfamiliar code (they go and look) and why they can be slow or expensive in a huge repo (looking costs tokens).
+
+10
+00:01:06.072 --> 00:01:08.547
+Second, the shell is the universal tool.
+
+11
+00:01:08.827 --> 00:01:14.608
+Anything you can do from the command line, the agent can do: build, migrate, deploy, delete.
+
+12
+00:01:14.888 --> 00:01:26.109
+That power is why permission design matters so much, and why a task with a runnable check (a test, a build, a linter) suits an agent so well: the shell lets it close the loop itself.
+
+13
+00:01:26.389 --> 00:01:41.003
+Simon Willison’s practitioner advice says the same from the other direction: the problems that suit agentic loops have clear success criteria and reward trial and error, such as debugging, performance tuning, and dependency upgrades.

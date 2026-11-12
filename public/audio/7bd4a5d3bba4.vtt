@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.837
+Pattern 1: synchronous request and response.
+
+2
+00:00:03.117 --> 00:00:10.349
+The simplest shape: the client sends a request, your server calls the model, waits for the complete reply, and returns it.
+
+3
+00:00:10.629 --> 00:00:22.405
+This is the right default for short, bounded work: classifying a ticket, extracting fields from an email, drafting a one-paragraph reply, answering a tool call inside another service.
+
+4
+00:00:22.685 --> 00:00:29.960
+It is easy to test, easy to cache, and easy to retry, because a request either produced a whole answer or it didn’t.
+
+5
+00:00:30.240 --> 00:00:33.291
+Its weakness is that the caller waits for the last token.
+
+6
+00:00:33.571 --> 00:00:49.315
+Output tokens are generated one at a time (Studio 1, lesson 1), so a long answer is slow, and every proxy, load balancer, and hosting platform between the user and the model has to keep the connection open that long without seeing a byte.
+
+7
+00:00:49.595 --> 00:01:05.467
+Anthropic’s errors documentation warns about this for long requests: some networks drop idle connections after a variable period, and it recommends the streaming or Message Batches APIs for long-running requests, especially those over 10 minutes.
+
+8
+00:01:05.747 --> 00:01:20.595
+The Python SDK enforces a version of the same advice: it refuses a non-streaming request whose max_tokens is large enough that it expects the call to exceed its 10-minute default timeout, and tells you to stream instead.
+
+9
+00:01:20.875 --> 00:01:28.021
+So use synchronous calls when the output is short or a machine is the consumer, and keep max_tokens sized to the task.
+
+10
+00:01:28.301 --> 00:01:32.205
+When a person is watching text appear, or the output is long, stream.

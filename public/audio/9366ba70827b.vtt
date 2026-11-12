@@ -1,0 +1,33 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.325
+Checks and balances for adapter training.
+
+2
+00:00:02.605 --> 00:00:08.728
+The adapter changes a few million numbers you will never read, so verify behavior, not parameters.
+
+3
+00:00:09.008 --> 00:00:11.803
+Predict and confirm the trainable parameter count.
+
+4
+00:00:12.083 --> 00:00:19.016
+Score the base model before training, on the same frozen test set and with the same decoding settings you’ll use after.
+
+5
+00:00:19.296 --> 00:00:31.669
+Compare an adapter with its merged form on a handful of inputs: outputs should match to within numerical precision (exactly, in 16-bit; approximately, if you merged into a quantized base).
+
+6
+00:00:31.949 --> 00:00:38.904
+Re-run the evaluation after any change of quantization, because 4-bit storage changes the function slightly.
+
+7
+00:00:39.184 --> 00:00:50.448
+And keep the general-ability regression set from lesson 7 in every comparison, since a sweep that only measures the target task will happily choose the configuration that forgot the most.
+
+8
+00:00:50.728 --> 00:01:06.728
+Finally, keep the comparison honest across stacks and hardware: when a QLoRA run on one machine and a LoRA run on another disagree, check the trainable parameter counts, the scale and learning rate, and the quantizer before concluding anything about the method.

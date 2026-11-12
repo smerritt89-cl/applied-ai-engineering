@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.728
+Reading a big diff efficiently.
+
+2
+00:00:02.008 --> 00:00:08.984
+You can’t read every line of every agent diff with equal care, so read in an order that puts your attention where risk is.
+
+3
+00:00:09.264 --> 00:00:10.352
+Triage first.
+
+4
+00:00:10.632 --> 00:00:15.475
+git diff --stat (or the file list in your review tool) shows what changed and how much.
+
+5
+00:00:15.755 --> 00:00:18.229
+Compare it with the spec before reading any code.
+
+6
+00:00:18.509 --> 00:00:20.877
+Unexpected files are the first finding.
+
+7
+00:00:21.157 --> 00:00:22.395
+Tests before code.
+
+8
+00:00:22.675 --> 00:00:27.347
+Read the test changes and confirm they encode the requirement (lesson 7).
+
+9
+00:00:27.627 --> 00:00:32.213
+Then you can read the code asking “does this satisfy these tests for the right reason?
+
+10
+00:00:32.493 --> 00:00:34.307
+” rather than “what is this doing?
+
+11
+00:00:34.587 --> 00:00:34.884
+”.
+
+12
+00:00:35.164 --> 00:00:36.551
+Risky files next.
+
+13
+00:00:36.831 --> 00:00:46.559
+Anything on checklist items 3 to 5: auth, payments, data deletion, migrations, dependency manifests, CI and agent configuration.
+
+14
+00:00:46.839 --> 00:00:48.375
+Read these line by line.
+
+15
+00:00:48.655 --> 00:00:51.108
+Mechanical changes last, and separately.
+
+16
+00:00:51.388 --> 00:00:54.183
+Renames and formatting hide logic changes.
+
+17
+00:00:54.463 --> 00:01:01.332
+Ask for them in separate commits, and use git diff -w to ignore whitespace-only changes when reading logic.
+
+18
+00:01:01.612 --> 00:01:02.338
+Run it.
+
+19
+00:01:02.618 --> 00:01:07.866
+Check out the branch and exercise the behavior, especially for user-facing changes.
+
+20
+00:01:08.146 --> 00:01:19.026
+Claude Code’s bundled /verify skill builds and runs the app to look at the result, which catches problems tests miss, but you should still look yourself at anything a user will see.
+
+21
+00:01:19.306 --> 00:01:21.460
+Ask for evidence, not reassurance.
+
+22
+00:01:21.740 --> 00:01:26.242
+If the agent’s summary says “handled the edge case,” find the test that proves it.

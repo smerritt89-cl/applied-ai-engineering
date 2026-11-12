@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.453
+Version everything that changes the result.
+
+2
+00:00:02.733 --> 00:00:18.520
+An eval result is a function of at least five things: the prompt (template and any few-shot examples), the model (an exact id, not an alias), the request settings (effort, max tokens, tools), the dataset (which questions, which reference answers),
+
+3
+00:00:18.800 --> 00:00:21.893
+and the graders (including the judge model and its prompt).
+
+4
+00:00:22.173 --> 00:00:24.264
+Change any one and the score can move.
+
+5
+00:00:24.544 --> 00:00:27.445
+Change two at once and you can’t say which one moved it.
+
+6
+00:00:27.725 --> 00:00:34.595
+Practical habits: Pin model ids in config, and record the id the API reports in each response.
+
+7
+00:00:34.875 --> 00:00:42.512
+Anthropic’s models overview lists the current ids; aliases are convenient for prototypes and wrong for a baseline.
+
+8
+00:00:42.792 --> 00:00:46.461
+Keep prompts in files, in the repository, reviewed like code.
+
+9
+00:00:46.741 --> 00:00:48.853
+Give each a version or a content hash.
+
+10
+00:00:49.133 --> 00:00:50.477
+Version the dataset.
+
+11
+00:00:50.757 --> 00:00:55.579
+Store it as JSONL in the repository (or with a content hash if it’s large).
+
+12
+00:00:55.859 --> 00:01:01.939
+Never edit a case in place without bumping the version: a “fixed” reference answer is a different eval.
+
+13
+00:01:02.219 --> 00:01:11.904
+Write a manifest with every run: git commit, prompt hashes, model ids, settings, dataset hash, grader versions, number of trials, cache hit rate, and date.
+
+14
+00:01:12.184 --> 00:01:15.107
+Results without a manifest can’t be compared later.
+
+15
+00:01:15.387 --> 00:01:17.243
+Change one thing per comparison.
+
+16
+00:01:17.523 --> 00:01:26.013
+If you migrate a model and must re-tune the prompt, measure the new model with the old prompt first, then the new prompt, so you know what each change bought.
+
+17
+00:01:26.293 --> 00:01:28.320
+This is also what makes the gate fair.
+
+18
+00:01:28.600 --> 00:01:40.077
+The baseline must be the same suite, same dataset version, and same graders as the candidate, rerun under the same conditions, or the paired comparison is pairing different experiments.

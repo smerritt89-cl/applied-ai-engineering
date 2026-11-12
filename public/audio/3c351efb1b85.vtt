@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.197
+One chunk, many training examples.
+
+2
+00:00:02.477 --> 00:00:07.619
+The data loader samples random chunks of block_size + 1 consecutive tokens.
+
+3
+00:00:07.899 --> 00:00:20.059
+A chunk of length T + 1 contains T examples at once: token 1 predicts token 2, tokens 1 and 2 predict token 3, and so on up to all T tokens predicting the last one.
+
+4
+00:00:20.339 --> 00:00:28.979
+Inputs are the first T tokens, targets are the same chunk shifted by one, and the loss averages over all T positions and the whole batch.
+
+5
+00:00:29.259 --> 00:00:30.709
+This matters in two ways.
+
+6
+00:00:30.989 --> 00:00:35.533
+It’s efficient: one forward pass trains every context length from 1 to T.
+
+7
+00:00:35.813 --> 00:00:45.819
+And it means the model must work with any amount of context up to block_size, which is exactly what generation needs, since generation starts from a short prompt and grows.
+
+8
+00:00:46.099 --> 00:00:55.763
+The causal mask you’ll build below is what makes this legal: position t must not see tokens after t, or predicting token t + 1 would be trivial.
+
+9
+00:00:56.043 --> 00:01:09.803
+It also sets the meaning of block_size: it is the context window of this model, the same concept as a frontier model’s context window in Studio 1, just a few hundred characters instead of hundreds of thousands of tokens.
+
+10
+00:01:10.083 --> 00:01:17.101
+Positions beyond it don’t exist for the model, and the generation loop crops the context to the last block_size tokens.

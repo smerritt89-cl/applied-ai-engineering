@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.749
+The many ways test data leaks.
+
+2
+00:00:02.029 --> 00:00:04.803
+Duplicates and split groups are the obvious leaks.
+
+3
+00:00:05.083 --> 00:00:12.507
+Here is the fuller list to check for when you build a fine-tuning dataset, most of which you’ve met in earlier studios: Shared source.
+
+4
+00:00:12.787 --> 00:00:18.973
+Several examples derived from one document (chunks, threads, revisions) landing in different splits.
+
+5
+00:00:19.253 --> 00:00:20.107
+Templates.
+
+6
+00:00:20.387 --> 00:00:24.397
+Machine-generated documents that differ only in names and numbers.
+
+7
+00:00:24.677 --> 00:00:26.085
+The answer in the input.
+
+8
+00:00:26.365 --> 00:00:36.584
+A label pasted into the prompt as an example, or an input field that encodes the label (a ticket’s “resolution” field, when the task is to predict the resolution).
+
+9
+00:00:36.864 --> 00:00:39.488
+Lesson 5’s validator checks the first case.
+
+10
+00:00:39.768 --> 00:00:42.413
+Test cases in prompts and few-shot examples.
+
+11
+00:00:42.693 --> 00:00:49.776
+Studio 3’s rule applies unchanged: examples you put in a prompt come from training data, never from the test set.
+
+12
+00:00:50.056 --> 00:00:52.552
+Synthetic data seeded from test cases.
+
+13
+00:00:52.832 --> 00:01:03.392
+If you generate training examples by asking a model to vary existing examples, seed it only from the training split, or the variations become near-duplicates of your test set.
+
+14
+00:01:03.672 --> 00:01:05.144
+Repeated test-set use.
+
+15
+00:01:05.424 --> 00:01:10.757
+Every time you look at test failures and change something, the test set leaks into your decisions.
+
+16
+00:01:11.037 --> 00:01:13.149
+That’s the knowledge-check scenario above.
+
+17
+00:01:13.429 --> 00:01:15.051
+Pretraining contamination.
+
+18
+00:01:15.331 --> 00:01:19.853
+For public benchmarks, the base model may have seen the test data during pretraining.
+
+19
+00:01:20.133 --> 00:01:36.453
+Deng and colleagues (2023) found evidence of this for popular benchmarks, and Zhang and colleagues (2024) built a fresh look-alike of the GSM8K math benchmark and saw some models’ accuracy drop by up to 8 percent.
+
+20
+00:01:36.733 --> 00:01:44.584
+Your own labeled test set, built from your own documents, is protected from this by construction, as long as it never gets published.

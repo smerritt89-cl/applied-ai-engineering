@@ -1,0 +1,37 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.920
+The vocabulary-size trade-off.
+
+2
+00:00:02.200 --> 00:00:14.829
+At 01:43:27 the lecture returns to its GPT to ask how big the vocabulary should be, and the answer is a genuine trade-off you can reason about with the model you built.
+
+3
+00:00:15.109 --> 00:00:24.005
+A larger vocabulary compresses text into fewer tokens, so the same context window covers more text and generation needs fewer steps.
+
+4
+00:00:24.285 --> 00:00:35.357
+But the token embedding table and the final linear layer each grow by one row per vocabulary entry, so parameters and the cost of the output softmax grow linearly with V.
+
+5
+00:00:35.637 --> 00:00:43.104
+And each token appears less often in the training data, so rare tokens’ embeddings get few updates and may be poorly trained.
+
+6
+00:00:43.384 --> 00:00:50.147
+Characters (V around 65 for Shakespeare) sit at one extreme: tiny embedding table, long sequences.
+
+7
+00:00:50.427 --> 00:00:55.013
+GPT-2’s 50,257 sits far toward the other.
+
+8
+00:00:55.293 --> 00:01:09.395
+The lecture also shows that you can extend a trained model’s vocabulary with new tokens by adding rows to those two matrices and fine-tuning, which is how special tokens for chat formats or tools can be introduced later.
+
+9
+00:01:09.675 --> 00:01:23.243
+This is a design choice that model providers make for you, but it shows up directly in your numbers: the same document has a different token count, and so a different cost and context footprint, under each provider’s tokenizer.

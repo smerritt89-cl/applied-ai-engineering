@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.645
+BatchNorm backward, and what the formula says.
+
+2
+00:00:02.925 --> 00:00:07.085
+Exercise 3 derives BatchNorm’s backward pass as one expression.
+
+3
+00:00:07.365 --> 00:00:19.099
+The derivation is a good workout: x_i affects the output through three paths, directly through x hat i, through the mean (which every x hat depends on), and through the variance (likewise).
+
+4
+00:00:19.379 --> 00:00:24.989
+Summing the three, as the chain rule demands, and simplifying gives the compact formula above.
+
+5
+00:00:25.269 --> 00:00:30.773
+Ioffe and Szegedy’s paper states the same chain-rule decomposition in its section 3.
+
+6
+00:00:31.053 --> 00:00:33.123
+Read the formula as a projection.
+
+7
+00:00:33.403 --> 00:00:47.397
+Inside the parentheses, n dy_i minus the sum of dy removes the component of the gradient that would shift all examples equally, because BatchNorm’s output is invariant to such a shift (the mean is subtracted).
+
+8
+00:00:47.677 --> 00:00:59.709
+Then minus x hat i times the sum of dy x hat removes the component along x hat, because the output is also invariant to rescaling all inputs (the variance divides it out).
+
+9
+00:00:59.989 --> 00:01:06.432
+The gradient that reaches x is the upstream gradient with exactly those two directions projected away.
+
+10
+00:01:06.712 --> 00:01:17.208
+That’s a nice example of the math explaining the behavior: BatchNorm makes a layer insensitive to the scale of its inputs, so gradients can’t push along those directions.
+
+11
+00:01:17.488 --> 00:01:22.693
+The Bessel digression at 01:05:17 matters for the details.
+
+12
+00:01:22.973 --> 00:01:26.835
+The unbiased variance estimator divides by n minus 1.
+
+13
+00:01:27.115 --> 00:01:41.621
+PyTorch’s BatchNorm1d normalizes with the biased version (divide by n) during training but tracks the unbiased version for the running variance used at inference, so training and inference use slightly different statistics.
+
+14
+00:01:41.901 --> 00:01:50.669
+The lecture argues for using the unbiased estimate consistently, and its formula carries the corresponding n over (n minus 1) factor.
+
+15
+00:01:50.949 --> 00:01:54.256
+For a batch of 32, the difference is about 3 percent.

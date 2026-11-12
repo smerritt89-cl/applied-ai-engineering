@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.920
+Traces and spans, precisely.
+
+2
+00:00:02.200 --> 00:00:10.243
+OpenTelemetry (OTel), the vendor-neutral observability standard that most tools now speak, defines the vocabulary.
+
+3
+00:00:10.523 --> 00:00:16.517
+A span is one unit of work: a model call, a tool call, a database query, a whole request.
+
+4
+00:00:16.797 --> 00:00:34.355
+It has a name, a start and end time, attributes (key-value metadata such as the model id or token counts), optional events (timestamped notes, such as an exception), a status (Unset, Ok, or Error), and a kind (Client for an outgoing call, Server for an incoming one,
+
+5
+00:00:34.635 --> 00:00:38.795
+Internal for in-process work, plus Producer and Consumer for queued work).
+
+6
+00:00:39.075 --> 00:00:41.976
+A trace is all the spans that share one trace id.
+
+7
+00:00:42.256 --> 00:00:48.933
+Each span also has its own span id and the id of its parent; the span with no parent is the root.
+
+8
+00:00:49.213 --> 00:01:00.072
+Together, the trace id and span id form the span context, which is what gets passed along when one service calls another, so that the callee’s spans join the caller’s trace.
+
+9
+00:01:00.352 --> 00:01:05.067
+Across HTTP this travels in the W3C traceparent header.
+
+10
+00:01:05.347 --> 00:01:07.629
+Two consequences matter in practice.
+
+11
+00:01:07.909 --> 00:01:22.992
+First, durations nest: a parent’s duration includes its children, so you find where time went by looking for the child with the largest share, and the parent’s self time (its duration minus its children) is time spent in your own code.
+
+12
+00:01:23.272 --> 00:01:25.576
+Second, the trace id is a join key.
+
+13
+00:01:25.856 --> 00:01:34.965
+Put it on every log record, every eval result, and every user-feedback event, and you can move from a bad thumbs-down to the exact trace that produced it.

@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.965
+Self-hosting versus an API: the cost math.
+
+2
+00:00:03.245 --> 00:00:04.675
+Now put prices on it.
+
+3
+00:00:04.955 --> 00:00:11.568
+An API charges per token, so its cost scales linearly with volume: cost per task times tasks.
+
+4
+00:00:11.848 --> 00:00:22.301
+A rented GPU charges per hour, so its monthly cost is flat as long as one GPU can keep up, then steps up by one GPU’s cost each time you need another.
+
+5
+00:00:22.581 --> 00:00:27.189
+Hugging Face lists one NVIDIA L4 on AWS at $0.
+
+6
+00:00:27.469 --> 00:00:31.267
+80 per hour and one A100 80GB at $2.
+
+7
+00:00:31.547 --> 00:00:38.053
+50 per hour at the time of writing; an always-on GPU runs about 730 hours a month.
+
+8
+00:00:38.333 --> 00:00:40.147
+Two facts give you the whole picture.
+
+9
+00:00:40.427 --> 00:00:54.677
+First, the GPU’s best-case cost per task is its hourly price divided by the tasks it completes per hour at the highest utilization you would plan for (planning for 100 percent leaves no headroom for traffic spikes).
+
+10
+00:00:54.957 --> 00:01:01.251
+If that number is above the API’s cost per task, self-hosting never wins on cost, at any volume.
+
+11
+00:01:01.531 --> 00:01:14.544
+Second, if it is below, the break-even volume is the monthly GPU cost divided by the API’s cost per task: below that volume you are paying for an idle GPU, above it you are saving money.
+
+12
+00:01:14.824 --> 00:01:18.195
+Run the numbers with real prices and a pattern appears.
+
+13
+00:01:18.475 --> 00:01:27.776
+Against a frontier model with a long few-shot prompt, a small fine-tuned model on one GPU breaks even at a few hundred thousand tasks a month.
+
+14
+00:01:28.056 --> 00:01:31.661
+Against a small, cheap API model, it may never break even.
+
+15
+00:01:31.941 --> 00:01:33.883
+Anthropic lists Claude Haiku 5.
+
+16
+00:01:34.163 --> 00:01:35.528
+5 at $0.
+
+17
+00:01:35.808 --> 00:01:38.624
+10 per million input tokens and $0.
+
+18
+00:01:38.904 --> 00:01:46.264
+50 per million output tokens at the review date, so a 600-token extraction costs a few hundredths of a cent.
+
+19
+00:01:46.544 --> 00:01:56.251
+That is why model selection in this program always compares against the cheapest API model that passes your benchmark, not only against the most capable one.
+
+20
+00:01:56.531 --> 00:01:59.283
+Cost is rarely the only reason to self-host.
+
+21
+00:01:59.563 --> 00:02:11.168
+Data that can’t leave your network, latency targets an API can’t meet, independence from a provider’s deprecation schedule, or a model no API offers are all legitimate reasons.
+
+22
+00:02:11.448 --> 00:02:15.651
+Name the reason in your write-up, so cost isn’t doing work it can’t support.

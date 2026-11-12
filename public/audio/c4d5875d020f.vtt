@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.645
+Quantized serving, and how to check what it cost.
+
+2
+00:00:02.925 --> 00:00:10.669
+Quantization stores weights in fewer bits than the 16 used in training: 8-bit, 4-bit, or formats such as FP8.
+
+3
+00:00:10.949 --> 00:00:22.085
+Smaller weights mean less memory (a cheaper GPU, or more room for KV cache and larger batches) and less data to read per decode step, which often means faster decoding.
+
+4
+00:00:22.365 --> 00:00:36.509
+Weight-only methods such as GPTQ (Frantar and colleagues, 2022) and AWQ (Lin and colleagues, 2023) quantize after training using a small calibration set; GGUF is llama.
+
+5
+00:00:36.789 --> 00:00:41.056
+cpp’s file format with its own family of quantization schemes.
+
+6
+00:00:41.336 --> 00:00:50.147
+You met QLoRA in week 3, which trains adapters on a 4-bit base; serving is a separate decision about how the final weights are stored.
+
+7
+00:00:50.427 --> 00:00:56.720
+Quantization is lossy, and how much it costs depends on the model, the method, the bit width, and your task.
+
+8
+00:00:57.000 --> 00:01:03.997
+Published averages on general benchmarks won’t tell you how a 4-bit version handles your house priority convention.
+
+9
+00:01:04.277 --> 00:01:16.011
+So treat a quantized model as a new system: run the frozen benchmark on it and report the paired difference against the 16-bit version, alongside the memory, throughput, and cost gains.
+
+10
+00:01:16.291 --> 00:01:26.893
+If you serve an adapter, check that the quantized base plus adapter matches what you evaluated; an adapter trained on one version of the weights can behave differently on another.
+
+11
+00:01:27.173 --> 00:01:42.939
+A sensible order for the project: benchmark in 16-bit (or the precision you trained in), then try one quantized variant only if memory or cost requires it, and keep it only if its paired interval stays within the margin you wrote down in advance.

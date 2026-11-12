@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:06.571
+What changed in 2026-07-28: MCP became stateless.
+
+2
+00:00:06.851 --> 00:00:15.960
+The revision current on this lesson’s review date is 2026-07-28, and it changed the protocol’s foundations.
+
+3
+00:00:16.240 --> 00:00:21.701
+If you learned MCP from material written in 2025, three changes matter.
+
+4
+00:00:21.981 --> 00:00:23.176
+No more handshake.
+
+5
+00:00:23.456 --> 00:00:31.264
+Earlier revisions opened every connection with an initialize exchange that fixed the protocol version and capabilities for the session.
+
+6
+00:00:31.544 --> 00:00:38.968
+Now every request carries its protocol version and the client’s capabilities in its _meta field, under keys such as io.
+
+7
+00:00:39.248 --> 00:00:42.427
+modelcontextprotocol/protocolVersion.
+
+8
+00:00:42.707 --> 00:00:50.749
+A server accepts or rejects each request on its own; an unsupported version gets an error listing the versions it does support.
+
+9
+00:00:51.029 --> 00:00:58.453
+Servers must also implement server/discover, which a client may call first to learn versions and capabilities up front.
+
+10
+00:00:58.733 --> 00:01:00.675
+No server-initiated requests.
+
+11
+00:01:00.955 --> 00:01:07.163
+Earlier servers could send requests to the client in the middle of a call (to elicit, sample, or list roots).
+
+12
+00:01:07.443 --> 00:01:14.205
+Now a server that needs input returns a result with resultType set to input_required, listing what it needs.
+
+13
+00:01:14.485 --> 00:01:19.243
+The client gathers the answers and retries the original request with them attached.
+
+14
+00:01:19.523 --> 00:01:23.128
+The changelog calls this the multi round-trip request pattern.
+
+15
+00:01:23.408 --> 00:01:26.821
+Every result now carries a resultType, normally complete.
+
+16
+00:01:27.101 --> 00:01:29.619
+No protocol sessions on HTTP.
+
+17
+00:01:29.899 --> 00:01:39.221
+The Mcp-Session-Id header is gone; servers that need state across calls mint explicit handles and pass them as ordinary tool arguments.
+
+18
+00:01:39.501 --> 00:01:41.443
+You rarely write this plumbing yourself.
+
+19
+00:01:41.723 --> 00:01:53.968
+The official Python SDK’s v2 release (July 2026) supports the new revision and still serves 2025-era clients from the same server object.
+
+20
+00:01:54.248 --> 00:02:02.504
+But you will read logs, debug with the Inspector, and evaluate third-party servers, and knowing which era you are looking at saves confusion.

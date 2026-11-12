@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.987
+Two questions: does it fit, and how fast is it?
+
+2
+00:00:03.267 --> 00:00:06.637
+Running a model on your own machine comes down to two numbers.
+
+3
+00:00:06.917 --> 00:00:15.195
+Memory: the weights, plus a cache that grows with the conversation, plus runtime overhead, must fit in the memory your accelerator can use.
+
+4
+00:00:15.475 --> 00:00:20.723
+On an Apple Silicon Mac that is unified memory shared by CPU and GPU.
+
+5
+00:00:21.003 --> 00:00:36.683
+Apple’s spec page, read today, lists the M5 Max MacBook Pro with 36 GB of unified memory on the 32-core GPU version, and 48, 64, or 128 GB on the 40-core GPU version.
+
+6
+00:00:36.963 --> 00:00:42.253
+Speed: how long until the first token appears, and how many tokens per second after that.
+
+7
+00:00:42.533 --> 00:00:45.563
+Those two speed numbers come from two different phases.
+
+8
+00:00:45.843 --> 00:00:53.629
+Prefill processes your whole prompt in parallel and is limited mostly by compute; its result is the time to first token.
+
+9
+00:00:53.909 --> 00:01:09.461
+Decode produces one token at a time, and the Transformers docs explain why it is slow: each active parameter has to be read from memory for every generated token, so decoding is limited by memory bandwidth, and adding compute barely helps.
+
+10
+00:01:09.741 --> 00:01:11.469
+That gives you a handy upper bound.
+
+11
+00:01:11.749 --> 00:01:23.461
+Apple lists 460 GB/s of memory bandwidth for the 32-core GPU M5 Max and 614 GB/s for the 40-core version.
+
+12
+00:01:23.741 --> 00:01:36.861
+A model whose weights are 5 GB can’t decode faster than about 614 / 5, roughly 120 tokens per second, on the faster chip, and real numbers come in below that bound.
+
+13
+00:01:37.141 --> 00:01:40.896
+Both questions lead to the same lever: use fewer bytes per weight.
+
+14
+00:01:41.176 --> 00:01:42.520
+That is quantization.

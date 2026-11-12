@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.987
+A guardrail is a classifier, so it has error rates.
+
+2
+00:00:03.267 --> 00:00:06.104
+Week 3 gave you traces of what your system does.
+
+3
+00:00:06.384 --> 00:00:09.264
+This week is about controlling what it is allowed to do.
+
+4
+00:00:09.544 --> 00:00:15.923
+A guardrail is any check that sits between a request and a response and can allow, modify, or block it.
+
+5
+00:00:16.203 --> 00:00:20.661
+Some are deterministic code (a length limit, a regex for card numbers).
+
+6
+00:00:20.941 --> 00:00:25.165
+Some are models (a moderation endpoint, a small classifier, a judge).
+
+7
+00:00:25.445 --> 00:00:40.720
+All of them make decisions, and every decision procedure that isn’t trivial has two error rates: it blocks things it should allow (false positives, which annoy and lose real users) and it allows things it should block (false negatives, which are the incidents).
+
+8
+00:00:41.000 --> 00:00:45.715
+That framing is the most useful idea in this lesson, because it tells you how to work.
+
+9
+00:00:45.995 --> 00:00:48.896
+You don’t “add guardrails” and declare the system safe.
+
+10
+00:00:49.176 --> 00:00:59.224
+You decide what you are guarding against, choose a check, and measure both error rates on labeled examples, exactly as you measured LLM judges in Studio 3.
+
+11
+00:00:59.504 --> 00:01:07.888
+A guard you haven’t measured is a guess, and a guard with a 10 percent false-positive rate on a support bot turns away one customer in ten.
+
+12
+00:01:08.168 --> 00:01:09.704
+No single layer is enough.
+
+13
+00:01:09.984 --> 00:01:15.637
+Model providers train their models to decline harmful requests and run their own classifiers.
+
+14
+00:01:15.917 --> 00:01:29.251
+You add checks on the input, checks on the output, and, most important, an architecture that limits damage when everything else fails: least privilege for tools, no secrets in prompts, approval before side effects.
+
+15
+00:01:29.531 --> 00:01:31.941
+Lesson 11 covers that last layer.
+
+16
+00:01:32.221 --> 00:01:34.056
+This lesson builds the first ones.

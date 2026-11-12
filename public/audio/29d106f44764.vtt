@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.579
+Three splits, three jobs.
+
+2
+00:00:01.859 --> 00:00:04.333
+The training set is what the model learns from.
+
+3
+00:00:04.613 --> 00:00:14.384
+The validation set (also called the dev set) is what you use to make decisions: how many epochs, which learning rate, which checkpoint, whether a data change helped.
+
+4
+00:00:14.664 --> 00:00:25.053
+Gekhman and colleagues’ new-knowledge result from lesson 4 depended on it: stopping when validation accuracy peaked avoided most of the harm from training too long.
+
+5
+00:00:25.333 --> 00:00:29.493
+The test set is what you report, ideally once per decision you’re making.
+
+6
+00:00:29.773 --> 00:00:35.000
+The reason for separating validation from test is a statistical fact you already know.
+
+7
+00:00:35.280 --> 00:00:42.768
+If you measure ten checkpoints on the same set and pick the best, the best score is biased upward: you selected partly on noise.
+
+8
+00:00:43.048 --> 00:00:47.293
+The more choices you make on a set, the more optimistic its numbers become.
+
+9
+00:00:47.573 --> 00:00:51.285
+The validation set absorbs that bias so the test set doesn’t.
+
+10
+00:00:51.565 --> 00:01:00.717
+Hamel Husain and Shreya Shankar’s evals FAQ applies the same rule to LLM judges: tune on one split, measure on another.
+
+11
+00:01:00.997 --> 00:01:02.341
+How big should each be?
+
+12
+00:01:02.621 --> 00:01:07.912
+The test set must be large enough that the differences you care about exceed its margin of error.
+
+13
+00:01:08.192 --> 00:01:17.557
+In Studio 3 you computed that 50 cases at 80 percent give roughly plus or minus 11 points, which can’t separate 80 from 85.
+
+14
+00:01:17.837 --> 00:01:28.696
+For fine-tuning, a common pattern is to fix the test set’s size from that calculation first, set aside a similar or smaller validation set, and give everything else to training.
+
+15
+00:01:28.976 --> 00:01:39.728
+The lab’s 70/15/15 split of 44 documents is far too small for a real benchmark, and saying so out loud is part of the exercise.

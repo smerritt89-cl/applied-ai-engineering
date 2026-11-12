@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.624
+The recall versus latency trade-off, measured.
+
+2
+00:00:02.904 --> 00:00:12.931
+Every ANN method gives you a dial (efSearch, nprobe, the number of candidates to refine) that moves you along a curve: more work per query, higher recall.
+
+3
+00:00:13.211 --> 00:00:25.008
+ANN-Benchmarks (Aumüller and colleagues, 2018) plots these curves for many libraries on standard datasets, recall on one axis and queries per second on the other.
+
+4
+00:00:25.288 --> 00:00:32.712
+One of its findings is reassuring for practitioners: very different approaches reach comparable quality and speed trade-offs.
+
+5
+00:00:32.992 --> 00:00:36.896
+The choice of library matters less than tuning whichever one you have.
+
+6
+00:00:37.176 --> 00:00:39.224
+Here is how a working team measures it.
+
+7
+00:00:39.504 --> 00:00:40.891
+Sample real queries.
+
+8
+00:00:41.171 --> 00:00:44.563
+A few hundred from logs, embedded with your production model.
+
+9
+00:00:44.843 --> 00:00:48.875
+Compute ground truth with exact search on the same vectors, offline.
+
+10
+00:00:49.155 --> 00:00:52.205
+It’s slow, and it only runs once per corpus snapshot.
+
+11
+00:00:52.485 --> 00:00:53.616
+Sweep the dial.
+
+12
+00:00:53.896 --> 00:01:03.496
+For each setting, record mean recall@k against exact and the latency at the median and the 95th or 99th percentile, under realistic load.
+
+13
+00:01:03.776 --> 00:01:09.963
+Pick the cheapest setting that meets a target you chose in advance, for example recall@10 of at least 0.
+
+14
+00:01:10.243 --> 00:01:14.467
+95 at a p95 latency under 50 milliseconds.
+
+15
+00:01:14.747 --> 00:01:16.731
+Re-measure as the corpus grows.
+
+16
+00:01:17.011 --> 00:01:26.248
+A setting tuned at 1 million vectors may lose recall at 10 million, and IVF centroids trained on last year’s data may fit this year’s poorly.
+
+17
+00:01:26.528 --> 00:01:28.789
+Put the recall check in a scheduled job.
+
+18
+00:01:29.069 --> 00:01:38.328
+Then connect it back to lesson 2: confirm with your labeled set that end-to-end retrieval recall didn’t drop when you switched from exact search to the index.

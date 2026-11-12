@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.563
+HNSW: a navigable graph with express lanes.
+
+2
+00:00:03.843 --> 00:00:14.552
+The ANN method you are most likely to meet first is HNSW, Hierarchical Navigable Small World graphs, from Malkov and Yashunin (2016).
+
+3
+00:00:14.832 --> 00:00:19.419
+Faiss and pgvector both implement it, as do many vector databases.
+
+4
+00:00:19.699 --> 00:00:21.021
+Start with one layer.
+
+5
+00:00:21.301 --> 00:00:25.312
+Connect every vector to a handful of its near neighbors, making a graph.
+
+6
+00:00:25.592 --> 00:00:35.640
+To search, begin at an entry point and walk greedily: look at the current node’s neighbors, move to whichever is closest to the query, and stop when no neighbor is closer.
+
+7
+00:00:35.920 --> 00:00:41.765
+On a well-built graph this reaches the query’s neighborhood after visiting a small fraction of the nodes.
+
+8
+00:00:42.045 --> 00:00:47.592
+The “small world” property, short paths between any two nodes, is what makes greedy routing work.
+
+9
+00:00:47.872 --> 00:00:52.651
+A single layer has a problem: early in the search, the walk takes many short steps.
+
+10
+00:00:52.931 --> 00:00:58.435
+HNSW adds a hierarchy, much like a skip list (the paper draws this analogy).
+
+11
+00:00:58.715 --> 00:01:11.344
+Each vector is assigned a maximum layer at random, with exponentially decreasing probability for higher layers, so the top layer has very few nodes with long-range links, and each layer below is denser.
+
+12
+00:01:11.624 --> 00:01:21.032
+Search starts at the top, takes a few long hops to get close, then drops down a layer and refines, until it reaches the bottom layer that contains every vector.
+
+13
+00:01:21.312 --> 00:01:31.403
+The paper reports logarithmic scaling of search complexity with this structure, and a neighbor-selection heuristic that helps most at high recall and on clustered data.
+
+14
+00:01:31.683 --> 00:01:40.643
+Three parameters (named as in Faiss; vector databases use similar names) control the trade-offs: M: how many neighbors each node keeps.
+
+15
+00:01:40.923 --> 00:01:43.696
+Higher M means better recall and more memory.
+
+16
+00:01:43.976 --> 00:01:48.093
+efConstruction: how widely the builder searches when inserting a vector.
+
+17
+00:01:48.373 --> 00:01:50.763
+Higher means a better graph and slower builds.
+
+18
+00:01:51.043 --> 00:01:53.965
+efSearch: how many candidates the search keeps in play.
+
+19
+00:01:54.245 --> 00:01:59.600
+This is the dial you tune at query time: higher means better recall and slower queries.
+
+20
+00:01:59.880 --> 00:02:01.181
+Know the costs, too.
+
+21
+00:02:01.461 --> 00:02:16.245
+Faiss estimates HNSW memory at roughly d times 4 plus M times 8 bytes per vector (the full vector plus its links), so it doesn’t compress anything, and its HNSW index doesn’t support removing vectors.
+
+22
+00:02:16.525 --> 00:02:20.344
+Databases that support deletes handle it with extra machinery.

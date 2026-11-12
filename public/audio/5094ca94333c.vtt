@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.392
+Serverless functions: Vercel Functions as the example.
+
+2
+00:00:03.672 --> 00:00:09.453
+A serverless function is code the platform runs on demand per request and scales automatically.
+
+3
+00:00:09.733 --> 00:00:12.677
+You deploy a handler; the platform handles servers.
+
+4
+00:00:12.957 --> 00:00:15.901
+The limit that matters most is maximum duration.
+
+5
+00:00:16.181 --> 00:00:33.141
+Vercel’s limits page (with Fluid compute, the default for new projects) gives a default of 300 seconds on every plan; Hobby can’t go higher, while Pro and Enterprise can configure up to 800 seconds, with a 1,800-second maximum in beta.
+
+6
+00:00:33.421 --> 00:00:46.115
+The page is explicit that the duration includes time spent sending the response, including streamed responses, and that a function that runs out of time gets a 504 FUNCTION_INVOCATION_TIMEOUT.
+
+7
+00:00:46.395 --> 00:00:57.061
+Functions on Vercel’s separate Edge runtime have a different rule: they must begin sending a response within 25 seconds and can then stream for up to 300 seconds.
+
+8
+00:00:57.341 --> 00:01:00.584
+Two other details on that page are LLM-relevant.
+
+9
+00:01:00.864 --> 00:01:01.675
+The 4.
+
+10
+00:01:01.955 --> 00:01:06.989
+5 MB request and response body limit does not apply to streamed responses.
+
+11
+00:01:07.269 --> 00:01:19.067
+And Vercel bills Functions by active CPU time plus provisioned memory time, where waiting for I/O, such as calling AI models, does not count toward active CPU time.
+
+12
+00:01:19.347 --> 00:01:26.600
+What this means for you: a five-minute ceiling, by default, on everything a request does, retries and fallbacks included.
+
+13
+00:01:26.880 --> 00:01:30.123
+Short chat replies and extraction calls fit comfortably.
+
+14
+00:01:30.403 --> 00:01:38.445
+A multi-step agent that sometimes runs for eight minutes does not, and should be a background job (lesson 1) regardless of host.

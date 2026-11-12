@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.387
+Where examples come from.
+
+2
+00:00:01.667 --> 00:00:07.853
+Each source has a characteristic strength and a characteristic failure, and good datasets usually mix them.
+
+3
+00:00:08.133 --> 00:00:10.224
+Real data, labeled by people.
+
+4
+00:00:10.504 --> 00:00:16.968
+Production inputs (documents your feature actually receives) have the right distribution by definition.
+
+5
+00:00:17.248 --> 00:00:19.360
+Their labels are the expensive part.
+
+6
+00:00:19.640 --> 00:00:29.112
+Labelers need a written guideline with worked examples, and you should have two people label a sample independently and measure their agreement (Studio 3, week 4).
+
+7
+00:00:29.392 --> 00:00:36.155
+Disagreement usually means the guideline is ambiguous, and fixing the guideline is cheaper than fixing the model.
+
+8
+00:00:36.435 --> 00:00:37.885
+Expert-written examples.
+
+9
+00:00:38.165 --> 00:00:42.091
+A domain expert writes inputs and ideal outputs from scratch.
+
+10
+00:00:42.371 --> 00:00:50.989
+These are excellent for rare but important cases (the legal-hold email, the payroll emergency) and for defining the behavior you want.
+
+11
+00:00:51.269 --> 00:00:56.709
+They drift from reality: experts write cleaner, more typical inputs than real users do.
+
+12
+00:00:56.989 --> 00:00:58.163
+Synthetic data.
+
+13
+00:00:58.443 --> 00:01:01.237
+A model generates inputs, outputs, or both.
+
+14
+00:01:01.517 --> 00:01:15.491
+Self-Instruct (Wang and colleagues, 2022) showed a model can bootstrap instruction data from a small seed set, and Studio 3 used dimension-based generation to cover a space of inputs deliberately.
+
+15
+00:01:15.771 --> 00:01:19.056
+Synthetic inputs are a fine way to fill coverage gaps.
+
+16
+00:01:19.336 --> 00:01:28.232
+Their risk is sameness: generated text tends to be more uniform than real text, so check diversity, and keep at least your test set real.
+
+17
+00:01:28.512 --> 00:01:29.579
+Distillation.
+
+18
+00:01:29.859 --> 00:01:37.283
+A stronger model labels inputs, and you train a smaller model on those labels: the cost-motivated path from lesson 4.
+
+19
+00:01:37.563 --> 00:01:58.939
+The research warning here is “The False Promise of Imitating Proprietary LLMs” (Gudibande and colleagues, 2023): models fine-tuned on ChatGPT outputs learned its style convincingly enough to fool crowd raters, but closed little of the gap on factuality and on tasks the imitation data didn’t cover.
+
+20
+00:01:59.219 --> 00:02:05.576
+For a narrow task like extraction, distillation works much better, provided the teacher’s labels are checked.
+
+21
+00:02:05.856 --> 00:02:19.189
+Every label a model drafts is a model output, and the checks from Studio 1 apply: verify evidence quotes against the source, check owners and dates, and have a person review a sample (or all of them, for a test set).
+
+22
+00:02:19.469 --> 00:02:26.467
+The lab’s optional live step does exactly this, and refuses to train on drafts until someone marks them reviewed.

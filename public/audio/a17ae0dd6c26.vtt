@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.451
+PII and consent.
+
+2
+00:00:01.731 --> 00:00:07.768
+Training data deserves more care than prompt data, for a technical reason: models can memorize it.
+
+3
+00:00:08.048 --> 00:00:24.005
+Carlini and colleagues (2021) extracted hundreds of verbatim training sequences from GPT-2, including names, phone numbers, and email addresses, and some of those sequences appeared in only one document in the training data.
+
+4
+00:00:24.285 --> 00:00:26.419
+Larger models were more vulnerable.
+
+5
+00:00:26.699 --> 00:00:37.899
+A fine-tuned model is trained on far less data, but it is also trained for several epochs on exactly your examples, which is the condition under which memorization is easiest.
+
+6
+00:00:38.179 --> 00:00:43.896
+Assume a fine-tuned model can repeat pieces of its training set to anyone who can query it.
+
+7
+00:00:44.176 --> 00:00:46.245
+Four habits follow: Minimize.
+
+8
+00:00:46.525 --> 00:00:55.763
+If the task doesn’t need the customer’s name, account number, or address to learn the behavior, remove or replace it before the data reaches the training set.
+
+9
+00:00:56.043 --> 00:01:04.917
+Tools such as Presidio (open source) detect and mask many common PII types; measure what it misses on your data before relying on it.
+
+10
+00:01:05.197 --> 00:01:06.563
+Consent and purpose.
+
+11
+00:01:06.843 --> 00:01:12.048
+Data collected to resolve a support ticket wasn’t necessarily collected to train a model.
+
+12
+00:01:12.328 --> 00:01:18.301
+Whether you may reuse it depends on your contracts, privacy notices, and the law where your users live.
+
+13
+00:01:18.581 --> 00:01:24.875
+That is a question for your privacy and legal teams, and the answer belongs in the dataset’s documentation.
+
+14
+00:01:25.155 --> 00:01:26.029
+Deletion.
+
+15
+00:01:26.309 --> 00:01:33.264
+When a person asks for their data to be deleted, you can delete a row from a file, but you can’t delete it from trained weights.
+
+16
+00:01:33.544 --> 00:01:41.480
+The practical answer is to retrain from the corrected data, so keep the pipeline that rebuilds the dataset and the model reproducible.
+
+17
+00:01:41.760 --> 00:01:42.635
+Access.
+
+18
+00:01:42.915 --> 00:01:46.520
+A training file is a concentrated copy of sensitive data.
+
+19
+00:01:46.800 --> 00:01:49.957
+Store it like production data, not in a notebook folder.
+
+20
+00:01:50.237 --> 00:01:53.480
+The lab’s data is entirely fictional, with reserved.
+
+21
+00:01:53.760 --> 00:01:57.749
+example email domains, so you can practice without any of these risks.
+
+22
+00:01:58.029 --> 00:02:00.653
+Real projects start with the questions above.

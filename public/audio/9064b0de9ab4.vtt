@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.941
+Configuring LoRA and the trainer.
+
+2
+00:00:02.221 --> 00:00:04.867
+Two configuration objects do most of the work.
+
+3
+00:00:05.147 --> 00:00:11.312
+LoraConfig from PEFT describes the adapter: rank, alpha, dropout, and which modules to wrap.
+
+4
+00:00:11.592 --> 00:00:21.619
+SFTConfig from TRL extends Transformers’ training arguments with SFT-specific options such as max_length, packing, and the loss masks.
+
+5
+00:00:21.899 --> 00:00:26.549
+Pass the LoRA config to the trainer as peft_config and it wraps the model for you.
+
+6
+00:00:26.829 --> 00:00:30.989
+The values in the snippet below are this lesson’s starting point, with reasons.
+
+7
+00:00:31.269 --> 00:00:36.261
+Rank 16 and alpha 32 (scale 2) on all linear layers, per lesson 8.
+
+8
+00:00:36.541 --> 00:00:51.667
+A learning rate of 2e-4, higher than TRL’s 2e-5 default for full fine-tuning, because adapters want a higher rate (TRL’s docs suggest around 1e-4; Unsloth’s guide uses 2e-4 as its default).
+
+9
+00:00:51.947 --> 00:00:57.152
+Two epochs with evaluation every 10 steps, so you can see the validation curve turn.
+
+10
+00:00:57.432 --> 00:00:59.032
+Precision set explicitly.
+
+11
+00:00:59.312 --> 00:01:01.125
+Know which defaults you’re accepting.
+
+12
+00:01:01.405 --> 00:01:02.643
+In TRL 1.
+
+13
+00:01:02.923 --> 00:01:19.115
+17, SFTConfig turns bf16 on when fp16 isn’t set, turns gradient checkpointing on (less memory, slower steps), logs every 10 steps, truncates to 1,024 tokens, and doesn’t pack examples.
+
+14
+00:01:19.395 --> 00:01:27.309
+When the model is passed as a string, SFTTrainer loads it in float32 unless you set a dtype in model_init_kwargs.
+
+15
+00:01:27.589 --> 00:01:38.576
+Colab’s free-tier GPU type varies and isn’t guaranteed; older GPUs don’t support bf16, so detect it and fall back to fp16 mixed precision.
+
+16
+00:01:38.856 --> 00:01:44.232
+report_to="none" keeps the run off external trackers; losses are still in trainer.
+
+17
+00:01:44.512 --> 00:01:45.280
+state.
+
+18
+00:01:45.560 --> 00:01:46.563
+log_history.

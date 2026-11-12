@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.365
+Testing failure modes.
+
+2
+00:00:01.645 --> 00:00:09.645
+Failure handling is the code you are least likely to see run before production, so test it deliberately, and without waiting for an outage.
+
+3
+00:00:09.925 --> 00:00:11.035
+Fake the client.
+
+4
+00:00:11.315 --> 00:00:17.779
+Your resilience logic should depend on an interface (complete, stream), not on the SDK directly.
+
+5
+00:00:18.059 --> 00:00:36.064
+A fake that replays a script (“529, 529, then success”; “two chunks, then an overloaded error”) lets you test every branch: fallback after exhausted retries, no fallback on a 400, refusal routing, a stream that dies after its first token.
+
+6
+00:00:36.344 --> 00:00:37.389
+Fake the clock.
+
+7
+00:00:37.669 --> 00:00:39.824
+Inject a clock with now() and sleep().
+
+8
+00:00:40.104 --> 00:00:52.264
+The fake’s sleep just advances time, so a test of “the breaker half-opens after 30 seconds” or “the chain never exceeds a 60-second deadline” runs instantly and deterministically.
+
+9
+00:00:52.544 --> 00:00:56.192
+Seed the random generator used for jitter for the same reason.
+
+10
+00:00:56.472 --> 00:00:59.821
+Construct real error objects for the classification layer.
+
+11
+00:01:00.101 --> 00:01:12.453
+The lab builds actual SDK exceptions (a RateLimitError with a retry-after header, a spend-cap 429 body) so the test fails if the SDK’s shapes change under you.
+
+12
+00:01:12.733 --> 00:01:14.312
+Inject faults in staging.
+
+13
+00:01:14.592 --> 00:01:31.829
+Point the service at a fake provider that returns errors at a configurable rate, or wrap the real client with one that randomly raises, and watch your dashboards (week 3): does the breaker open, do fallbacks show up in traces, does p95 latency stay inside your deadline?
+
+14
+00:01:32.109 --> 00:01:40.003
+And rehearse the degraded mode on purpose, the way the SRE book recommends, so the first time it runs is not during an incident.

@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.237
+Run-to-run variance.
+
+2
+00:00:01.517 --> 00:00:03.971
+The second source of randomness is the model.
+
+3
+00:00:04.251 --> 00:00:11.888
+Ask each question once and your score includes the luck of each sample; ask again and the score moves even though nothing changed.
+
+4
+00:00:12.168 --> 00:00:23.752
+On the current Claude API you can’t remove that by setting temperature to zero, because requests that set sampling parameters are rejected, and other providers’ reasoning models restrict them too.
+
+5
+00:00:24.032 --> 00:00:33.248
+Even where you can set them, Miller’s advice is not to change sampling settings just to reduce eval variance, since that changes the system you’re measuring.
+
+6
+00:00:33.528 --> 00:00:40.376
+The fix is to resample: run each question K times and use the per-question mean as that question’s score.
+
+7
+00:00:40.656 --> 00:00:58.960
+This removes part of the within-question variance; Miller’s worked example shows the variance of the eval mean falling by a third at K = 2 and by half at K = 4, with diminishing returns after that, because the between-question variance doesn’t shrink no matter how often you repeat.
+
+8
+00:00:59.240 --> 00:01:03.955
+Two warnings follow: Don’t pool K times n answers as if they were independent.
+
+9
+00:01:04.235 --> 00:01:11.445
+Repeated answers to the same question are correlated, and treating them as fresh questions understates the standard error.
+
+10
+00:01:11.725 --> 00:01:16.675
+Average within each question first, then compute the SE across the n questions.
+
+11
+00:01:16.955 --> 00:01:19.429
+Decide what “pass” means for your product.
+
+12
+00:01:19.709 --> 00:01:28.179
+Anthropic’s guide to agent evals distinguishes pass@k (at least one of k trials succeeds) from pass^k (all k succeed).
+
+13
+00:01:28.459 --> 00:01:33.109
+At a 75 percent per-trial rate, pass^3 is about 42 percent.
+
+14
+00:01:33.389 --> 00:01:40.131
+A customer-facing agent that must work every time should be judged on consistency, not on its best attempt.
+
+15
+00:01:40.411 --> 00:01:51.504
+Variance also comes from places you don’t sample on purpose: provider-side changes behind a model alias, retries, tool timeouts, and nondeterministic harness code.
+
+16
+00:01:51.784 --> 00:02:05.331
+Madaan and colleagues (2024) measured how much benchmark scores vary across models trained from different random seeds and urged practitioners to account for that variance before ranking similar models.
+
+17
+00:02:05.611 --> 00:02:12.416
+The general lesson transfers: rerun your baseline from time to time to see how much it moves when nothing changes.
+
+18
+00:02:12.696 --> 00:02:15.597
+That spread is the floor under every difference you’ll claim.

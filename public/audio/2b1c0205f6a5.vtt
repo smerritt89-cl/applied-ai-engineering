@@ -1,0 +1,33 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.947
+One client, many backends: OpenAI-compatible endpoints.
+
+2
+00:00:04.227 --> 00:00:12.611
+Ollama, llama-server, LM Studio, and mlx-lm’s server all expose an OpenAI-style chat completions endpoint.
+
+3
+00:00:12.891 --> 00:00:30.683
+In practice that means you can point the official openai Python client at http://localhost:11434/v1 (Ollama’s docs pass a placeholder API key, which it ignores) and reuse code written for a hosted API.
+
+4
+00:00:30.963 --> 00:00:36.936
+That is useful for swapping backends in an eval harness, and for tools that only speak that protocol.
+
+5
+00:00:37.216 --> 00:00:41.397
+“Compatible” is a promise about the shape of requests, not about behavior.
+
+6
+00:00:41.677 --> 00:00:46.157
+Ollama’s docs say it supports a subset of the OpenAI API.
+
+7
+00:00:46.437 --> 00:00:55.888
+Model names differ per server, some parameters are ignored, structured output support varies, and usage numbers come from each server’s own tokenizer.
+
+8
+00:00:56.168 --> 00:01:15.091
+So verify three things on any local endpoint: which model actually answered (list /v1/models, or ollama ps ), which quantization it is running (in the model tag or GGUF name), and that a field your code depends on is really honored, by testing it rather than reading about it.

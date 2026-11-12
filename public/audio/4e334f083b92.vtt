@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.259
+The rest of the block.
+
+2
+00:00:01.539 --> 00:00:16.792
+Multi-head attention (01:21:59) runs several smaller heads in parallel, for example 6 heads of size 64 for an embedding of 384, concatenates their outputs, and applies a linear projection.
+
+3
+00:00:17.072 --> 00:00:20.165
+Each head can attend to a different kind of relationship.
+
+4
+00:00:20.445 --> 00:00:28.360
+The suggested exercise EX1 asks you to batch the heads as an extra tensor dimension, which is how nanoGPT does it.
+
+5
+00:00:28.640 --> 00:00:39.435
+The feed-forward layer (01:24:25) is an MLP applied to each position independently, widening to 4 times the embedding size and back.
+
+6
+00:00:39.715 --> 00:00:46.733
+The lecture’s summary of the block is communication (attention) followed by computation (the MLP), repeated.
+
+7
+00:00:47.013 --> 00:00:54.757
+Residual connections (01:26:48) write each sub-layer as x plus f(x) instead of f(x).
+
+8
+00:00:55.037 --> 00:01:05.917
+In the backward pass the identity path carries the gradient straight through, so deep stacks remain trainable; this is the ResNet idea (He and colleagues, 2015).
+
+9
+00:01:06.197 --> 00:01:13.685
+Early in training, when f contributes little, the network behaves like a shallow one and gradually brings each block into play.
+
+10
+00:01:13.965 --> 00:01:25.059
+LayerNorm (01:32:51, Ba and colleagues, 2016) standardizes each token’s vector across its features, with learned scale and shift.
+
+11
+00:01:25.339 --> 00:01:32.293
+It’s BatchNorm transposed: no batch statistics, no train and eval difference, no coupling between examples.
+
+12
+00:01:32.573 --> 00:01:40.723
+The lecture places it before each sub-layer (“pre-norm”), which is the arrangement the GPT-2 paper describes in its section 2.
+
+13
+00:01:41.003 --> 00:01:44.459
+3, along with a final LayerNorm after the last block.
+
+14
+00:01:44.739 --> 00:01:55.853
+Dropout (Srivastava and colleagues, 2014) randomly zeroes activations during training, a regularizer the lecture adds when it scales up (dropout 0.
+
+15
+00:01:56.133 --> 00:01:57.541
+2 in its gpt.
+
+16
+00:01:57.821 --> 00:02:05.053
+py, with block_size 256, 384-dimensional embeddings, 6 heads, and 6 layers).

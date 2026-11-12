@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.627
+Formatting: prompt-completion, and a check you should always run.
+
+2
+00:00:03.907 --> 00:00:18.264
+TRL’s SFTTrainer accepts plain text, prompt-completion pairs, or message lists, each in a standard (string) or conversational (messages) form, and applies the chat template to conversational data automatically.
+
+3
+00:00:18.544 --> 00:00:35.099
+For a task with a fixed instruction and a fixed answer format, the conversational prompt-completion form is the cleanest: the prompt is the system and user messages, the completion is the assistant message, and the trainer computes loss on the completion only by default.
+
+4
+00:00:35.379 --> 00:00:41.907
+Before training, render a few examples yourself and compare them with the tokenizer’s apply_chat_template output.
+
+5
+00:00:42.187 --> 00:00:46.645
+In the lab you write render_chatml, a few lines that reproduce Qwen2.
+
+6
+00:00:46.925 --> 00:00:53.027
+5’s template for plain messages, and the notebook asserts that your rendering matches the tokenizer’s.
+
+7
+00:00:53.307 --> 00:00:54.587
+It seems pedantic.
+
+8
+00:00:54.867 --> 00:01:01.160
+It catches real bugs: a template that injects a default system prompt you didn’t know about (Qwen2.
+
+9
+00:01:01.440 --> 00:01:08.949
+5’s does, when you omit one), a missing end-of-turn token, or a trailing newline that differs between training and serving.
+
+10
+00:01:09.229 --> 00:01:12.877
+Print the split between the prompt text and the completion text, too.
+
+11
+00:01:13.157 --> 00:01:17.851
+The completion should be the JSON answer plus the end-of-turn marker, and nothing else.

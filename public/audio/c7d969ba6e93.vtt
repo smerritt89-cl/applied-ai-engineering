@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.923
+Gradient descent, and why the step size matters.
+
+2
+00:00:03.203 --> 00:00:06.424
+The gradient points in the direction of steepest increase.
+
+3
+00:00:06.704 --> 00:00:21.979
+A first-order Taylor expansion makes the update rule precise: moving the parameters by minus eta times the gradient g changes the loss by about minus eta times the squared norm of g, which is negative whenever g isn’t zero.
+
+4
+00:00:22.259 --> 00:00:26.184
+So small steps against the gradient always help, at least locally.
+
+5
+00:00:26.464 --> 00:00:29.280
+“Small enough” is doing real work in that sentence.
+
+6
+00:00:29.560 --> 00:00:33.805
+The second-order term grows with eta squared and with the curvature of the loss.
+
+7
+00:00:34.085 --> 00:00:42.960
+Too small a learning rate and training crawls; too large and the quadratic term dominates, so steps overshoot and the loss oscillates or diverges.
+
+8
+00:00:43.240 --> 00:00:46.696
+Lesson 4 shows a practical way to find a good learning rate.
+
+9
+00:00:46.976 --> 00:01:00.949
+Optimizers such as Adam (Kingma and Ba, 2014), whose AdamW variant the “Let’s build GPT” lecture code uses, adapt the step size per parameter, but they are still built on the same gradient.
+
+10
+00:01:01.229 --> 00:01:03.341
+Notice also how forgiving this is.
+
+11
+00:01:03.621 --> 00:01:09.403
+Any direction with a positive inner product with the true gradient decreases the loss for small steps.
+
+12
+00:01:09.683 --> 00:01:14.099
+A buggy gradient that is merely “roughly right” will still train, just badly.
+
+13
+00:01:14.379 --> 00:01:22.805
+That’s why a falling loss is weak evidence that your backward pass is correct, and why the gradient check from lesson 1 stays in your toolkit.

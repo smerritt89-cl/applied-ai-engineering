@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.624
+What the SDK already does, and its units.
+
+2
+00:00:02.904 --> 00:00:07.064
+Before writing retry code, know what the official SDK does for you.
+
+3
+00:00:07.344 --> 00:00:27.504
+Per Anthropic’s errors docs and the SDK documentation on the review date, the SDKs retry transient failures automatically: connection errors, 408, 409, 429, and 5xx, with exponential backoff, 2 retries by default, honoring retry-after when present.
+
+4
+00:00:27.784 --> 00:00:33.373
+You configure this with max_retries ( maxRetries in TypeScript); zero disables it.
+
+5
+00:00:33.653 --> 00:00:39.563
+The default request timeout is 10 minutes, because a long generation can legitimately take that long.
+
+6
+00:00:39.843 --> 00:00:44.792
+Here the units bite: Python’s timeout is in seconds (a float, or an anthropic.
+
+7
+00:00:45.072 --> 00:00:50.981
+Timeout with separate connect, read, write, and pool values), while TypeScript’s is in milliseconds.
+
+8
+00:00:51.261 --> 00:00:55.912
+A TypeScript timeout: 30 is 30 milliseconds, and every request fails.
+
+9
+00:00:56.192 --> 00:01:06.219
+Timeouts are also retried, so a dead connection under default settings can hold a request for up to timeout times (retries plus one): about 30 minutes.
+
+10
+00:01:06.499 --> 00:01:08.312
+There’s a subtler point for streams.
+
+11
+00:01:08.592 --> 00:01:28.027
+The Python SDK is built on an HTTP client ( httpx2, a fork of HTTPX) whose timeout model the HTTPX docs describe: a single float sets connect, read, write, and pool timeouts, and the read timeout bounds the wait for each chunk, not the whole response.
+
+12
+00:01:28.307 --> 00:01:34.984
+A stream that trickles a token every few seconds never trips a 30-second read timeout, however long it runs.
+
+13
+00:01:35.264 --> 00:01:42.432
+If your service needs a total deadline for a stream, enforce it yourself by checking a clock between chunks, as the lab does.
+
+14
+00:01:42.712 --> 00:01:46.445
+For a user-facing service, the defaults are rarely what you want.
+
+15
+00:01:46.725 --> 00:01:53.232
+A chat endpoint might allow 60 seconds in total and wants to fail over to another model well before then.
+
+16
+00:01:53.512 --> 00:01:57.395
+So you set the timeout per request, and you decide where retries happen.

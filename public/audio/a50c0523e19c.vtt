@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.197
+IVF: search only the nearby buckets.
+
+2
+00:00:02.477 --> 00:00:04.717
+The second family partitions the space.
+
+3
+00:00:04.997 --> 00:00:18.267
+An inverted file (IVF) index runs k-means on a sample of the vectors to find nlist centroids, then assigns each vector to its nearest centroid, so every centroid owns a bucket (an “inverted list”).
+
+4
+00:00:18.547 --> 00:00:25.032
+At query time the index finds the nprobe centroids closest to the query and scans only those buckets.
+
+5
+00:00:25.312 --> 00:00:26.741
+The trade-off is direct.
+
+6
+00:00:27.021 --> 00:00:34.637
+With nprobe of 1, you scan about 1/nlist of the data and miss true neighbors that sit just across a bucket boundary.
+
+7
+00:00:34.917 --> 00:00:43.024
+Raising nprobe scans more buckets, raising recall and cost together; with nprobe equal to nlist you are back to exact search.
+
+8
+00:00:43.304 --> 00:00:58.387
+Faiss’s guidance suggests nlist on the order of the square root of n, a few times over (its wiki gives a rule of thumb near 10 times the square root, and its index guide suggests 4 to 16 times for collections under a million vectors).
+
+9
+00:00:58.667 --> 00:01:09.760
+Unlike HNSW, IVF needs a training step to learn centroids, and if your data drifts far from the training sample, the buckets become unbalanced and recall can fall.
+
+10
+00:01:10.040 --> 00:01:17.912
+pgvector’s IVFFlat index exposes the same dial, called probes, and defaults it to 1, which favors speed.
+
+11
+00:01:18.192 --> 00:01:24.165
+You’ll build a small IVF index in the exercise and watch recall climb as nprobe grows.

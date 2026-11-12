@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.771
+Where the suite lives: tools.
+
+2
+00:00:02.051 --> 00:00:03.800
+You don’t need a framework to start.
+
+3
+00:00:04.080 --> 00:00:10.075
+pytest is enough for many teams: one parametrized test per case (the docs show @pytest.
+
+4
+00:00:10.355 --> 00:00:11.101
+mark.
+
+5
+00:00:11.381 --> 00:00:26.187
+parametrize for running one test function over many inputs), deterministic assertions inline, a custom marker such as this course’s live marker for tests that call a model, and a small script that computes paired statistics from a results file.
+
+6
+00:00:26.467 --> 00:00:33.485
+Its advantage is that the eval suite runs with the rest of your tests, in the same CI, with tools everyone knows.
+
+7
+00:00:33.765 --> 00:00:36.027
+The labs in this program are built that way.
+
+8
+00:00:36.307 --> 00:00:43.944
+Promptfoo is an open-source (MIT) command-line tool and library for evaluating and red-teaming LLM apps.
+
+9
+00:00:44.224 --> 00:00:47.424
+Cases live in a YAML config ( promptfooconfig.
+
+10
+00:00:47.704 --> 00:01:03.939
+yaml in its examples) with assertions per test: deterministic ones such as equals, contains, is-json, regex, and custom python or javascript checks, model-graded ones such as llm-rubric and factuality, plus cost and latency.
+
+11
+00:01:04.219 --> 00:01:11.792
+Its GitHub Action runs a before-and-after comparison when a pull request edits a prompt and posts a link to the results.
+
+12
+00:01:12.072 --> 00:01:21.971
+Inspect is an open-source (MIT) framework for LLM evaluations developed by the UK AI Security Institute with Meridian Labs.
+
+13
+00:01:22.251 --> 00:01:32.021
+An eval is a task that combines a dataset of samples, a solver that produces answers (from a single generate() call to a full agent), and a scorer.
+
+14
+00:01:32.301 --> 00:01:39.683
+You run tasks with inspect eval, browse logs with inspect view, and it ships a large set of prebuilt evaluations.
+
+15
+00:01:39.963 --> 00:01:45.723
+It suits agentic and multi-step evals, and teams who want detailed logs of every sample.
+
+16
+00:01:46.003 --> 00:01:52.104
+OpenAI Evals is an open-source framework and registry of benchmarks from OpenAI.
+
+17
+00:01:52.384 --> 00:02:09.515
+OpenAI also built a hosted Evals product on its platform, and its docs now say that the hosted Evals platform became read-only for existing users on October 31, 2026 and is scheduled to shut down on November 30, 2026.
+
+18
+00:02:09.795 --> 00:02:22.168
+That’s a lesson in itself: keep your cases, graders, and results in your own repository in a portable format (JSONL plus code), so a vendor’s product decision can’t take your regression suite with it.
+
+19
+00:02:22.448 --> 00:02:26.587
+How to choose: start with pytest unless a tool gives you something you need.
+
+20
+00:02:26.867 --> 00:02:32.861
+Promptfoo is quick for prompt-level comparisons across several providers with a PR workflow.
+
+21
+00:02:33.141 --> 00:02:36.491
+Inspect fits agent evals and research-grade logging.
+
+22
+00:02:36.771 --> 00:02:46.221
+Whatever you pick, the statistics in lesson 7 and the decision rules above are yours to apply; none of these tools makes a noisy score significant.

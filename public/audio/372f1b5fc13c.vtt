@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.773
+Decision 2: the MCP server boundary.
+
+2
+00:00:03.053 --> 00:00:05.805
+Week 3 taught you to build MCP servers.
+
+3
+00:00:06.085 --> 00:00:12.869
+For this project the server is the boundary between your agent and the tracker, and the place where least privilege lives.
+
+4
+00:00:13.149 --> 00:00:15.176
+Start with resources and read tools.
+
+5
+00:00:15.456 --> 00:00:31.904
+Something like list_changed_issues(since, until) that returns compact records (number, title, state, labels, assignee, updated time, a truncated body) rather than raw API payloads; get_issue(number) with comments for the cases that need detail;
+
+6
+00:00:32.184 --> 00:00:37.112
+perhaps a resource for the project’s configuration (milestones, label meanings).
+
+7
+00:00:37.392 --> 00:00:47.568
+Return natural-language fields and sensible page sizes, as Studio 1’s tool-design lesson recommended, and do the date arithmetic in the server, not in the model.
+
+8
+00:00:47.848 --> 00:00:48.957
+Then the write path.
+
+9
+00:00:49.237 --> 00:00:52.992
+The agent should not hold a general “post anything anywhere” tool.
+
+10
+00:00:53.272 --> 00:01:03.085
+One option: the agent’s only write is save_draft(text), and posting happens in your application after a human approves, through code the model never calls.
+
+11
+00:01:03.365 --> 00:01:09.893
+Another: a post_status tool on the server that only accepts the configured channel and is gated by approval.
+
+12
+00:01:10.173 --> 00:01:12.200
+Decide which, and write down why.
+
+13
+00:01:12.480 --> 00:01:22.016
+The MCP tools specification expects a human able to deny tool invocations; your design should make that the normal path, not an exception.
+
+14
+00:01:22.296 --> 00:01:23.768
+Finally, credentials.
+
+15
+00:01:24.048 --> 00:01:32.432
+For GitHub, a fine-grained personal access token can be limited to specific repositories and specific permissions, with an expiry.
+
+16
+00:01:32.712 --> 00:01:44.723
+A read-only token on one repository is enough for the default project; if you post back to GitHub (a discussion or a comment), give that one action its own narrowly scoped token.
+
+17
+00:01:45.003 --> 00:01:49.845
+Keep tokens in environment variables, never in fixtures, logs, or prompts.

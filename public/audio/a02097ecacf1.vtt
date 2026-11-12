@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.109
+Circuit breakers.
+
+2
+00:00:01.389 --> 00:00:02.904
+Retries handle a blip.
+
+3
+00:00:03.184 --> 00:00:17.029
+When a dependency is down for minutes, retrying every request makes things worse: each request waits through its full timeout and backoff before failing, threads and connections pile up, and the extra traffic slows recovery.
+
+4
+00:00:17.309 --> 00:00:22.216
+A circuit breaker, as Martin Fowler describes it, wraps the call and tracks failures.
+
+5
+00:00:22.496 --> 00:00:28.363
+While closed, calls pass through and consecutive failures are counted; a success resets the count.
+
+6
+00:00:28.643 --> 00:00:38.925
+When failures reach a threshold, the breaker opens: calls fail immediately without touching the dependency, which is exactly what you want when you have a fallback model waiting.
+
+7
+00:00:39.205 --> 00:00:43.536
+After a reset timeout, it goes half-open and lets one trial call through.
+
+8
+00:00:43.816 --> 00:00:47.656
+Success closes it; failure reopens it and restarts the timer.
+
+9
+00:00:47.936 --> 00:00:56.725
+Fowler also recommends logging every state change and alerting when a breaker trips, because a breaker that opens often is telling you something.
+
+10
+00:00:57.005 --> 00:00:58.371
+Breakers have critics.
+
+11
+00:00:58.651 --> 00:01:08.955
+The AWS article notes that they add modal behavior that is harder to test and can slow recovery, and suggests local retry budgets as an alternative.
+
+12
+00:01:09.235 --> 00:01:22.803
+The two are compatible: use a retry budget to bound retry load, and a breaker per model to skip a dependency that is clearly down, so requests go straight to the fallback instead of spending their deadline on a dead primary.
+
+13
+00:01:23.083 --> 00:01:30.293
+Whatever you choose, test the state transitions, which is easy only if the breaker reads time from a clock you can control.

@@ -1,0 +1,37 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.200
+Attention works on sets, so positions must be added.
+
+2
+00:00:03.480 --> 00:00:09.923
+Lecture note 2 (01:12:46) observes that attention has no notion of space.
+
+3
+00:00:10.203 --> 00:00:27.163
+Formally, self-attention without a mask is permutation equivariant: permute the input tokens and the outputs are permuted the same way, because every operation (the projections, the dot products, the softmax over keys, the weighted sum) treats positions symmetrically.
+
+4
+00:00:27.443 --> 00:00:42.589
+Without some positional signal, “dog bites man” and “man bites dog” contain the same multiset of tokens and would get the same per-token representations (the causal mask breaks the symmetry only partially, by restricting who sees whom).
+
+5
+00:00:42.869 --> 00:00:58.421
+The lecture’s fix, at 01:00:18, is a second embedding table indexed by position: the input to the first block is the token embedding plus a learned position embedding, a vector for each of the block_size positions.
+
+6
+00:00:58.701 --> 00:01:09.709
+The original transformer paper used fixed sinusoidal encodings instead; many recent models use other schemes that inject relative position into the attention scores.
+
+7
+00:01:09.989 --> 00:01:15.131
+The common point is that order is information the architecture doesn’t provide for free.
+
+8
+00:01:15.411 --> 00:01:28.381
+One consequence is directly visible in your project: the position table has exactly block_size rows, so a model trained with context 64 has no representation at all for position 65.
+
+9
+00:01:28.661 --> 00:01:31.285
+Context length is baked into the parameters.

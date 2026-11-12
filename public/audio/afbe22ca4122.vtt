@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.091
+Regex splitting and special tokens.
+
+2
+00:00:02.371 --> 00:00:05.443
+Pure BPE on raw bytes makes wasteful merges.
+
+3
+00:00:05.723 --> 00:00:13.851
+The GPT-2 paper’s example is “dog” followed by different punctuation: BPE would learn separate tokens for “dog.
+
+4
+00:00:14.131 --> 00:00:14.984
+”, “dog!
+
+5
+00:00:15.264 --> 00:00:16.203
+”, and “dog?
+
+6
+00:00:16.483 --> 00:00:18.787
+”, spending vocabulary on combinations.
+
+7
+00:00:19.067 --> 00:00:21.349
+GPT-2’s fix (section 2.
+
+8
+00:00:21.629 --> 00:00:26.835
+2) is to prevent merges across character categories, with an exception for spaces.
+
+9
+00:00:27.115 --> 00:00:43.072
+In practice, as the lecture shows at 57:36, the text is first split by a regular expression into chunks (letters, numbers, punctuation, whitespace, with a leading space attached to words), and BPE runs within each chunk only.
+
+10
+00:00:43.352 --> 00:00:52.461
+The lecture compares GPT-2’s pattern with GPT-4’s, which changes details such as how runs of digits and whitespace are split.
+
+11
+00:00:52.741 --> 00:01:04.389
+minbpe’s RegexTokenizer implements this stage, and its README reports that its GPT-4 variant reproduces tiktoken’s cl100k_base encoding exactly.
+
+12
+00:01:04.669 --> 00:01:18.771
+Special tokens are vocabulary entries that never come from merges and are inserted by the application: <|endoftext|> in GPT-2, and in chat models a family of tokens that mark roles and turn boundaries.
+
+13
+00:01:19.051 --> 00:01:29.291
+The tokenizer must handle them separately so that ordinary user text can’t produce them by accident, which is a small piece of the prompt-injection story from Studio 4.

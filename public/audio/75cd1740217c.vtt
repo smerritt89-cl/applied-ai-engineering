@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.856
+Output length is the main driver.
+
+2
+00:00:02.136 --> 00:00:07.064
+Because output tokens are generated one at a time, their count usually dominates.
+
+3
+00:00:07.344 --> 00:00:20.912
+OpenAI’s latency guide puts the asymmetry in numbers: cutting output tokens by half may cut latency by about half, while cutting input tokens by half may improve it by only 1 to 5 percent.
+
+4
+00:00:21.192 --> 00:00:33.245
+Anthropic’s latency cookbook measured the input side directly on its sample agent: about a quarter of a second of TTFT per 100,000 extra input tokens.
+
+5
+00:00:33.525 --> 00:00:37.749
+The levers on output, roughly from least to most risky: Shape the answer.
+
+6
+00:00:38.029 --> 00:00:46.051
+Ask for a specific format with an example (“two lines: decision, then reason”), or return structured fields instead of prose.
+
+7
+00:00:46.331 --> 00:00:51.664
+In the cookbook, asking for a two-line decision format cut one decision from 46.
+
+8
+00:00:51.944 --> 00:00:53.373
+4 seconds to 4.
+
+9
+00:00:53.653 --> 00:00:58.475
+9, and its thinking tokens from 2,083 to 296.
+
+10
+00:00:58.755 --> 00:01:07.757
+Anthropic’s page also notes that asking for a number of sentences or paragraphs works better than a word count, because the model counts in tokens.
+
+11
+00:01:08.037 --> 00:01:12.944
+Remove commentary between tool calls, where the agent narrates what it is about to do.
+
+12
+00:01:13.224 --> 00:01:15.037
+Lower effort on routine routes.
+
+13
+00:01:15.317 --> 00:01:26.133
+In the cookbook, low effort cut median task time by 13 percent with a small accuracy drop; high added 7 percent to the median and 12 percent to the p90.
+
+14
+00:01:26.413 --> 00:01:28.568
+Turn thinking off where the model allows it.
+
+15
+00:01:28.848 --> 00:01:34.949
+This is the steepest capability trade; in the cookbook’s Haiku run, accuracy fell from 97.
+
+16
+00:01:35.229 --> 00:01:36.637
+5 to 73.
+
+17
+00:01:36.917 --> 00:01:40.203
+5 percent while the median wait fell only from 4.
+
+18
+00:01:40.483 --> 00:01:41.485
+9 to 3.
+
+19
+00:01:41.765 --> 00:01:42.853
+7 seconds.
+
+20
+00:01:43.133 --> 00:01:48.061
+Every one of these changes what the model writes, so each needs your eval before you keep it.
+
+21
+00:01:48.341 --> 00:01:53.717
+A shorter answer that drops a required caveat is a regression, not an optimization.

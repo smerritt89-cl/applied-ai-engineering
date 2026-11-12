@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.243
+Evaluator-optimizer: draft, critique, revise.
+
+2
+00:00:03.523 --> 00:00:10.733
+In evaluator-optimizer, one call generates a response and another evaluates it and returns feedback, in a loop.
+
+3
+00:00:11.013 --> 00:00:26.181
+The post says it fits when there are clear evaluation criteria and iterative refinement provides measurable value, and gives two signs of fit: a person’s feedback would demonstrably improve the output, and a model can provide similar feedback.
+
+4
+00:00:26.461 --> 00:00:35.315
+Its examples are literary translation, where an evaluator catches nuances the first pass missed, and complex search that needs several rounds.
+
+5
+00:00:35.595 --> 00:00:37.749
+The research is encouraging with a catch.
+
+6
+00:00:38.029 --> 00:00:51.619
+Self-Refine (Madaan and colleagues, 2023) had one model generate, critique, and revise its own output, and reported improvements of around 20 percentage points on average across seven tasks.
+
+7
+00:00:51.899 --> 00:01:07.280
+But Huang and colleagues (2023) examined intrinsic self-correction, where the model reviews its answers with no external feedback, and found that on reasoning tasks models struggled to correct themselves and sometimes made answers worse.
+
+8
+00:01:07.560 --> 00:01:18.931
+The reconciling lesson for engineers: the loop works when the evaluator has something the generator didn’t, such as explicit criteria, evidence, test results, or a different vantage point.
+
+9
+00:01:19.211 --> 00:01:21.152
+So build the evaluator in layers.
+
+10
+00:01:21.432 --> 00:01:30.755
+First, code checks that are cheap and certain: word limits per audience, every action item’s owner named, no internal-only terms in a client update.
+
+11
+00:01:31.035 --> 00:01:40.699
+Then a model evaluator for what code can’t judge (tone, clarity, whether a risk is buried), with a rubric of specific questions rather than “is this good?
+
+12
+00:01:40.979 --> 00:01:44.797
+”, ideally calibrated against human labels as in Studio 3.
+
+13
+00:01:45.077 --> 00:01:47.659
+Feed the specific failures back to the generator.
+
+14
+00:01:47.939 --> 00:01:49.133
+And cap the rounds.
+
+15
+00:01:49.413 --> 00:01:59.696
+If the draft still fails after the cap, return it marked as not approved and route it to a person: a loop that cannot converge should end in a review queue, not in silence.

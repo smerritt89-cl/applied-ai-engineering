@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.923
+Task budgets: telling the model how much it has.
+
+2
+00:00:03.203 --> 00:00:10.029
+A step cap stops the agent, but the agent does not know it is coming, so it can be cut off in the middle of useful work.
+
+3
+00:00:10.309 --> 00:00:26.800
+Claude’s task budgets (beta, header task-budgets-2026-03-13 ) address the other half: you tell the model how many tokens it has for the whole agentic turn, and the server injects a countdown the model sees as it works.
+
+4
+00:00:27.080 --> 00:00:35.571
+The docs describe the intended behavior as pacing and finishing gracefully, for example summarizing findings as the budget runs low.
+
+5
+00:00:35.851 --> 00:00:41.739
+The details matter: You set it in output_config as task_budget with type: "tokens" and a total.
+
+6
+00:00:42.019 --> 00:00:45.560
+The minimum total is 20,000 tokens.
+
+7
+00:00:45.840 --> 00:00:57.211
+It is supported on current models including claude-opus-5-5, claude-sonnet-5-5, and claude-haiku-5-5, but not every model, so check the support table.
+
+8
+00:00:57.491 --> 00:01:07.091
+It counts what the model sees in the current turn (its thinking, tool calls, tool results, and output), not the history your client resends on each request.
+
+9
+00:01:07.371 --> 00:01:12.981
+A user message with tool results continues the turn; a plain user message starts a new one.
+
+10
+00:01:13.261 --> 00:01:14.477
+It is advisory.
+
+11
+00:01:14.757 --> 00:01:20.944
+The docs say Claude might occasionally exceed it, and that max_tokens remains the enforced per-request cap.
+
+12
+00:01:21.224 --> 00:01:25.640
+For a hard ceiling, combine the two, and keep your own step or token counter.
+
+13
+00:01:25.920 --> 00:01:32.405
+A budget that is clearly too small can make the model scope the task down, stop early, or decline to start.
+
+14
+00:01:32.685 --> 00:01:42.115
+Size it from measurements: run representative tasks without a budget, record total tokens per task, and start near the high end of that distribution.
+
+15
+00:01:42.395 --> 00:01:44.805
+Leave remaining unset in a normal loop.
+
+16
+00:01:45.085 --> 00:01:53.213
+Decrementing it yourself while resending full history under-reports the budget and also changes the prompt, which breaks prompt caching.
+
+17
+00:01:53.493 --> 00:01:55.541
+Effort is the complementary dial.
+
+18
+00:01:55.821 --> 00:02:02.413
+Effort controls how deeply the model reasons at each step; a task budget controls how much total work it does.
+
+19
+00:02:02.693 --> 00:02:11.141
+For model selection, measure cost per completed task, not per request: a cheaper setting that needs twice as many steps is not cheaper.

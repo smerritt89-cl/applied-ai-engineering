@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.859
+QLoRA: train adapters on a 4-bit base.
+
+2
+00:00:03.139 --> 00:00:09.709
+LoRA shrinks the optimizer state, but the frozen base weights still sit in GPU memory at 16 bits.
+
+3
+00:00:09.989 --> 00:00:19.845
+QLoRA (Dettmers and colleagues, 2023) stores the frozen base in 4 bits and backpropagates through it into 16-bit LoRA adapters.
+
+4
+00:00:20.125 --> 00:00:21.768
+Three techniques make that work.
+
+5
+00:00:22.048 --> 00:00:24.224
+4-bit NormalFloat (NF4).
+
+6
+00:00:24.504 --> 00:00:28.664
+Pretrained weights are roughly zero-centered and normally distributed.
+
+7
+00:00:28.944 --> 00:00:43.771
+Quantile quantization chooses the 16 levels so that each bin holds the same expected number of values; NF4 computes those levels once from the quantiles of a standard normal, normalized to the range minus 1 to 1.
+
+8
+00:00:44.051 --> 00:00:52.627
+Weights are quantized in blocks of 64, each with its own absolute-max scaling constant, so every block is mapped onto that fixed grid.
+
+9
+00:00:52.907 --> 00:01:03.637
+The authors describe NF4 as information-theoretically optimal for zero-centered normally distributed data, and their experiments found it better than 4-bit float.
+
+10
+00:01:03.917 --> 00:01:05.283
+Double quantization.
+
+11
+00:01:05.563 --> 00:01:11.515
+Those per-block constants cost memory: one 32-bit constant per 64 weights is 0.
+
+12
+00:01:11.795 --> 00:01:13.309
+5 bits per parameter.
+
+13
+00:01:13.589 --> 00:01:22.507
+QLoRA quantizes the constants themselves to 8-bit floats in blocks of 256, cutting the overhead to about 0.
+
+14
+00:01:22.787 --> 00:01:26.733
+127 bits per parameter, a saving of about 0.
+
+15
+00:01:27.013 --> 00:01:31.664
+373 bits, roughly 3 GB on a 65B model.
+
+16
+00:01:31.944 --> 00:01:33.352
+Paged optimizers.
+
+17
+00:01:33.632 --> 00:01:44.149
+Optimizer state is allocated in NVIDIA unified memory, so when a long batch causes a memory spike, pages move to CPU memory instead of crashing the run.
+
+18
+00:01:44.429 --> 00:01:51.448
+The paper notes that paging only occurs on long-sequence mini-batches and that it didn’t measure the slowdown systematically.
+
+19
+00:01:51.728 --> 00:02:04.485
+During each forward and backward pass, a layer’s NF4 weights are dequantized to 16-bit (BFloat16 in the paper) for the matrix multiply; gradients are computed only for the adapters.
+
+20
+00:02:04.765 --> 00:02:13.939
+The paper also found that applying LoRA to all linear layers, not just attention, was needed to match 16-bit full fine-tuning in their experiments.

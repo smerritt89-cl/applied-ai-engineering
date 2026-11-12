@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.307
+Equal effort budgets: reasoning settings and harnesses.
+
+2
+00:00:03.587 --> 00:00:08.685
+Current models expose a dial for how much they think before answering, under different names.
+
+3
+00:00:08.965 --> 00:00:22.341
+Claude takes an effort setting (low through max), OpenAI’s reasoning models take a reasoning effort, Gemini models take a thinking setting, and xAI’s Grok reasoning models take a reasoning effort as well.
+
+4
+00:00:22.621 --> 00:00:27.315
+Defaults differ between providers and even between models from the same provider.
+
+5
+00:00:27.595 --> 00:00:36.597
+A comparison of one model at its maximum setting against another at its default isn’t a comparison of models; it’s a comparison of budgets.
+
+6
+00:00:36.877 --> 00:00:38.776
+There are two defensible designs.
+
+7
+00:00:39.056 --> 00:00:47.547
+Matched cost: pick settings so each candidate spends roughly the same per task, measured from usage on the dev set, then compare quality.
+
+8
+00:00:47.827 --> 00:00:54.909
+Sweep and compare frontiers: run each model at two or three effort levels and plot quality against cost per task.
+
+9
+00:00:55.189 --> 00:01:06.709
+The second is more work and much more informative, because the answer is often “model A at low effort matches model B at high effort for a third of the price,” which no single run would show.
+
+10
+00:01:06.989 --> 00:01:14.669
+Count thinking tokens in cost and latency; providers generally bill them as output tokens, so check each pricing page.
+
+11
+00:01:14.949 --> 00:01:16.997
+The harness needs the same scrutiny.
+
+12
+00:01:17.277 --> 00:01:27.112
+Use the same max output tokens (or the documented maximum for each, if your task needs long answers), so no candidate fails by truncation.
+
+13
+00:01:27.392 --> 00:01:31.765
+Use the same retry policy and timeouts, and count retries in cost.
+
+14
+00:01:32.045 --> 00:01:39.640
+Use each provider’s native structured outputs or tool format rather than forcing one provider’s convention onto another.
+
+15
+00:01:39.920 --> 00:01:52.379
+And log failures by type (wrong answer, refusal, malformed output, timeout): a model that loses on timeouts has a different problem, with a different fix, from one that loses on accuracy.

@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.837
+Undo and permission: what is actually protected.
+
+2
+00:00:03.117 --> 00:00:06.957
+Claude Code has two safety mechanisms with very different scopes.
+
+3
+00:00:07.237 --> 00:00:17.157
+Checkpoints snapshot a file before Claude’s file tools edit it, so pressing Escape twice (or /rewind ) can roll back code, conversation, or both.
+
+4
+00:00:17.437 --> 00:00:30.664
+The checkpointing docs are explicit about the edges: files changed only by a Bash command aren’t restored, and actions on remote systems (databases, APIs, deployments) can’t be checkpointed at all.
+
+5
+00:00:30.944 --> 00:00:34.016
+Checkpoints work alongside git; they don’t replace it.
+
+6
+00:00:34.296 --> 00:00:36.771
+Permissions decide what runs without asking.
+
+7
+00:00:37.051 --> 00:00:51.003
+At the time of writing, the modes are Manual (Claude asks before edits and non-read-only commands), Accept edits (file edits and common filesystem commands run freely), Plan (explore and propose, no source edits),
+
+8
+00:00:51.283 --> 00:01:04.253
+Auto (a separate classifier model reviews actions and blocks risky ones), dontAsk (only pre-approved tools, for locked-down scripts), and bypassPermissions (everything, for isolated containers only).
+
+9
+00:01:04.533 --> 00:01:08.075
+Recent versions start interactive sessions in Auto mode.
+
+10
+00:01:08.355 --> 00:01:15.800
+The most useful idea in the best-practices doc is the split between non-deterministic and deterministic instructions.
+
+11
+00:01:16.080 --> 00:01:17.253
+Your prompt, CLAUDE.
+
+12
+00:01:17.533 --> 00:01:22.931
+md, and skills are read by the model, which usually follows them but isn’t guaranteed to.
+
+13
+00:01:23.211 --> 00:01:30.827
+Hooks, deny rules, the sandbox, and managed settings are executed by the harness every time, whatever the model decides.
+
+14
+00:01:31.107 --> 00:01:40.515
+Auto mode sits in between: it’s a model making a judgment, which the docs caution can be wrong, so “never” rules belong in deny rules or hooks.
+
+15
+00:01:40.795 --> 00:01:43.205
+Keep this split in mind for the whole elective.
+
+16
+00:01:43.485 --> 00:01:49.309
+Every time you want something to always (or never) happen, ask which side of the line your control is on.

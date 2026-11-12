@@ -1,0 +1,93 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.667
+The main lesson: test on your own labeled set.
+
+2
+00:00:02.947 --> 00:00:04.824
+Everything above narrows the field.
+
+3
+00:00:05.104 --> 00:00:11.013
+What decides it is a small evaluation set from your own domain, and building one takes an afternoon.
+
+4
+00:00:11.293 --> 00:00:12.637
+Collect real queries.
+
+5
+00:00:12.917 --> 00:00:20.363
+Pull 30 to 100 questions from search logs, support tickets, or interviews with the people who will use the system.
+
+6
+00:00:20.643 --> 00:00:27.960
+Hamel Husain’s evaluation guidance applies directly: look at your actual data before inventing test cases.
+
+7
+00:00:28.240 --> 00:00:40.208
+If you must generate queries with an LLM, read every one, and watch for questions that copy the document’s exact wording, which flatters keyword-like matching and hides paraphrase failures.
+
+8
+00:00:40.488 --> 00:00:42.195
+Label relevant documents.
+
+9
+00:00:42.475 --> 00:00:46.507
+For each query, mark which documents (or chunks) actually answer it.
+
+10
+00:00:46.787 --> 00:00:48.237
+Some queries have several.
+
+11
+00:00:48.517 --> 00:00:57.669
+Include the hard cases you know exist: exact codes, synonyms, other languages, near-duplicate articles that differ in one crucial detail.
+
+12
+00:00:57.949 --> 00:00:58.973
+Pick metrics.
+
+13
+00:00:59.253 --> 00:01:00.619
+Two cover most needs.
+
+14
+00:01:00.899 --> 00:01:11.693
+Recall@k is the share of a query’s relevant documents that appear in the top k, averaged over queries; it asks whether the answer made it into the context you’ll pass the model.
+
+15
+00:01:11.973 --> 00:01:22.960
+MRR (mean reciprocal rank) is the average of 1 divided by the rank of the first relevant result (0 if none appears); it rewards putting the answer near the top.
+
+16
+00:01:23.240 --> 00:01:31.517
+(Some tools report “hit rate at k,” whether at least one relevant item appears; for single-answer queries it equals recall@k.)
+
+17
+00:01:31.797 --> 00:01:34.379
+Compare per query, not just on averages.
+
+18
+00:01:34.659 --> 00:01:36.941
+With 40 queries, one query is 2.
+
+19
+00:01:37.221 --> 00:01:39.141
+5 percentage points of recall.
+
+20
+00:01:39.421 --> 00:01:44.200
+Two models whose averages differ by 3 points may differ on a single question.
+
+21
+00:01:44.480 --> 00:01:56.277
+List the queries each model wins and read them; the pattern (one model fails every Spanish query, another fails on error codes) is more informative than the means and tells you what to fix.
+
+22
+00:01:56.557 --> 00:01:58.072
+Freeze the set and keep it.
+
+23
+00:01:58.352 --> 00:02:07.632
+It becomes the regression test for every later change: chunking in week 2, hybrid search and reranking in week 3, and a model upgrade a year from now.

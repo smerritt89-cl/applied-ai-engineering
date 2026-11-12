@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.792
+Choosing a host: a heuristic.
+
+2
+00:00:02.072 --> 00:00:04.995
+Start from measurements, not from a favorite platform.
+
+3
+00:00:05.275 --> 00:00:15.493
+Take a few hundred realistic requests (your eval set is a good source), log their end-to-end durations including retries, and look at the slow end, not the average.
+
+4
+00:00:15.773 --> 00:00:19.549
+Then ask, in order: Does any request need longer than a few minutes?
+
+5
+00:00:19.829 --> 00:00:24.245
+Then that work is a background job with a queue and a worker, whatever else you choose.
+
+6
+00:00:24.525 --> 00:00:29.219
+Workers usually run best in containers, where you control the process lifetime.
+
+7
+00:00:29.499 --> 00:00:34.107
+Is the service mostly a thin layer over model calls, next to a web front end?
+
+8
+00:00:34.387 --> 00:00:44.200
+Serverless functions are the low-effort default: deploys tied to your repository, per-branch previews with their own environment variables, and streaming support.
+
+9
+00:00:44.480 --> 00:00:51.499
+Check that your 99th-percentile duration, plus a margin, sits well inside the function’s duration limit.
+
+10
+00:00:51.779 --> 00:00:55.213
+Is it a global gateway or proxy with little computation?
+
+11
+00:00:55.493 --> 00:01:00.869
+An edge worker’s CPU-time model suits it: forwarding a stream costs little CPU.
+
+12
+00:01:01.149 --> 00:01:07.869
+Make sure work that must finish after a disconnect (usage records, logs) is handed to waitUntil or a queue.
+
+13
+00:01:08.149 --> 00:01:13.547
+Do you need Python libraries, long runs, custom servers, or the same image everywhere?
+
+14
+00:01:13.827 --> 00:01:17.773
+Use containers, and accept the operational work that comes with them.
+
+15
+00:01:18.053 --> 00:01:25.712
+Most products end up with two of these: a function or container serving the request path, and a container worker draining a queue.
+
+16
+00:01:25.992 --> 00:01:29.213
+And whatever you pick, a host’s limits are a moving target.
+
+17
+00:01:29.493 --> 00:01:40.501
+Record the limits you depend on in your deploy configuration (the platform_max_duration above), so the preflight check fails loudly if someone changes the plan or the platform.

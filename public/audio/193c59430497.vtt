@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.707
+Test without a model first.
+
+2
+00:00:01.987 --> 00:00:06.488
+Checks and balances start before any model sees your server, in two layers.
+
+3
+00:00:06.768 --> 00:00:08.347
+Unit tests on the logic.
+
+4
+00:00:08.627 --> 00:00:23.304
+Because the tracker logic has no MCP imports, ordinary pytest tests cover it: validation rejects bad ids, the preview changes nothing, a confirmed change writes one history entry, a repeat is a no-op.
+
+5
+00:00:23.584 --> 00:00:27.232
+These are the lab’s offline tests, and they run in milliseconds.
+
+6
+00:00:27.512 --> 00:00:29.261
+In-memory protocol tests.
+
+7
+00:00:29.541 --> 00:00:40.720
+The SDK’s Client connects to a URL, launches a subprocess, or, if you pass it your server object, talks to it directly in memory, with no process and no port.
+
+8
+00:00:41.000 --> 00:00:44.605
+The SDK docs compare it to FastAPI’s test client.
+
+9
+00:00:44.885 --> 00:00:54.571
+A test opens Client(server, raise_exceptions=True), lists tools, calls them, reads resources, and gets prompts, asserting on the results.
+
+10
+00:00:54.851 --> 00:01:04.387
+The raise_exceptions flag makes failures outside a tool body show their real message in your test instead of the sanitized one a remote caller would get.
+
+11
+00:01:04.667 --> 00:01:14.800
+This layer catches what unit tests cannot: a schema the SDK generated differently than you expected, an annotation you forgot, a description that is empty.
+
+12
+00:01:15.080 --> 00:01:24.637
+The in-memory client is era-neutral by default, probing the server and choosing the protocol path, so the same test exercises what a current host would do.
+
+13
+00:01:24.917 --> 00:01:32.576
+That matters because the most common MCP bugs are not in your logic; they are in what the host and model actually see.

@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.304
+Label noise: when the gold is wrong.
+
+2
+00:00:02.584 --> 00:00:06.915
+Every labeled dataset contains errors, and test sets are no exception.
+
+3
+00:00:07.195 --> 00:00:11.461
+Northcutt and colleagues (2021) estimated at least 3.
+
+4
+00:00:11.741 --> 00:00:21.960
+3 percent label errors on average across ten widely used test sets in vision, language, and audio, and showed that correcting them could change which model looked better.
+
+5
+00:00:22.240 --> 00:00:29.344
+If two fine-tuned models differ by two points on a test set with three percent bad labels, you don’t yet know which is better.
+
+6
+00:00:29.624 --> 00:00:31.885
+Noise does different damage in each split.
+
+7
+00:00:32.165 --> 00:00:43.664
+In training, the model learns the errors: a consistent labeling mistake becomes a consistent model mistake, which is one reason guideline consistency matters more than volume.
+
+8
+00:00:43.944 --> 00:00:48.147
+In test, errors cap the accuracy you can measure and blur comparisons.
+
+9
+00:00:48.427 --> 00:00:52.395
+Practical ways to find and reduce it: Mechanical checks first.
+
+10
+00:00:52.675 --> 00:00:59.757
+For extraction, the evidence-quote check from Studio 1 and the lab catches labels whose quotes aren’t in the document.
+
+11
+00:01:00.037 --> 00:01:04.944
+It’s cheap and certain, and in the lab it catches a third of the planted errors on its own.
+
+12
+00:01:05.224 --> 00:01:06.824
+Double labeling on a sample.
+
+13
+00:01:07.104 --> 00:01:14.869
+Two people label the same examples independently; measure agreement (Studio 3, week 4) and adjudicate disagreements.
+
+14
+00:01:15.149 --> 00:01:19.416
+Disagreement clusters usually point at an ambiguous guideline rule.
+
+15
+00:01:19.696 --> 00:01:21.296
+Model-disagreement review.
+
+16
+00:01:21.576 --> 00:01:28.339
+Run a strong model over the labeled data and send the examples where it disagrees with the gold label to a person.
+
+17
+00:01:28.619 --> 00:01:40.053
+This finds errors efficiently, but the person decides, not the model: otherwise you are slowly replacing your labels with the model’s opinions and then measuring the model against itself.
+
+18
+00:01:40.333 --> 00:01:42.275
+Fix the guideline, then relabel.
+
+19
+00:01:42.555 --> 00:01:49.957
+When you change a rule, relabel every affected example, in all splits, and record the guideline version in the dataset card.

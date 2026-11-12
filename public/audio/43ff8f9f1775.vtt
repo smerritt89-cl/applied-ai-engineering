@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.301
+GGUF and llama.
+
+2
+00:00:01.581 --> 00:00:02.584
+cpp.
+
+3
+00:00:02.864 --> 00:00:03.632
+llama.
+
+4
+00:00:03.912 --> 00:00:19.123
+cpp is a C and C++ inference engine that runs on CPUs and GPUs with few dependencies; its README calls Apple silicon a first-class citizen, optimized through ARM NEON, Accelerate, and Metal.
+
+5
+00:00:19.403 --> 00:00:25.675
+It introduced GGUF, a single-file binary format designed for fast loading and memory mapping.
+
+6
+00:00:25.955 --> 00:00:35.128
+A GGUF file holds the tensors plus key-value metadata: architecture, context length, tokenizer, chat template, and quantization type.
+
+7
+00:00:35.408 --> 00:00:43.365
+That is why one GGUF file is enough to run a model, unlike a transformers repo with separate config and tokenizer files.
+
+8
+00:00:43.645 --> 00:00:50.493
+File names follow a convention that encodes the base name, size, fine-tune, version, and quantization, so.
+
+9
+00:00:50.773 --> 00:00:53.163
+-8B-Instruct-Q4_K_M.
+
+10
+00:00:53.443 --> 00:00:55.085
+gguf tells you what you have.
+
+11
+00:00:55.365 --> 00:01:09.019
+You get GGUF files in two ways: download them from the Hub (many popular models have official or community GGUF repos, linked through base_model ), or convert a transformers model and quantize it with llama-quantize,
+
+12
+00:01:09.299 --> 00:01:14.717
+optionally using an importance matrix computed on sample text to reduce quality loss.
+
+13
+00:01:14.997 --> 00:01:26.368
+llama-server serves a model over HTTP with OpenAI-compatible endpoints such as /v1/chat/completions and /v1/models.
+
+14
+00:01:26.648 --> 00:01:32.685
+Note a recent change: the server README now gives the default address as 127.
+
+15
+00:01:32.965 --> 00:01:33.733
+0.
+
+16
+00:01:34.013 --> 00:01:34.781
+0.
+
+17
+00:01:35.061 --> 00:01:46.453
+1 on port 9931, changed in October 2026 from the long-standing 8080, so older tutorials will point you at the wrong port.
+
+18
+00:01:46.733 --> 00:01:48.973
+Check the README or pass --port yourself.

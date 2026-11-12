@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.005
+Least privilege, at every layer.
+
+2
+00:00:02.285 --> 00:00:07.107
+Least privilege means each piece holds the narrowest access that does its job.
+
+3
+00:00:07.387 --> 00:00:10.032
+For MCP it applies at five layers.
+
+4
+00:00:10.312 --> 00:00:11.165
+Tools.
+
+5
+00:00:11.445 --> 00:00:16.885
+Prefer update_issue_status with an enum and a transition table over run_sql.
+
+6
+00:00:17.165 --> 00:00:26.189
+A tool that takes an arbitrary command, query, or path cannot be meaningfully reviewed, because what it does depends entirely on its arguments.
+
+7
+00:00:26.469 --> 00:00:27.472
+Credentials.
+
+8
+00:00:27.752 --> 00:00:44.883
+The local-server guide says to pass secrets per server through the host’s configuration, never as globally exported shell variables, and to give each server its own narrowly scoped token, such as a fine-grained token limited to one repository rather than your account-wide one.
+
+9
+00:00:45.163 --> 00:00:46.144
+Filesystem.
+
+10
+00:00:46.424 --> 00:00:49.688
+Grant one project directory, read-only where possible.
+
+11
+00:00:49.968 --> 00:00:58.096
+The guide warns that configured allowlists are cooperative boundaries: an honest server respects them, a malicious one ignores them.
+
+12
+00:00:58.376 --> 00:01:05.715
+Enforcement comes from isolation, such as a container where the allowed directory is the only filesystem that exists.
+
+13
+00:01:05.995 --> 00:01:06.805
+Network.
+
+14
+00:01:07.085 --> 00:01:12.824
+A server that works on local files needs no network at all; with a container that is one flag.
+
+15
+00:01:13.104 --> 00:01:17.072
+A server that wraps one API should reach only that API’s hosts.
+
+16
+00:01:17.352 --> 00:01:19.251
+Exfiltration needs an exit.
+
+17
+00:01:19.531 --> 00:01:20.661
+OAuth scopes.
+
+18
+00:01:20.941 --> 00:01:32.547
+For remote servers, the security best practices page recommends a minimal initial scope for low-risk reads and step-up requests for privileged operations when they are first attempted.
+
+19
+00:01:32.827 --> 00:01:41.531
+It lists wildcard scopes and publishing every scope up front as common mistakes, because a stolen broad token can reach everything it covers.
+
+20
+00:01:41.811 --> 00:01:44.200
+One fact about your own setup belongs here.
+
+21
+00:01:44.480 --> 00:01:52.693
+Claude Code’s sandbox covers shell commands only; its docs say local MCP servers run outside it, with your full access.
+
+22
+00:01:52.973 --> 00:02:00.077
+If you want a server isolated, isolate the server (or run the whole Claude Code process in a container or VM).

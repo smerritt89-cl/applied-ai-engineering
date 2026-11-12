@@ -1,0 +1,113 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.517
+Security risks specific to coding agents.
+
+2
+00:00:02.797 --> 00:00:14.659
+A coding agent combines three things that are each manageable alone: it reads untrusted text, it has access to your code and often your secrets, and it can run commands and reach the network.
+
+3
+00:00:14.939 --> 00:00:25.307
+Simon Willison’s lethal trifecta names the dangerous combination: private data, exposure to untrusted content, and the ability to communicate externally.
+
+4
+00:00:25.587 --> 00:00:32.029
+When all three meet, an attacker who controls some of the content can try to steer the agent into sending the data out.
+
+5
+00:00:32.309 --> 00:00:34.891
+Prompt injection through what the agent reads.
+
+6
+00:00:35.171 --> 00:00:45.731
+Greshake and colleagues (2023) showed indirect injection: instructions planted in content an LLM application retrieves can hijack it.
+
+7
+00:00:46.011 --> 00:00:59.963
+For a coding agent, the content is everywhere: a README or code comment in a dependency, an issue or pull request description, a web page it fetched for documentation, a tool result from an MCP server.
+
+8
+00:01:00.243 --> 00:01:14.408
+Invariant Labs reported an attack on the GitHub MCP integration in which a malicious issue in a public repository led an agent to pull data from the user’s private repositories into a public pull request.
+
+9
+00:01:14.688 --> 00:01:24.885
+Codex’s docs make the same point from the vendor side: they default web search to a cached index to reduce exposure, and tell you to treat web results as untrusted.
+
+10
+00:01:25.165 --> 00:01:40.355
+What Claude Code does about it, per its security docs: network commands like curl and wget aren’t auto-approved by default; most web fetches go through a separate model call that summarizes the page rather than handing Claude the raw text;
+
+11
+00:01:40.635 --> 00:01:47.952
+a workspace trust dialog appears in folders you haven’t trusted; project MCP servers need their own approval.
+
+12
+00:01:48.232 --> 00:02:01.011
+In auto mode, the classifier blocks by default things like downloading and executing code, sending sensitive data to external endpoints, production deploys, force pushes, and destructive git commands,
+
+13
+00:02:01.291 --> 00:02:09.035
+and the best-practices page lists actions that look driven by content Claude read rather than by you among the things it watches for.
+
+14
+00:02:09.315 --> 00:02:18.680
+The docs are also clear that no system is immune and that auto mode is a model’s judgment, so your “never” rules belong in deny rules and hooks.
+
+15
+00:02:18.960 --> 00:02:19.856
+Secrets.
+
+16
+00:02:20.136 --> 00:02:21.757
+Deny rules such as Read(.
+
+17
+00:02:22.037 --> 00:02:22.869
+/.
+
+18
+00:02:23.149 --> 00:02:24.259
+env) and Read(.
+
+19
+00:02:24.539 --> 00:02:38.299
+/secrets/**) block Claude’s file tools and recognized shell file commands, but not a script that opens the file itself; the sandbox adds OS-level enforcement for the commands it wraps.
+
+20
+00:02:38.579 --> 00:02:46.728
+Better still, keep production secrets off the machine the agent runs on, and give it scoped, revocable credentials for test environments.
+
+21
+00:02:47.008 --> 00:03:01.152
+Willison’s advice for running agents with few prompts is to use exactly that: credentials for test or staging, tight budgets on anything that can spend money, and a container or remote environment rather than your laptop.
+
+22
+00:03:01.432 --> 00:03:02.733
+Destructive commands.
+
+23
+00:03:03.013 --> 00:03:05.808
+Checkpoints don’t undo remote effects (lesson 1).
+
+24
+00:03:06.088 --> 00:03:18.824
+Keep force pushes, migrations, deploys, and deletions behind a person: deny or ask rules for the commands, branch protection on main, and, for unattended runs, a disposable environment.
+
+25
+00:03:19.104 --> 00:03:29.323
+And remember that repository configuration is itself an attack surface: a cloned repo’s hooks run in claude -p sessions without a trust dialog, so read.
+
+26
+00:03:29.603 --> 00:03:30.755
+claude/ and.
+
+27
+00:03:31.035 --> 00:03:32.037
+mcp.
+
+28
+00:03:32.317 --> 00:03:35.731
+json before running an agent on code you didn’t write.

@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.771
+The pipeline, and what it hides.
+
+2
+00:00:02.051 --> 00:00:06.317
+The quickest way to run a Hub model in Python is the transformers pipeline.
+
+3
+00:00:06.597 --> 00:00:14.256
+You name a task and a model; it downloads the files, builds the tokenizer and model, and handles pre- and post-processing.
+
+4
+00:00:14.536 --> 00:00:24.712
+For chat models you pass a list of messages with role and content, the same shape you use with provider APIs, and the pipeline formats them with the model’s chat template.
+
+5
+00:00:24.992 --> 00:00:35.381
+The docs recommend device_map="auto" so the library places weights on the fastest device available, which on an Apple Silicon Mac is the mps backend.
+
+6
+00:00:35.661 --> 00:00:42.787
+The LLM Course’s chapter 2 opens the pipeline up into three steps, and knowing them is what lets you debug.
+
+7
+00:00:43.067 --> 00:00:49.403
+Tokenize: the tokenizer turns text into token ids using the model’s own vocabulary.
+
+8
+00:00:49.683 --> 00:00:59.987
+Model: a forward pass produces logits, one score per vocabulary entry, and generation repeats that loop token by token (Studio 1, lesson 1).
+
+9
+00:01:00.267 --> 00:01:03.552
+Post-process: the ids are decoded back into text.
+
+10
+00:01:03.832 --> 00:01:15.437
+Every model family has its own tokenizer, so the same sentence becomes a different number of tokens for different models, which matters for context limits and for any per-token cost comparison.

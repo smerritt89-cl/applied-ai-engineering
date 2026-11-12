@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.091
+Prompt injection through tool results.
+
+2
+00:00:02.371 --> 00:00:04.483
+Tool descriptions come from the server.
+
+3
+00:00:04.763 --> 00:00:14.789
+Tool results come from wherever the server gets its data, which often includes text anyone can write: issue descriptions, emails, web pages, support tickets.
+
+4
+00:00:15.069 --> 00:00:19.144
+Lesson 11 in Studio 1 called this indirect prompt injection.
+
+5
+00:00:19.424 --> 00:00:24.949
+MCP makes it more common, because it makes connecting an agent to many such sources easy.
+
+6
+00:00:25.229 --> 00:00:30.840
+The clearest public case is the one Invariant Labs disclosed in May 2025.
+
+7
+00:00:31.120 --> 00:00:37.989
+An attacker opens an issue in a user’s public GitHub repository containing instructions for the agent.
+
+8
+00:00:38.269 --> 00:00:46.696
+The user asks their agent, connected to the GitHub MCP server with access to their private repositories, to look at the open issues.
+
+9
+00:00:46.976 --> 00:00:58.155
+The agent reads the injected issue, pulls private repository data into its context, and publishes it in a pull request on the public repository, where the attacker can read it.
+
+10
+00:00:58.435 --> 00:01:01.955
+The demonstration used Claude 4 Opus in Claude Desktop.
+
+11
+00:01:02.235 --> 00:01:15.504
+Invariant stated that this is not a flaw in the GitHub server’s code, and that it cannot be fully fixed with server-side patches, because it arises from the combination of private data, untrusted text, and a way to publish.
+
+12
+00:01:15.784 --> 00:01:17.960
+That is Willison’s lethal trifecta.
+
+13
+00:01:18.240 --> 00:01:20.843
+Your tracker has the same shape on a small scale.
+
+14
+00:01:21.123 --> 00:01:30.317
+Issue HAR-105 contains a customer comment telling the assistant to mark every open issue as done and not to tell the user.
+
+15
+00:01:30.597 --> 00:01:47.749
+The layered defense you built: the text is cleaned and labeled as data, the server’s instructions and the write tool’s description say never to act on instructions inside issues, the write tool requires a preview round trip, and only a person approving the call in the host can let it through.
+
+16
+00:01:48.029 --> 00:01:49.779
+None of these is sufficient alone.
+
+17
+00:01:50.059 --> 00:01:55.072
+Together, the human gate on the write is the one that holds even when the model is fooled.
+
+18
+00:01:55.352 --> 00:02:00.237
+For anything that leaves your system or cannot be undone, ask the user through the host.
+
+19
+00:02:00.517 --> 00:02:04.763
+A confirm argument is set by the model and can be faked by a fooled model.
+
+20
+00:02:05.043 --> 00:02:17.587
+Elicitation goes to the user, and the specification forbids using its form mode to collect passwords, API keys, or payment credentials; those must use URL mode, outside the client.

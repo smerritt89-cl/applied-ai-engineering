@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:04.245
+The cost and latency case: a small model that replaces a big one.
+
+2
+00:00:04.525 --> 00:00:09.581
+The strongest business reason to fine-tune is often not quality but cost and speed.
+
+3
+00:00:09.861 --> 00:00:17.008
+Suppose your extraction feature works well with a large frontier model and a long prompt full of instructions and examples.
+
+4
+00:00:17.288 --> 00:00:22.323
+Every request pays for those prompt tokens, and a large model is slower per token.
+
+5
+00:00:22.603 --> 00:00:31.221
+A small model fine-tuned on a few thousand examples of the same task may need no examples in the prompt and can run on modest hardware.
+
+6
+00:00:31.501 --> 00:00:43.000
+OpenAI’s optimization guide names both effects: shorter prompts save tokens and reduce latency, and a smaller model trained for a specific task can be cheaper and faster.
+
+7
+00:00:43.280 --> 00:00:54.309
+Its fine-tuning guide describes distillation: tune a prompt on a large model, use its outputs (checked) as training data, and fine-tune a smaller model to do the same task.
+
+8
+00:00:54.589 --> 00:01:07.133
+The savings are real only above some volume, and teams routinely leave costs out of the comparison: Building the dataset: collecting, labeling, reviewing, deduplicating (lessons 5 and 6).
+
+9
+00:01:07.413 --> 00:01:09.419
+This is usually the largest cost.
+
+10
+00:01:09.699 --> 00:01:12.984
+Training and evaluation runs, including the failed ones.
+
+11
+00:01:13.264 --> 00:01:18.171
+Serving: if you host the model, you pay for GPUs whether or not traffic arrives.
+
+12
+00:01:18.451 --> 00:01:25.363
+Maintenance: when the base model is retired, your fine-tuned model goes with it, and you redo the work on a new base.
+
+13
+00:01:25.643 --> 00:01:27.819
+That last point is not hypothetical.
+
+14
+00:01:28.099 --> 00:01:31.747
+Amazon Bedrock offered fine-tuning for Claude 3 Haiku.
+
+15
+00:01:32.027 --> 00:01:48.795
+Bedrock’s lifecycle page shows that model entering Legacy status on March 10, 2026, after which no new fine-tuning jobs can be created, and reaching end of life on September 10, 2026 in the Region where fine-tuning ran.
+
+16
+00:01:49.075 --> 00:01:56.584
+OpenAI’s docs likewise say fine-tuned models stay available for inference until their base model is deprecated.
+
+17
+00:01:56.864 --> 00:02:01.408
+A fine-tuned model is a depreciating asset with a known maximum life.
+
+18
+00:02:01.688 --> 00:02:02.733
+Price that in.

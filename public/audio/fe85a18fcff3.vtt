@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.155
+Three ways to protect a value you keep.
+
+2
+00:00:02.435 --> 00:00:07.960
+When a field is needed but sensitive, there are three standard treatments, from strongest to weakest.
+
+3
+00:00:08.240 --> 00:00:09.264
+Don’t collect it.
+
+4
+00:00:09.544 --> 00:00:13.341
+If the analysis doesn’t need the user’s email, the log doesn’t get it.
+
+5
+00:00:13.621 --> 00:00:23.541
+This is the data minimisation principle in GDPR Article 5(1)(c): personal data must be limited to what is necessary for the purpose.
+
+6
+00:00:23.821 --> 00:00:24.995
+Pseudonymize it.
+
+7
+00:00:25.275 --> 00:00:34.320
+Replace the identifier with a stable token, so you can still group a user’s records (“this user hit the error five times”) without storing who they are.
+
+8
+00:00:34.600 --> 00:00:41.021
+Use a keyed hash such as HMAC-SHA256, with the key held in your secrets manager.
+
+9
+00:00:41.301 --> 00:00:48.619
+A plain hash of an email is reversible in practice: an attacker hashes a list of known emails and looks for matches.
+
+10
+00:00:48.899 --> 00:01:09.421
+Be clear about what this buys you legally: GDPR Article 4(5) defines pseudonymisation as processing that needs separately held additional information to re-identify someone, and recital 26 says pseudonymised data that can be attributed to a person with that information is still personal data.
+
+11
+00:01:09.701 --> 00:01:14.736
+Pseudonymization reduces risk and exposure; it doesn’t make the log anonymous.
+
+12
+00:01:15.016 --> 00:01:15.955
+Redact it.
+
+13
+00:01:16.235 --> 00:01:21.803
+Find sensitive spans inside free text and replace them with a placeholder such as [EMAIL].
+
+14
+00:01:22.083 --> 00:01:31.235
+This is the only option for content you’ve decided to keep, and it is the least reliable of the three, because it depends on recognizing the sensitive data.
+
+15
+00:01:31.515 --> 00:01:33.115
+That’s the exercise below.

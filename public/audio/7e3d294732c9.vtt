@@ -1,0 +1,113 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.112
+Quantization: fewer bits per weight.
+
+2
+00:00:02.392 --> 00:00:15.192
+Models are usually trained and published in 16-bit floating point (FP16 or BF16): 2 bytes per parameter, so an 8B model needs about 16 GB just for weights.
+
+3
+00:00:15.472 --> 00:00:25.435
+Quantization stores the weights with fewer bits, typically 8, 6, 5, or 4, and converts them back to higher precision on the fly during computation.
+
+4
+00:00:25.715 --> 00:00:27.720
+Modern schemes quantize in blocks.
+
+5
+00:00:28.000 --> 00:00:40.992
+A group of weights (for example 32, 64, or 256 of them) shares a scale, and sometimes an offset, stored at higher precision, so each block can use its small range of integers well.
+
+6
+00:00:41.272 --> 00:00:47.288
+Those scales cost bits, which is why a “4-bit” format has more than 4 effective bits per weight.
+
+7
+00:00:47.568 --> 00:00:48.336
+llama.
+
+8
+00:00:48.616 --> 00:00:52.136
+cpp’s quantize README measures this on Llama 3.
+
+9
+00:00:52.416 --> 00:00:55.275
+1 8B: Q4_K_M comes to 4.
+
+10
+00:00:55.555 --> 00:00:57.347
+89 bits per weight (4.
+
+11
+00:00:57.627 --> 00:01:00.677
+58 GiB), Q5_K_M to 5.
+
+12
+00:01:00.957 --> 00:01:02.877
+70, Q6_K to 6.
+
+13
+00:01:03.157 --> 00:01:05.205
+56, Q8_0 to 8.
+
+14
+00:01:05.485 --> 00:01:07.661
+50, and F16 to 16.
+
+15
+00:01:07.941 --> 00:01:09.179
+0 (14.
+
+16
+00:01:09.459 --> 00:01:10.867
+96 GiB).
+
+17
+00:01:11.147 --> 00:01:16.139
+The “K_M” variants are mixes that keep some sensitive tensors at higher precision.
+
+18
+00:01:16.419 --> 00:01:22.200
+MLX’s converter defaults to 4-bit affine quantization with a group size of 64.
+
+19
+00:01:22.480 --> 00:01:23.547
+What do you give up?
+
+20
+00:01:23.827 --> 00:01:35.923
+The same README says quality loss is usually measured as perplexity (how surprised the model is by reference text) or KL divergence from the unquantized model’s output distribution.
+
+21
+00:01:36.203 --> 00:01:38.400
+The research gives a consistent picture.
+
+22
+00:01:38.680 --> 00:01:58.456
+Dettmers and Zettlemoyer (2022) ran more than 35,000 experiments across model families and found that, for a fixed memory budget, 4-bit precision was almost universally the best trade-off between total model bits and zero-shot accuracy, with small block sizes helping.
+
+23
+00:01:58.736 --> 00:02:03.493
+In other words, a bigger model at 4 bits usually beats a smaller one at 8.
+
+24
+00:02:03.773 --> 00:02:13.821
+Below 4 bits, things degrade: Huang and colleagues (2024) found Llama 3 suffered non-negligible degradation at very low bit widths.
+
+25
+00:02:14.101 --> 00:02:16.981
+Methods such as GPTQ and LLM.
+
+26
+00:02:17.261 --> 00:02:21.955
+int8() (both in the sources) are different ways of quantizing with less damage.
+
+27
+00:02:22.235 --> 00:02:26.416
+The engineering rule: 4 to 6 bits is the usual starting range.
+
+28
+00:02:26.696 --> 00:02:39.581
+Treat anything lower as an experiment, and measure on your own task, because averages over benchmarks can hide a sharp drop on exactly the thing you need, such as precise extraction or long-context retrieval.

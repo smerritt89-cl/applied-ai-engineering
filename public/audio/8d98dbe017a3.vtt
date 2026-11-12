@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.536
+The agent loop at a glance.
+
+2
+00:00:01.816 --> 00:00:05.379
+Strip away the frameworks and every agent runs the same loop.
+
+3
+00:00:05.659 --> 00:00:10.245
+The Hugging Face Agents Course calls it the Thought, Action, Observation cycle.
+
+4
+00:00:10.525 --> 00:00:19.997
+The model reasons about what to do (thought), emits a tool call with arguments (action), and your code runs the tool and feeds the result back (observation).
+
+5
+00:00:20.277 --> 00:00:26.101
+The model reads the observation and either takes another action or produces a final answer.
+
+6
+00:00:26.381 --> 00:00:32.013
+The course compares it to a while loop whose rules live in the system prompt and tool definitions.
+
+7
+00:00:32.293 --> 00:00:34.213
+The pattern has a research lineage.
+
+8
+00:00:34.493 --> 00:00:52.221
+ReAct (Yao and colleagues, 2022) showed that interleaving reasoning traces with actions helped models on question answering and interactive tasks, partly because actions let the model look things up instead of hallucinating, and the reasoning helped it track and update a plan.
+
+9
+00:00:52.501 --> 00:01:05.024
+Today’s APIs build this in: in Studio 1 you saw that a Claude response with stop_reason equal to tool_use is the model asking your code to act, and the SDK’s tool runner automates the loop.
+
+10
+00:01:05.304 --> 00:01:08.739
+What the model cannot do is stop the loop safely on its own.
+
+11
+00:01:09.019 --> 00:01:11.557
+It may decide it is finished too early, or never.
+
+12
+00:01:11.837 --> 00:01:22.205
+So every loop you write has at least two exits: the model’s final answer, and a budget your code enforces (a maximum number of steps, tokens, dollars, or seconds).
+
+13
+00:01:22.485 --> 00:01:32.320
+Real loops add more: a stop when a write needs human approval, a stop when the same tool call repeats with the same arguments, and an error path when a tool fails.
+
+14
+00:01:32.600 --> 00:01:35.437
+Week 2 is entirely about building this loop well.
+
+15
+00:01:35.717 --> 00:01:42.352
+For now, notice its shape, and notice where your code sits: between every action the model requests and the world.

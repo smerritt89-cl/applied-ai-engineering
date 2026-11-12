@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.755
+Where QLoRA runs, and what “QLoRA” means on a Mac.
+
+2
+00:00:04.035 --> 00:00:20.717
+The NF4 recipe in the Hugging Face stack comes from the bitsandbytes library, configured with BitsAndBytesConfig ( load_in_4bit, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant, and bnb_4bit_compute_dtype ).
+
+3
+00:00:20.997 --> 00:00:29.147
+Transformers’ documentation lists bitsandbytes support for NVIDIA CUDA GPUs, Intel GPUs and Gaudi, and CPUs.
+
+4
+00:00:29.427 --> 00:00:31.475
+Apple Silicon is not on that list.
+
+5
+00:00:31.755 --> 00:00:37.856
+On a Mac, MLX-LM offers the same idea by a different route: if you point mlx_lm.
+
+6
+00:00:38.136 --> 00:00:44.728
+lora at a quantized model, it trains LoRA adapters on top of it, and its docs call that QLoRA.
+
+7
+00:00:45.008 --> 00:00:54.331
+MLX’s default quantization is affine and group-wise (4 bits, groups of 64, with a scale and bias per group), not NF4.
+
+8
+00:00:54.611 --> 00:01:00.115
+Same pattern, different quantizer, so don’t expect identical numbers across the two stacks.
+
+9
+00:01:00.395 --> 00:01:02.635
+Is QLoRA worth it for the 0.
+
+10
+00:01:02.915 --> 00:01:04.835
+5B model in this week’s lab?
+
+11
+00:01:05.115 --> 00:01:09.040
+Not for memory: its bf16 weights are about 1 GB.
+
+12
+00:01:09.320 --> 00:01:13.139
+Use it there to learn the API and to measure the quality difference.
+
+13
+00:01:13.419 --> 00:01:19.349
+It starts to matter at 7B and above, where it decides whether a run fits on the GPU you have.

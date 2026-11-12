@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.645
+Drift: when the world moves under a working system.
+
+2
+00:00:02.925 --> 00:00:19.139
+Chip Huyen’s essay on distribution shifts gives the classic vocabulary from ML: covariate shift (the input distribution changes), label shift (the output distribution changes), and concept drift (the right answer for the same input changes).
+
+3
+00:00:19.419 --> 00:00:30.640
+It also makes a practical point: you rarely get ground-truth labels quickly in production, so you monitor what you can see without labels, the inputs and the model’s outputs, as early warning.
+
+4
+00:00:30.920 --> 00:00:43.955
+Her essay also cites a Google review in which most of the failures examined came from ordinary software causes rather than ML-specific ones, a useful reminder to check deploys and dependencies first.
+
+5
+00:00:44.235 --> 00:00:47.648
+For LLM systems, watch four kinds: Input drift.
+
+6
+00:00:47.928 --> 00:00:52.024
+Topic mix, language, input length, share of inputs with attachments.
+
+7
+00:00:52.304 --> 00:00:56.741
+A new customer segment or a marketing campaign changes what users ask.
+
+8
+00:00:57.021 --> 00:00:58.067
+Output drift.
+
+9
+00:00:58.347 --> 00:01:03.467
+Answer length, refusal rate, tool calls per task, share of answers citing no source.
+
+10
+00:01:03.747 --> 00:01:09.059
+These move when the model or prompt behaves differently, even before anyone labels a failure.
+
+11
+00:01:09.339 --> 00:01:10.341
+Model drift.
+
+12
+00:01:10.621 --> 00:01:12.989
+Providers update models and aliases.
+
+13
+00:01:13.269 --> 00:01:22.144
+Record the response’s model identifier on every call, so a change in behavior can be lined up against a change in the model actually serving you.
+
+14
+00:01:22.424 --> 00:01:23.405
+Judge drift.
+
+15
+00:01:23.685 --> 00:01:25.605
+Your evaluator is a model too.
+
+16
+00:01:25.885 --> 00:01:32.861
+If the corrected pass rate jumps the day you upgraded the judge’s model, that is the judge changing, not your product.
+
+17
+00:01:33.141 --> 00:01:43.680
+Compare each metric against a baseline window (last month, or the week before a release) and look for changes that persist across several windows, not single-day blips.
+
+18
+00:01:43.960 --> 00:01:49.891
+Drift is almost always ticket work: something to investigate this week, not wake someone for tonight.

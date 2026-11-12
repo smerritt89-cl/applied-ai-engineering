@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.091
+Three kinds of error, three recoveries.
+
+2
+00:00:02.371 --> 00:00:04.568
+Long runs meet every kind of failure.
+
+3
+00:00:04.848 --> 00:00:06.789
+Sort them by who should handle them.
+
+4
+00:00:07.069 --> 00:00:17.608
+Transport errors are failures to reach the model: rate limits (429), overload (529), server errors, timeouts, dropped connections.
+
+5
+00:00:17.888 --> 00:00:19.189
+These are code’s job.
+
+6
+00:00:19.469 --> 00:00:29.880
+The official Anthropic Python SDK retries certain errors automatically (by default twice, with exponential backoff), and you can raise max_retries.
+
+7
+00:00:30.160 --> 00:00:40.421
+For your own outer retries, use exponential backoff with jitter, as the AWS architecture post explains, so that many clients do not retry in lockstep.
+
+8
+00:00:40.701 --> 00:00:44.563
+Never let a transport error reach the model as if it were information.
+
+9
+00:00:44.843 --> 00:00:52.373
+Tool errors are failures inside a tool: a missing document, a bad argument, a downstream API that timed out.
+
+10
+00:00:52.653 --> 00:00:54.381
+These are the model’s information.
+
+11
+00:00:54.661 --> 00:01:06.331
+Return a tool_result with is_error: true and a message that says what to try next; the handle-tool-calls docs describe the model incorporating the error and often retrying with corrections.
+
+12
+00:01:06.611 --> 00:01:14.696
+The SDK tool runner does a basic version for you, catching an exception in your tool and returning its message as an error result.
+
+13
+00:01:14.976 --> 00:01:18.859
+Write your own message when you can, because a stack trace is a poor hint.
+
+14
+00:01:19.139 --> 00:01:30.381
+Strategy errors are the ones where every step works and the run still fails: the agent searches the same thing repeatedly, chases an irrelevant document, or declares victory early.
+
+15
+00:01:30.661 --> 00:01:32.112
+Retrying cannot help.
+
+16
+00:01:32.392 --> 00:01:48.904
+Your options are a nudge (append a short text block after the tool results saying, for example, “you have searched this query three times; try a different term or answer with what you have”), a verification step that rejects a premature answer, or a stop with a clear reason.
+
+17
+00:01:49.184 --> 00:01:58.315
+Studio 3’s lesson on evaluating agents showed why you should count these: the rate of no-progress stops is a metric you can track across versions.
+
+18
+00:01:58.595 --> 00:02:00.365
+Two habits make recovery cheap.
+
+19
+00:02:00.645 --> 00:02:04.571
+Make write tools idempotent, so a retried call cannot act twice.
+
+20
+00:02:04.851 --> 00:02:13.427
+And persist progress outside the context (a log, a checklist, commits), so a crashed or capped run can resume instead of starting over.

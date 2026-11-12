@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.477
+Approximate nearest neighbor search, and the metric that judges it.
+
+2
+00:00:03.757 --> 00:00:12.312
+Approximate nearest neighbor (ANN) indexes return vectors that are probably among the true nearest neighbors, much faster than checking them all.
+
+3
+00:00:12.592 --> 00:00:17.051
+They don’t promise the exact answer, so you need a number that says how close they get.
+
+4
+00:00:17.331 --> 00:00:27.955
+That number is recall@k against exact search: for a query, take the exact top k and the index’s top k, count how many vectors appear in both, and divide by k.
+
+5
+00:00:28.235 --> 00:00:30.112
+Average over a sample of queries.
+
+6
+00:00:30.392 --> 00:00:32.653
+An index with recall@10 of 0.
+
+7
+00:00:32.933 --> 00:00:35.472
+95 returns, on average, 9.
+
+8
+00:00:35.752 --> 00:00:37.864
+5 of the true 10 nearest neighbors.
+
+9
+00:00:38.144 --> 00:00:40.619
+Keep this separate from the recall in lesson 2.
+
+10
+00:00:40.899 --> 00:00:46.936
+That one compared retrieved documents with human relevance labels: did the answer make it into the context?
+
+11
+00:00:47.216 --> 00:00:53.616
+This one compares the index with exact search on the same vectors: did the index find what brute force would have?
+
+12
+00:00:53.896 --> 00:01:07.187
+The total error in your system is a product of both: an index can only lose relevant documents that the embedding model ranked highly, and a perfect index can’t rescue a model that ranks the right document 200th.
+
+13
+00:01:07.467 --> 00:01:11.584
+When retrieval quality drops, measuring both tells you which part to fix.

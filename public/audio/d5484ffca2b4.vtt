@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.408
+Catastrophic forgetting.
+
+2
+00:00:01.688 --> 00:00:08.856
+Fine-tuning moves weights toward your task, and nothing in the objective protects abilities your data doesn’t exercise.
+
+3
+00:00:09.136 --> 00:00:26.075
+Catastrophic forgetting, the loss of earlier abilities after training on something new, is a long-studied problem in neural networks; Kirkpatrick and colleagues (2017) is the standard reference and proposed one mitigation, elastic weight consolidation.
+
+4
+00:00:26.355 --> 00:00:42.867
+For language models, Luo and colleagues (2023) observed forgetting across 1B to 7B models during continual instruction tuning, more severe at larger sizes within that range, and found that prior general instruction tuning reduced it.
+
+5
+00:00:43.147 --> 00:00:46.432
+Parameter-efficient methods help but don’t remove the risk.
+
+6
+00:00:46.712 --> 00:00:57.336
+Biderman and colleagues (2024) found that LoRA learned less than full fine-tuning on code and math, and also forgot less of the base model’s other abilities.
+
+7
+00:00:57.616 --> 00:01:04.315
+That trade is often the right one for a narrow product task, which is part of why lesson 8’s methods are the default.
+
+8
+00:01:04.595 --> 00:01:06.707
+The engineering response is to measure.
+
+9
+00:01:06.987 --> 00:01:19.488
+Keep a small regression set of general tasks the model must still handle (instructions without your system prompt, a few reasoning questions, refusals that should still happen) and score the base and tuned models on it.
+
+10
+00:01:19.768 --> 00:01:27.661
+Mixing some general examples into training, training for fewer steps, and lowering the learning rate are the usual levers if it moves.

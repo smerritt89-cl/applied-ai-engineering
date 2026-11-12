@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.219
+Why reverse mode, and what it costs.
+
+2
+00:00:02.499 --> 00:00:05.229
+There are two ways to apply the chain rule mechanically.
+
+3
+00:00:05.509 --> 00:00:13.147
+Forward mode picks one input and pushes “derivative with respect to this input” forward through the graph alongside the values.
+
+4
+00:00:13.427 --> 00:00:18.888
+Reverse mode picks one output and pulls “derivative of this output” backward to all inputs.
+
+5
+00:00:19.168 --> 00:00:32.928
+Baydin and colleagues’ survey of automatic differentiation lays out the trade-off: for a function from R^n to R^m, forward mode needs about n passes to get the full Jacobian and reverse mode needs about m.
+
+6
+00:00:33.208 --> 00:00:41.656
+Training a network means differentiating a single scalar loss with respect to every parameter, so m = 1 and n can be billions.
+
+7
+00:00:41.936 --> 00:00:48.251
+One reverse pass gives the whole gradient for a small constant multiple of the cost of the forward pass.
+
+8
+00:00:48.531 --> 00:01:00.093
+That asymmetry is the entire reason backpropagation, popularized for neural networks by Rumelhart, Hinton, and Williams in 1986, is the workhorse of deep learning.
+
+9
+00:01:00.373 --> 00:01:01.675
+The price is memory.
+
+10
+00:01:01.955 --> 00:01:14.115
+Reverse mode needs the forward pass’s intermediate values (here, t inside tanh’s backward, and both operands inside multiply’s), so it keeps them until the backward pass consumes them.
+
+11
+00:01:14.395 --> 00:01:19.515
+Baydin and colleagues name this storage requirement as the main drawback of reverse mode.
+
+12
+00:01:19.795 --> 00:01:30.141
+Scaled up to large networks, it is why training needs far more memory than running the same model, a point you’ll hear again whenever people discuss fine-tuning budgets.

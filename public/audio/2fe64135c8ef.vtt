@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.197
+How this changes the way you read models.
+
+2
+00:00:02.477 --> 00:00:06.787
+After this lecture, a few things about large models stop being mysterious.
+
+3
+00:00:07.067 --> 00:00:22.896
+The cost of training relative to inference: each matrix multiply in the forward pass implies two in the backward pass, so a training step costs about three forward passes, plus the memory to store activations (lesson 1’s point about reverse mode).
+
+4
+00:00:23.176 --> 00:00:33.651
+Why fused kernels matter: the cross-entropy over a vocabulary of tens of thousands is a large tensor operation, and fusing it saves real memory and time.
+
+5
+00:00:33.931 --> 00:00:40.693
+And why normalization layers and residual paths are designed the way they are: they control how gradients move.
+
+6
+00:00:40.973 --> 00:00:44.152
+It also sharpens your judgment as an applied engineer.
+
+7
+00:00:44.432 --> 00:00:49.787
+If a vendor or a paper claims a new layer or training trick, you can ask the questions that matter.
+
+8
+00:00:50.067 --> 00:00:51.496
+What is its backward pass?
+
+9
+00:00:51.776 --> 00:00:53.205
+Does it add batch coupling?
+
+10
+00:00:53.485 --> 00:00:55.213
+Does it preserve gradient scale?
+
+11
+00:00:55.493 --> 00:01:01.765
+Was it gradient-checked, and does the reported improvement hold with a fair hyperparameter search for the baseline?
+
+12
+00:01:02.045 --> 00:01:08.509
+Those questions are checks and balances for research claims, in the same spirit as checking model output.

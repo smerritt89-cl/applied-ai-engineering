@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.752
+Batch: half price for work nobody is waiting on.
+
+2
+00:00:03.032 --> 00:00:15.981
+The Message Batches API takes a list of ordinary Messages requests, processes them asynchronously, and bills every token at 50 percent of the standard price, according to Anthropic’s pricing page.
+
+3
+00:00:16.261 --> 00:00:18.480
+The discount stacks with caching discounts.
+
+4
+00:00:18.760 --> 00:00:32.563
+The docs give the operating envelope: up to 100,000 requests or 256 MB per batch, most batches complete within an hour, and anything not finished in 24 hours expires.
+
+5
+00:00:32.843 --> 00:00:35.296
+Results stay downloadable for 29 days.
+
+6
+00:00:35.576 --> 00:00:45.240
+Batch fits evaluation runs, backfills, nightly classification or enrichment, and report generation: anything where a person isn’t waiting on one item.
+
+7
+00:00:45.520 --> 00:00:56.144
+It doesn’t fit chat, agent loops (a batch request is single-shot, so there is no tool loop inside it), or fast mode and streaming, which the batch docs list as unsupported.
+
+8
+00:00:56.424 --> 00:00:58.856
+Three engineering details catch teams out.
+
+9
+00:00:59.136 --> 00:01:03.936
+Results arrive in any order, so key them by custom_id, never by position.
+
+10
+00:01:04.216 --> 00:01:14.264
+Each result has its own status (succeeded, errored, canceled, expired), so a batch that “ended” can still contain failures you must retry or report.
+
+11
+00:01:14.544 --> 00:01:21.520
+Caching inside a batch is best-effort: requests run concurrently, so not every request can read what another wrote.
+
+12
+00:01:21.800 --> 00:01:29.373
+Because batches can run longer than five minutes, the batch docs suggest the one-hour lifetime when many requests share a prefix.

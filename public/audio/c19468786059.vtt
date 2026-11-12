@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.880
+Chat templates: the format the model was trained on.
+
+2
+00:00:03.160 --> 00:00:12.611
+A chat model was fine-tuned on conversations rendered in one specific text format, with special tokens marking where each role’s turn starts and ends.
+
+3
+00:00:12.891 --> 00:00:21.637
+The chat template, stored with the tokenizer, is a small program (written in Jinja) that renders your list of messages into exactly that format.
+
+4
+00:00:21.917 --> 00:00:33.864
+The Transformers docs show two models fine-tuned from the same Mistral base that expect different templates, which is why you never hand-write the format and never reuse one model’s template for another.
+
+5
+00:00:34.144 --> 00:00:35.168
+tokenizer.
+
+6
+00:00:35.448 --> 00:00:49.208
+apply_chat_template(messages, add_generation_prompt=True) renders the conversation and appends the tokens that open an assistant turn, so the model writes a reply instead of continuing the user’s message.
+
+7
+00:00:49.488 --> 00:00:51.600
+Two details cause most silent bugs.
+
+8
+00:00:51.880 --> 00:01:09.672
+If you render with tokenize=False and tokenize the string yourself later, set add_special_tokens=False, because the template already contains the beginning-of-sequence token and adding another degrades output; the docs call tokenize=True the safer option for this reason.
+
+9
+00:01:09.952 --> 00:01:15.755
+And don’t combine add_generation_prompt with continue_final_message, which do opposite things.
+
+10
+00:01:16.035 --> 00:01:23.565
+This is the same idea as the system, user, and assistant roles you used with Claude and other APIs in Studio 1.
+
+11
+00:01:23.845 --> 00:01:32.549
+The difference is that a provider applies the format server-side, while with open weights it is your code’s job, and getting it wrong does not raise an error.
+
+12
+00:01:32.829 --> 00:01:34.387
+It just makes the model worse.

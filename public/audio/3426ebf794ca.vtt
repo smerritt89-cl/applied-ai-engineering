@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.475
+Distillation: learning from a bigger model.
+
+2
+00:00:02.755 --> 00:00:08.003
+Distillation trains a small student model to reproduce a larger teacher’s behavior.
+
+3
+00:00:08.283 --> 00:00:25.883
+Hinton, Vinyals, and Dean (2015) framed the classic version: train the student to match the teacher’s output probabilities, which carry more information than hard labels (a teacher that gives a wrong answer some probability tells the student which mistakes are reasonable).
+
+4
+00:00:26.163 --> 00:00:37.320
+For language models today, the common version is simpler: run the teacher on many inputs, keep its outputs (after checking them), and fine-tune the student on those input-output pairs.
+
+5
+00:00:37.600 --> 00:00:44.064
+If you generated synthetic training data with a frontier model in week 2, you did sequence-level distillation.
+
+6
+00:00:44.344 --> 00:00:47.032
+Done carefully, it works well on narrow tasks.
+
+7
+00:00:47.312 --> 00:01:05.296
+Hsieh and colleagues (2023) trained small models on both the teacher’s labels and its rationales, and a 770-million-parameter model outperformed few-shot PaLM 540B on one benchmark using 80 percent of the training data.
+
+8
+00:01:05.576 --> 00:01:14.515
+Done carelessly, it produces the imitation failure Gudibande and colleagues measured: a student that copies the teacher’s style without its knowledge.
+
+9
+00:01:14.795 --> 00:01:16.992
+Three checks keep distillation honest.
+
+10
+00:01:17.272 --> 00:01:32.504
+First, verify the teacher’s outputs before training on them, with the same checks you would apply in production (evidence quotes, cross-field rules, and a human-labeled sample), because the student will learn the teacher’s errors as faithfully as its successes.
+
+11
+00:01:32.784 --> 00:01:42.171
+Second, evaluate the student on human-labeled test data, not on agreement with the teacher; agreement with the teacher measures imitation, not correctness.
+
+12
+00:01:42.451 --> 00:01:44.669
+Third, read the teacher’s terms of service.
+
+13
+00:01:44.949 --> 00:01:48.533
+Providers restrict how their outputs may be used to build models.
+
+14
+00:01:48.813 --> 00:01:57.347
+Anthropic’s commercial terms, for example, prohibit using its services to build a competing product, including training competing AI models.
+
+15
+00:01:57.627 --> 00:02:08.315
+A narrow internal extraction model is a different thing from a competing general model, but this is a question for your legal team, decided before you build the dataset, not after.

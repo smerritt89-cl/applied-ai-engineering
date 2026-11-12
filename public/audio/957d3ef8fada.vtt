@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.603
+Staged rollouts: shadow, canary, ramp.
+
+2
+00:00:02.883 --> 00:00:05.400
+Don’t move from zero users to all users.
+
+3
+00:00:05.680 --> 00:00:09.179
+Common stages for an LLM feature: Internal use.
+
+4
+00:00:09.459 --> 00:00:11.613
+Your own team uses it on real work.
+
+5
+00:00:11.893 --> 00:00:14.560
+You’ll find embarrassing failures quickly and cheaply.
+
+6
+00:00:14.840 --> 00:00:15.885
+Shadow mode.
+
+7
+00:00:16.165 --> 00:00:21.584
+The new version runs on real traffic, but users still see the old behavior (or nothing).
+
+8
+00:00:21.864 --> 00:00:24.296
+You compare outputs offline with your graders.
+
+9
+00:00:24.576 --> 00:00:33.536
+This is the safest way to test a new prompt or model on production inputs, at the cost of paying for two calls per request during the shadow period.
+
+10
+00:00:33.816 --> 00:00:34.627
+Canary.
+
+11
+00:00:34.907 --> 00:00:37.616
+A small share of real users get the new version.
+
+12
+00:00:37.896 --> 00:00:51.613
+Google’s SRE workbook describes how to do this well: the canary must be large enough and run long enough to be representative, including peak load; compare canary against a control group running the old version at the same time,
+
+13
+00:00:51.893 --> 00:01:09.515
+rather than comparing before and after (time of day and day of week confound that); break metrics down by population, because a bad canary hides in whole-service averages; prefer metrics tied to what users experience; and run one canary at a time so the signals don’t mix.
+
+14
+00:01:09.795 --> 00:01:10.499
+Ramp.
+
+15
+00:01:10.779 --> 00:01:18.096
+Increase the share in steps, with written success criteria at each step and a named person who decides whether to proceed.
+
+16
+00:01:18.376 --> 00:01:23.837
+If canary metrics diverge from control, pause and roll back first, then investigate.
+
+17
+00:01:24.117 --> 00:01:38.560
+For LLM features, add semantic metrics to the canary comparison: online eval pass rate on sampled traffic, refusal rate, guard block rate, escalation-to-human rate, thumbs-down rate, and cost per conversation.
+
+18
+00:01:38.840 --> 00:01:42.701
+Several of these move when quality changes even though nothing errors.

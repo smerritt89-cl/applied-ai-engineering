@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:00.917
+LangGraph.
+
+2
+00:00:01.197 --> 00:00:09.112
+LangGraph, from LangChain, calls itself a low-level orchestration framework and runtime for long-running, stateful agents.
+
+3
+00:00:09.392 --> 00:00:22.704
+You describe the agent as a graph: a shared state object, nodes (plain functions or model calls that read state and return updates), and edges that decide which node runs next, including conditional edges.
+
+4
+00:00:22.984 --> 00:00:28.765
+It does not prescribe prompts or an agent architecture, and it does not require LangChain itself.
+
+5
+00:00:29.045 --> 00:00:34.933
+Its strengths are the things that are tedious to build by hand: Persistence and durable execution.
+
+6
+00:00:35.213 --> 00:00:39.907
+Compile the graph with a checkpointer and every step is saved under a thread_id.
+
+7
+00:00:40.187 --> 00:00:42.917
+A run can recover after a failure and resume.
+
+8
+00:00:43.197 --> 00:00:52.605
+The docs point out that the in-memory checkpointer loses everything on restart, and recommend database-backed ones (Postgres, SQLite) for production.
+
+9
+00:00:52.885 --> 00:00:53.931
+Human-in-the-loop.
+
+10
+00:00:54.211 --> 00:01:00.888
+Calling interrupt() inside a node pauses the graph, saves state, and surfaces a value to your application.
+
+11
+00:01:01.168 --> 00:01:05.029
+You resume later by invoking the graph with Command(resume=.)
+
+12
+00:01:05.309 --> 00:01:06.440
+on the same thread.
+
+13
+00:01:06.720 --> 00:01:11.477
+Observability and deployment through LangSmith, a separate product, if you want it.
+
+14
+00:01:11.757 --> 00:01:24.451
+One documented caveat deserves attention because it is a classic agent bug: on resume, the interrupted node runs again from its beginning, so any code before the interrupt() call executes twice.
+
+15
+00:01:24.731 --> 00:01:28.741
+The docs advise making side effects before an interrupt idempotent.
+
+16
+00:01:29.021 --> 00:01:34.845
+That is the same idempotency rule from Studio 1, now enforced by the framework’s semantics.
+
+17
+00:01:35.125 --> 00:01:36.896
+The cost is conceptual weight.
+
+18
+00:01:37.176 --> 00:01:42.467
+For a single loop with a few tools, a graph adds vocabulary without adding capability.
+
+19
+00:01:42.747 --> 00:01:51.856
+LangGraph pays off when the control flow is genuinely a graph, when runs must survive restarts, or when people must approve steps that may take hours.

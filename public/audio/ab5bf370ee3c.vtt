@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.456
+Cost, steps, and reliability are results, not footnotes.
+
+2
+00:00:03.736 --> 00:00:19.971
+Kapoor and colleagues’ “AI Agents That Matter” (2024) argued that agent benchmarks focused narrowly on accuracy, which produced needlessly complex and costly agents and even mistaken conclusions about what caused accuracy gains.
+
+3
+00:00:20.251 --> 00:00:23.856
+Their recommendation is to treat cost and accuracy jointly.
+
+4
+00:00:24.136 --> 00:00:35.080
+For your eval, record per trial: input and output tokens, dollar cost at the prices on the date you ran it, wall-clock time, number of model calls, and number of tool calls.
+
+5
+00:00:35.360 --> 00:00:43.061
+Then report four numbers per configuration: Success rate (pass@1 across trials), with an interval, as in Studio 3.
+
+6
+00:00:43.341 --> 00:00:49.379
+pass^k, the chance that k independent trials all succeed, computed with tau-bench’s estimator.
+
+7
+00:00:49.659 --> 00:00:57.104
+Anthropic’s guide gives the intuition: 75% per trial means about 42% for three in a row.
+
+8
+00:00:57.384 --> 00:01:01.949
+A weekly report that is right three weeks out of four is not a reliable agent.
+
+9
+00:01:02.229 --> 00:01:06.347
+Cost per successful task: total cost divided by successes.
+
+10
+00:01:06.627 --> 00:01:16.739
+When failures are retried, the expected cost is the cost per run divided by the success rate, so a cheap, unreliable agent can still win, or lose badly.
+
+11
+00:01:17.019 --> 00:01:24.592
+Steps and cost distribution: median and a high percentile (p90), because runaway loops create long tails.
+
+12
+00:01:24.872 --> 00:01:34.067
+A step budget and, on hosted runtimes, a session budget (Managed Agents supports a spending cap per session) turn the tail into a bounded failure.
+
+13
+00:01:34.347 --> 00:01:38.976
+One more distinction from Anthropic’s guide shapes how you use the suite over time.
+
+14
+00:01:39.256 --> 00:01:45.933
+Capability evals ask what the agent can do well and should start with a low pass rate, giving you a hill to climb.
+
+15
+00:01:46.213 --> 00:01:51.781
+Regression evals ask whether it still does what it used to and should pass nearly 100%.
+
+16
+00:01:52.061 --> 00:01:58.675
+As capability scenarios become reliably solved, move them into the regression suite that runs on every change.

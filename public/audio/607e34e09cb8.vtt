@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.496
+Parallelization: sectioning and voting.
+
+2
+00:00:02.776 --> 00:00:08.237
+Parallelization runs several calls at the same time and combines their outputs in code.
+
+3
+00:00:08.517 --> 00:00:11.952
+The post names two variations that solve different problems.
+
+4
+00:00:12.232 --> 00:00:16.925
+Sectioning splits a task into independent subtasks that run side by side.
+
+5
+00:00:17.205 --> 00:00:25.419
+It fits when the parts are known in advance and don’t depend on each other, and it buys speed: wall-clock time is the slowest call, not the sum.
+
+6
+00:00:25.699 --> 00:00:32.547
+The post adds a subtler benefit: models tend to do better when each consideration gets its own focused call.
+
+7
+00:00:32.827 --> 00:00:42.512
+Its examples include running a guardrail check in one call while another answers the user, and evaluating different aspects of a model’s output in separate calls.
+
+8
+00:00:42.792 --> 00:00:52.371
+For a product spec, you might review security, legal, and accessibility concerns as three parallel calls rather than one long prompt asking for all three.
+
+9
+00:00:52.651 --> 00:00:59.605
+Voting runs the same task several times, or with several prompts, to get diverse outputs and aggregate them.
+
+10
+00:00:59.885 --> 00:01:03.405
+It fits when you want higher confidence than one sample gives.
+
+11
+00:01:03.685 --> 00:01:19.024
+The post’s examples: several prompts each reviewing code for vulnerabilities, flagging it if any finds a problem; or several evaluations of whether content is inappropriate, with a vote threshold that trades false positives against false negatives.
+
+12
+00:01:19.304 --> 00:01:31.571
+The research root is self-consistency (Wang and colleagues, 2022), which sampled several reasoning paths and took the majority answer, and improved accuracy on reasoning benchmarks.
+
+13
+00:01:31.851 --> 00:01:35.648
+The check for voting is in the aggregator, and it is easy to get wrong.
+
+14
+00:01:35.928 --> 00:01:42.371
+Decide the denominator (all attempts, including unparseable ones), the threshold, and what happens below it.
+
+15
+00:01:42.651 --> 00:01:46.128
+“No clear majority” is information: send it to a person.
+
+16
+00:01:46.408 --> 00:01:54.344
+And know the limit: votes from the same model and prompt share the same blind spots, so agreement measures consistency, not truth.
+
+17
+00:01:54.624 --> 00:02:00.832
+Diverse prompts or models make votes more independent; checks against evidence make them more trustworthy.

@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.539
+Reliability compounds: the arithmetic.
+
+2
+00:00:02.819 --> 00:00:10.328
+Suppose an agent completes a task in n steps, each step succeeds with probability p, and steps fail independently.
+
+3
+00:00:10.608 --> 00:00:13.701
+Then the whole task succeeds with probability p to the n.
+
+4
+00:00:13.981 --> 00:00:18.291
+That one formula explains most of the gap between demos and production.
+
+5
+00:00:18.571 --> 00:00:19.659
+Plug in numbers.
+
+6
+00:00:19.939 --> 00:00:21.325
+At p = 0.
+
+7
+00:00:21.605 --> 00:00:28.069
+95, ten steps succeed about 60% of the time and twenty steps about 36%.
+
+8
+00:00:28.349 --> 00:00:29.736
+At p = 0.
+
+9
+00:00:30.016 --> 00:00:33.408
+99, twenty steps succeed about 82%.
+
+10
+00:00:33.688 --> 00:00:41.517
+Inverting the formula, a target success rate T over n steps requires p = T to the power 1/n per step.
+
+11
+00:00:41.797 --> 00:00:47.301
+To finish a 20-step task 90% of the time, each step must succeed about 99.
+
+12
+00:00:47.581 --> 00:00:49.395
+47% of the time.
+
+13
+00:00:49.675 --> 00:00:53.557
+For 99% end to end, each step needs about 99.
+
+14
+00:00:53.837 --> 00:00:55.181
+95%.
+
+15
+00:00:55.461 --> 00:01:04.635
+Taking logs makes the scaling clear: the log of success is n times the log of p, so the failure budget per step shrinks roughly as one over n.
+
+16
+00:01:04.915 --> 00:01:09.693
+Doubling the length of a task roughly halves the per-step error rate you can tolerate.
+
+17
+00:01:09.973 --> 00:01:15.477
+A workflow is subject to the same arithmetic, which is why lesson 2 put gates between steps.
+
+18
+00:01:15.757 --> 00:01:17.891
+The difference is what you can do about it.
+
+19
+00:01:18.171 --> 00:01:23.632
+In a workflow you know the steps, so you can measure each one, test it, and add a check where it is weak.
+
+20
+00:01:23.912 --> 00:01:31.400
+In an agent the number of steps varies by run, and the model chooses them, so neither n nor the per-step p is under your control.
+
+21
+00:01:31.680 --> 00:01:36.203
+Every additional step the model decides to take is another factor less than one.

@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.920
+Splitting: random is not enough.
+
+2
+00:00:02.200 --> 00:00:05.421
+A random split assumes every example is independent.
+
+3
+00:00:05.701 --> 00:00:07.173
+Real data rarely is.
+
+4
+00:00:07.453 --> 00:00:10.781
+Stratify when you have categories whose proportions matter.
+
+5
+00:00:11.061 --> 00:00:18.464
+If 10 percent of documents are support tickets, a random split of a small dataset can put almost none of them in the test set.
+
+6
+00:00:18.744 --> 00:00:25.741
+Stratified splitting allocates each category to each split in proportion, so every split has every kind of document.
+
+7
+00:00:26.021 --> 00:00:33.531
+scikit-learn’s splitters (StratifiedKFold and relatives) do this for you; the lab implements it by hand so you can see it.
+
+8
+00:00:33.811 --> 00:00:35.731
+Group when examples are related.
+
+9
+00:00:36.011 --> 00:00:50.496
+An email and its reply, three messages from one support thread, ten tickets from one customer, five chunks of one long document: if one lands in training and another in test, the model has effectively seen part of the test answer.
+
+10
+00:00:50.776 --> 00:00:57.859
+Group-aware splitting assigns whole groups to a single split (scikit-learn’s GroupKFold and StratifiedGroupKFold).
+
+11
+00:00:58.139 --> 00:01:00.891
+Choose the group by asking what production looks like.
+
+12
+00:01:01.171 --> 00:01:08.211
+If your model will see new customers, group by customer, so the test set measures performance on customers it never saw.
+
+13
+00:01:08.491 --> 00:01:11.115
+Split by time when production is the future.
+
+14
+00:01:11.395 --> 00:01:20.717
+If the model will run on next quarter’s documents, train on older data and test on the most recent, because vocabulary, products, and formats drift.
+
+15
+00:01:20.997 --> 00:01:24.773
+A random split hides that drift; a time-based split measures it.
+
+16
+00:01:25.053 --> 00:01:33.864
+These constraints compete in small datasets, which is why the lab fills each stratum with whole groups until it reaches its target, then moves on.
+
+17
+00:01:34.144 --> 00:01:38.453
+Expect split sizes to be close to the requested fractions, not exact.

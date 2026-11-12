@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.813
+Saving, loading, and merging.
+
+2
+00:00:02.093 --> 00:00:02.861
+trainer.
+
+3
+00:00:03.141 --> 00:00:12.165
+save_model(path) on a PEFT-wrapped model saves the adapter: a config file and a small weights file, megabytes rather than the gigabyte of the base.
+
+4
+00:00:12.445 --> 00:00:17.096
+To use it later, load the base model and attach the adapter with PEFT’s PeftModel.
+
+5
+00:00:17.376 --> 00:00:22.624
+from_pretrained, or load both in one call with AutoPeftModelForCausalLM.
+
+6
+00:00:22.904 --> 00:00:30.712
+To produce a standalone model, call merge_and_unload(), which folds B times A into the base weights and returns a plain model.
+
+7
+00:00:30.992 --> 00:00:40.592
+PEFT’s docs note that it isn’t in place (assign the result) and that merging into a quantized base re-quantizes the weights, so merge into the 16-bit base.
+
+8
+00:00:40.872 --> 00:00:48.125
+Keep adapters separate when you’ll serve several tasks or customers on one base, or when you want to roll back by swapping a file.
+
+9
+00:00:48.405 --> 00:00:55.296
+Merge when you want the simplest deployment and the lowest latency, or when your serving stack doesn’t support adapters.
+
+10
+00:00:55.576 --> 00:01:04.088
+Either way, run the evaluation on the artifact you’ll actually ship, since a merged model in a different precision is a slightly different function.

@@ -1,0 +1,113 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.581
+Online evaluation on sampled traffic.
+
+2
+00:00:02.861 --> 00:00:07.192
+Offline evals (Studio 3) tell you whether a change is safe to ship.
+
+3
+00:00:07.472 --> 00:00:12.869
+Online evals tell you whether the shipped system is still good on the traffic it actually gets.
+
+4
+00:00:13.149 --> 00:00:15.475
+The mechanics reuse what you already built.
+
+5
+00:00:15.755 --> 00:00:16.544
+Sample.
+
+6
+00:00:16.824 --> 00:00:23.203
+Take a uniform random sample of production traces for measurement, as Studio 3’s review-queue lesson showed.
+
+7
+00:00:23.483 --> 00:00:32.805
+Keep it separate from targeted samples (thumbs-down, judge failures, latency outliers), which are for discovery and are deliberately enriched with failures.
+
+8
+00:00:33.085 --> 00:00:37.587
+Hamel Husain and Shreya Shankar’s evals FAQ makes the same split.
+
+9
+00:00:37.867 --> 00:00:45.909
+Run the graders asynchronously, off the request path, so evaluation never adds latency or failure modes to the user’s request.
+
+10
+00:00:46.189 --> 00:00:46.957
+Grade.
+
+11
+00:00:47.237 --> 00:00:56.731
+Run the cheap, certain graders on every sampled trace: code-based checks such as citation verification, schema rules, and forbidden-content filters.
+
+12
+00:00:57.011 --> 00:01:04.157
+Run the LLM judge from Studio 3, with the prompt you calibrated against human labels, on the same sample.
+
+13
+00:01:04.437 --> 00:01:13.845
+Several tracing tools (Langfuse and LangSmith among them) can run evaluators on production traces for you; the statistics are the same either way.
+
+14
+00:01:14.125 --> 00:01:15.256
+Size the sample.
+
+15
+00:01:15.536 --> 00:01:16.560
+You have the math.
+
+16
+00:01:16.840 --> 00:01:18.824
+To estimate a pass rate near 0.
+
+17
+00:01:19.104 --> 00:01:26.763
+9 within about plus or minus 3 points at 95 percent confidence, the normal approximation gives n of about 1.
+
+18
+00:01:27.043 --> 00:01:28.941
+96 squared times 0.
+
+19
+00:01:29.221 --> 00:01:30.480
+9 times 0.
+
+20
+00:01:30.760 --> 00:01:32.488
+1, divided by 0.
+
+21
+00:01:32.768 --> 00:01:38.421
+03 squared, which is about 384 judged traces per reporting window.
+
+22
+00:01:38.701 --> 00:01:43.779
+At 20,000 requests a day, a 2 percent sample gives that daily.
+
+23
+00:01:44.059 --> 00:01:51.077
+At 2,000 a day, report weekly instead of sampling more aggressively than your judge budget allows.
+
+24
+00:01:51.357 --> 00:01:55.560
+The judge has a cost too: price it with the same table as everything else.
+
+25
+00:01:55.840 --> 00:01:56.608
+Correct.
+
+26
+00:01:56.888 --> 00:02:00.109
+A judge’s raw pass rate is biased by its own errors.
+
+27
+00:02:00.389 --> 00:02:17.371
+Studio 3 showed the Rogan and Gladen correction: with the judge’s true positive rate (TPR) and true negative rate (TNR) measured on human labels, the estimated true pass rate is (observed + TNR - 1) / (TPR + TNR - 1).
+
+28
+00:02:17.651 --> 00:02:28.381
+Chart the corrected rate with its interval, and keep a person relabeling a small random sample every week or two, because a judge’s TPR and TNR drift when traffic does.

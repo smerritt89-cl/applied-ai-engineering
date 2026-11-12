@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.496
+Pattern 3: background jobs and queues.
+
+2
+00:00:02.776 --> 00:00:16.792
+Some work takes longer than anyone should hold an HTTP request open: summarizing a long document set, running an agent that makes dozens of tool calls, generating a report with several model passes and checks.
+
+3
+00:00:17.072 --> 00:00:19.333
+For these, split the request from the work.
+
+4
+00:00:19.613 --> 00:00:32.093
+The endpoint validates the request, writes a job record, puts a message on a queue, and returns immediately with a job id (HTTP 202 Accepted is the conventional status).
+
+5
+00:00:32.373 --> 00:00:39.477
+A separate worker process takes jobs off the queue, calls the model, stores the result, and updates the job’s status.
+
+6
+00:00:39.757 --> 00:00:47.331
+The client polls a status endpoint, subscribes to a stream of progress events, or gets a notification when the job finishes.
+
+7
+00:00:47.611 --> 00:00:49.125
+This buys you three things.
+
+8
+00:00:49.405 --> 00:00:55.208
+Durations are no longer bounded by your web host’s request limit (lesson 3 has the numbers).
+
+9
+00:00:55.488 --> 00:01:05.600
+Failures become recoverable: a worker that crashes leaves the job in the queue for another worker, and a job that failed can be retried later without the user resubmitting.
+
+10
+00:01:05.880 --> 00:01:14.499
+And load becomes smooth: a spike of requests becomes a longer queue rather than a wall of concurrent model calls that trips your rate limits.
+
+11
+00:01:14.779 --> 00:01:18.725
+It also brings a new obligation: the same job can run twice.
+
+12
+00:01:19.005 --> 00:01:25.981
+Queues typically deliver at least once, and a worker can crash after the model answered but before it recorded success.
+
+13
+00:01:26.261 --> 00:01:28.501
+Calling the model twice only costs money.
+
+14
+00:01:28.781 --> 00:01:32.707
+Sending the customer two emails, or creating two tickets, is a bug.
+
+15
+00:01:32.987 --> 00:01:46.043
+Make every side effect at the end of a job idempotent, with an idempotency key derived from the job id, the same pattern Stripe’s API uses for payments and the one you used for write tools in Studio 1.
+
+16
+00:01:46.323 --> 00:01:57.587
+And because the worker runs unattended, the checks you’d do by eye in a chat UI (schema validation, evidence checks, a judge pass) must run in code before any side effect.

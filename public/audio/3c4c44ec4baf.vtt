@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.283
+The bootstrap: when the formula runs out.
+
+2
+00:00:02.563 --> 00:00:06.616
+Bradley Efron introduced the bootstrap in 1979.
+
+3
+00:00:06.896 --> 00:00:15.493
+The idea: you can’t draw new samples from the population, but you can draw from your sample, which is the best estimate of the population you have.
+
+4
+00:00:15.773 --> 00:00:26.952
+Resample your n questions with replacement, recompute the statistic, repeat a few thousand times, and the spread of the recomputed values approximates the sampling distribution.
+
+5
+00:00:27.232 --> 00:00:29.259
+The percentile interval takes the 2.
+
+6
+00:00:29.539 --> 00:00:30.989
+5th and 97.
+
+7
+00:00:31.269 --> 00:00:33.317
+5th percentiles of those values.
+
+8
+00:00:33.597 --> 00:00:36.115
+For a plain pass rate the bootstrap adds little.
+
+9
+00:00:36.395 --> 00:00:44.672
+Miller notes that bootstrapping is common in the eval literature but unnecessary for a simple mean, since the CLT already applies.
+
+10
+00:00:44.952 --> 00:00:53.357
+Your bootstrap interval for prompt A will land within a point or so of the CLT interval, which makes it a good check that your code is right.
+
+11
+00:00:53.637 --> 00:01:07.589
+The bootstrap earns its keep when the statistic has no tidy formula, and in AI engineering that is often: Cost per successful task: total spend divided by number of passes, a ratio of two random quantities.
+
+12
+00:01:07.869 --> 00:01:13.309
+Median or 95th-percentile latency, where the CLT for a mean doesn’t apply.
+
+13
+00:01:13.589 --> 00:01:18.752
+Agreement between a judge and human labels, or a true positive rate on a small subset.
+
+14
+00:01:19.032 --> 00:01:25.837
+Clustered data, where you resample whole clusters (all questions about one document) instead of single questions.
+
+15
+00:01:26.117 --> 00:01:27.717
+Two rules keep it honest.
+
+16
+00:01:27.997 --> 00:01:36.147
+Resample the unit that was randomized: questions, or clusters of questions, never individual model runs of the same question.
+
+17
+00:01:36.427 --> 00:01:46.453
+And when comparing two systems, resample question indices once and keep both systems’ scores for each question together, which is the paired bootstrap you’ll write below.
+
+18
+00:01:46.733 --> 00:01:50.893
+Fix the random seed so that the interval in your report can be reproduced.

@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.029
+The KV cache: memory that grows with context.
+
+2
+00:00:03.309 --> 00:00:04.739
+Weights are a fixed cost.
+
+3
+00:00:05.019 --> 00:00:07.941
+The second big consumer grows with every token.
+
+4
+00:00:08.221 --> 00:00:25.288
+During generation, each attention layer stores a key and a value vector for every token so far, so they are not recomputed at each step; the Transformers docs describe this cache as tensors of shape batch × heads × sequence length × head dimension, per layer.
+
+5
+00:00:25.568 --> 00:00:26.635
+Its size is.
+
+6
+00:00:26.915 --> 00:00:36.579
+KV cache bytes = 2 × layers × KV heads × head dimension × context length × bytes per value × batch size.
+
+7
+00:00:36.859 --> 00:00:38.715
+The 2 is for keys and values.
+
+8
+00:00:38.995 --> 00:00:58.173
+The PagedAttention paper (Kwon and colleagues, 2023) gives a worked example: for OPT-13B, one token of KV cache is 2 × 5,120 × 40 layers × 2 bytes, about 800 KB, so a 2,048-token sequence needs up to 1.
+
+9
+00:00:58.453 --> 00:00:59.563
+6 GB.
+
+10
+00:00:59.843 --> 00:01:08.952
+Modern models shrink this with grouped-query attention (Ainslie and colleagues, 2023): many query heads share a few key-value heads.
+
+11
+00:01:09.232 --> 00:01:10.149
+Llama 3.
+
+12
+00:01:10.429 --> 00:01:29.245
+1 8B has 32 layers, 8 KV heads, and a head dimension of 128, so in FP16 one token costs 2 × 32 × 8 × 128 × 2 = 131,072 bytes, or 128 KiB.
+
+13
+00:01:29.525 --> 00:01:31.275
+Hugging Face’s Llama 3.
+
+14
+00:01:31.555 --> 00:01:38.957
+1 post lists the FP16 cache at about 2 GB for 16,000 tokens and 15.
+
+15
+00:01:39.237 --> 00:01:49.584
+6 GB at 128,000, and notes that for the small model the cache can use as much memory as the weights near the maximum context.
+
+16
+00:01:49.864 --> 00:01:52.339
+At 4-bit weights the cache is the bigger number.
+
+17
+00:01:52.619 --> 00:01:54.389
+Three things change the estimate.
+
+18
+00:01:54.669 --> 00:01:59.875
+Sliding-window layers only keep the last W tokens: Ai2’s Olmo 3.
+
+19
+00:02:00.155 --> 00:02:08.773
+1 32B config uses a 4,096-token window on three of every four layers, which caps most of its cache.
+
+20
+00:02:09.053 --> 00:02:19.592
+KV cache quantization stores keys and values in 8 or 4 bits; Ollama’s FAQ lists the default cache type as f16 with quantized options.
+
+21
+00:02:19.872 --> 00:02:24.928
+And parallel requests multiply the cache, which Ollama’s FAQ also notes.
+
+22
+00:02:25.208 --> 00:02:34.595
+For mixture-of-experts models, memory depends on the total parameters (every expert must be loaded), while decode speed depends on the active parameters.

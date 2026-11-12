@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.835
+Attention is a weighted average.
+
+2
+00:00:02.115 --> 00:00:07.811
+The lecture builds up to self-attention in steps that are worth replaying in mathematical terms.
+
+3
+00:00:08.091 --> 00:00:12.059
+Version 1 averages all previous token vectors with loops.
+
+4
+00:00:12.339 --> 00:00:27.592
+Version 2 notices that a running average is a matrix multiply: multiply the (T, C) token matrix by a lower-triangular (T, T) matrix whose row t holds 1/(t + 1) in its first t + 1 entries.
+
+5
+00:00:27.872 --> 00:00:36.896
+Version 3 gets the same matrix by putting zeros on and below the diagonal, minus infinity above it, and applying a softmax to each row.
+
+6
+00:00:37.176 --> 00:00:41.635
+Version 4 replaces those zeros with scores computed from the data.
+
+7
+00:00:41.915 --> 00:00:51.344
+So each output y_t is a convex combination of value vectors v_s for s at most t: the weights are nonnegative and sum to 1.
+
+8
+00:00:51.624 --> 00:00:55.912
+Geometrically, y_t lies in the convex hull of the past values.
+
+9
+00:00:56.192 --> 00:00:58.603
+What the network learns is where to put the weight.
+
+10
+00:00:58.883 --> 00:01:11.149
+Each position emits a query (“what am I looking for”), a key (“what do I contain”), and a value (“what I’ll pass on if chosen”); the weight on s is a softmax of how well t’s query matches s’s key.
+
+11
+00:01:11.429 --> 00:01:22.992
+The lecture’s first note at 01:11:38 calls this communication: tokens are nodes in a directed graph, each aggregating information from the nodes that point to it.
+
+12
+00:01:23.272 --> 00:01:28.221
+With the causal mask, the graph has an edge from every earlier position to every later one.
+
+13
+00:01:28.501 --> 00:01:35.136
+The third note adds that no communication happens across the batch dimension: each sequence is its own graph.

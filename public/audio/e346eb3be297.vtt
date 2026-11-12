@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.131
+Two transports.
+
+2
+00:00:01.411 --> 00:00:07.960
+A transport defines how messages travel; the message meanings are identical on both standard transports.
+
+3
+00:00:08.240 --> 00:00:09.221
+stdio.
+
+4
+00:00:09.501 --> 00:00:18.675
+The host launches the server as a child process and exchanges newline-delimited JSON-RPC messages over its standard input and output.
+
+5
+00:00:18.955 --> 00:00:24.459
+Nothing listens on a port, and the server runs with your user account’s privileges on your machine.
+
+6
+00:00:24.739 --> 00:00:33.165
+One rule follows directly: a stdio server must never write anything else to stdout, because stdout is the protocol channel.
+
+7
+00:00:33.445 --> 00:00:37.264
+A stray print() corrupts the stream and the host drops the connection.
+
+8
+00:00:37.544 --> 00:00:38.803
+Log to stderr.
+
+9
+00:00:39.083 --> 00:00:48.512
+For credentials, the authorization section says stdio servers should not use the OAuth flow and should take credentials from the environment instead.
+
+10
+00:00:48.792 --> 00:00:50.371
+Streamable HTTP.
+
+11
+00:00:50.651 --> 00:01:02.277
+Each message is an HTTP POST to a single MCP endpoint, and the reply arrives as a JSON object or as a stream of server-sent events scoped to that request.
+
+12
+00:01:02.557 --> 00:01:05.309
+This is the transport for remote and shared servers.
+
+13
+00:01:05.589 --> 00:01:07.915
+It is where the specification’s OAuth 2.
+
+14
+00:01:08.195 --> 00:01:11.757
+1-based authorization applies, which lesson 9 covers.
+
+15
+00:01:12.037 --> 00:01:23.877
+The older HTTP+SSE transport is deprecated; Claude Code’s docs, for example, recommend HTTP and fall back to SSE only for servers that need it.
+
+16
+00:01:24.157 --> 00:01:27.144
+The choice is usually clear from what the server needs.
+
+17
+00:01:27.424 --> 00:01:31.797
+Reading your project files or driving a local tool means stdio.
+
+18
+00:01:32.077 --> 00:01:41.400
+Wrapping a shared internal service that many people use with their own permissions means Streamable HTTP, deployed once and patched in one place.

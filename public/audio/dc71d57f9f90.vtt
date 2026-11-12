@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.432
+Rate limits and 429s.
+
+2
+00:00:02.712 --> 00:00:16.515
+Anthropic measures rate limits per model class in requests per minute, input tokens per minute, and output tokens per minute, enforced with a token bucket: capacity refills continuously rather than resetting on the minute.
+
+3
+00:00:16.795 --> 00:00:19.291
+The docs add two details that change design.
+
+4
+00:00:19.571 --> 00:00:27.613
+A limit of 60 requests per minute may be enforced as one per second, so bursts can trip it even when the per-minute average is fine.
+
+5
+00:00:27.893 --> 00:00:36.597
+And sharp increases in usage can hit acceleration limits, so ramp traffic up gradually, for example when you launch a feature or start a backfill.
+
+6
+00:00:36.877 --> 00:00:38.691
+Three practical consequences.
+
+7
+00:00:38.971 --> 00:00:51.323
+First, throttle yourself before the provider does: a concurrency limit or a local token bucket in front of the model call turns a burst into a short queue instead of a wall of 429s.
+
+8
+00:00:51.603 --> 00:01:03.677
+Second, read the headers: responses include anthropic-ratelimit-* headers with remaining requests and tokens and reset times, which you can log and alert on before you hit the wall.
+
+9
+00:01:03.957 --> 00:01:19.381
+Third, caching raises your effective limit: the docs say the default input-token limits count only uncached input tokens, so cache reads don’t count, so a well-cached system prompt is a throughput feature as well as a cost one (week 2).
+
+10
+00:01:19.661 --> 00:01:21.603
+Separate models have separate buckets.
+
+11
+00:01:21.883 --> 00:01:25.616
+On the review date, the rate-limits page lists Claude Opus 5.
+
+12
+00:01:25.896 --> 00:01:27.731
+5 and Claude Sonnet 5.
+
+13
+00:01:28.011 --> 00:01:32.405
+5 with their own limits, not shared with older models in the same family.
+
+14
+00:01:32.685 --> 00:01:38.275
+That is one reason a fallback to another model often succeeds when the primary is rate limited.

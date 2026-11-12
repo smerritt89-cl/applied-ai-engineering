@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.368
+The landscape, by how much you have to run.
+
+2
+00:00:02.648 --> 00:00:05.912
+Group the options by operational weight, lightest first.
+
+3
+00:00:06.192 --> 00:00:10.864
+Embedded libraries run inside your process and store data in local files.
+
+4
+00:00:11.144 --> 00:00:28.851
+sqlite-vec adds vector search to SQLite through vec0 virtual tables, runs anywhere SQLite runs (including the browser through WebAssembly), and supports metadata and partition-key columns; its README describes it as pre-v1, so expect breaking changes.
+
+5
+00:00:29.131 --> 00:00:43.317
+Chroma can run embedded or as a server, with metadata filters ( where, with operators such as equality, ranges, $in, $and, $or, and $contains for array fields) and document-content filters.
+
+6
+00:00:43.597 --> 00:00:50.061
+LanceDB stores data in the Lance columnar format and supports full-text indexes and hybrid search.
+
+7
+00:00:50.341 --> 00:00:57.296
+Faiss, from Meta, is the classic library of ANN index types if you want indexes without a database.
+
+8
+00:00:57.576 --> 00:00:59.069
+Your existing database.
+
+9
+00:00:59.349 --> 00:01:06.603
+pgvector adds a vector type, distance operators, and HNSW and IVFFlat indexes to Postgres.
+
+10
+00:01:06.883 --> 00:01:20.813
+If your application already runs on Postgres, this is often the strongest default: vectors live next to the rows they describe, in the same transactions, backups, and access controls, and you can join against your other tables.
+
+11
+00:01:21.093 --> 00:01:33.083
+Note its indexing limits (the standard vector type can be indexed up to 2,000 dimensions, halfvec up to 4,000), which matter for some embedding models.
+
+12
+00:01:33.363 --> 00:01:48.339
+Dedicated vector databases such as Qdrant (open source, also offered as a managed cloud) run as their own service, with rich payload filtering, multitenancy features, and hybrid queries that fuse dense and sparse results.
+
+13
+00:01:48.619 --> 00:01:57.728
+Managed services such as Pinecone (and managed versions of the open-source engines) run everything for you: scaling, replication, backups.
+
+14
+00:01:58.008 --> 00:02:02.104
+You pay per usage and accept a network hop and a vendor dependency.
+
+15
+00:02:02.384 --> 00:02:05.733
+The honest way to choose is by constraints, not benchmarks.
+
+16
+00:02:06.013 --> 00:02:22.397
+Public benchmarks such as ANN-Benchmarks are useful for comparing index algorithms on standard datasets, but at the scale of most company knowledge bases, every option here is fast enough, and the deciding factors are where your data already lives, who will operate it,
+
+17
+00:02:22.677 --> 00:02:26.837
+and whether its filtering and deletion model fits your access-control needs.

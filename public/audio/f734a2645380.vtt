@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.155
+Hybrid search, updates, and deletes.
+
+2
+00:00:02.435 --> 00:00:03.629
+Hybrid support.
+
+3
+00:00:03.909 --> 00:00:13.552
+Embeddings miss exact terms (product codes, error numbers, names), and keyword search misses paraphrases, so most production retrieval combines both.
+
+4
+00:00:13.832 --> 00:00:17.629
+Week 3 builds this properly; for now, know what each store offers.
+
+5
+00:00:17.909 --> 00:00:28.491
+pgvector pairs with Postgres full-text search, and its README suggests merging the two result lists with Reciprocal Rank Fusion (RRF) or a cross-encoder.
+
+6
+00:00:28.771 --> 00:00:35.448
+LanceDB builds a full-text index and uses RRF as its default reranker for hybrid queries.
+
+7
+00:00:35.728 --> 00:00:45.840
+Qdrant runs dense and sparse (or BM25) sub-queries as prefetches and fuses them with RRF or distribution-based score fusion.
+
+8
+00:00:46.120 --> 00:00:55.485
+Whether a store does this natively, or you merge two result lists in your code, is mostly a convenience question; RRF is a few lines either way.
+
+9
+00:00:55.765 --> 00:00:56.597
+Updates.
+
+10
+00:00:56.877 --> 00:01:07.608
+Documents change, and re-ingestion has to be idempotent: running it twice must not duplicate chunks, and running it after an edit must not leave stale chunks behind.
+
+11
+00:01:07.888 --> 00:01:16.549
+The simplest correct pattern is “delete every chunk of this document, then insert the new chunks,” in one transaction where the store supports it.
+
+12
+00:01:16.829 --> 00:01:22.077
+Upserting by doc_id:chunk_index alone breaks when the new version has fewer chunks.
+
+13
+00:01:22.357 --> 00:01:27.008
+Use the content hash from ingestion to skip unchanged documents entirely.
+
+14
+00:01:27.288 --> 00:01:28.163
+Deletes.
+
+15
+00:01:28.443 --> 00:01:41.691
+When a document is deleted or its access is revoked in the source system, it must disappear from the index promptly, because a retrieval system that still serves a revoked document is a data leak with extra steps.
+
+16
+00:01:41.971 --> 00:01:48.904
+Chroma, for example, deletes by ids or by a where filter, and its docs warn that deletion is permanent.
+
+17
+00:01:49.184 --> 00:01:57.461
+Run a periodic reconciliation job that compares the index’s document ids and permission records against the source of truth.
+
+18
+00:01:57.741 --> 00:01:58.957
+Model changes.
+
+19
+00:01:59.237 --> 00:02:04.400
+Vectors from different embedding models (or different versions of one model) are not comparable.
+
+20
+00:02:04.680 --> 00:02:15.560
+Store the model name in each record’s metadata, and plan a full re-embed, ideally into a new index you switch to after it passes your eval set, whenever you change models.

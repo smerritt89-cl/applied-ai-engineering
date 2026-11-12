@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.795
+A catalog of patterns, and the trade they all make.
+
+2
+00:00:03.075 --> 00:00:16.109
+A June 2025 paper by Beurer-Kellner and colleagues, with authors from several labs and companies, generalizes this into six design patterns for agents with resistance to prompt injection.
+
+3
+00:00:16.389 --> 00:00:25.712
+In brief, in this course’s words: Action-selector: the model only picks from a fixed menu of actions and never sees tool output; like a smart router.
+
+4
+00:00:25.992 --> 00:00:34.525
+Plan-then-execute: the plan is fixed before untrusted data is read, so data can’t add new actions (though it can still affect arguments).
+
+5
+00:00:34.805 --> 00:00:48.523
+LLM map-reduce: each untrusted item is processed by an isolated sub-agent that returns a constrained result (a boolean, a number, a fixed-schema record), and only those results are combined.
+
+6
+00:00:48.803 --> 00:00:54.541
+Dual LLM: privileged and quarantined models with symbolic variables, as above.
+
+7
+00:00:54.821 --> 00:01:03.205
+Code-then-execute: the CaMeL approach, a program written from the trusted query and run by an interpreter that enforces policies.
+
+8
+00:01:03.485 --> 00:01:13.597
+Context minimization: remove untrusted or unnecessary content (including the user’s original prompt, when it might carry an injection) before later steps.
+
+9
+00:01:13.877 --> 00:01:26.933
+Willison’s summary of the paper highlights its framing: these patterns deliberately limit what agents can do, and the authors doubt that general-purpose agents can offer reliable safety guarantees with current models.
+
+10
+00:01:27.213 --> 00:01:31.181
+Every pattern trades flexibility for a property you can reason about.
+
+11
+00:01:31.461 --> 00:01:34.277
+For the project agent, two patterns fit naturally.
+
+12
+00:01:34.557 --> 00:01:48.403
+Map-reduce for reading issues: a cheap model turns each issue into a fixed-schema record (status, owner, blocked or not, a short summary with no URLs), and only the records reach the step that writes the report.
+
+13
+00:01:48.683 --> 00:01:59.797
+Plan-then-execute for actions: the set of actions is fixed by your code (draft a report, request approval, post to one channel), and nothing in an issue can add “email someone.
+
+14
+00:02:00.077 --> 00:02:11.107
+” Note the model-selection angle: the per-issue step is high volume and low judgment, which suits a small, inexpensive model, and its constrained output is what makes that safe.

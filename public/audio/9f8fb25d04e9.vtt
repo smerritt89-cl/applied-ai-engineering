@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.557
+What a serving engine does.
+
+2
+00:00:01.837 --> 00:00:10.264
+When you ran a model locally in week 1, one request at a time, generation looked simple: tokenize, run the model, sample, repeat.
+
+3
+00:00:10.544 --> 00:00:13.168
+A production server faces a different problem.
+
+4
+00:00:13.448 --> 00:00:22.387
+Requests arrive at random times, with prompts and outputs of different lengths, and you are paying for the GPU every minute whether it is busy or not.
+
+5
+00:00:22.667 --> 00:00:29.557
+The serving engine’s job is to keep the GPU doing useful work while keeping each request’s wait acceptable.
+
+6
+00:00:29.837 --> 00:00:31.075
+Two phases matter.
+
+7
+00:00:31.355 --> 00:00:40.485
+Prefill processes the whole prompt in one pass and is compute-heavy: a 600-token prompt becomes a large matrix multiplication.
+
+8
+00:00:40.765 --> 00:00:51.368
+Decode then produces output tokens one at a time, and each step must read essentially all of the model’s weights from GPU memory to produce a single token per sequence.
+
+9
+00:00:51.648 --> 00:01:06.347
+Decode is limited by memory bandwidth, not arithmetic, which is the key to everything that follows: if each step reads the weights once anyway, producing a token for 32 sequences in that step costs little more than producing one.
+
+10
+00:01:06.627 --> 00:01:15.437
+During decode the model also keeps a KV cache: the attention keys and values for every token so far, so it doesn’t recompute them each step.
+
+11
+00:01:15.717 --> 00:01:23.227
+The KV cache grows with sequence length and with the number of sequences in flight, and it competes with the weights for GPU memory.
+
+12
+00:01:23.507 --> 00:01:28.371
+How many requests you can serve at once is often set by how much KV cache fits.
+
+13
+00:01:28.651 --> 00:01:31.317
+For your extraction task this shape is favorable.
+
+14
+00:01:31.597 --> 00:01:39.939
+Prompts are short once the model is fine-tuned (no long instructions or few-shot examples), and outputs are a small JSON object.
+
+15
+00:01:40.219 --> 00:01:46.853
+Short prompts and short outputs mean many sequences fit in memory at once, which is exactly where batching pays.

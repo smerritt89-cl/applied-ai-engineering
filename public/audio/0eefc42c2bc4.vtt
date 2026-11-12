@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.733
+Scoring extraction: per-field accuracy and exact match.
+
+2
+00:00:04.013 --> 00:00:07.405
+An extraction has fields, and fields fail independently.
+
+3
+00:00:07.685 --> 00:00:18.843
+For the action-item task in this studio, each case has a gold record with four fields: whether the snippet contains an action item, the owner, the resolved due date, and the priority.
+
+4
+00:00:19.123 --> 00:00:26.845
+Report per-field accuracy (the share of cases where that field matches gold) and exact match (the share where every field matches).
+
+5
+00:00:27.125 --> 00:00:34.827
+Exact match is the number that answers “how often is the record fully right,” which is usually what a downstream user cares about.
+
+6
+00:00:35.107 --> 00:00:40.205
+Per-field accuracy tells you where the errors are, which is what you need to improve anything.
+
+7
+00:00:40.485 --> 00:00:44.539
+Three scoring decisions deserve to be written down before you score anything.
+
+8
+00:00:44.819 --> 00:00:45.971
+Normalization.
+
+9
+00:00:46.251 --> 00:00:49.536
+Decide what counts as formatting and what counts as an error.
+
+10
+00:00:49.816 --> 00:00:52.931
+Case and surrounding whitespace in a name are formatting.
+
+11
+00:00:53.211 --> 00:00:56.432
+A date one day off is an error, not a formatting difference.
+
+12
+00:00:56.712 --> 00:01:03.453
+Write these rules as code, apply them to every system, and don’t revise them after seeing which system they favor.
+
+13
+00:01:03.733 --> 00:01:04.501
+Nulls.
+
+14
+00:01:04.781 --> 00:01:08.365
+A field the source doesn’t support should be null in the gold record.
+
+15
+00:01:08.645 --> 00:01:14.213
+A prediction of null matches a gold null; an invented value against a gold null is wrong.
+
+16
+00:01:14.493 --> 00:01:19.229
+This is how the benchmark rewards abstention, the habit you built in Studio 1.
+
+17
+00:01:19.509 --> 00:01:21.472
+Failures stay in the denominator.
+
+18
+00:01:21.752 --> 00:01:29.261
+An output that doesn’t parse, fails schema validation, times out, or is refused is a wrong answer on every field.
+
+19
+00:01:29.541 --> 00:01:43.003
+Dropping failures before computing accuracy rewards the system that fails most often, and small models fail to produce valid structure more often than frontier models unless you constrain their decoding (lesson 11).
+
+20
+00:01:43.283 --> 00:01:46.824
+Report the parse rate as its own column so the reader sees it.
+
+21
+00:01:47.104 --> 00:02:00.971
+For lists of items (a whole transcript in, many action items out), you also need a matching step between predicted and gold items before field scoring, for example by evidence quote or by owner plus a normalized task.
+
+22
+00:02:01.251 --> 00:02:08.248
+The lab keeps one candidate item per case so the scoring stays simple; the project asks you to handle full lists.

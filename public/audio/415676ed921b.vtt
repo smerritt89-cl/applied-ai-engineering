@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.365
+What your redactor misses.
+
+2
+00:00:01.645 --> 00:00:04.141
+When the tests pass, list what still gets through.
+
+3
+00:00:04.421 --> 00:00:08.624
+These are false negatives: sensitive data the redactor didn’t catch.
+
+4
+00:00:08.904 --> 00:00:11.443
+Names, addresses, and free-text details.
+
+5
+00:00:11.723 --> 00:00:16.779
+“This is Maria Lopez from the Portland office” has no pattern for a regex to find.
+
+6
+00:00:17.059 --> 00:00:22.861
+Catching it needs named-entity recognition, and even then accuracy varies with language and domain.
+
+7
+00:00:23.141 --> 00:00:25.467
+Obfuscated or reformatted values.
+
+8
+00:00:25.747 --> 00:00:33.640
+“ana at example dot com”, a phone number split across a line break, digits written as words, or text in a non-Latin script.
+
+9
+00:00:33.920 --> 00:00:35.328
+Formats you didn’t write.
+
+10
+00:00:35.608 --> 00:00:38.381
+The phone pattern above knows North American and E.
+
+11
+00:00:38.661 --> 00:00:40.475
+164 formats.
+
+12
+00:00:40.755 --> 00:00:50.867
+A UK number written as 020 7946 0958 sails through, as do extensions and many national formats.
+
+13
+00:00:51.147 --> 00:00:53.707
+Secrets without a recognizable prefix.
+
+14
+00:00:53.987 --> 00:01:03.373
+Your pattern catches sk- keys (Anthropic’s admin keys, for instance, start with sk-ant-admin, per its Admin API docs) and bearer headers.
+
+15
+00:01:03.653 --> 00:01:13.787
+A database password in a connection string, a random 32-character token, or a key inside a base64 blob gets through unless you add a rule for it.
+
+16
+00:01:14.067 --> 00:01:16.712
+Sensitive meaning without sensitive tokens.
+
+17
+00:01:16.992 --> 00:01:22.624
+“I was just diagnosed and can’t work this month” contains health information and no pattern at all.
+
+18
+00:01:22.904 --> 00:01:33.507
+There are false positives too: a 10-digit order number matches the phone pattern, and over-eager rules turn logs into strings of placeholders that no one can debug from.
+
+19
+00:01:33.787 --> 00:01:35.152
+Better tools exist.
+
+20
+00:01:35.432 --> 00:01:52.349
+Presidio, an open-source toolkit for finding and anonymizing PII (originally from Microsoft, now community-maintained), combines named-entity models with regular expressions, rule-based logic, checksums, and surrounding context, in several languages.
+
+21
+00:01:52.629 --> 00:02:00.459
+Its own documentation says there is no guarantee it will find all sensitive information and recommends additional safeguards.
+
+22
+00:02:00.739 --> 00:02:10.808
+That is the honest summary for any redactor, model-based ones included: redaction lowers the amount of sensitive data in your logs; it does not bring it to zero.
+
+23
+00:02:11.088 --> 00:02:23.376
+You can measure it, though, the same way you measured judges in Studio 3: label a few hundred real (access-controlled) log lines by hand, run the redactor, and report recall per entity type.
+
+24
+00:02:23.656 --> 00:02:28.051
+Then decide whether the residual risk is acceptable for each destination.

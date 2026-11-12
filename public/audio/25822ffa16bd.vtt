@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.413
+MCP servers: when the agent needs another system.
+
+2
+00:00:03.693 --> 00:00:13.699
+The Model Context Protocol connects an agent to external tools and data: an issue tracker, a database, a browser, your company’s internal APIs.
+
+3
+00:00:13.979 --> 00:00:19.120
+Studio 4 covered the protocol in depth; here the question is only when to add one.
+
+4
+00:00:19.400 --> 00:00:31.133
+The best-practices doc’s advice is to reach for a CLI first, because if a system has one ( gh, kubectl, aws ), the agent already knows how to use it and you can point it at --help.
+
+5
+00:00:31.413 --> 00:00:34.613
+MCP is for systems without a good CLI.
+
+6
+00:00:34.893 --> 00:00:45.027
+Connected servers add their tool names and instructions to context even when idle, though full schemas load only on demand, so disable servers you aren’t using.
+
+7
+00:00:45.307 --> 00:00:47.824
+Two cautions carry over from Studio 4.
+
+8
+00:00:48.104 --> 00:01:00.904
+A server is code you run with your credentials, so the Claude Code security docs encourage writing your own or using providers you trust, and note that Anthropic does not security-audit MCP servers.
+
+9
+00:01:01.184 --> 00:01:12.661
+And any server that returns text from outside (issues, web pages, messages) is a channel for prompt injection into an agent that also has your shell, a risk lesson 8 takes up.
+
+10
+00:01:12.941 --> 00:01:20.131
+A skill pairs well with MCP: the server provides the connection, the skill teaches your conventions for using it.

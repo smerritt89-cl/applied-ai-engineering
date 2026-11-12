@@ -1,0 +1,101 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.496
+The Apple Silicon path: MLX-LM.
+
+2
+00:00:02.776 --> 00:00:09.709
+On a Mac with Apple Silicon, MLX-LM does the same job natively, using the machine’s unified memory.
+
+3
+00:00:09.989 --> 00:00:13.979
+Install it with its training extra, put your data in a folder as train.
+
+4
+00:00:14.259 --> 00:00:15.560
+jsonl, valid.
+
+5
+00:00:15.840 --> 00:00:18.869
+jsonl (optional, for validation loss), and test.
+
+6
+00:00:19.149 --> 00:00:22.136
+jsonl (for --test ), and run mlx_lm.
+
+7
+00:00:22.416 --> 00:00:23.355
+lora --model.
+
+8
+00:00:23.635 --> 00:00:24.637
+--train --data.
+
+9
+00:00:24.917 --> 00:00:33.472
+It accepts chat data (a messages list, where the last message is the completion), tool-calling data, prompt-completion pairs, and plain text.
+
+10
+00:00:33.752 --> 00:00:36.248
+--mask-prompt restricts the loss to the completion.
+
+11
+00:00:36.528 --> 00:00:41.307
+If the model you point at is quantized, the run is QLoRA automatically.
+
+12
+00:00:41.587 --> 00:00:42.717
+mlx_lm.
+
+13
+00:00:42.997 --> 00:00:47.072
+generate takes --adapter-path to test the adapter, and mlx_lm.
+
+14
+00:00:47.352 --> 00:00:49.272
+fuse merges it into the model.
+
+15
+00:00:49.552 --> 00:00:53.435
+Its defaults differ from PEFT’s in ways that matter when you compare runs.
+
+16
+00:00:53.715 --> 00:00:54.888
+Reading the 0.
+
+17
+00:00:55.168 --> 00:00:56.107
+32.
+
+18
+00:00:56.387 --> 00:01:00.376
+2 source on the review date: rank 8, a direct scale of 20.
+
+19
+00:01:00.656 --> 00:01:11.643
+0 (not alpha over r), adapters on the linear layers of the last 16 blocks, learning rate 1e-5, batch size 4, and 1,000 iterations.
+
+20
+00:01:11.923 --> 00:01:16.872
+LoRA settings such as rank and scale go in a YAML config file passed with -c.
+
+21
+00:01:17.152 --> 00:01:26.880
+The docs’ memory tips: use a quantized model, lower the batch size with gradient accumulation, adapt fewer layers, and turn on gradient checkpointing.
+
+22
+00:01:27.160 --> 00:01:28.867
+The lab’s mlx_finetune.
+
+23
+00:01:29.147 --> 00:01:32.624
+py mirrors the notebook’s settings (rank 16, scale 2.
+
+24
+00:01:32.904 --> 00:01:43.336
+0, all 24 blocks, learning rate 2e-4) so the two runs are comparable, and writes every train and validation loss to a JSONL file your parser reads.
+
+25
+00:01:43.616 --> 00:01:50.165
+During authoring, a 150-iteration run of it on an Apple Silicon Mac took about a minute and a half.

@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.221
+Matryoshka embeddings: shorter vectors on purpose.
+
+2
+00:00:03.501 --> 00:00:23.875
+Matryoshka Representation Learning (Kusupati and colleagues, 2022) trains a model so that the leading coordinates of its vector are themselves a good embedding: the first 256 dimensions work as a coarse representation, the first 512 as a finer one, and so on, like nested dolls.
+
+3
+00:00:24.155 --> 00:00:34.736
+The paper reports up to 14 times smaller embeddings at the same accuracy on an image classification benchmark, and corresponding speedups for large-scale retrieval.
+
+4
+00:00:35.016 --> 00:00:37.000
+You will meet this as a size option.
+
+5
+00:00:37.280 --> 00:00:45.451
+OpenAI’s dimensions parameter, Voyage’s output_dimension, Gemini’s output_dimensionality, and Nomic Embed v1.
+
+6
+00:00:45.731 --> 00:00:48.653
+5’s documented dimensions all rely on it.
+
+7
+00:00:48.933 --> 00:01:03.248
+OpenAI’s guide gives an example where text-embedding-3-large cut to 256 dimensions still beat the older text-embedding-ada-002 at its full 1,536 on MTEB.
+
+8
+00:01:03.528 --> 00:01:04.872
+Two practical rules.
+
+9
+00:01:05.152 --> 00:01:17.781
+First, renormalize after truncating: a prefix of a unit vector is shorter than 1, so the dot product stops equaling cosine (the Predict question in this lesson’s knowledge check shows the arithmetic).
+
+10
+00:01:18.061 --> 00:01:27.981
+Asking the API for the smaller size avoids the problem; if you truncate stored vectors yourself, both OpenAI and Voyage tell you to normalize again.
+
+11
+00:01:28.261 --> 00:01:34.448
+Second, measure the loss on your data: run your labeled set at full size and at the truncated size.
+
+12
+00:01:34.728 --> 00:01:39.272
+If recall@10 barely moves, you have just cut your storage by a factor of four.

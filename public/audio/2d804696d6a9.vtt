@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.304
+Prompt chaining: fixed steps with a gate.
+
+2
+00:00:02.584 --> 00:00:08.899
+Prompt chaining breaks a task into a sequence of calls where each step processes the previous step’s output.
+
+3
+00:00:09.179 --> 00:00:23.131
+The Anthropic post says it fits when a task decomposes cleanly into fixed subtasks, and frames the trade explicitly: you spend latency (several calls instead of one) to buy accuracy (each call has an easier job).
+
+4
+00:00:23.411 --> 00:00:31.432
+Its examples: write marketing copy and then translate it; write an outline, check that it meets criteria, then write the document.
+
+5
+00:00:31.712 --> 00:00:33.909
+That middle step is the important part.
+
+6
+00:00:34.189 --> 00:00:41.528
+Between any two calls you can insert a gate: plain code that checks the intermediate output and stops the chain if it fails.
+
+7
+00:00:41.808 --> 00:00:49.424
+Gates are where chaining earns its keep, because they catch an error at the step that made it, before later steps dress it up in fluent prose.
+
+8
+00:00:49.704 --> 00:01:07.944
+For meeting notes, the first call extracts decisions and action items with a verbatim quote for each; the gate checks every quote is really in the notes (the evidence check from Studio 1, lesson 9); only then does the second call write the update, from verified facts rather than from the raw notes.
+
+9
+00:01:08.224 --> 00:01:13.941
+The check for this pattern is the gate itself, plus one habit: log every intermediate output.
+
+10
+00:01:14.221 --> 00:01:24.056
+When the final update is wrong, you want to know whether extraction or drafting failed, and a chain makes that question answerable in a way a single long prompt does not.

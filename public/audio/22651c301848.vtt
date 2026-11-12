@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.432
+Latency, measured the way users feel it.
+
+2
+00:00:02.712 --> 00:00:13.912
+Report latency as percentiles, at least p50 (the median) and p95 (the slowest one in twenty), because averages hide the tail and users notice the tail.
+
+3
+00:00:14.192 --> 00:00:24.987
+For interactive features, measure time to first token separately from total time; for extraction, where your code needs the whole JSON object, total time is what matters.
+
+4
+00:00:25.267 --> 00:00:28.765
+Measure under realistic conditions, or the numbers mean little.
+
+5
+00:00:29.045 --> 00:00:32.416
+Call the API from the region your application runs in.
+
+6
+00:00:32.696 --> 00:00:45.795
+Load the self-hosted server with the concurrency you expect in production, because a server that answers one request in 300 milliseconds may take several seconds per request when forty arrive at once.
+
+7
+00:00:46.075 --> 00:00:50.213
+Warm up first, so model loading and cache misses don’t land in your sample.
+
+8
+00:00:50.493 --> 00:00:56.872
+Record the hardware, the serving engine and its version, quantization, and batch settings alongside the numbers.
+
+9
+00:00:57.152 --> 00:01:08.245
+Independent benchmarkers such as Artificial Analysis publish their latency definitions for exactly this reason: two “latency” numbers measured differently can’t be compared.
+
+10
+00:01:08.525 --> 00:01:11.747
+Latency is also where the systems often differ most.
+
+11
+00:01:12.027 --> 00:01:24.464
+A small model on a dedicated GPU, close to your application, can answer in well under a second; a frontier API call commonly takes longer, and its tail depends on load you don’t control.
+
+12
+00:01:24.744 --> 00:01:34.493
+Whether that matters depends on the product: a batch job that processes yesterday’s meetings overnight doesn’t care, and an inline suggestion while someone types does.

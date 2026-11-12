@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.152
+Where the money goes.
+
+2
+00:00:01.432 --> 00:00:10.627
+On API pricing, an agent session costs input tokens plus output tokens on every turn, and every turn resends the conversation so far.
+
+3
+00:00:10.907 --> 00:00:12.400
+Four things drive the bill.
+
+4
+00:00:12.680 --> 00:00:29.768
+Session length: a long session that has accumulated three unrelated tasks re-reads all of them on each turn of the fourth (prompt caching discounts this while the cache is warm, and the docs say the cache lasts about five minutes on API keys and about an hour on subscriptions).
+
+5
+00:00:30.048 --> 00:00:33.077
+Tool output: large files and full test logs.
+
+6
+00:00:33.357 --> 00:00:36.067
+Effort: thinking tokens are billed even when hidden.
+
+7
+00:00:36.347 --> 00:00:46.693
+Subagents: the docs say every subagent sends its own requests against the same usage, and a fresh one first has to rebuild context the main session already had.
+
+8
+00:00:46.973 --> 00:00:49.235
+Three habits keep it visible and bounded.
+
+9
+00:00:49.515 --> 00:00:57.579
+Run /usage to see where usage went, broken down by skill, subagent, and MCP server on subscription plans.
+
+10
+00:00:57.859 --> 00:00:59.245
+In scripts, claude -p.
+
+11
+00:00:59.525 --> 00:01:06.907
+--output-format json returns a total_cost_usd estimate per run, and --max-turns and --max-budget-usd cap a run.
+
+12
+00:01:07.187 --> 00:01:10.813
+And use /clear between unrelated tasks; it costs nothing.

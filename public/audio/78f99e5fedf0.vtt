@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.347
+The serving options, and what each is for.
+
+2
+00:00:02.627 --> 00:00:09.667
+The landscape changes quickly, so here is the state at this lesson’s review date, from each project’s own documentation.
+
+3
+00:00:09.947 --> 00:00:14.747
+vLLM is the general-purpose GPU server most teams reach for.
+
+4
+00:00:15.027 --> 00:00:32.541
+Its docs list continuous batching, PagedAttention, prefix caching, many quantization formats (FP8, INT8, INT4, GPTQ, AWQ, GGUF, and others), multi-LoRA serving, speculative decoding, and an OpenAI-compatible API server.
+
+5
+00:00:32.821 --> 00:00:42.208
+SGLang is a comparable high-performance serving framework, which its project describes as optimized for agentic workloads and large-scale serving.
+
+6
+00:00:42.488 --> 00:00:45.816
+Choose between them by benchmarking your model on your hardware.
+
+7
+00:00:46.096 --> 00:00:46.864
+llama.
+
+8
+00:00:47.144 --> 00:00:54.973
+cpp and its llama-server run GGUF models (usually quantized) on CPUs, Apple silicon, and GPUs.
+
+9
+00:00:55.253 --> 00:01:04.085
+The server offers OpenAI-compatible routes, continuous batching with parallel slots, and grammar- or JSON-schema-constrained output.
+
+10
+00:01:04.365 --> 00:01:09.848
+It is the natural choice for laptops, edge devices, and modest single-machine deployments.
+
+11
+00:01:10.128 --> 00:01:20.176
+Ollama wraps local models in a simple tool and API for desktops and developer workflows, with structured outputs and OpenAI-compatible endpoints.
+
+12
+00:01:20.456 --> 00:01:29.672
+It is excellent for development and prototypes; for a shared, high-traffic service, a dedicated engine gives you more control over batching and memory.
+
+13
+00:01:29.952 --> 00:01:35.776
+Text Generation Inference (TGI), Hugging Face’s own server, is now in maintenance mode.
+
+14
+00:01:36.056 --> 00:01:42.861
+Its documentation says it will accept only minor fixes and recommends vLLM, SGLang, llama.
+
+15
+00:01:43.141 --> 00:01:45.659
+cpp, or MLX going forward.
+
+16
+00:01:45.939 --> 00:01:51.229
+You will still find TGI in older tutorials and deployments; don’t start new work on it.
+
+17
+00:01:51.509 --> 00:02:05.632
+Hugging Face Inference Endpoints is a managed option: you pick a model and a GPU instance, and the service runs a supported engine (vLLM among them) with autoscaling, billing per minute while the endpoint is running.
+
+18
+00:02:05.912 --> 00:02:08.984
+Cloud providers offer comparable managed services.
+
+19
+00:02:09.264 --> 00:02:16.091
+Managed hosting removes the operations work in exchange for a markup on GPU time and less control.
+
+20
+00:02:16.371 --> 00:02:21.064
+A reasonable default for the project: develop locally with Ollama or llama.
+
+21
+00:02:21.344 --> 00:02:30.069
+cpp, benchmark and serve with vLLM on a single rented GPU, and say in your write-up what you would change for production traffic.

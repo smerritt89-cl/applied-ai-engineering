@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.899
+Design the surface before the code.
+
+2
+00:00:02.179 --> 00:00:09.475
+This lesson builds the server from the lab: a small issue tracker for a customer-portal relaunch, stored in a JSON file.
+
+3
+00:00:09.755 --> 00:00:16.261
+Before any decorator, decide what the server exposes, using what you know about who controls each primitive.
+
+4
+00:00:16.541 --> 00:00:18.973
+Tools, for what the model should be able to do.
+
+5
+00:00:19.253 --> 00:00:29.259
+Three read tools cover the questions people ask: list_issues (filter by status and assignee), search_issues (find by words), and get_issue (one issue in full).
+
+6
+00:00:29.539 --> 00:00:39.117
+One write tool, update_issue_status, changes data, so it gets the most care: a preview step, an allowlist of status transitions, and idempotency.
+
+7
+00:00:39.397 --> 00:00:48.763
+The Studio 1 rule still holds: never mix read and write in one tool, so a host can approve the write without inspecting arguments to find out what it does.
+
+8
+00:00:49.043 --> 00:00:52.157
+Resources, for context the application can attach.
+
+9
+00:00:52.437 --> 00:00:57.749
+A fixed tracker://summary gives counts by status and the open launch blockers.
+
+10
+00:00:58.029 --> 00:01:04.685
+A template, tracker://issues/ followed by an issue id, gives any single issue as JSON.
+
+11
+00:01:04.965 --> 00:01:07.355
+A prompt, for a workflow the user invokes.
+
+12
+00:01:07.635 --> 00:01:16.275
+triage_issue takes an issue id and returns a ready-made instruction: summarize, decide whether it blocks launch, propose a next step.
+
+13
+00:01:16.555 --> 00:01:18.389
+Then split the code in two layers.
+
+14
+00:01:18.669 --> 00:01:31.235
+The tracker logic (loading, validation, filtering, the status change) is plain Python with no MCP imports, which you can unit-test offline and reuse in a CLI or a web app.
+
+15
+00:01:31.515 --> 00:01:36.251
+The MCP layer is thin: it declares capabilities and translates errors.
+
+16
+00:01:36.531 --> 00:01:39.688
+When something breaks, the layer boundary tells you where to look.

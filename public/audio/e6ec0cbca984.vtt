@@ -1,0 +1,109 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.877
+Matching settings to task types.
+
+2
+00:00:02.157 --> 00:00:10.627
+No public benchmark cleanly ranks today’s models by task type, and claims that “model X is best at refactoring” are mostly anecdote.
+
+3
+00:00:10.907 --> 00:00:14.576
+What you can do is reason from what each task demands, then test.
+
+4
+00:00:14.856 --> 00:00:16.861
+Here are defensible starting points.
+
+5
+00:00:17.141 --> 00:00:19.211
+Large refactors and migrations.
+
+6
+00:00:19.491 --> 00:00:23.501
+The risk is missing a caller or breaking a contract across many files.
+
+7
+00:00:23.781 --> 00:00:35.707
+Start with the strongest model at high effort, plan first (lesson 6), and insist on a check that covers the whole surface (the full test suite, a typecheck, a grep that must come back empty).
+
+8
+00:00:35.987 --> 00:00:45.224
+For many mechanical, independent edits, fan-out beats one long session: Claude Code’s /batch splits a change into units in separate worktrees.
+
+9
+00:00:45.504 --> 00:00:51.157
+Per-unit work is often fine on a cheaper model; review sampling matters more than model choice there.
+
+10
+00:00:51.437 --> 00:00:52.973
+Greenfield prototypes.
+
+11
+00:00:53.253 --> 00:00:56.219
+The risk is building the wrong thing, not subtle bugs.
+
+12
+00:00:56.499 --> 00:00:59.848
+Lower effort and fast iteration are fine while you steer.
+
+13
+00:01:00.128 --> 00:01:09.280
+The Claude Code docs note that Claude tends to build the smallest thing that satisfies a request, and that saying “be ambitious” tells it about scope you want.
+
+14
+00:01:09.560 --> 00:01:21.848
+Prototypes are also where you can let an agent run most freely, because the code is meant to be thrown away; the danger is a prototype quietly becoming production code without the review it never got.
+
+15
+00:01:22.128 --> 00:01:22.960
+Debugging.
+
+16
+00:01:23.240 --> 00:01:30.792
+Agents are strong here when the bug is reproducible, because the loop has a check: reproduce, hypothesize, change, rerun.
+
+17
+00:01:31.072 --> 00:01:43.872
+Simon Willison lists debugging among the problems that suit agentic loops for exactly this reason, alongside performance tuning and dependency upgrades: clear success criteria plus trial and error.
+
+18
+00:01:44.152 --> 00:01:47.053
+Raise effort for unfamiliar or intermittent bugs.
+
+19
+00:01:47.333 --> 00:01:52.837
+If you can’t reproduce the bug, the agent can’t either; spend your effort on a reproduction first.
+
+20
+00:01:53.117 --> 00:01:54.035
+Code review.
+
+21
+00:01:54.315 --> 00:02:02.101
+The model matters less than independence: a reviewer that didn’t write the code and didn’t see the reasoning that produced it (lesson 8).
+
+22
+00:02:02.381 --> 00:02:06.627
+A different model family can add independence, at the cost of more noise.
+
+23
+00:02:06.907 --> 00:02:08.528
+Data work and analysis.
+
+24
+00:02:08.808 --> 00:02:13.800
+Correctness is hard to see, because a wrong join still produces a plausible table.
+
+25
+00:02:14.080 --> 00:02:22.528
+Prefer settings that make the agent show its work (queries, row counts, sanity checks), and verify the numbers against something you trust.
+
+26
+00:02:22.808 --> 00:02:24.408
+Effort helps less than checks.
+
+27
+00:02:24.688 --> 00:02:38.704
+Across all of them, METR’s time-horizon research is the best general guide to scope: success falls as tasks get longer, so a task you can break into checkable pieces is a task you can delegate more safely, whatever the model.

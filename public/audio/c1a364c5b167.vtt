@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.813
+A worked count on a real model.
+
+2
+00:00:02.093 --> 00:00:03.267
+Take Qwen2.
+
+3
+00:00:03.547 --> 00:00:04.848
+5-0.
+
+4
+00:00:05.128 --> 00:00:07.923
+5B-Instruct, the model in this week’s lab.
+
+5
+00:00:08.203 --> 00:00:25.696
+Its config lists a hidden size of 896, 24 decoder blocks, 14 query heads and 2 key-value heads with head dimension 64 (896 divided by 14), and an MLP intermediate size of 4,864.
+
+6
+00:00:25.976 --> 00:00:32.227
+The model page reports 494,032,768 parameters.
+
+7
+00:00:32.507 --> 00:00:37.456
+Grouped-query attention makes the shapes unequal, which is the first thing people get wrong.
+
+8
+00:00:37.736 --> 00:00:47.635
+Per block, as (inputs, outputs): q_proj: (896, 896), and o_proj: (896, 896).
+
+9
+00:00:47.915 --> 00:00:55.275
+k_proj and v_proj: (896, 128), because 2 key-value heads times 64.
+
+10
+00:00:55.555 --> 00:01:05.987
+gate_proj and up_proj: (896, 4864), and down_proj: (4864, 896).
+
+11
+00:01:06.267 --> 00:01:23.056
+At r = 16 on all seven, one block adds 16 times (2 times 1,792 plus 2 times 1,024 plus 3 times 5,760), which is 366,592 parameters.
+
+12
+00:01:23.336 --> 00:01:28.200
+Over 24 blocks: 8,798,208, about 1.
+
+13
+00:01:28.480 --> 00:01:30.229
+8 percent of the base model.
+
+14
+00:01:30.509 --> 00:01:39.021
+Adapting only q_proj and v_proj at r = 8, the paper’s original style, gives 540,672.
+
+15
+00:01:39.301 --> 00:01:42.416
+Treat this arithmetic as a check you run every time.
+
+16
+00:01:42.696 --> 00:01:54.771
+Before training, predict the count; after building the model, compare with what the library reports (PEFT’s print_trainable_parameters or get_nb_trainable_parameters, or MLX-LM’s printout).
+
+17
+00:01:55.051 --> 00:02:00.363
+When the authoring run of this week’s lab built the adapter with MLX-LM, it reported 8.
+
+18
+00:02:00.643 --> 00:02:04.952
+798M trainable parameters, matching the hand count.
+
+19
+00:02:05.232 --> 00:02:10.373
+A mismatch means the wrong modules were targeted, which silently changes the experiment.

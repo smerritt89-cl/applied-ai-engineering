@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.411
+Idempotency: what is safe to retry.
+
+2
+00:00:02.691 --> 00:00:09.773
+A model call with no tools is safe to retry in the sense that matters: running it twice changes nothing in the world.
+
+3
+00:00:10.053 --> 00:00:16.645
+It still costs money twice, and because generation varies between runs, the retry can produce a different answer.
+
+4
+00:00:16.925 --> 00:00:20.979
+That matters if you already showed the user the first one or wrote it somewhere.
+
+5
+00:00:21.259 --> 00:00:22.709
+Side effects are different.
+
+6
+00:00:22.989 --> 00:00:32.141
+If a pipeline calls the model, then sends an email, then records success, a crash between the last two steps means a retry sends a second email.
+
+7
+00:00:32.421 --> 00:00:44.005
+The fix is idempotency: give each operation a key derived from what it is (the job id, the ticket id plus the action) and make the side effect check the key before acting.
+
+8
+00:00:44.285 --> 00:00:55.891
+Stripe’s API documents the canonical version: clients send an idempotency key, and the server returns the saved result for a repeated key instead of performing the operation again.
+
+9
+00:00:56.171 --> 00:01:03.723
+The AWS article puts the rule plainly: don’t retry side-effecting calls unless the API is idempotent.
+
+10
+00:01:04.003 --> 00:01:06.584
+For LLM systems this means two things.
+
+11
+00:01:06.864 --> 00:01:12.347
+Make every write at the end of a pipeline idempotent, as you did for write tools in Studio 1.
+
+12
+00:01:12.627 --> 00:01:24.488
+And decide what a retried generation means for the user: in a stream that has already shown text, don’t silently restart with a different answer (the lab’s streaming endpoint reports an error instead).

@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.347
+What this means when you choose and use models.
+
+2
+00:00:02.627 --> 00:00:05.037
+Three working rules follow from this lecture.
+
+3
+00:00:05.317 --> 00:00:07.003
+Measure tokens, per model.
+
+4
+00:00:07.283 --> 00:00:17.096
+Every model family has its own tokenizer, so the “about four characters per token” rule of thumb is only a rough guide for English with one tokenizer.
+
+5
+00:00:17.376 --> 00:00:26.080
+When cost or context matters, count with the provider’s own tooling on a sample of your real data, broken down by language and content type.
+
+6
+00:00:26.360 --> 00:00:32.483
+Studio 1 showed where providers report token usage; this lecture explains why the numbers differ.
+
+7
+00:00:32.763 --> 00:00:34.789
+Route character-level work to code.
+
+8
+00:00:35.069 --> 00:00:44.712
+Exact string operations (counting letters, reversing text, checking an ID format) are easy in Python and needlessly hard for a model that sees chunks.
+
+9
+00:00:44.992 --> 00:00:52.501
+This is a model-selection decision in the broad sense: the best “model” for a subtask is sometimes a regular expression.
+
+10
+00:00:52.781 --> 00:00:56.003
+Treat token boundaries as an input-format concern.
+
+11
+00:00:56.283 --> 00:01:01.915
+Whitespace, formatting, and the way you serialize structured data all change the token sequence.
+
+12
+00:01:02.195 --> 00:01:13.693
+When a prompt’s behavior shifts after an innocuous formatting change, tokenization is a reasonable first hypothesis, and an A/B comparison on your eval set is how you confirm it.

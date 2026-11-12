@@ -1,0 +1,37 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.264
+Stage 4: generation with citations, verified.
+
+2
+00:00:03.544 --> 00:00:05.059
+Use lesson 10’s design.
+
+3
+00:00:05.339 --> 00:00:20.891
+Send the top k passages as search_result blocks with your chunk id as the source, sources first and the question last, a system prompt that restricts answers to the sources, says how to handle conflicts, and gives one exact abstention sentence.
+
+4
+00:00:21.171 --> 00:00:30.152
+Budget the context in tokens rather than passages, and log exactly which passages were sent (that’s how you diagnose context overflow later).
+
+5
+00:00:30.432 --> 00:00:39.605
+After generation, run the verifier from the lab on every answer: provenance, verbatim fidelity, uncited substantive claims, abstention.
+
+6
+00:00:39.885 --> 00:00:49.357
+Decide what the user sees when verification fails: a warning, a regenerated answer, or the sources alone with a note that they don’t settle the question.
+
+7
+00:00:49.637 --> 00:00:53.371
+Whatever you choose, never silently drop a failed check; log it.
+
+8
+00:00:53.651 --> 00:00:56.851
+This is also where you choose a generator model with evidence.
+
+9
+00:00:57.131 --> 00:01:08.416
+Run the eval set with two tiers, compare correctness, verified citation rate, abstention recall, false abstention rate, latency, and cost, and pick the cheapest that meets your bar.

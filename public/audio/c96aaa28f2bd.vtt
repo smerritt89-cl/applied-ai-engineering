@@ -1,0 +1,37 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.349
+Stages 2 and 3: hybrid retrieval and reranking.
+
+2
+00:00:03.629 --> 00:00:16.963
+Run both retrievers, fuse their rankings (reciprocal rank fusion from week 3 is a strong default), and pass a generous candidate list, perhaps 50, to a reranker that orders them by relevance to the question.
+
+3
+00:00:17.243 --> 00:00:19.120
+Keep the top k for generation.
+
+4
+00:00:19.400 --> 00:00:33.288
+Anthropic’s contextual retrieval experiments are a useful reference point: they combined embeddings, BM25, and reranking and passed the top 20 chunks to the model, while noting you should test the number for your own case.
+
+5
+00:00:33.568 --> 00:00:37.045
+Your recall at k curve from the eval set is how you choose.
+
+6
+00:00:37.325 --> 00:00:48.205
+Add the score gate from lesson 11 here: if the best reranker score is below a calibrated threshold, abstain (or ask a clarifying question) without calling the generator.
+
+7
+00:00:48.485 --> 00:00:55.781
+Calibrate the threshold on your answerable and unanswerable questions, and record both the score and the decision in the log.
+
+8
+00:00:56.061 --> 00:01:06.259
+The checks at these stages are measurements, not runtime assertions: recall at k and MRR on the eval set for the fused list and for the reranked list separately.
+
+9
+00:01:06.539 --> 00:01:10.741
+If reranking doesn’t improve them on your data, it isn’t earning its latency.

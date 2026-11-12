@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.261
+What a loop costs, and how long it takes.
+
+2
+00:00:02.541 --> 00:00:05.485
+Run the calculator and the loop costs about $2.
+
+3
+00:00:05.765 --> 00:00:07.899
+14 against about $0.
+
+4
+00:00:08.179 --> 00:00:13.853
+064 for the single call, roughly 33 times as much, before a single retry.
+
+5
+00:00:14.133 --> 00:00:16.779
+The structure matters more than the exact numbers.
+
+6
+00:00:17.059 --> 00:00:29.475
+A stateless API means each step resends the whole history, so total input tokens are a sum of a growing sequence: n times the base plus the growth rate times n(n minus 1)/2.
+
+7
+00:00:29.755 --> 00:00:33.083
+Doubling the number of steps roughly quadruples the growth term.
+
+8
+00:00:33.363 --> 00:00:39.080
+Prompt caching changes the price of that resent prefix substantially (on Claude Opus 5.
+
+9
+00:00:39.360 --> 00:00:57.621
+5, cache hits are priced at 5% of base input, per Anthropic’s pricing page today), and you should always use it in a loop, but it doesn’t change the fact that each step adds context the model must read, and long contexts carry their own quality and limit problems (Studio 1, lesson 1).
+
+10
+00:00:57.901 --> 00:01:11.896
+Anthropic’s multi-agent research post gives production figures in the same direction: in their data, agents used about four times as many tokens as chat interactions, and multi-agent systems about fifteen times.
+
+11
+00:01:12.176 --> 00:01:17.083
+They concluded multi-agent systems need tasks valuable enough to pay for that.
+
+12
+00:01:17.363 --> 00:01:18.920
+Latency compounds too.
+
+13
+00:01:19.200 --> 00:01:24.619
+Model calls in a loop are sequential by nature: step 5 needs step 4’s observation.
+
+14
+00:01:24.899 --> 00:01:30.211
+If each call takes several seconds (more when the model thinks hard), twenty steps take minutes.
+
+15
+00:01:30.491 --> 00:01:40.581
+That rules out agents for anything a user waits on synchronously, and it shapes the product: progress updates, background jobs, and notifications instead of a spinner.
+
+16
+00:01:40.861 --> 00:01:55.261
+Kapoor and colleagues make the evaluation version of this point in “AI Agents That Matter” (2024): agent benchmarks that report accuracy alone have rewarded needlessly complex and costly systems.
+
+17
+00:01:55.541 --> 00:02:01.344
+They argue for evaluating cost and accuracy jointly, and for comparing against simple baselines.
+
+18
+00:02:01.624 --> 00:02:11.949
+For your team, that means every agent proposal should come with the cost per completed task, not per call, and a comparison with the simplest alternative on the same eval.

@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.837
+Claude traces itself, and how not to count twice.
+
+2
+00:00:03.117 --> 00:00:05.656
+You may not need to write that wrapper for every call.
+
+3
+00:00:05.936 --> 00:00:17.051
+Anthropic’s SDKs and the Claude API can emit OpenTelemetry spans themselves; the feature is in beta at the time of writing, so its span names and options can change.
+
+4
+00:00:17.331 --> 00:00:18.461
+There are two halves.
+
+5
+00:00:18.741 --> 00:00:31.179
+SDK tracing runs in your process and exports through your own OpenTelemetry setup: register a tracer provider and the SDK’s spans appear, nested under whatever span is current.
+
+6
+00:00:31.459 --> 00:00:47.587
+API tracing is emitted by Anthropic’s servers and delivered to an OTLP endpoint that an organization admin configures; it can see things your process can’t, such as each model request inside one API call and the server tools the API ran.
+
+7
+00:00:47.867 --> 00:00:54.757
+Both use the GenAI attribute names, so backends that understand the conventions read them without mapping.
+
+8
+00:00:55.037 --> 00:00:59.667
+Two of Anthropic’s design choices are worth copying in your own instrumentation.
+
+9
+00:00:59.947 --> 00:01:16.011
+Content is off by default: the default mode is “metadata only” (ids, timing, status, token counts), and “full content” is a deliberate switch whose docs remind you that your backend then stores prompts under its own access and retention settings.
+
+10
+00:01:16.291 --> 00:01:18.723
+And the docs spell out how to count tokens once.
+
+11
+00:01:19.003 --> 00:01:33.360
+A request traced by both halves has an SDK span (kind Client) and an API span (kind Server) with the same name and overlapping usage; sum one source per request, not every span that carries a token count.
+
+12
+00:01:33.640 --> 00:01:44.072
+The same trap appears when you wrap an SDK-traced call in your own chat span: decide which span is the source of truth for cost, and make your dashboard query only that.
+
+13
+00:01:44.352 --> 00:01:52.949
+Other providers have their own instrumentation, often as OpenTelemetry instrumentation libraries that patch the provider’s SDK.
+
+14
+00:01:53.229 --> 00:02:03.256
+Check each provider’s current docs, and check that you don’t run a patching library and the SDK’s built-in tracing at the same time, or every call appears twice.

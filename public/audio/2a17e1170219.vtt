@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.603
+Across sessions: memory files and notes.
+
+2
+00:00:02.883 --> 00:00:05.464
+Clearing and compaction manage one session.
+
+3
+00:00:05.744 --> 00:00:11.163
+Some agents need state that survives the end of a session, a crash, or a context reset.
+
+4
+00:00:11.443 --> 00:00:20.467
+The general pattern Anthropic calls structured note-taking: the agent writes notes to storage outside the context window and reads them back later.
+
+5
+00:00:20.747 --> 00:00:25.141
+The context engineering post gives examples from to-do lists to a NOTES.
+
+6
+00:00:25.421 --> 00:00:34.360
+md file, and describes Claude playing Pokémon while keeping notes across thousands of game steps, which let it resume after context resets.
+
+7
+00:00:34.640 --> 00:00:41.509
+Claude’s memory tool ( memory_20250818 ) packages this pattern.
+
+8
+00:00:41.789 --> 00:00:54.269
+It is client-side: Claude requests file operations (view, create, str_replace, insert, delete, rename) under a /memories path, and your code performs them against storage you control.
+
+9
+00:00:54.549 --> 00:01:07.093
+When the tool is present, the API adds an instruction telling Claude to check its memory directory before starting and to record progress as it goes, assuming its context might be reset at any moment.
+
+10
+00:01:07.373 --> 00:01:12.515
+The docs put the security burden on you: validate every path so /memories/.
+
+11
+00:01:12.795 --> 00:01:13.627
+/.
+
+12
+00:01:13.907 --> 00:01:15.059
+/secrets.
+
+13
+00:01:15.339 --> 00:01:21.547
+env cannot escape the directory, cap file sizes, keep secrets out, and expire stale files.
+
+14
+00:01:21.827 --> 00:01:31.107
+Context editing pairs with it: as the context nears the clearing threshold, Claude is warned to save what matters to memory before old results are cleared.
+
+15
+00:01:31.387 --> 00:01:34.011
+You don’t need the memory tool to use the idea.
+
+16
+00:01:34.291 --> 00:01:49.459
+Anthropic’s post on harnesses for long-running agents used ordinary files: a JSON feature list (they chose JSON because the model was less likely to rewrite it inappropriately than Markdown), a progress log each session appends to,
+
+17
+00:01:49.739 --> 00:01:54.005
+and git commits that let a later session see what changed and revert bad work.
+
+18
+00:01:54.285 --> 00:02:00.195
+Each new session starts by reading the log and running a basic end-to-end check before touching anything.
+
+19
+00:02:00.475 --> 00:02:05.595
+The checks-and-balances point: memory is model-written text that a later run will trust.
+
+20
+00:02:05.875 --> 00:02:07.923
+Treat it like any other model output.
+
+21
+00:02:08.203 --> 00:02:14.709
+Keep it small and structured, review it now and then, and never let it become the only record of something that matters.

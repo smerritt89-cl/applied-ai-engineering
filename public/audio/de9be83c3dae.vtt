@@ -1,0 +1,117 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.752
+Hooks: the checks and balances that always run.
+
+2
+00:00:03.032 --> 00:00:11.437
+Hooks run your command (or an HTTP call, an MCP tool, or a model prompt) at fixed points in Claude Code’s lifecycle.
+
+3
+00:00:11.717 --> 00:00:15.003
+They live in a hooks block in a settings file: ~/.
+
+4
+00:00:15.283 --> 00:00:16.563
+claude/settings.
+
+5
+00:00:16.843 --> 00:00:18.976
+json for you on every project,.
+
+6
+00:00:19.256 --> 00:00:20.536
+claude/settings.
+
+7
+00:00:20.816 --> 00:00:23.739
+json for the repository (committed and shared),.
+
+8
+00:00:24.019 --> 00:00:25.299
+claude/settings.
+
+9
+00:00:25.579 --> 00:00:26.368
+local.
+
+10
+00:00:26.648 --> 00:00:31.171
+json for you on this project, or managed settings for an organization.
+
+11
+00:00:31.451 --> 00:00:34.928
+Skills and subagents can also carry hooks in their frontmatter.
+
+12
+00:00:35.208 --> 00:00:50.547
+The configuration has three levels: an event such as PreToolUse, a list of matcher groups that filter when it fires (for tool events, a pattern on the tool name like Edit|Write or Bash ), and handlers to run, usually {"type": "command", "command": "."
+
+13
+00:00:50.827 --> 00:00:52.811
+} with an optional timeout in seconds.
+
+14
+00:00:53.091 --> 00:01:07.619
+Your command receives the event as JSON on stdin (including tool_name and tool_input for tool events) and replies with its exit code: 0 for no objection, 2 to block or push back with a message on stderr.
+
+15
+00:01:07.899 --> 00:01:10.565
+For richer control it can print JSON instead.
+
+16
+00:01:10.845 --> 00:01:15.624
+What exit code 2 does depends on the event, and getting this right is the whole game.
+
+17
+00:01:15.904 --> 00:01:19.360
+From the hooks reference: PreToolUse: blocks the tool call.
+
+18
+00:01:19.640 --> 00:01:22.861
+Use it to protect paths or refuse dangerous commands.
+
+19
+00:01:23.141 --> 00:01:28.688
+PostToolUse: can’t block, because the tool already ran; it shows your stderr to Claude.
+
+20
+00:01:28.968 --> 00:01:32.595
+Use it to feed back lint or test failures right after an edit.
+
+21
+00:01:32.875 --> 00:01:36.757
+Stop: prevents Claude from stopping and continues the conversation.
+
+22
+00:01:37.037 --> 00:01:40.109
+Use it as a gate: “you’re not done until the tests pass.
+
+23
+00:01:40.389 --> 00:01:40.687
+”.
+
+24
+00:01:40.967 --> 00:01:44.423
+UserPromptSubmit: blocks the prompt before Claude sees it.
+
+25
+00:01:44.703 --> 00:01:51.167
+The best-practices doc’s guidance on which hooks to write is short: a hook is for a rule with zero exceptions.
+
+26
+00:01:51.447 --> 00:01:54.092
+“Never edit the generated client” is a hook.
+
+27
+00:01:54.372 --> 00:01:58.383
+“Prefer named exports” has plenty of exceptions and stays in CLAUDE.
+
+28
+00:01:58.663 --> 00:01:59.474
+md.
+
+29
+00:01:59.754 --> 00:02:08.436
+For real enforcement use command or http handlers; prompt and agent hooks ask a model to decide, so they aren’t deterministic.

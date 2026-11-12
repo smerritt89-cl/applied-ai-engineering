@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.984
+The unit is a completed task.
+
+2
+00:00:02.264 --> 00:00:04.632
+Week 1 put your service into production.
+
+3
+00:00:04.912 --> 00:00:08.603
+This week is about what it costs to run and how long people wait.
+
+4
+00:00:08.883 --> 00:00:13.256
+Start with the unit of measure, because the wrong unit leads to the wrong decision.
+
+5
+00:00:13.536 --> 00:00:19.445
+Per-token prices are what the pricing page shows, and per-request cost is what a log line shows.
+
+6
+00:00:19.725 --> 00:00:21.837
+Neither is what the business pays for.
+
+7
+00:00:22.117 --> 00:00:30.288
+The business pays for completed tasks: a ticket resolved, a document summarized correctly, a pull request that passes review.
+
+8
+00:00:30.568 --> 00:00:37.779
+Anthropic’s cost guidance makes this its organizing idea: optimize cost per completed task, not per token.
+
+9
+00:00:38.059 --> 00:00:50.240
+A model with a higher sticker price can be the cheaper choice if it finishes in fewer turns, and a cheaper model that fails still bills its tokens, then the retry, then whatever the failure costs downstream.
+
+10
+00:00:50.520 --> 00:01:04.173
+The definition is simple and worth writing down for your team: cost per completed task = total spend on all attempts, including retries and failed tasks, divided by the number of tasks that met the quality bar.
+
+11
+00:01:04.453 --> 00:01:05.947
+Two consequences follow.
+
+12
+00:01:06.227 --> 00:01:09.064
+First, you can’t compute it without an outcome check.
+
+13
+00:01:09.344 --> 00:01:17.728
+A log of tokens tells you spend; only your eval or a production signal (resolved, accepted, not reopened) tells you completion.
+
+14
+00:01:18.008 --> 00:01:23.000
+Second, cost and quality become one number you can compare across configurations.
+
+15
+00:01:23.280 --> 00:01:29.168
+Anthropic’s published runs show why that matters: on one coding benchmark, Claude Sonnet 5.
+
+16
+00:01:29.448 --> 00:01:31.901
+5 at high effort and Claude Opus 5.
+
+17
+00:01:32.181 --> 00:01:44.491
+5 at low effort solved about the same share of tasks, with the Opus configuration costing about 7 percent more per solved task, even though Opus’s per-token prices are twice Sonnet’s.
+
+18
+00:01:44.771 --> 00:01:48.312
+Per-token prices alone would have predicted a much bigger gap.

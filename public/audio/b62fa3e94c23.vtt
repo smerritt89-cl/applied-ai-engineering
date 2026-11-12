@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.901
+Serving your adapter, with schema-constrained output.
+
+2
+00:00:03.181 --> 00:00:08.941
+A LoRA adapter is a small set of extra weights that sits on top of an unchanged base model.
+
+3
+00:00:09.221 --> 00:00:20.955
+You can merge it into the base weights and serve the result as an ordinary model, or serve it unmerged, which lets one server host the base model plus several adapters and pick one per request.
+
+4
+00:00:21.235 --> 00:00:33.203
+vLLM supports the second: start the server with --enable-lora, register each adapter under a name with --lora-modules, and clients choose the adapter by sending that name as the model.
+
+5
+00:00:33.483 --> 00:00:38.837
+Set --max-lora-rank to the highest rank among your adapters; setting it much higher wastes memory.
+
+6
+00:00:39.117 --> 00:00:41.101
+The other half is structured output.
+
+7
+00:00:41.381 --> 00:00:52.389
+In Studio 1 you saw that constrained decoding (Willard and Louf, 2023) masks invalid tokens at each step so the output must match a grammar or schema.
+
+8
+00:00:52.669 --> 00:00:59.816
+Open-model servers expose this directly, which removes the most common failure of small models: invalid JSON.
+
+9
+00:01:00.096 --> 00:01:14.496
+In vLLM the request field is structured_outputs, with options for a JSON schema, a regex, a fixed set of choices, or a grammar; the older guided_json family of fields was removed in version 0.
+
+10
+00:01:14.776 --> 00:01:15.544
+12.
+
+11
+00:01:15.824 --> 00:01:16.592
+0.
+
+12
+00:01:16.872 --> 00:01:22.803
+vLLM also accepts the OpenAI-style response_format with a JSON schema.
+
+13
+00:01:23.083 --> 00:01:23.851
+llama.
+
+14
+00:01:24.131 --> 00:01:31.917
+cpp’s server accepts a JSON schema or a GBNF grammar, and Ollama’s format field accepts a JSON schema.
+
+15
+00:01:32.197 --> 00:01:42.736
+Constraining decoding changes what the model can say, so benchmark with the same constraint you will use in production, and keep validating with your Pydantic model on the way back.
+
+16
+00:01:43.016 --> 00:01:47.432
+Constrained output guarantees shape, not truth (Studio 1, lesson 9).

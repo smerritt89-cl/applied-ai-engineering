@@ -1,0 +1,101 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.323
+The metrics that matter.
+
+2
+00:00:01.603 --> 00:00:02.349
+Cost.
+
+3
+00:00:02.629 --> 00:00:11.355
+Chart cost per request and per completed task, broken down by feature, model, and prompt version, plus total daily spend against a budget.
+
+4
+00:00:11.635 --> 00:00:19.933
+Cost per completed task is the one that guides decisions: a cheaper model that needs two retries or a human fix isn’t cheaper.
+
+5
+00:00:20.213 --> 00:00:35.509
+Compute cost from token counts and a versioned price table, and reconcile weekly against the provider’s own usage reporting: Anthropic’s docs note that exported spans are delivered on a best-effort basis, so a sum over spans can undercount.
+
+6
+00:00:35.789 --> 00:00:37.197
+Latency percentiles.
+
+7
+00:00:37.477 --> 00:00:41.467
+Use p50, p95, and p99, not the mean.
+
+8
+00:00:41.747 --> 00:00:50.344
+The SRE book’s point is that an average hides a slow tail; record latency in histogram buckets so you can compute any percentile later.
+
+9
+00:00:50.624 --> 00:01:04.277
+Chart time to first token separately for streamed responses, and track latency of failed requests separately too: the book notes that a slow error is even worse than a fast one, and timeouts are slow errors by definition.
+
+10
+00:01:04.557 --> 00:01:05.944
+Error rates, by type.
+
+11
+00:01:06.224 --> 00:01:09.360
+Split them, because each type has a different owner and fix.
+
+12
+00:01:09.640 --> 00:01:16.488
+Rate limiting (HTTP 429 on Claude) means you need more capacity or better backoff.
+
+13
+00:01:16.768 --> 00:01:24.917
+Provider overload (529, overloaded_error, on Claude) means retries with jitter and possibly a fallback model.
+
+14
+00:01:25.197 --> 00:01:29.272
+Timeouts may mean max_tokens is set too high for a synchronous path.
+
+15
+00:01:29.552 --> 00:01:35.739
+Your own validation failures (a structured output that parses but fails your checks) point at the prompt.
+
+16
+00:01:36.019 --> 00:01:37.725
+Refusals and truncations.
+
+17
+00:01:38.005 --> 00:01:40.821
+These look like success at the HTTP layer.
+
+18
+00:01:41.101 --> 00:01:55.288
+Claude reports stop_reason: "refusal" (with a category in stop_details ) and max_tokens when output was cut off; other providers have equivalents, such as the refusal field in OpenAI’s structured outputs.
+
+19
+00:01:55.568 --> 00:01:57.253
+Track each as a rate per route.
+
+20
+00:01:57.533 --> 00:02:03.037
+A refusal rate that doubles after a prompt change is a regression even though nothing errored.
+
+21
+00:02:03.317 --> 00:02:04.405
+Quality signals.
+
+22
+00:02:04.685 --> 00:02:17.720
+The share of sampled answers that pass your graders (next section), user feedback rates, and task-level outcomes where you have them (a ticket resolved without escalation, a drafted reply sent without edits).
+
+23
+00:02:18.000 --> 00:02:23.291
+Tool-level signals matter for agents: tool error rate, calls per task, and loop length.
+
+24
+00:02:23.571 --> 00:02:31.272
+Break every metric down by the dimensions you recorded in lesson 7: model, prompt version, route, and customer tier.
+
+25
+00:02:31.552 --> 00:02:36.395
+A global average can stay flat while one prompt version on one route falls apart.

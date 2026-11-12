@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.837
+Intervals: reuse what you built in Studio 3.
+
+2
+00:00:03.117 --> 00:00:10.989
+A fine-tuning project usually ends with a test set of a hundred to a few hundred cases, because every case needs a careful label.
+
+3
+00:00:11.269 --> 00:00:13.787
+At that size, sampling noise is large.
+
+4
+00:00:14.067 --> 00:00:24.819
+With 150 cases and an exact-match rate near 80 percent, a 95 percent interval for one system spans roughly plus or minus 6 to 7 points.
+
+5
+00:00:25.099 --> 00:00:30.283
+Two systems a few points apart are not distinguishable from their separate intervals alone.
+
+6
+00:00:30.563 --> 00:00:36.472
+The fix is the one from Studio 3, lesson 7: compare systems paired, on the same cases.
+
+7
+00:00:36.752 --> 00:00:49.296
+For each case, compute the difference in score between the two systems (1 minus 0, 0 minus 0, and so on), then bootstrap the mean of those differences by resampling cases with replacement.
+
+8
+00:00:49.576 --> 00:00:55.635
+Pairing helps because cases differ in difficulty and both systems tend to find the same cases hard.
+
+9
+00:00:55.915 --> 00:01:11.339
+Miller’s paper on error bars for evals (2024), and Anthropic’s companion post, recommend exactly this: report paired differences, because the correlation between systems’ per-question scores shrinks the variance of the difference.
+
+10
+00:01:11.619 --> 00:01:13.539
+Then say what the interval supports.
+
+11
+00:01:13.819 --> 00:01:23.909
+If the paired interval for “fine-tuned minus frontier” is plus 1 to plus 12 points, you can say the fine-tuned model is better on this distribution of cases.
+
+12
+00:01:24.189 --> 00:01:34.173
+If it is minus 2 to plus 9, the honest claim is “no detectable loss, and possibly a gain,” which may still be enough to switch if the small model is much cheaper.
+
+13
+00:01:34.453 --> 00:01:41.109
+If the lower bound is minus 8, you can’t rule out a real loss, and you need more cases or a different decision.
+
+14
+00:01:41.389 --> 00:01:46.659
+Write the margin you will accept before you run, as you did for the CI gate in Studio 3.
+
+15
+00:01:46.939 --> 00:01:48.475
+Two more habits carry over.
+
+16
+00:01:48.755 --> 00:01:57.181
+If your cases come in clusters (several snippets from the same meeting), resample whole clusters, because cases within a meeting are correlated.
+
+17
+00:01:57.461 --> 00:02:05.952
+And if you run each system more than once, report the spread across runs separately; repeated runs of the same case are not extra cases.

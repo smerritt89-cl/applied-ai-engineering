@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.408
+Softmax, worked out.
+
+2
+00:00:01.688 --> 00:00:10.392
+Softmax maps any real vector z to a probability vector: p_j = exp(z_j) divided by the sum of exp(z_k).
+
+3
+00:00:10.672 --> 00:00:12.549
+Three properties matter constantly.
+
+4
+00:00:12.829 --> 00:00:24.477
+It is invariant to adding a constant to every logit (the constant cancels), which is why implementations subtract the maximum logit before exponentiating to avoid overflow.
+
+5
+00:00:24.757 --> 00:00:28.000
+It preserves order (bigger logit, bigger probability).
+
+6
+00:00:28.280 --> 00:00:39.949
+And its Jacobian is dp_i/dz_j = p_i times (delta_ij minus p_j), a symmetric matrix equal to diag(p) minus p p transpose.
+
+7
+00:00:40.229 --> 00:00:52.965
+Compose that Jacobian with the loss L = minus log p_y and the chain rule collapses beautifully: the gradient with respect to the logits is p minus the one-hot vector for the target y.
+
+8
+00:00:53.245 --> 00:01:02.504
+Read it as a force: push up the logit of the correct character by (1 minus its probability), push down every other logit by its probability.
+
+9
+00:01:02.784 --> 00:01:09.632
+When the model is confident and right, the gradient vanishes; when it is confident and wrong, the push is nearly 1.
+
+10
+00:01:09.912 --> 00:01:16.141
+You’ll implement and gradient-check this in the next lesson, and derive it again for whole batches in lesson 6.

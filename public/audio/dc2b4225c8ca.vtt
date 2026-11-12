@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.603
+Decompose into steps a person can review.
+
+2
+00:00:02.883 --> 00:00:19.949
+Google’s engineering practices guide on small changes argues for keeping each change to one self-contained idea: small changes are reviewed faster and more thoroughly, are less likely to introduce bugs, are easier to roll back, and are less wasted work if rejected.
+
+3
+00:00:20.229 --> 00:00:24.155
+It also suggests separating refactors from behavior changes.
+
+4
+00:00:24.435 --> 00:00:32.563
+Every one of those reasons applies more strongly to agent-written code, because an agent can produce a large diff faster than you can read it.
+
+5
+00:00:32.843 --> 00:00:37.216
+So break the work into steps where each step has its own check and its own commit.
+
+6
+00:00:37.496 --> 00:00:44.472
+A useful default order: tests or fixtures first, then the core change, then integration and wiring, then cleanup.
+
+7
+00:00:44.752 --> 00:00:53.563
+Keep mechanical changes (renames, moves, formatting) in separate commits from logic changes, so the logic diff is small enough to read.
+
+8
+00:00:53.843 --> 00:01:11.123
+For long tasks, Anthropic’s post on harnesses for long-running agents describes what made multi-session work reliable: an explicit feature list kept in a file (they used JSON) with each item’s status, a progress file the agent updates, and git commits as checkpoints,
+
+9
+00:01:11.403 --> 00:01:16.395
+with the agent working on one feature at a time and verifying it before marking it done.
+
+10
+00:01:16.675 --> 00:01:24.333
+Their named failure modes are worth remembering: trying to one-shot the whole thing, and declaring victory before the work is verified.
+
+11
+00:01:24.613 --> 00:01:26.448
+Those are management failures too.
+
+12
+00:01:26.728 --> 00:01:34.664
+The fix in both worlds is the same: a written list of deliverables, one in progress at a time, and status backed by evidence.

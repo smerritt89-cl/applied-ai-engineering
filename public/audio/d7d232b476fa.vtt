@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.133
+Threat modeling an LLM feature.
+
+2
+00:00:02.413 --> 00:00:07.149
+Threat modeling is a structured way to find these problems before an attacker does.
+
+3
+00:00:07.429 --> 00:00:16.645
+OWASP’s cheat sheet organizes it around four questions: what are we working on, what can go wrong, what are we going to do about it, and did we do a good enough job?
+
+4
+00:00:16.925 --> 00:00:23.709
+It is cheapest at design time and worth revisiting whenever the system changes, for example when you add a tool.
+
+5
+00:00:23.989 --> 00:00:25.227
+What are we working on?
+
+6
+00:00:25.507 --> 00:00:33.464
+The data flow diagram above, with trust boundaries marked and, for each flow into the model, a note on who can influence that text.
+
+7
+00:00:33.744 --> 00:00:34.811
+What can go wrong?
+
+8
+00:00:35.091 --> 00:00:37.011
+Walk each boundary with two lenses.
+
+9
+00:00:37.291 --> 00:00:53.184
+STRIDE gives six classic threat types: spoofing (authentication), tampering (integrity), repudiation (accountability), information disclosure (confidentiality), denial of service (availability), and elevation of privilege (authorization).
+
+10
+00:00:53.464 --> 00:00:56.856
+The OWASP LLM list adds the model-specific ones.
+
+11
+00:00:57.136 --> 00:01:06.437
+For every entry point into context, ask: if this text contained instructions, what is the worst thing the model could do with the tools and data it has?
+
+12
+00:01:06.717 --> 00:01:08.189
+What are we going to do about it?
+
+13
+00:01:08.469 --> 00:01:23.680
+For each threat, choose a response: mitigate it (add a control), eliminate it (remove the feature or capability), transfer it (to a vendor or insurer, which doesn’t remove it, so record who owns what remains), or accept it, in writing, with an owner.
+
+14
+00:01:23.960 --> 00:01:25.475
+Did we do a good enough job?
+
+15
+00:01:25.755 --> 00:01:31.600
+Turn each threat into a test: a red-team fixture, a unit test on a control, or a monitor.
+
+16
+00:01:31.880 --> 00:01:36.467
+A threat model that produces no tests is a document nobody will read again.
+
+17
+00:01:36.747 --> 00:01:42.379
+This is familiar territory if you run programs: it’s a risk register with a forcing function.
+
+18
+00:01:42.659 --> 00:01:46.840
+The engineering difference is that each row ends in an executable check.

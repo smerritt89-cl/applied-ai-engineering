@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.408
+Red-teaming your own app.
+
+2
+00:00:01.688 --> 00:00:05.997
+Red-teaming means attacking your own system on purpose, before someone else does.
+
+3
+00:00:06.277 --> 00:00:13.317
+Only test systems you own or have written permission to test, and use a staging environment with fake data where you can.
+
+4
+00:00:13.597 --> 00:00:15.709
+Start by hand, with your threat model.
+
+5
+00:00:15.989 --> 00:00:29.152
+For each threat, write attacks in each input channel: the chat box, a document you plant in the index, a ticket body the MCP server will return, a long input, a translated or encoded variant.
+
+6
+00:00:29.432 --> 00:00:31.971
+Record the expected safe behavior for each.
+
+7
+00:00:32.251 --> 00:00:36.112
+That is the lab’s fixture file, grown to cover your architecture.
+
+8
+00:00:36.392 --> 00:00:37.779
+Then automate breadth.
+
+9
+00:00:38.059 --> 00:00:54.997
+Open-source tools generate and run large attack suites: NVIDIA’s garak probes a model or endpoint for many vulnerability classes, Microsoft’s PyRIT is an open-source toolkit for finding risks in generative AI systems before they cause harm,
+
+10
+00:00:55.277 --> 00:01:01.912
+and promptfoo’s red-team mode generates adversarial test cases for your application and reports failures.
+
+11
+00:01:02.192 --> 00:01:04.155
+They find the obvious holes quickly.
+
+12
+00:01:04.435 --> 00:01:09.789
+They don’t know your business rules, so they complement your hand-written cases rather than replacing them.
+
+13
+00:01:10.069 --> 00:01:12.075
+Know what research says about attackers.
+
+14
+00:01:12.355 --> 00:01:26.413
+Anthropic’s 2022 red-teaming study (Ganguli and colleagues) released a large dataset of human red-team attacks and found that models trained with RLHF became harder to red-team as they scaled.
+
+15
+00:01:26.693 --> 00:01:36.485
+Zou and colleagues (2023) showed that adversarial suffixes found automatically on open models transferred to closed commercial models.
+
+16
+00:01:36.765 --> 00:01:45.448
+Together: attackers can be human and creative or automated and tireless, and defenses that work against yesterday’s attacks need retesting.
+
+17
+00:01:45.728 --> 00:01:52.256
+MITRE ATLAS catalogs real adversary tactics against AI systems if you want a structured checklist.
+
+18
+00:01:52.536 --> 00:01:53.517
+Close the loop.
+
+19
+00:01:53.797 --> 00:02:02.224
+Every successful attack becomes a regression case with its expected outcome, run in CI on every prompt, model, or guard change.
+
+20
+00:02:02.504 --> 00:02:12.979
+Report results as block rate and false-positive rate by category, as in the lab, so a change that blocks more attacks by also blocking real customers is visible.

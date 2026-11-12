@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.941
+Audit logs and reversibility.
+
+2
+00:00:02.221 --> 00:00:09.347
+When something goes wrong, you need to answer three questions fast: what did the agent do, why was it allowed, and can we undo it?
+
+3
+00:00:09.627 --> 00:00:11.739
+An audit log answers the first two.
+
+4
+00:00:12.019 --> 00:00:28.744
+OWASP’s logging cheat sheet recommends logging security-relevant events such as authorization failures and high-risk actions, with enough context (when, where, who, what) to reconstruct them, and it warns against writing secrets and sensitive personal data into logs.
+
+5
+00:00:29.024 --> 00:00:46.667
+For an agent, write one record per tool call, including the blocked ones: the run and step, the tool and its exact arguments (redacting secrets), the decision (allow, ask, deny), the rule that decided it, whether a human approved and who, whether it executed, and the result or error.
+
+6
+00:00:46.947 --> 00:00:53.240
+Add the model id, prompt version, and token counts so you can connect behavior to configuration.
+
+7
+00:00:53.520 --> 00:01:02.117
+Blocked calls are the most valuable rows: they show what the agent tried to do, which is your early warning that something in its inputs is steering it.
+
+8
+00:01:02.397 --> 00:01:10.248
+The Managed Agents guide suggests going further with an optional offline reviewer that reads every finished transcript on a schedule.
+
+9
+00:01:10.528 --> 00:01:12.448
+Reversibility is the other half.
+
+10
+00:01:12.728 --> 00:01:20.472
+For each write tool, decide before launch how you would undo it: delete the draft, revert the commit, close the issue, post a correction.
+
+11
+00:01:20.752 --> 00:01:27.045
+If the honest answer is “we can’t,” that tool belongs behind a human, or out of the agent entirely.
+
+12
+00:01:27.325 --> 00:01:30.675
+Write the undo procedure into your runbook, and test it once.
+
+13
+00:01:30.955 --> 00:01:35.819
+A log tells you what happened; a tested undo path is what makes an incident small.

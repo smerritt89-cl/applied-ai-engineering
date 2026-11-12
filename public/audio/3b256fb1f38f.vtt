@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+The OpenAI Agents SDK.
+
+2
+00:00:02.456 --> 00:00:14.979
+OpenAI describes its Agents SDK (package openai-agents ) as a lightweight framework with few abstractions, and a production successor to its earlier experimental Swarm project.
+
+3
+00:00:15.259 --> 00:00:28.933
+Its primitives are agents (a model with instructions and tools), handoffs and agents-as-tools for delegation, guardrails that validate inputs and outputs, sessions for conversation memory, and built-in tracing.
+
+4
+00:00:29.213 --> 00:00:37.939
+The Runner executes the loop you already know, with one addition: if the model requests a handoff, the runner switches the current agent and continues.
+
+5
+00:00:38.219 --> 00:00:45.813
+Each run is capped by max_turns, and exceeding it raises a MaxTurnsExceeded exception, so wrap runs that might be long.
+
+6
+00:00:46.093 --> 00:00:48.184
+Two details matter for real teams.
+
+7
+00:00:48.464 --> 00:01:03.312
+First, models: it uses OpenAI’s Responses API by default for OpenAI models, and the docs describe adapters, including LiteLLM, for other providers, so you can run Claude or open models through it.
+
+8
+00:01:03.592 --> 00:01:13.299
+Check what each adapter supports, because provider-specific features (Claude’s server-side context editing, for example) may not pass through a generic layer.
+
+9
+00:01:13.579 --> 00:01:20.747
+Second, tracing: the docs say it is enabled by default and that traces are exported to OpenAI’s backend.
+
+10
+00:01:21.027 --> 00:01:31.245
+You can turn it off with OPENAI_AGENTS_DISABLE_TRACING=1, set_tracing_disabled(True), or per run, or replace the processors to send spans elsewhere.
+
+11
+00:01:31.525 --> 00:01:39.184
+The docs also say tracing is unavailable to organizations under OpenAI’s zero data retention policy.
+
+12
+00:01:39.464 --> 00:01:45.160
+If your data policy restricts where conversation data goes, this is the first setting to review.

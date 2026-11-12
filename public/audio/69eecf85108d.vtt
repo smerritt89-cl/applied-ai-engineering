@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.880
+Labels, the ignore index, and masking the prompt.
+
+2
+00:00:03.160 --> 00:00:06.424
+Trainers implement “average over M” with a label array.
+
+3
+00:00:06.704 --> 00:00:14.576
+The input is the token sequence; the labels are a copy in which every position you don’t want scored is replaced by a sentinel.
+
+4
+00:00:14.856 --> 00:00:26.248
+PyTorch’s cross-entropy uses -100 by default, documents that ignored targets contribute nothing to the gradient, and averages over the non-ignored targets only.
+
+5
+00:00:26.528 --> 00:00:29.664
+TRL uses the same ignore index for padding.
+
+6
+00:00:29.944 --> 00:00:31.715
+Which positions should be ignored?
+
+7
+00:00:31.995 --> 00:00:33.061
+Padding, always.
+
+8
+00:00:33.341 --> 00:00:34.600
+The prompt, usually.
+
+9
+00:00:34.880 --> 00:00:44.309
+If you score the prompt, the model spends part of its learning on predicting your system prompt and the user’s message, which it will never have to generate at inference time.
+
+10
+00:00:44.589 --> 00:00:56.685
+With long prompts and short answers (an extraction task: a 400-token ticket and a 20-token JSON), the prompt tokens would make up about 95 percent of the scored positions.
+
+11
+00:00:56.965 --> 00:01:00.891
+TRL’s SFTTrainer handles this from the dataset’s shape.
+
+12
+00:01:01.171 --> 00:01:07.955
+For a prompt-completion dataset it computes loss on the completion only by default ( completion_only_loss ).
+
+13
+00:01:08.235 --> 00:01:24.064
+For a conversational messages dataset you can set assistant_only_loss=True, which requires the chat template to mark assistant turns with generation tags; TRL patches the template for some known model families and asks you to check others.
+
+14
+00:01:24.344 --> 00:01:27.757
+MLX-LM has a --mask-prompt flag for the same purpose.
+
+15
+00:01:28.037 --> 00:01:35.867
+One end-of-turn detail matters more than it looks: the token that closes the assistant’s turn must be inside the scored span.
+
+16
+00:01:36.147 --> 00:01:38.109
+That is how the model learns to stop.
+
+17
+00:01:38.389 --> 00:01:42.400
+If it is masked or missing, a tuned model can run on past its answer.
+
+18
+00:01:42.680 --> 00:01:46.371
+The research on masking is less settled than the defaults suggest.
+
+19
+00:01:46.651 --> 00:02:01.947
+Shi and colleagues (2024) found that computing loss over instructions as well as outputs often helped, most when instructions were long relative to outputs and when training data was small, and attributed the gain to less overfitting.
+
+20
+00:02:02.227 --> 00:02:09.651
+Treat masking as the sensible default, and treat the alternative as a hypothesis you can test on your own validation set.

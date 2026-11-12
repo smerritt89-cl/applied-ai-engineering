@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.371
+Tools for long tasks: small results, clear next steps.
+
+2
+00:00:03.651 --> 00:00:06.659
+Studio 1 covered tool design for single calls.
+
+3
+00:00:06.939 --> 00:00:15.856
+Long tasks raise the stakes, because every tool result stays in the context for the rest of the run and every token is read again on each later step.
+
+4
+00:00:16.136 --> 00:00:21.917
+Anthropic’s “Writing effective tools for AI agents” gives the guidance that matters most here.
+
+5
+00:00:22.197 --> 00:00:23.371
+Search, don’t list.
+
+6
+00:00:23.651 --> 00:00:29.091
+A list_documents tool that returns 400 entries makes the agent read all of them.
+
+7
+00:00:29.371 --> 00:00:36.325
+A search_docs(query) tool that returns the five best matches with short snippets gives it what it needs to choose.
+
+8
+00:00:36.605 --> 00:00:38.291
+Return high-signal fields.
+
+9
+00:00:38.571 --> 00:00:44.139
+Titles, short snippets, and natural identifiers beat raw records full of internal ids.
+
+10
+00:00:44.419 --> 00:00:51.907
+The post reports that resolving cryptic identifiers into meaningful names improved precision in retrieval tasks.
+
+11
+00:00:52.187 --> 00:00:54.427
+Paginate and truncate, and say so.
+
+12
+00:00:54.707 --> 00:01:07.528
+A read_doc(doc_id, start_line, max_lines) tool that returns 40 lines plus “more lines follow; call again with start_line=41” lets the agent read only as far as it needs.
+
+13
+00:01:07.808 --> 00:01:16.725
+The post recommends sensible defaults for pagination, filtering, and truncation, and suggests telling the agent how to get more when you truncate.
+
+14
+00:01:17.005 --> 00:01:23.384
+It also describes a response_format option that lets the agent choose concise or detailed output.
+
+15
+00:01:23.664 --> 00:01:25.797
+Shorten results before you first send them.
+
+16
+00:01:26.077 --> 00:01:29.128
+It is tempting to send full results and trim them later.
+
+17
+00:01:29.408 --> 00:01:38.155
+On current Claude models that is costly: the next lesson explains why editing an old tool result on the client invalidates later reasoning blocks.
+
+18
+00:01:38.435 --> 00:01:41.101
+Decide the size of a result when you create it.
+
+19
+00:01:41.381 --> 00:01:42.491
+Make errors steer.
+
+20
+00:01:42.771 --> 00:01:44.989
+“Document not found” is a dead end.
+
+21
+00:01:45.269 --> 00:01:47.275
+“No document with id ‘risk-log’.
+
+22
+00:01:47.555 --> 00:01:54.061
+Ids look like ‘risks-2026q3’; call search_docs to find one” is a next step.
+
+23
+00:01:54.341 --> 00:01:59.269
+Finally, keep read and write tools separate and make the kind obvious from the name.
+
+24
+00:01:59.549 --> 00:02:05.757
+That separation is what lets you run reads in parallel and gate writes, which week 4 covers in depth.

@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.475
+An eval score is an estimate, not a fact.
+
+2
+00:00:02.755 --> 00:00:04.461
+Last week you built graders.
+
+3
+00:00:04.741 --> 00:00:12.165
+This week you use them to answer the question every team asks after a change: is the new prompt (or model) actually better?
+
+4
+00:00:12.445 --> 00:00:19.699
+Suppose prompt A passes 164 of 200 questions and prompt B passes 156.
+
+5
+00:00:19.979 --> 00:00:23.477
+The dashboard says 82 percent against 78 percent.
+
+6
+00:00:23.757 --> 00:00:32.717
+Before anyone ships, you need to know whether a 4-point gap is a property of the prompts or an accident of which 200 questions you happened to write.
+
+7
+00:00:32.997 --> 00:00:51.856
+Evan Miller’s paper “Adding Error Bars to Evals” (Anthropic, 2024) frames this the way a statistician would: the questions in your eval are a sample from a much larger population of questions you could have written, and the quantity you care about is the expected score over that population.
+
+8
+00:00:52.136 --> 00:00:55.293
+Your eval score is an estimate of it, with sampling error.
+
+9
+00:00:55.573 --> 00:01:05.195
+Miller’s one-line summary is that evaluations are experiments, and the eval literature has mostly ignored how other sciences analyze experiments.
+
+10
+00:01:05.475 --> 00:01:08.141
+There are two sources of randomness to keep apart.
+
+11
+00:01:08.421 --> 00:01:13.840
+The first is which questions you drew; it exists even for a perfectly deterministic model.
+
+12
+00:01:14.120 --> 00:01:22.141
+The second is the model’s own sampling: ask the same question twice and you can get two different answers (Studio 1, lesson 1).
+
+13
+00:01:22.421 --> 00:01:25.984
+Both inflate the spread of your score, and they are handled differently.
+
+14
+00:01:26.264 --> 00:01:40.664
+This lesson gives you the tools for each, in the order you’ll use them: an interval for one score, an interval for a difference, then the corrections for clustered questions and repeated runs, and finally how many questions you need in the first place.

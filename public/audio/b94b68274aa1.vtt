@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.944
+Coverage: edge cases and adversarial inputs.
+
+2
+00:00:03.224 --> 00:00:08.941
+A test set that only contains typical requests will tell you the system handles typical requests.
+
+3
+00:00:09.221 --> 00:00:10.779
+Plan coverage on purpose.
+
+4
+00:00:11.059 --> 00:00:24.819
+Anthropic’s eval docs list kinds of edge cases worth including: irrelevant or nonexistent input, overly long input, poor or harmful user input, and ambiguous cases where even people would disagree.
+
+5
+00:00:25.099 --> 00:00:27.125
+Add to those: Balanced cases.
+
+6
+00:00:27.405 --> 00:00:33.101
+Anthropic’s evals post warns that one-sided evals produce one-sided optimization.
+
+7
+00:00:33.381 --> 00:00:38.672
+If every escalation case should hand off, a bot that hands off everything scores perfectly.
+
+8
+00:00:38.952 --> 00:00:41.811
+Include cases where the behavior must not happen.
+
+9
+00:00:42.091 --> 00:00:43.392
+Indirect phrasings.
+
+10
+00:00:43.672 --> 00:00:49.176
+“Please remove everything you have on me” is a privacy request without the word GDPR.
+
+11
+00:00:49.456 --> 00:00:56.987
+Multi-part requests, where answering one part and dropping the other is a known failure (the lab’s answered_wrong_question mode).
+
+12
+00:00:57.267 --> 00:00:58.611
+Adversarial inputs.
+
+13
+00:00:58.891 --> 00:01:06.208
+Users trying to talk the bot past a rule, and prompt-injection attempts in pasted content, which Studio 1 introduced.
+
+14
+00:01:06.488 --> 00:01:10.285
+Label these with the behavior you expect, just like any other case.
+
+15
+00:01:10.565 --> 00:01:18.800
+A useful artifact is a coverage matrix: failure modes down the side, dimensions across the top, and a count of cases in each cell.
+
+16
+00:01:19.080 --> 00:01:22.579
+Empty cells for important modes are where the next cases go.
+
+17
+00:01:22.859 --> 00:01:41.461
+Chip Huyen’s AI Engineering (chapter 8, on dataset engineering) treats coverage, quantity, and deduplication as separate properties of a dataset, which is a helpful way to review a test set: does it cover the space, is there enough of it, and is it free of near-duplicates that inflate apparent size?

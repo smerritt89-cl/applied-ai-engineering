@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.859
+The context window: the agent’s working memory.
+
+2
+00:00:03.139 --> 00:00:07.192
+Everything the model knows during a session sits in its context window.
+
+3
+00:00:07.472 --> 00:00:14.981
+The Claude Code docs list what goes in: the conversation history, file contents it has read, command outputs, your CLAUDE.
+
+4
+00:00:15.261 --> 00:00:24.797
+md files, auto memory, loaded skills, system instructions, and the names of available MCP tools (their full schemas load on demand).
+
+5
+00:00:25.077 --> 00:00:31.179
+Claude Code also adds its own context, such as a note when a file it read earlier changed on disk.
+
+6
+00:00:31.459 --> 00:00:34.381
+Running /context shows what is using space.
+
+7
+00:00:34.661 --> 00:00:37.520
+Three facts follow, and each changes how you work.
+
+8
+00:00:37.800 --> 00:00:39.869
+Tool output is the big consumer.
+
+9
+00:00:40.149 --> 00:00:45.099
+A full test log, a wide search, or a large file can cost far more than your prompts.
+
+10
+00:00:45.379 --> 00:00:57.347
+Anthropic’s context-engineering post calls the problem context rot: as context grows, the model’s ability to use any one piece of it degrades, so more is not free even when it fits.
+
+11
+00:00:57.627 --> 00:00:59.333
+Long sessions get compacted.
+
+12
+00:00:59.613 --> 00:01:03.325
+As the window fills, Claude Code summarizes the conversation.
+
+13
+00:01:03.605 --> 00:01:11.627
+The summary keeps your requests and key code, but the docs warn that detailed instructions from early in the conversation may be lost.
+
+14
+00:01:11.907 --> 00:01:15.277
+The memory docs add the counterpart: the project-root CLAUDE.
+
+15
+00:01:15.557 --> 00:01:19.419
+md is re-read from disk and re-injected after compaction.
+
+16
+00:01:19.699 --> 00:01:24.307
+So a rule you typed in chat at minute five is fragile, and the same rule in CLAUDE.
+
+17
+00:01:24.587 --> 00:01:25.888
+md is durable.
+
+18
+00:01:26.168 --> 00:01:32.739
+You can steer compaction with /compact plus a focus, or a “Compact Instructions” section in CLAUDE.
+
+19
+00:01:33.019 --> 00:01:33.829
+md.
+
+20
+00:01:34.109 --> 00:01:35.624
+Sessions are independent.
+
+21
+00:01:35.904 --> 00:01:38.144
+A new session starts with a fresh context.
+
+22
+00:01:38.424 --> 00:01:40.664
+Continuity comes from files (CLAUDE.
+
+23
+00:01:40.944 --> 00:01:46.491
+md, auto memory, your git history, a spec), not from the model remembering yesterday.
+
+24
+00:01:46.771 --> 00:01:56.627
+That is a feature: /clear between unrelated tasks is free, gives better answers, and costs less, because every request resends the whole conversation.

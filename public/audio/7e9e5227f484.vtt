@@ -1,0 +1,101 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.709
+Measure from the usage fields, not from the text.
+
+2
+00:00:02.989 --> 00:00:09.133
+Every Claude response carries a usage object, and it is the only ground truth for what a request cost.
+
+3
+00:00:09.413 --> 00:00:14.661
+Four meters matter for pricing: input_tokens: input processed at the full price.
+
+4
+00:00:14.941 --> 00:00:19.720
+With caching on, this is only the uncached remainder after the last cache breakpoint.
+
+5
+00:00:20.000 --> 00:00:25.845
+cache_creation_input_tokens: input written to the cache this request, billed at a premium (1.
+
+6
+00:00:26.125 --> 00:00:31.032
+25 times base input for the five-minute lifetime, 2 times for one hour).
+
+7
+00:00:31.312 --> 00:00:33.936
+The cache_creation object splits it by lifetime.
+
+8
+00:00:34.216 --> 00:00:40.637
+cache_read_input_tokens: input served from the cache, billed at a small fraction of base input (0.
+
+9
+00:00:40.917 --> 00:00:42.944
+05 times on Opus 5.
+
+10
+00:00:43.224 --> 00:00:44.717
+5 and Sonnet 5.
+
+11
+00:00:44.997 --> 00:00:46.107
+5, 0.
+
+12
+00:00:46.387 --> 00:00:49.523
+1 times on most other models, at the time of writing).
+
+13
+00:00:49.803 --> 00:00:53.771
+output_tokens: everything the model generated, thinking included.
+
+14
+00:00:54.051 --> 00:01:00.771
+The prompt-caching docs give the identity to remember: total input equals the three input meters added together.
+
+15
+00:01:01.051 --> 00:01:06.768
+If a dashboard charts input_tokens alone, a well-cached agent looks like it sends almost nothing.
+
+16
+00:01:07.048 --> 00:01:09.139
+Three habits make the numbers trustworthy.
+
+17
+00:01:09.419 --> 00:01:14.880
+Log every response’s usage with a task id, so you can roll requests up into tasks.
+
+18
+00:01:15.160 --> 00:01:20.429
+Price from a table with a “checked on” date, kept in configuration, because prices change.
+
+19
+00:01:20.709 --> 00:01:38.501
+Reconcile monthly against the provider’s own numbers: Anthropic’s Usage and Cost API (which needs an Admin API key) reports usage by model, workspace, API key, and service tier, and costs in USD, typically within about five minutes of a request completing.
+
+20
+00:01:38.781 --> 00:01:47.400
+If your computed total and the provider’s total disagree by more than rounding, something in your logging is wrong, and you want to know before finance does.
+
+21
+00:01:47.680 --> 00:01:51.051
+Other providers expose the same idea with different names.
+
+22
+00:01:51.331 --> 00:01:54.104
+OpenAI reports cached input as usage.
+
+23
+00:01:54.384 --> 00:01:55.835
+input_tokens_details.
+
+24
+00:01:56.115 --> 00:01:57.843
+cached_tokens, for example.
+
+25
+00:01:58.123 --> 00:02:02.880
+When you compare providers, normalize every response into one record shape first.

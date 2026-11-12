@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.133
+Smoothing: when the data says “never”.
+
+2
+00:00:02.413 --> 00:00:07.576
+Of the 729 possible bigrams, 102 never occur in names.
+
+3
+00:00:07.856 --> 00:00:09.883
+txt; “jq” is one.
+
+4
+00:00:10.163 --> 00:00:14.557
+The maximum likelihood estimate gives them probability exactly 0.
+
+5
+00:00:14.837 --> 00:00:22.091
+Evaluate on any name containing one, and a single factor of 0 makes the likelihood 0 and the NLL infinite.
+
+6
+00:00:22.371 --> 00:00:29.496
+The fix at 01:00:50 is to add a fake count, say 1, to every cell before normalizing.
+
+7
+00:00:29.776 --> 00:00:37.883
+In Bayesian terms, that’s the posterior mean under a symmetric Dirichlet prior on each row (adding 1 everywhere is Laplace smoothing).
+
+8
+00:00:38.163 --> 00:00:45.032
+The pseudo-count is a knob: 0 is the pure MLE; a huge value drags every row toward uniform.
+
+9
+00:00:45.312 --> 00:00:54.059
+Its right value is an empirical question you answer on a dev set, which is exactly exercise E03 in the video description.
+
+10
+00:00:54.339 --> 00:01:09.592
+Notice the trade-off in miniature, because it recurs in every model you’ll train: smoothing slightly raises the training loss (the MLE is, by definition, optimal on training data) in exchange for robustness on data the model hasn’t seen.

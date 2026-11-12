@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.477
+Dev and test splits: iterate on one, report the other.
+
+2
+00:00:03.757 --> 00:00:10.712
+You will revise the judge prompt several times: sharpen the criterion, add an edge case, swap a few-shot example.
+
+3
+00:00:10.992 --> 00:00:19.632
+Every revision made while looking at a set of examples fits the prompt to those examples, so agreement measured on the same set is optimistic.
+
+4
+00:00:19.912 --> 00:00:24.435
+It’s the same overfitting you’d guard against in any model, applied to a prompt.
+
+5
+00:00:24.715 --> 00:00:26.400
+The fix is the standard one.
+
+6
+00:00:26.680 --> 00:00:37.923
+Hamel’s guide suggests three splits of the labeled data: Train (roughly 10 to 20 percent): clear pass and fail examples you may paste into the prompt as few-shot examples.
+
+7
+00:00:38.203 --> 00:00:44.496
+Dev (roughly 40 to 45 percent): run the judge, read every disagreement, revise the prompt.
+
+8
+00:00:44.776 --> 00:00:47.187
+Dev examples never go into the prompt.
+
+9
+00:00:47.467 --> 00:00:54.123
+Test (roughly 40 to 45 percent): untouched until you freeze the prompt; then run once and report.
+
+10
+00:00:54.403 --> 00:00:56.493
+Two implementation details matter.
+
+11
+00:00:56.773 --> 00:01:05.093
+Stratify by label, so both splits keep the same pass and fail mix; otherwise TNR on a test set with three failures is noise.
+
+12
+00:01:05.373 --> 00:01:19.197
+And make the split deterministic: assign each example by hashing its id with a fixed seed, not by an unseeded shuffle, so the split is the same on every machine and nobody can reshuffle until the numbers look better.
+
+13
+00:01:19.477 --> 00:01:20.715
+The lab does both.
+
+14
+00:01:20.995 --> 00:01:22.104
+How many labels?
+
+15
+00:01:22.384 --> 00:01:35.291
+Hamel suggests aiming for 30 to 50 examples of each label in dev and in test where you can, and warns that with fewer than about 60 examples confidence intervals are often too wide to be useful.
+
+16
+00:01:35.571 --> 00:01:37.107
+With a TNR of 0.
+
+17
+00:01:37.387 --> 00:01:42.912
+875 measured on only 8 failures, one standard error is about 0.
+
+18
+00:01:43.192 --> 00:01:43.960
+12.
+
+19
+00:01:44.240 --> 00:01:47.803
+If your calibration set is small, say so next to every number.

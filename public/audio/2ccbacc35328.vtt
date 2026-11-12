@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.328
+Ollama and LM Studio: packaged local inference.
+
+2
+00:00:03.608 --> 00:00:08.301
+Ollama packages model download, storage, and serving behind one command.
+
+3
+00:00:08.581 --> 00:00:10.096
+ollama pull llama3.
+
+4
+00:00:10.376 --> 00:00:14.856
+2:3b fetches a quantized model from its library (the Llama 3.
+
+5
+00:00:15.136 --> 00:00:23.008
+2 3B tag is about 2 GB), and the background server listens on localhost:11434.
+
+6
+00:00:23.288 --> 00:00:42.680
+Its native API has /api/chat and /api/generate endpoints that stream newline-delimited JSON by default; the last chunk, marked done: true, carries the timing fields that the lab uses: load_duration, prompt_eval_count and prompt_eval_duration (prefill),
+
+7
+00:00:42.960 --> 00:00:49.232
+eval_count and eval_duration (decode), and total_duration, all durations in nanoseconds.
+
+8
+00:00:49.512 --> 00:00:57.789
+The API reference gives the decode speed formula directly: eval_count divided by eval_duration, times 10 to the 9th.
+
+9
+00:00:58.069 --> 00:01:12.789
+Ollama also accepts a JSON schema in the format field for structured output, keeps a model loaded for five minutes after use by default ( keep_alive ), and exposes an OpenAI-compatible API under /v1.
+
+10
+00:01:13.069 --> 00:01:19.832
+LM Studio is a desktop app for finding, downloading, and chatting with models, with a local server for code.
+
+11
+00:01:20.112 --> 00:01:21.797
+Its docs say it runs llama.
+
+12
+00:01:22.077 --> 00:01:32.339
+cpp (GGUF) models and, on Apple Silicon Macs, MLX models too, and it ships an lms command-line tool for loading models and starting the server.
+
+13
+00:01:32.619 --> 00:01:52.331
+Its OpenAI-compatible endpoints include /v1/chat/completions, /v1/responses, /v1/embeddings, and /v1/models, and its examples use http://localhost:1234/v1.
+
+14
+00:01:52.611 --> 00:01:57.987
+It is a good choice when you or a teammate want a GUI to compare models before writing code.
+
+15
+00:01:58.267 --> 00:02:00.869
+Choosing between them is mostly about workflow.
+
+16
+00:02:01.149 --> 00:02:05.565
+Ollama is convenient for scripts, servers, and teammates who live in a terminal.
+
+17
+00:02:05.845 --> 00:02:10.389
+LM Studio suits interactive comparison and people who prefer a GUI.
+
+18
+00:02:10.669 --> 00:02:11.437
+llama.
+
+19
+00:02:11.717 --> 00:02:16.005
+cpp directly gives you every knob and the newest features first.
+
+20
+00:02:16.285 --> 00:02:21.192
+All three serve GGUF models, so a quantized file you trust can move between them.

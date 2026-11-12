@@ -1,0 +1,113 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.899
+Practical mitigations, layered.
+
+2
+00:00:02.179 --> 00:00:05.656
+Most teams will not build a CaMeL interpreter this quarter.
+
+3
+00:00:05.936 --> 00:00:12.080
+Here is a defensible stack for a real agent, roughly in order of how much protection each layer buys.
+
+4
+00:00:12.360 --> 00:00:14.109
+Break or gate the trifecta.
+
+5
+00:00:14.389 --> 00:00:16.779
+Decide which leg this agent does not get.
+
+6
+00:00:17.059 --> 00:00:24.504
+If it needs all three, gate outbound actions once untrusted content and private data have both entered the context.
+
+7
+00:00:24.784 --> 00:00:26.341
+Allowlist destinations.
+
+8
+00:00:26.621 --> 00:00:28.669
+Hosts, email domains, channels.
+
+9
+00:00:28.949 --> 00:00:32.533
+A non-allowlisted destination is a deterministic deny.
+
+10
+00:00:32.813 --> 00:00:35.608
+This is the control that survives encoding tricks.
+
+11
+00:00:35.888 --> 00:00:37.083
+Track data flow.
+
+12
+00:00:37.363 --> 00:00:41.373
+At minimum, session-level taint (has untrusted content been read?
+
+13
+00:00:41.653 --> 00:00:42.955
+has private data?)
+
+14
+00:00:43.235 --> 00:00:46.285
+Better, value-level provenance as in the exercise.
+
+15
+00:00:46.565 --> 00:00:49.125
+Block private data in outbound arguments.
+
+16
+00:00:49.405 --> 00:00:51.005
+Constrain the interfaces.
+
+17
+00:00:51.285 --> 00:01:04.128
+Pass structured outputs between steps (enums, fixed fields, no free-form URLs), as OpenAI’s agent-safety guide recommends; strip or redact links and images in anything rendered.
+
+18
+00:01:04.408 --> 00:01:07.224
+Keep untrusted text out of privileged positions.
+
+19
+00:01:07.504 --> 00:01:15.824
+Never in the system or developer prompt; in tool results, labeled as data, as Anthropic’s and OpenAI’s guides both say.
+
+20
+00:01:16.104 --> 00:01:17.384
+Use the model layer.
+
+21
+00:01:17.664 --> 00:01:24.043
+A robust model, clear instructions that tool content is data, and an optional screening classifier.
+
+22
+00:01:24.323 --> 00:01:25.560
+These lower the rate.
+
+23
+00:01:25.840 --> 00:01:28.912
+Approve the rest, rarely and with exact arguments.
+
+24
+00:01:29.192 --> 00:01:30.643
+Test it adversarially.
+
+25
+00:01:30.923 --> 00:01:40.821
+Keep an injection suite of fixture documents, run it on every change, and report two numbers together: attack success rate and task success on benign inputs.
+
+26
+00:01:41.101 --> 00:01:55.821
+AgentDojo (Debenedetti and colleagues, 2024) measures exactly this pair, with 97 tasks and 629 security test cases, and found that both attacks and defenses leave a lot unsolved.
+
+27
+00:01:56.101 --> 00:02:00.581
+None of these is sufficient alone, and you do not need all of them for every agent.
+
+28
+00:02:00.861 --> 00:02:03.720
+Match the stack to the blast radius from lesson 10.

@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.392
+Sandboxes: the boundary that holds when the model is fooled.
+
+2
+00:00:03.672 --> 00:00:12.632
+A sandbox is an execution environment whose limits are enforced below the model: by the operating system, a container, or a virtual machine.
+
+3
+00:00:12.912 --> 00:00:16.645
+Anthropic’s sandboxing post explains why it needs two parts.
+
+4
+00:00:16.925 --> 00:00:24.456
+Filesystem isolation keeps the agent to specific directories, so a fooled agent can’t modify sensitive files.
+
+5
+00:00:24.736 --> 00:00:30.240
+Network isolation keeps it to approved hosts, so it can’t leak data or download malware.
+
+6
+00:00:30.520 --> 00:00:41.485
+Without network isolation, a compromised agent could send out your SSH keys; without filesystem isolation, it could escape the sandbox and reach the network anyway.
+
+7
+00:00:41.765 --> 00:00:52.880
+The post reports that, in Anthropic’s internal usage, sandboxing reduced permission prompts by 84%, which is the point: a strong boundary lets you ask less.
+
+8
+00:00:53.160 --> 00:00:59.389
+Claude Code’s sandbox docs are precise about what is covered, and the details are where real gaps hide.
+
+9
+00:00:59.669 --> 00:01:07.776
+The sandbox wraps shell commands and the processes they start; Claude’s file tools, MCP servers, and hooks run outside it.
+
+10
+00:01:08.056 --> 00:01:18.787
+By default sandboxed commands can write only to the working directory and a temp directory, but can read most of the machine, including credential files such as ~/.
+
+11
+00:01:19.067 --> 00:01:21.499
+ssh, unless you deny those reads.
+
+12
+00:01:21.779 --> 00:01:25.576
+Network goes through a proxy with an allowlist that starts empty.
+
+13
+00:01:25.856 --> 00:01:30.549
+Environment variables, including secrets, are inherited unless you scrub them.
+
+14
+00:01:30.829 --> 00:01:34.072
+A sandbox is only as good as your knowledge of its edges.
+
+15
+00:01:34.352 --> 00:01:50.672
+For hosted agents, Claude Managed Agents runs each session in its own container, and its security guide lists the settings in order of importance: where the agent runs, limited networking with only the needed hosts, credentials in vaults, allowlists on web tools,
+
+16
+00:01:50.952 --> 00:02:01.000
+a permission policy on each tool, the smallest tool set, keeping untrusted input away from powerful tools, a budget on each session, and transcript monitoring.
+
+17
+00:02:01.280 --> 00:02:17.067
+The permission policies are a direct analogue of what you’ve built: always_allow runs the tool, always_ask pauses the session until your application sends a confirmation, and auto lets the server evaluate each call and run it, deny it, or pause for you.
+
+18
+00:02:17.347 --> 00:02:28.013
+Those policies cover tools that Anthropic’s servers execute (the built-in toolset and MCP tools); tools your own application executes still need your own gate.

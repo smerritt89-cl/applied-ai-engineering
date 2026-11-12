@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.027
+Kaiming initialization, derived.
+
+2
+00:00:02.307 --> 00:00:11.715
+Take one output of a linear layer: y is the sum over n inputs of w_i times x_i, with weights and inputs independent and zero-mean.
+
+3
+00:00:11.995 --> 00:00:19.973
+Variances of independent terms add, and the variance of a product of independent zero-mean variables is the product of variances.
+
+4
+00:00:20.253 --> 00:00:23.347
+So Var(y) = n Var(w) Var(x).
+
+5
+00:00:23.627 --> 00:00:33.227
+To keep the scale constant from layer to layer, set Var(w) = 1/n, a weight standard deviation of 1 over the square root of fan_in.
+
+6
+00:00:33.507 --> 00:00:36.643
+Nonlinearities change the picture by a constant factor.
+
+7
+00:00:36.923 --> 00:00:49.637
+ReLU zeroes half of a symmetric input, halving the second moment, so He and colleagues (2015) derived a correction: weight variance 2/n, a gain of sqrt(2).
+
+8
+00:00:49.917 --> 00:00:59.475
+tanh is contractive (its slope is at most 1), so it shrinks the variance a little, and PyTorch’s calculate_gain uses 5/3 to compensate.
+
+9
+00:00:59.755 --> 00:01:10.869
+Glorot and Bengio (2010) earlier made the same argument for the backward pass and proposed averaging fan_in and fan_out so both directions are roughly preserved.
+
+10
+00:01:11.149 --> 00:01:22.136
+The lecture’s point at 27:53 is that you can see this empirically: draw a batch, push it through a layer with different weight scales, and look at the standard deviation coming out.
+
+11
+00:01:22.416 --> 00:01:24.699
+The exercise below does exactly that.
+
+12
+00:01:24.979 --> 00:01:26.600
+It also notes the limits.
+
+13
+00:01:26.880 --> 00:01:40.192
+These derivations assume independence and specific distributions, and they become less critical once normalization layers and better optimizers are in place, which is part of why modern networks train at all at depth.

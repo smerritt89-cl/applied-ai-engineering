@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.240
+Pattern 2: streaming to a browser.
+
+2
+00:00:02.520 --> 00:00:13.741
+With streaming, the API sends the reply as it is generated, using server-sent events (SSE), a plain HTTP response with content type text/event-stream.
+
+3
+00:00:14.021 --> 00:00:21.808
+The body is a sequence of events, each a few lines of field: value (most often event: and data: ), separated by a blank line.
+
+4
+00:00:22.088 --> 00:00:26.547
+Lines that start with a colon are comments, which servers use as keep-alives.
+
+5
+00:00:26.827 --> 00:00:32.992
+The format is defined in the HTML standard, and MDN’s guide is the practical reference.
+
+6
+00:00:33.272 --> 00:00:34.957
+A chat feature streams twice.
+
+7
+00:00:35.237 --> 00:00:41.211
+First hop: your server opens a stream to the Claude API and receives events in a fixed order.
+
+8
+00:00:41.491 --> 00:00:57.107
+message_start arrives first, then for each content block a content_block_start, a run of content_block_delta events carrying the text, and a content_block_stop; then message_delta (which carries the stop reason and usage) and finally message_stop.
+
+9
+00:00:57.387 --> 00:01:09.696
+The stream can also contain ping events, and, importantly, error events: the streaming docs show an overloaded_error arriving mid-stream, after the HTTP status was already 200.
+
+10
+00:01:09.976 --> 00:01:18.253
+Second hop: your server re-emits the parts the user needs (text deltas, a final status) as its own event stream to the browser.
+
+11
+00:01:18.533 --> 00:01:21.264
+Don’t forward the provider’s raw stream to the browser.
+
+12
+00:01:21.544 --> 00:01:22.568
+Translate it.
+
+13
+00:01:22.848 --> 00:01:34.752
+You decide the event vocabulary (for example meta, delta, done, error ), you drop what the client shouldn’t see, and you get a place to enforce deadlines and handle failures, which lesson 2 builds on.
+
+14
+00:01:35.032 --> 00:01:36.589
+Three practical details.
+
+15
+00:01:36.869 --> 00:01:39.237
+The SDK’s stream helpers ( client.
+
+16
+00:01:39.517 --> 00:01:40.435
+messages.
+
+17
+00:01:40.715 --> 00:01:41.568
+stream(.)
+
+18
+00:01:41.848 --> 00:01:47.523
+with text_stream and get_final_message() in Python) do the parsing for you on the first hop.
+
+19
+00:01:47.803 --> 00:02:01.435
+The browser’s built-in EventSource only issues GET requests without a body, so chat front ends that need to POST a message often use fetch and read the response body as a stream instead; the wire format is the same.
+
+20
+00:02:01.715 --> 00:02:03.763
+And over HTTP/1.
+
+21
+00:02:04.043 --> 00:02:15.819
+1, browsers allow only about six concurrent SSE connections per domain across all tabs, according to MDN, so long-lived streams per tab add up faster than you’d expect.

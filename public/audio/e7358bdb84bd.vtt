@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.709
+Expressions as graphs, and local derivatives.
+
+2
+00:00:02.989 --> 00:00:15.064
+Write a computation as a directed acyclic graph: leaves are inputs and parameters, interior nodes are elementary operations, and one node is the output, usually called L for loss.
+
+3
+00:00:15.344 --> 00:00:24.475
+The video’s neuron is a good running example: n = x1 w1 + x2 w2 + b, and o = tanh(n).
+
+4
+00:00:24.755 --> 00:00:39.603
+Each operation knows its local derivatives, the partial derivatives of its output with respect to its own inputs, and nothing else: Addition c = a + b: the partial of c with respect to a is 1, and with respect to b is 1.
+
+5
+00:00:39.883 --> 00:00:42.869
+Addition routes gradient unchanged to both inputs.
+
+6
+00:00:43.149 --> 00:00:49.699
+Multiplication c = a times b: the partial with respect to a is b, and with respect to b is a.
+
+7
+00:00:49.979 --> 00:00:51.493
+Multiplication swaps.
+
+8
+00:00:51.773 --> 00:00:57.299
+tanh: if t = tanh(n), then dt/dn = 1 minus t squared.
+
+9
+00:00:57.579 --> 00:01:02.315
+Conveniently, this uses the output t, which the forward pass already computed.
+
+10
+00:01:02.595 --> 00:01:04.344
+The chain rule composes them.
+
+11
+00:01:04.624 --> 00:01:12.411
+If L depends on c and c depends on a, then dL/da = (dL/dc)(dc/da).
+
+12
+00:01:12.691 --> 00:01:27.411
+Backpropagation is that rule applied node by node from the output back to the leaves: each node receives dL/d(itself) from downstream, multiplies by its local derivative, and passes the result to its inputs.

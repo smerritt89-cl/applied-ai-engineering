@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.813
+Parallel sessions and worktrees.
+
+2
+00:00:02.093 --> 00:00:07.640
+Once work is decomposed, some steps are independent, and you can run them at the same time.
+
+3
+00:00:07.920 --> 00:00:11.184
+Each needs its own checkout, or the sessions’ edits collide.
+
+4
+00:00:11.464 --> 00:00:19.955
+Git worktrees give you exactly that: additional working directories attached to one repository, each on its own branch, sharing history.
+
+5
+00:00:20.235 --> 00:00:35.509
+In Claude Code, claude -w feature-auth starts a session in a new worktree; subagents can set isolation: worktree; and /batch splits a large mechanical change into units, each in its own worktree, after showing you the plan.
+
+6
+00:00:35.789 --> 00:00:39.245
+The best-practices page notes a few practical details.
+
+7
+00:00:39.525 --> 00:00:42.768
+A worktree is a fresh checkout, so gitignored files like.
+
+8
+00:00:43.048 --> 00:00:47.891
+env aren’t there and dependencies aren’t installed; list small files to copy in a.
+
+9
+00:00:48.171 --> 00:00:51.435
+worktreeinclude, and keep the install command in CLAUDE.
+
+10
+00:00:51.715 --> 00:00:52.525
+md.
+
+11
+00:00:52.805 --> 00:01:00.656
+Clean-up is mostly automatic for interactive sessions, but claude -p --worktree runs are yours to remove with git worktree remove.
+
+12
+00:01:00.936 --> 00:01:04.413
+Then the constraint that actually binds: your review capacity.
+
+13
+00:01:04.693 --> 00:01:08.725
+Three parallel sessions produce three diffs that all need a careful read.
+
+14
+00:01:09.005 --> 00:01:21.763
+Parallelism pays off when the streams are truly independent (different modules, no shared interfaces) and each has strong automated checks, so your review is a confirmation rather than an investigation.
+
+15
+00:01:22.043 --> 00:01:31.856
+When two streams touch the same code, sequence them or extract the shared change first; otherwise you inherit a merge that nobody checked against both specs.

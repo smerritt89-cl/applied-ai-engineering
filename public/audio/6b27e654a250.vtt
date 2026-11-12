@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.984
+Pattern 4: batch processing.
+
+2
+00:00:02.264 --> 00:00:09.069
+When results can wait hours and nobody is watching, the cheapest option is often the provider’s own batch interface.
+
+3
+00:00:09.349 --> 00:00:19.099
+Anthropic’s Message Batches API takes a list of ordinary Messages requests, each with a custom_id you choose, and processes them asynchronously.
+
+4
+00:00:19.379 --> 00:00:38.749
+According to the batch processing docs on the review date, batches cost 50 percent of standard prices, hold up to 100,000 requests or 256 MB, usually finish within an hour, and expire after 24 hours if not finished; results stay available for 29 days.
+
+5
+00:00:39.029 --> 00:00:47.307
+A batch request can’t stream, can’t set fallbacks or speed, and Batches have their own rate limits, separate from the Messages API’s.
+
+6
+00:00:47.587 --> 00:01:00.152
+Batch fits work like nightly classification of the day’s support tickets, backfilling summaries for an archive, re-scoring a test set when you change a prompt (Studio 3), or generating synthetic data.
+
+7
+00:01:00.432 --> 00:01:02.949
+It does not fit anything a user is waiting on.
+
+8
+00:01:03.229 --> 00:01:05.491
+Two habits make batch pipelines correct.
+
+9
+00:01:05.771 --> 00:01:12.683
+First, key results by custom_id, never by position: the docs say results can come back in any order.
+
+10
+00:01:12.963 --> 00:01:15.096
+Second, handle every result type.
+
+11
+00:01:15.376 --> 00:01:25.019
+Each result is succeeded, errored, canceled, or expired, and a production pipeline counts each kind, re-submits the retryable ones, and reports the rest.
+
+12
+00:01:25.299 --> 00:01:32.637
+A batch with 3 percent of items silently missing is a quiet data-quality bug that shows up weeks later in a dashboard.

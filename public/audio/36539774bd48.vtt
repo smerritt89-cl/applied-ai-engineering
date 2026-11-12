@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.240
+Cross-entropy for a batch, in one line.
+
+2
+00:00:02.520 --> 00:00:10.968
+Exercise 2 collapses the cross-entropy backward, which exercise 1 did through a dozen intermediate tensors, into one expression.
+
+3
+00:00:11.248 --> 00:00:23.280
+You derived the single-example version in lesson 3: the gradient of minus log softmax(z)_y with respect to z is softmax(z) minus the one-hot vector for y.
+
+4
+00:00:23.560 --> 00:00:30.003
+The loss for a batch is the mean over N examples, so each example’s term is scaled by 1/N.
+
+5
+00:00:30.283 --> 00:00:36.341
+The result: dlogits equals (softmax(logits) minus one-hot(Y)), divided by N.
+
+6
+00:00:36.621 --> 00:00:43.683
+Each row sums to zero, so the gradient only redistributes probability mass, pulling it toward the correct class.
+
+7
+00:00:43.963 --> 00:00:48.357
+That zero-sum structure is a free sanity check on any implementation.
+
+8
+00:00:48.637 --> 00:00:51.645
+This is also why frameworks fuse softmax with the loss.
+
+9
+00:00:51.925 --> 00:01:02.443
+Backpropagating separately through exp, sum, divide, log, and index works, but it allocates several N by V intermediates and multiplies small numbers together.
+
+10
+00:01:02.723 --> 00:01:06.115
+The fused formula is one subtraction and one division.
+
+11
+00:01:06.395 --> 00:01:13.328
+With a 50,000-token vocabulary, as in GPT-2, that difference is very real.

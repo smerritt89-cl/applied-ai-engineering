@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.621
+Why not just train everything?
+
+2
+00:00:01.901 --> 00:00:07.149
+Full fine-tuning updates every weight, and the optimizer has to keep state for every weight.
+
+3
+00:00:07.429 --> 00:00:09.755
+A back-of-envelope count shows the problem.
+
+4
+00:00:10.035 --> 00:00:29.811
+With mixed-precision training and the Adam optimizer, a common layout stores, per parameter, 16-bit weights and 16-bit gradients (2 bytes each), a 32-bit master copy of the weights (4 bytes), and two 32-bit Adam moment estimates (8 bytes): about 16 bytes per parameter before activations.
+
+5
+00:00:30.091 --> 00:00:36.981
+For a 7B model that is roughly 112 GB, which is more than any single consumer GPU.
+
+6
+00:00:37.261 --> 00:00:43.811
+Your setup may differ (8-bit optimizers, no master copy), but the order of magnitude is the point.
+
+7
+00:00:44.091 --> 00:00:47.461
+The papers you’ll read today report the same pressure at scale.
+
+8
+00:00:47.741 --> 00:00:55.251
+Hu and colleagues (2021) cut training memory for GPT-3 175B from 1.
+
+9
+00:00:55.531 --> 00:00:58.709
+2 TB to 350 GB with LoRA.
+
+10
+00:00:58.989 --> 00:01:13.944
+Dettmers and colleagues (2023) report that full 16-bit fine-tuning of a 65B model needs more than 780 GB of GPU memory, and that QLoRA brings it under 48 GB.
+
+11
+00:01:14.224 --> 00:01:16.933
+There is also a storage and operations problem.
+
+12
+00:01:17.213 --> 00:01:21.032
+A full fine-tune produces a full copy of the model per task.
+
+13
+00:01:21.312 --> 00:01:36.160
+With LoRA, the GPT-3 checkpoint for a task shrank from 350 GB to about 35 MB in the paper’s setup, so you keep one base model and many small adapters, and swap them per request or per customer.
+
+14
+00:01:36.440 --> 00:01:39.512
+Lesson 11 shows servers that do exactly that.

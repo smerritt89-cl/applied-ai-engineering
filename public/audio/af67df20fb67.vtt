@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.347
+CaMeL: control flow and data flow.
+
+2
+00:00:02.627 --> 00:00:14.552
+Google DeepMind’s CaMeL (“Defeating Prompt Injections by Design,” Debenedetti and colleagues, 2025) builds on the dual LLM pattern and closes that hole.
+
+3
+00:00:14.832 --> 00:00:16.432
+It makes two separations.
+
+4
+00:00:16.712 --> 00:00:19.635
+Control flow comes only from the trusted query.
+
+5
+00:00:19.915 --> 00:00:26.251
+The privileged model turns the user’s request into a small program in a restricted Python-like language.
+
+6
+00:00:26.531 --> 00:00:31.949
+The program fixes which tools run and in what order before any untrusted data is read.
+
+7
+00:00:32.229 --> 00:00:40.677
+Untrusted data, parsed by the quarantined model into structured values, can fill in arguments but cannot add, remove, or reorder steps.
+
+8
+00:00:40.957 --> 00:00:48.744
+Data flow is tracked with capabilities: metadata attached to every value recording where it came from and who is allowed to read it.
+
+9
+00:00:49.024 --> 00:00:52.395
+When values are combined, their capabilities combine too.
+
+10
+00:00:52.675 --> 00:00:59.032
+Before each tool call, a custom interpreter checks the arguments’ capabilities against security policies.
+
+11
+00:00:59.312 --> 00:01:11.003
+A policy for sending email might say: the recipient must not come from untrusted content, unless it is in the user’s contacts, and every recipient must be an allowed reader of the body.
+
+12
+00:01:11.283 --> 00:01:14.803
+If a policy fails, the call is blocked or the user is asked.
+
+13
+00:01:15.083 --> 00:01:26.880
+The paper reports that, on the AgentDojo benchmark, CaMeL solved 77% of tasks with provable security, compared with 84% for an undefended system.
+
+14
+00:01:27.160 --> 00:01:39.875
+That gap is the honest price of the design, and the paper is open about others: someone has to write and maintain the policies, and asking users to confirm policy violations brings back the fatigue problem.
+
+15
+00:01:40.155 --> 00:01:50.181
+Willison’s commentary adds that its strength is that it doesn’t rely on more AI to catch AI; the guarantees come from the interpreter, which is ordinary code.
+
+16
+00:01:50.461 --> 00:01:52.787
+You’ll build a small version of that check below.

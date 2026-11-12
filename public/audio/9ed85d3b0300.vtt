@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.685
+Least privilege, three ways.
+
+2
+00:00:01.965 --> 00:00:07.896
+Least privilege means each part of the system gets the narrowest access that still does its job.
+
+3
+00:00:08.176 --> 00:00:10.523
+For an agent, apply it on three axes.
+
+4
+00:00:10.803 --> 00:00:11.656
+Tools.
+
+5
+00:00:11.936 --> 00:00:14.624
+Give the agent only the tools the task needs.
+
+6
+00:00:14.904 --> 00:00:24.653
+OWASP’s Excessive Agency entry lists excessive functionality as a root cause: an extension that only needs to read documents but can also delete them.
+
+7
+00:00:24.933 --> 00:00:34.192
+Anthropic’s Managed Agents security guide puts it as a default: start the agent toolset with every tool disabled, then enable the ones you need.
+
+8
+00:00:34.472 --> 00:00:39.741
+A tool that is not loaded cannot be misused, and it also costs no context tokens.
+
+9
+00:00:40.021 --> 00:00:41.024
+Credentials.
+
+10
+00:00:41.304 --> 00:00:44.632
+The tool’s identity should be scoped to the task, not to you.
+
+11
+00:00:44.912 --> 00:00:52.955
+A status-report agent needs read access to issues and permission to post in one channel, not an admin token for the whole tracker.
+
+12
+00:00:53.235 --> 00:01:02.045
+GitHub’s fine-grained personal access tokens, which you’ll use in the project, can be limited to specific repositories and specific permissions.
+
+13
+00:01:02.325 --> 00:01:13.376
+The Managed Agents guide goes further: keep credentials in a vault that injects them into outbound requests, so the secret never sits in the sandbox where the agent could read and leak it.
+
+14
+00:01:13.656 --> 00:01:14.467
+Network.
+
+15
+00:01:14.747 --> 00:01:21.829
+Most damage from a fooled agent leaves through the network: an email, an HTTP request, a rendered image.
+
+16
+00:01:22.109 --> 00:01:24.669
+Restrict egress to the hosts the task needs.
+
+17
+00:01:24.949 --> 00:01:40.224
+The Managed Agents guide’s recommended environment setting is limited networking with only the hosts the agent needs, and Claude Code’s sandbox routes every connection through a proxy that checks the host against your allowed domains, which start empty.
+
+18
+00:01:40.504 --> 00:01:45.752
+Least privilege has one more benefit that matters to a PM: it makes the risk legible.
+
+19
+00:01:46.032 --> 00:01:53.179
+“This agent can read issues in two repos and post to one channel” is a sentence a security reviewer can approve.
+
+20
+00:01:53.459 --> 00:01:55.549
+“This agent has my token” is not.

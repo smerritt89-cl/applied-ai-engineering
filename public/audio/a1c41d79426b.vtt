@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.835
+Read, write, and reversible.
+
+2
+00:00:02.115 --> 00:00:05.208
+Studio 1 sorted tools into reads and writes.
+
+3
+00:00:05.488 --> 00:00:11.248
+For agents, add a second axis: reversibility, meaning how cheaply you can undo the effect.
+
+4
+00:00:11.528 --> 00:00:13.341
+A useful grid has three rows.
+
+5
+00:00:13.621 --> 00:00:24.075
+Reads (list issues, fetch a docs page) change nothing; their worst outcome is a wrong answer or, as you’ll see next lesson, untrusted text entering the context.
+
+6
+00:00:24.355 --> 00:00:30.563
+Reversible writes (create a draft, add a label, open a pull request) change state you can roll back.
+
+7
+00:00:30.843 --> 00:00:42.427
+Irreversible or external writes (send an email, post to a customer channel, merge, delete, pay) cannot be recalled once they happen, and often affect people outside your system.
+
+8
+00:00:42.707 --> 00:00:44.776
+The grid tells you where to spend control.
+
+9
+00:00:45.056 --> 00:00:58.347
+Reads can usually run without asking, as long as they cannot also carry data out (a “read” tool that fetches arbitrary URLs is also a way to send data in the query string; treat it as outbound).
+
+10
+00:00:58.627 --> 00:01:04.323
+Reversible writes can run automatically inside a sandbox if you log them and can undo them.
+
+11
+00:01:04.603 --> 00:01:18.832
+Irreversible writes get a human, or a design that makes them reversible: a draft-then-approve step, where the agent writes a draft and a person publishes it, turns “post to Slack” into “create a draft” plus one deliberate click.
+
+12
+00:01:19.112 --> 00:01:21.885
+That pattern is the spine of this studio’s project.
+
+13
+00:01:22.165 --> 00:01:24.960
+Two more properties make writes safer to automate.
+
+14
+00:01:25.240 --> 00:01:29.827
+Idempotency (Studio 1): a retried call does not create a duplicate.
+
+15
+00:01:30.107 --> 00:01:38.768
+And dry runs: a mode where the tool reports what it would do without doing it, which is also the cheapest way to show a reviewer the exact effect.

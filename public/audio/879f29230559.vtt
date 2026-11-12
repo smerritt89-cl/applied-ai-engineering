@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.344
+What a wait is made of.
+
+2
+00:00:01.624 --> 00:00:04.099
+A latency complaint is not one number.
+
+3
+00:00:04.379 --> 00:00:12.571
+Four measurements name where a wait comes from: Time to first token (TTFT): from sending the request until the response starts.
+
+4
+00:00:12.851 --> 00:00:17.245
+It covers the network, queueing, and reading whatever part of the prompt isn’t cached.
+
+5
+00:00:17.525 --> 00:00:23.541
+Time to first visible output: until the first text or tool call a person or program can use.
+
+6
+00:00:23.821 --> 00:00:30.029
+When the model thinks first, this comes only after the thinking, so it can be many seconds after TTFT.
+
+7
+00:00:30.309 --> 00:00:36.005
+Many people say “TTFT” when they mean this one, so check which your logs actually measure.
+
+8
+00:00:36.285 --> 00:00:39.208
+Time to finish: until the response is complete.
+
+9
+00:00:39.488 --> 00:00:45.589
+For an agent, the wait that matters is the whole task: every call in the loop plus everything between them.
+
+10
+00:00:45.869 --> 00:00:51.587
+Output speed (OTPS): tokens per second between the first token and the last, thinking included.
+
+11
+00:00:51.867 --> 00:01:05.776
+Anthropic’s latency cookbook ties these together with a first-order equation for a task: task time is about calls times TTFT, plus output tokens divided by output speed, plus everything outside the model.
+
+12
+00:01:06.056 --> 00:01:13.160
+“Everything outside” means tool execution, network hops, queues, retries after rate limits, and your own processing.
+
+13
+00:01:13.440 --> 00:01:24.768
+The equation gives you five ways to shorten a task: fewer calls, shorter TTFT, fewer output tokens (thinking included), faster output, and less time outside the model.
+
+14
+00:01:25.048 --> 00:01:29.891
+It sets the order in which to look; only measurement says which lever wins on your workload.
+
+15
+00:01:30.171 --> 00:01:39.451
+Anthropic’s own reducing-latency page adds a warning worth taping to your monitor: engineer a prompt that works well first, then reduce latency.
+
+16
+00:01:39.731 --> 00:01:44.424
+Optimizing too early can stop you from discovering what top performance looks like.

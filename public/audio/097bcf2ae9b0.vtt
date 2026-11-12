@@ -1,0 +1,121 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:00.981
+The checklist.
+
+2
+00:00:01.261 --> 00:00:10.861
+Google’s engineering practices list what reviewers look for: design, functionality, complexity, tests, naming, comments, style, and documentation.
+
+3
+00:00:11.141 --> 00:00:12.443
+Keep that as the base.
+
+4
+00:00:12.723 --> 00:00:18.696
+For agent-written changes, add six questions, in this order: Does it match the spec, and only the spec?
+
+5
+00:00:18.976 --> 00:00:22.923
+List the files you expected to change; compare with the files that did.
+
+6
+00:00:23.203 --> 00:00:25.229
+Every extra file needs a reason.
+
+7
+00:00:25.509 --> 00:00:34.341
+“For consistency” refactors, renamed variables, and reformatted files are scope creep: they enlarge the review and hide the real change.
+
+8
+00:00:34.621 --> 00:00:35.901
+Did any test change?
+
+9
+00:00:36.181 --> 00:00:38.613
+Read test diffs first (lesson 7).
+
+10
+00:00:38.893 --> 00:00:45.571
+A changed expectation, a new skip, or a deleted test needs your judgment before anything else means anything.
+
+11
+00:00:45.851 --> 00:00:47.899
+Were safeguards removed or weakened?
+
+12
+00:00:48.179 --> 00:01:03.411
+Look at removed lines, not just added ones: input validation, permission and auth checks, expiry checks, rate limits, error handling replaced by a bare except: pass, a timeout raised to “fix” a flaky test, a security header dropped.
+
+13
+00:01:03.691 --> 00:01:07.104
+Agents remove obstacles; some obstacles are the point.
+
+14
+00:01:07.384 --> 00:01:08.557
+New dependencies?
+
+15
+00:01:08.837 --> 00:01:10.416
+Any change to requirements.
+
+16
+00:01:10.696 --> 00:01:12.253
+txt, pyproject.
+
+17
+00:01:12.533 --> 00:01:13.643
+toml, package.
+
+18
+00:01:13.923 --> 00:01:15.565
+json, or a lockfile.
+
+19
+00:01:15.845 --> 00:01:24.741
+Spracklen and colleagues (2024) tested 16 code-generating models and found hallucinated package names in at least 5.
+
+20
+00:01:25.021 --> 00:01:29.480
+2% of suggestions on average for commercial models and 21.
+
+21
+00:01:29.760 --> 00:01:35.776
+7% for open-source models; a name that doesn’t exist can be registered by an attacker.
+
+22
+00:01:36.056 --> 00:01:40.301
+Check that each package exists, is maintained, and is actually needed.
+
+23
+00:01:40.581 --> 00:01:42.309
+Security-sensitive patterns?
+
+24
+00:01:42.589 --> 00:01:58.589
+Shell commands built from strings, eval, disabled certificate checks, secrets or tokens in code, broadened CORS or permissions, SQL built by concatenation, new network calls, changes to CI workflows or agent configuration (.
+
+25
+00:01:58.869 --> 00:02:00.619
+github/workflows/,.
+
+26
+00:02:00.899 --> 00:02:02.179
+claude/settings.
+
+27
+00:02:02.459 --> 00:02:03.696
+json, hooks).
+
+28
+00:02:03.976 --> 00:02:05.939
+Would you understand this in six months?
+
+29
+00:02:06.219 --> 00:02:15.520
+Agents can write code that works and is still wrong for your codebase: a second way of doing something you already do one way, an abstraction nobody asked for.
+
+30
+00:02:15.800 --> 00:02:18.808
+If you couldn’t explain it to a teammate, you can’t maintain it.

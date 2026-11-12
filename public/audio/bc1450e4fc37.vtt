@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.219
+Coverage of edge cases, not lines.
+
+2
+00:00:02.499 --> 00:00:15.043
+Agents write tests readily, and many of them are weak in a specific way: they exercise the code the agent just wrote, with expected values computed by the same logic, so they pass by construction.
+
+3
+00:00:15.323 --> 00:00:17.157
+Three practices raise the bar.
+
+4
+00:00:17.437 --> 00:00:19.144
+Name the edge cases yourself.
+
+5
+00:00:19.424 --> 00:00:37.899
+Before asking for tests, list the cases that matter from the requirement: boundaries (exactly 10 units, exactly 50), empty and maximum inputs, invalid inputs that must be rejected, the interactions between rules (does making promo codes case-insensitive bypass the expiry check?)
+
+6
+00:00:38.179 --> 00:00:42.317
+Ask for tests with literal expected values worked out from the spec.
+
+7
+00:00:42.597 --> 00:00:50.341
+This is a few minutes of your judgment, and it’s the part an agent is least able to supply because it requires knowing what the business meant.
+
+8
+00:00:50.621 --> 00:00:53.416
+Measure branch coverage, not just line coverage.
+
+9
+00:00:53.696 --> 00:00:54.592
+The coverage.
+
+10
+00:00:54.872 --> 00:01:06.008
+py docs explain that branch measurement tracks whether each possible jump (both sides of an if ) was taken, so it reveals untested paths that line coverage reports as covered.
+
+11
+00:01:06.288 --> 00:01:10.384
+Run it after the agent’s tests and ask for tests for the missing branches.
+
+12
+00:01:10.664 --> 00:01:14.461
+Treat the number as a map of what’s untested, not a target to hit.
+
+13
+00:01:14.741 --> 00:01:17.067
+Use properties for whole classes of inputs.
+
+14
+00:01:17.347 --> 00:01:31.405
+Property-based testing tools such as Hypothesis generate many inputs and check that a stated property holds (for example, a discount never makes a price negative, and a larger quantity never costs less per unit within a tier).
+
+15
+00:01:31.685 --> 00:01:36.784
+Properties are hard to game with special cases, because the inputs aren’t known in advance.

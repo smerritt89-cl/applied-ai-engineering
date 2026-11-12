@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.579
+From an eval to a test suite.
+
+2
+00:00:01.859 --> 00:00:05.528
+An eval you run by hand when you remember to is a measurement.
+
+3
+00:00:05.808 --> 00:00:18.288
+An eval that runs automatically and can block a merge is a regression test, and it changes how a team works: nobody has to remember, and nobody can quietly ship a prompt that breaks last month’s fixes.
+
+4
+00:00:18.568 --> 00:00:23.688
+Anthropic’s guide to agent evals draws a useful line between two kinds of suite.
+
+5
+00:00:23.968 --> 00:00:30.368
+Capability evals ask what the system can do and should start with a low pass rate, giving you a hill to climb.
+
+6
+00:00:30.648 --> 00:00:36.088
+Regression evals ask whether it still does what it used to and should sit near 100 percent.
+
+7
+00:00:36.368 --> 00:00:41.296
+As capability tasks become reliably solved, they graduate into the regression suite.
+
+8
+00:00:41.576 --> 00:00:50.472
+The two kinds want different handling: a capability score is something you report with an interval and discuss; a regression suite is something you gate on.
+
+9
+00:00:50.752 --> 00:00:52.587
+What goes into the regression suite?
+
+10
+00:00:52.867 --> 00:00:59.075
+The failure modes you found in error analysis (week 1), each turned into a few concrete cases.
+
+11
+00:00:59.355 --> 00:01:03.216
+Every production bug that reached a user, as a case that would have caught it.
+
+12
+00:01:03.496 --> 00:01:10.301
+Must-pass cases: safety refusals, the account-deletion flow, anything where one failure is unacceptable.
+
+13
+00:01:10.581 --> 00:01:15.872
+And a broad sample of ordinary traffic, so the suite reflects what users actually ask.
+
+14
+00:01:16.152 --> 00:01:30.445
+Hamel Husain and Shreya Shankar describe this repeatable eval set growing over time, often to 100 or more examples, with coverage of important workflows and known failures deciding its size, not a target number.
+
+15
+00:01:30.725 --> 00:01:33.008
+This is where engineering habits pay off.
+
+16
+00:01:33.288 --> 00:01:41.501
+The suite is code: versioned, reviewed, and run by CI (continuous integration, the system that runs your tests on every change).
+
+17
+00:01:41.781 --> 00:01:45.216
+Its graders are code too, and they need their own unit tests.

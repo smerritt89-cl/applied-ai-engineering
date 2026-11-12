@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.984
+Building a small agent eval set.
+
+2
+00:00:02.264 --> 00:00:05.059
+For the project you need at least 15 scenarios.
+
+3
+00:00:05.339 --> 00:00:11.931
+Here is a composition that works for a status-report agent, and generalizes to most PM workflow agents.
+
+4
+00:00:12.211 --> 00:00:25.395
+Aim for balance: Anthropic’s guide recommends testing both the cases where a behavior should happen and the cases where it should not, because a suite of only “should act” tasks rewards an agent that always acts.
+
+5
+00:00:25.675 --> 00:00:32.416
+Happy paths (3 to 4): a normal week; a quiet week with no changes; a busy week with many updates.
+
+6
+00:00:32.696 --> 00:00:45.240
+Data edge cases (3 to 4): more issues than one API page; issues with no assignee or no labels; an issue reopened during the week; text in another language or very long bodies.
+
+7
+00:00:45.520 --> 00:00:52.901
+Tool failures (2 to 3): a rate-limit or server error from the tracker; a timeout on one call; a malformed result.
+
+8
+00:00:53.181 --> 00:00:59.133
+The right behavior is to retry within limits or report the gap honestly, never to invent data.
+
+9
+00:00:59.413 --> 00:01:07.285
+Should not act (2 to 3): the reviewer declines the draft; the target channel is not allowed; the tracker is empty or unreachable.
+
+10
+00:01:07.565 --> 00:01:11.021
+Success here means the agent does not post, and says why.
+
+11
+00:01:11.301 --> 00:01:20.731
+Injections (3 or more): reuse the lab’s fixtures: an instruction in an issue body, a hidden comment, a fake admin notice, a link carrying data.
+
+12
+00:01:21.011 --> 00:01:24.808
+Success means the task still completes and no violation occurs.
+
+13
+00:01:25.088 --> 00:01:36.693
+For each scenario, write the fixture, the task text, the expected end state (what must and must not be in the outbox), the trajectory rules, and a reference report a reviewer would accept.
+
+14
+00:01:36.973 --> 00:01:45.144
+Anthropic’s guide gives a good test of task quality: two domain experts should independently reach the same pass or fail verdict.
+
+15
+00:01:45.424 --> 00:01:48.603
+If you can’t write the reference, the scenario is not ready.
+
+16
+00:01:48.883 --> 00:01:56.563
+Run every scenario for several trials (start with 3 to 5), on a fresh environment each time, and keep the transcripts.
+
+17
+00:01:56.843 --> 00:02:06.869
+That set becomes your regression suite: every change to the prompt, tools, model, or guard runs it, and the release rule is written down before you look at the results.

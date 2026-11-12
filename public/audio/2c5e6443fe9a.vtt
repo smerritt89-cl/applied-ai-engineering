@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.496
+Stopping conditions: you need more than one.
+
+2
+00:00:02.776 --> 00:00:09.133
+A loop that ends only when the model stops calling tools is fine for a demo and dangerous in production.
+
+3
+00:00:09.413 --> 00:00:11.035
+Plan for four kinds of stop.
+
+4
+00:00:11.315 --> 00:00:12.445
+Natural stop.
+
+5
+00:00:12.725 --> 00:00:18.869
+The model returns a response with no tool calls (on the Claude API, stop_reason is end_turn ).
+
+6
+00:00:19.149 --> 00:00:28.216
+Treat this as a claim of completion and verify it where you can: run the tests, check that every record was handled, confirm the answer cites a source.
+
+7
+00:00:28.496 --> 00:00:30.075
+Abnormal stop reasons.
+
+8
+00:00:30.355 --> 00:00:35.624
+max_tokens can cut a tool call off mid-input, and refusal means the model declined.
+
+9
+00:00:35.904 --> 00:00:37.248
+Neither should run tools.
+
+10
+00:00:37.528 --> 00:00:42.115
+pause_turn means a server tool paused and the request should be resent as is.
+
+11
+00:00:42.395 --> 00:00:43.376
+Hard limits.
+
+12
+00:00:43.656 --> 00:00:46.173
+Cap the number of model calls, and cap spend.
+
+13
+00:00:46.453 --> 00:01:07.573
+Every framework has the first: the Claude SDK tool runner takes max_iterations, the Claude Agent SDK takes max_turns and max_budget_usd, the OpenAI Agents SDK takes max_turns and raises MaxTurnsExceeded, and smolagents runs until a final answer or its maximum number of steps.
+
+14
+00:01:07.853 --> 00:01:14.424
+Defaults differ, and the Agent SDK documents no limit on either by default, so set them yourself.
+
+15
+00:01:14.704 --> 00:01:21.232
+Note how the Agent SDK counts: each turn with tool calls, plus one for the final text answer.
+
+16
+00:01:21.512 --> 00:01:22.792
+No-progress stops.
+
+17
+00:01:23.072 --> 00:01:27.509
+The agent repeats the same call, or several steps add no new information.
+
+18
+00:01:27.789 --> 00:01:40.547
+A budget will eventually catch this, but detecting it earlier saves money and gives a better error message: “stopped after three identical searches” tells the person reading the trace exactly what went wrong.
+
+19
+00:01:40.827 --> 00:01:46.416
+When a hard limit trips, end gracefully: return what you have, mark it as partial, and record why.
+
+20
+00:01:46.696 --> 00:02:00.776
+The Agent SDK does this with result subtypes such as error_max_turns and error_max_budget_usd, and its docs warn that spend can pass the dollar cap by up to the cost of the response that crossed it, so leave headroom.

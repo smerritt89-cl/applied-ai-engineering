@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.115
+Install the SDK, and know which version you have.
+
+2
+00:00:03.395 --> 00:00:06.851
+The official Python SDK is the mcp package.
+
+3
+00:00:07.131 --> 00:00:19.739
+Its v2 line, released in July 2026, supports the stateless 2026-07-28 revision and still serves older clients from the same server.
+
+4
+00:00:20.019 --> 00:00:30.237
+Install it with the CLI extra, which adds the mcp command: pip install "mcp[cli]" (or uv add "mcp[cli]" in a uv project).
+
+5
+00:00:30.517 --> 00:00:32.224
+Two version facts save hours.
+
+6
+00:00:32.504 --> 00:00:40.099
+First, v2 renamed the high-level class: FastMCP is now MCPServer, imported from mcp.
+
+7
+00:00:40.379 --> 00:00:41.125
+server.
+
+8
+00:00:41.405 --> 00:00:50.984
+The decorator API is otherwise the same, so most v1 examples translate directly, but code that imports FastMCP is v1 code.
+
+9
+00:00:51.264 --> 00:00:55.765
+Second, v1 is in maintenance mode, receiving only security fixes.
+
+10
+00:00:56.045 --> 00:01:02.680
+If you inherit a v1 server, pin it below 2 until you migrate, and read the SDK’s migration guide.
+
+11
+00:01:02.960 --> 00:01:07.525
+The SDK’s central idea is that your function signature is the schema.
+
+12
+00:01:07.805 --> 00:01:20.179
+Type hints become JSON Schema types, defaults make parameters optional, Literal becomes an enum, and Annotated with Pydantic’s Field adds descriptions and constraints such as minimum and maximum.
+
+13
+00:01:20.459 --> 00:01:22.784
+The docstring becomes the tool description.
+
+14
+00:01:23.064 --> 00:01:31.363
+The SDK validates every call’s arguments against that schema before your function runs, so a wrong type never reaches your code.
+
+15
+00:01:31.643 --> 00:01:37.872
+Your job is the checks a schema cannot express: does this issue exist, is this status change allowed.

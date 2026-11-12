@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.200
+Safetensors, pickle, and running someone else’s code.
+
+2
+00:00:03.480 --> 00:00:07.235
+For years, PyTorch weights were saved with Python’s pickle format.
+
+3
+00:00:07.515 --> 00:00:15.344
+Hugging Face’s security docs explain the problem plainly: unpickling can execute arbitrary code, so loading a malicious.
+
+4
+00:00:15.624 --> 00:00:18.845
+bin file can run whatever its author wanted on your machine.
+
+5
+00:00:19.125 --> 00:00:23.883
+The Hub scans pickles and shows their imports, but the real fix was a new format.
+
+6
+00:00:24.163 --> 00:00:26.744
+Safetensors stores tensors and nothing else.
+
+7
+00:00:27.024 --> 00:00:43.216
+The format, documented in the project README, is simple enough to read with the standard library: the first 8 bytes are an unsigned little-endian 64-bit integer giving the length of a JSON header; the header maps each tensor name to its dtype, shape,
+
+8
+00:00:43.496 --> 00:00:49.619
+and byte offsets in the buffer that follows; an optional __metadata__ entry holds string-to-string metadata.
+
+9
+00:00:49.899 --> 00:00:59.115
+There is no code to execute, files can be memory-mapped, and a loader can read just the header to learn the model’s shapes, or load one tensor without the rest.
+
+10
+00:00:59.395 --> 00:01:16.035
+In 2023 Hugging Face, EleutherAI, and Stability AI commissioned an external security audit of the library (performed by Trail of Bits) and said its results let them move toward making safetensors the default format for saved models;
+
+11
+00:01:16.315 --> 00:01:20.603
+today it is the format you will find in nearly every major model repo.
+
+12
+00:01:20.883 --> 00:01:23.784
+Code execution can still come in through the front door.
+
+13
+00:01:24.064 --> 00:01:33.408
+Models with custom architectures ship their own Python modeling files, and loading them requires trust_remote_code=True, which runs that code.
+
+14
+00:01:33.688 --> 00:01:44.163
+The transformers docs advise extra caution and recommend loading such models from a specific commit hash with revision=, so the code you reviewed can’t change.
+
+15
+00:01:44.443 --> 00:01:53.552
+Make that a general rule: pin revisions in anything you deploy, prefer safetensors files, and treat trust_remote_code as a code review request.

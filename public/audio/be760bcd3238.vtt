@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.923
+When keyword search beats embeddings, and when it doesn’t.
+
+2
+00:00:03.203 --> 00:00:08.152
+Here is a working map, drawn from the sources above and from how the two methods are built.
+
+3
+00:00:08.432 --> 00:00:12.869
+Treat it as a set of hypotheses to check on your own queries, not as rules.
+
+4
+00:00:13.149 --> 00:00:20.659
+Keyword search tends to win on: Exact identifiers: error codes, SKUs, ticket numbers, clause numbers, version strings.
+
+5
+00:00:20.939 --> 00:00:28.256
+Embeddings compress text into a few hundred or thousand dimensions, and nothing forces two different codes to land far apart.
+
+6
+00:00:28.536 --> 00:00:34.211
+Names and rare terms: surnames, product names, internal project codenames, drug names.
+
+7
+00:00:34.491 --> 00:00:38.416
+A rare term gets a high idf, which is exactly the right instinct.
+
+8
+00:00:38.696 --> 00:00:44.819
+Vocabulary the embedding model never saw: new jargon, acronyms coined after its training data.
+
+9
+00:00:45.099 --> 00:00:47.765
+BM25 needs no training at all.
+
+10
+00:00:48.045 --> 00:00:56.216
+Explainability: you can show which terms matched and how much each contributed, which helps when a stakeholder asks why a result appeared.
+
+11
+00:00:56.496 --> 00:01:04.624
+Embeddings tend to win on: Paraphrase and synonyms: “how do I get my money back” versus a document titled “Refund policy”.
+
+12
+00:01:04.904 --> 00:01:09.043
+BM25 scores that pair at zero unless you add synonyms.
+
+13
+00:01:09.323 --> 00:01:13.205
+Natural-language questions whose key words don’t appear in the answer.
+
+14
+00:01:13.485 --> 00:01:16.728
+Cross-lingual search, with a multilingual embedding model.
+
+15
+00:01:17.008 --> 00:01:28.848
+In a real team, the evidence to collect is a labeled set of queries tagged by type (identifier lookups, how-to questions, policy questions) and recall measured per type for each retriever.
+
+16
+00:01:29.128 --> 00:01:35.059
+You’ll often find each method wins a different slice, which is the case for hybrid search in the next lesson.
+
+17
+00:01:35.339 --> 00:01:44.747
+Anthropic’s experiments reached that conclusion across several knowledge domains: embeddings plus BM25 retrieved better than embeddings alone.

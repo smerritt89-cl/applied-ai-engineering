@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.731
+Target modules and rank: decide with a sweep.
+
+2
+00:00:03.011 --> 00:00:05.592
+Advice on these two choices varies a lot.
+
+3
+00:00:05.872 --> 00:00:09.627
+The original paper adapted attention only, for simplicity.
+
+4
+00:00:09.907 --> 00:00:14.792
+QLoRA found all linear layers necessary to match full fine-tuning.
+
+5
+00:00:15.072 --> 00:00:22.987
+Thinking Machines found MLP layers mattered most and attention-only adapters underperformed even at matched parameter counts.
+
+6
+00:00:23.267 --> 00:00:29.048
+PEFT, if you don’t specify targets, picks defaults by architecture, typically query and value.
+
+7
+00:00:29.328 --> 00:00:37.435
+Hugging Face’s LLM course suggests ranks from 4 to 32, starting at 4 to 8, with alpha about twice the rank.
+
+8
+00:00:37.715 --> 00:00:44.349
+Maxime Labonne’s course lists ranks of 16 to 128 with alpha one to two times the rank.
+
+9
+00:00:44.629 --> 00:00:49.579
+The spread is itself information: the right values depend on the task and the data.
+
+10
+00:00:49.859 --> 00:00:52.312
+So treat them as experiment parameters.
+
+11
+00:00:52.592 --> 00:01:04.133
+A defensible default for a narrow task is target_modules="all-linear", r = 16, alpha = 32 (scale 2), and the learning rate from lesson 7’s guidance.
+
+12
+00:01:04.413 --> 00:01:17.277
+Then run a small sweep: r in 8, 16, and 64, retuning the learning rate if needed (Thinking Machines found the optimum nearly independent of rank under the 1 over r scaling, which makes this cheap).
+
+13
+00:01:17.557 --> 00:01:23.424
+Compare on the frozen validation set with the task metric, plus your general-ability regression set.
+
+14
+00:01:23.704 --> 00:01:31.853
+Pick the smallest configuration within noise of the best, because smaller adapters train faster, forget less, and are cheaper to serve.
+
+15
+00:01:32.133 --> 00:01:34.843
+Model selection belongs in the same table.
+
+16
+00:01:35.123 --> 00:01:37.533
+If a rank-64 adapter on a 0.
+
+17
+00:01:37.813 --> 00:01:46.048
+5B model still trails a 3B model’s rank-16 adapter, the base model was the bottleneck, and no LoRA setting fixes that.
+
+18
+00:01:46.328 --> 00:01:52.920
+Week 4 adds the frontier-model comparison that tells you whether any of it beats a well-prompted API call.

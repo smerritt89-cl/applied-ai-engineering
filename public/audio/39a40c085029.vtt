@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.368
+Two threat models, and who is responsible.
+
+2
+00:00:02.648 --> 00:00:05.357
+The specification is candid about its limits.
+
+3
+00:00:05.637 --> 00:00:20.379
+It says MCP enables arbitrary data access and code execution paths, that tools represent arbitrary code execution and must be treated with caution, and that the protocol cannot enforce its security principles itself.
+
+4
+00:00:20.659 --> 00:00:29.555
+Those principles are user consent and control, data privacy, and tool safety, and implementers are asked to build them into their applications.
+
+5
+00:00:29.835 --> 00:00:36.085
+So security in MCP lives in three places, and you will often be responsible for more than one.
+
+6
+00:00:36.365 --> 00:00:41.208
+Servers must validate inputs, control access, and avoid leaking what they touch.
+
+7
+00:00:41.488 --> 00:00:48.144
+Hosts and clients must get consent, show users what is happening, and keep a human able to deny tool calls.
+
+8
+00:00:48.424 --> 00:00:58.280
+And the people who install servers, which includes you every time you run claude mcp add, decide what code runs on their machine and with which credentials.
+
+9
+00:00:58.560 --> 00:01:01.589
+The MCP docs split the threats into two models.
+
+10
+00:01:01.869 --> 00:01:10.531
+The protocol threat model covers remote servers: OAuth flows, token handling, confused deputies, and server-side request forgery.
+
+11
+00:01:10.811 --> 00:01:28.453
+The local threat model covers your machine: a stdio server is an ordinary process launched under your user account, which inherits your environment variables and can read whatever you can read, including SSH keys and cloud credentials, and can open network connections anywhere.
+
+12
+00:01:28.733 --> 00:01:33.896
+None of that is governed by the protocol; it is governed by how you run the process.
+
+13
+00:01:34.176 --> 00:01:38.891
+This lesson goes through both, first as a server author and then as an installer.
+
+14
+00:01:39.171 --> 00:01:45.229
+Week 4 widens the view to agent permissions, sandboxing, and injection defenses in general.

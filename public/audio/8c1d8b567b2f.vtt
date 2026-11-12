@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.219
+Who can read the logs, and for how long.
+
+2
+00:00:02.499 --> 00:00:07.747
+Treat logs and traces that contain user content as production data, because they are.
+
+3
+00:00:08.027 --> 00:00:24.133
+The OWASP cheat sheet’s guidance on protecting logs applies directly: restrict who can read them, review those privileges periodically, record and monitor access to the logs themselves, protect them against tampering, use secure transport when they cross networks,
+
+4
+00:00:24.413 --> 00:00:27.357
+and keep them for the required period and no longer.
+
+5
+00:00:27.637 --> 00:00:39.925
+A structure that works for LLM systems is two tiers: Metadata tier: ids, versions, token counts, latency, cost, status, pseudonymous user ids, redaction counts.
+
+6
+00:00:40.205 --> 00:00:45.773
+Broadly readable by the engineering team, retained long enough for trend analysis (often months).
+
+7
+00:00:46.053 --> 00:00:47.867
+This is what your dashboards query.
+
+8
+00:00:48.147 --> 00:01:02.483
+Content tier: redacted prompts and outputs, captured only where policy allows, in a separate store with its own access list (named reviewers, on-call during an incident), short retention (days to weeks), and access logging.
+
+9
+00:01:02.763 --> 00:01:05.813
+Spans and metadata records point to it by id.
+
+10
+00:01:06.093 --> 00:01:10.083
+This is the external-storage pattern from the semantic conventions.
+
+11
+00:01:10.363 --> 00:01:12.880
+Retention needs an owner and a mechanism.
+
+12
+00:01:13.160 --> 00:01:16.531
+Set time-to-live on every store at creation, not “later.
+
+13
+00:01:16.811 --> 00:01:33.109
+” Make deletion requests reach every tier: if a customer exercises the right to erasure under GDPR (Article 17), the request has to find their pseudonymous records, their content in the content tier, and any copies in eval datasets.
+
+14
+00:01:33.389 --> 00:01:44.589
+Keeping the HMAC key lets you compute the pseudonym for a known user to find their rows; deleting the key is one way to make old pseudonyms unlinkable, if your policy chooses that.

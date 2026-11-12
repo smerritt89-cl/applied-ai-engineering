@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.856
+Lifetimes and the break-even.
+
+2
+00:00:02.136 --> 00:00:07.875
+The default cache entry lives for five minutes, and every read refreshes it at no extra cost.
+
+3
+00:00:08.155 --> 00:00:11.867
+A one-hour lifetime is available with "ttl": "1h".
+
+4
+00:00:12.147 --> 00:00:18.995
+The lifetime is measured from the start of the request that writes or reads the entry, so a long generation eats into it.
+
+5
+00:00:19.275 --> 00:00:21.664
+The prices make the decision arithmetic.
+
+6
+00:00:21.944 --> 00:00:24.376
+On Claude, a five-minute write costs 1.
+
+7
+00:00:24.656 --> 00:00:29.243
+25 times the base input price and a one-hour write costs 2 times.
+
+8
+00:00:29.523 --> 00:00:30.888
+A read costs 0.
+
+9
+00:00:31.168 --> 00:00:33.600
+05 times base on Opus 5.
+
+10
+00:00:33.880 --> 00:00:35.373
+5 and Sonnet 5.
+
+11
+00:00:35.653 --> 00:00:36.763
+5 and 0.
+
+12
+00:00:37.043 --> 00:00:40.221
+1 times on most other models, at the time of writing.
+
+13
+00:00:40.501 --> 00:00:44.576
+So a five-minute entry pays for itself the first time it is read (1.
+
+14
+00:00:44.856 --> 00:00:50.701
+25 plus a read is less than 2 full-price sends), and a one-hour entry needs two reads.
+
+15
+00:00:50.981 --> 00:00:57.061
+Which lifetime to pick depends on the gaps between requests that share a prefix, not on their average.
+
+16
+00:00:57.341 --> 00:01:08.435
+If requests start less than five minutes apart, each one refreshes the five-minute entry and it stays warm indefinitely, so the one-hour lifetime buys nothing but a pricier write.
+
+17
+00:01:08.715 --> 00:01:19.957
+If gaps of five to sixty minutes are common (a user who replies after twenty minutes, a batch job that takes longer than five minutes), the one-hour entry avoids repeated writes.
+
+18
+00:01:20.237 --> 00:01:29.176
+Anthropic’s cost guide offers a rule of thumb: prefer the one-hour lifetime when about one gap in twenty falls between five minutes and an hour.
+
+19
+00:01:29.456 --> 00:01:34.533
+Beyond an hour, neither helps; you either re-warm on a schedule or accept the cold miss.
+
+20
+00:01:34.813 --> 00:01:38.824
+Caching also helps latency, though less than cost on short prompts.
+
+21
+00:01:39.104 --> 00:01:57.195
+Anthropic’s latency cookbook measured caching cutting cost per task by 85 percent on its sample agent with no significant change in wait, while on a two-turn conversation with a 146,000-token prompt the second turn’s wait fell from 1.
+
+22
+00:01:57.475 --> 00:01:58.989
+7 seconds to 0.
+
+23
+00:01:59.269 --> 00:02:00.037
+5.
+
+24
+00:02:00.317 --> 00:02:03.432
+Long prefixes are where caching shows up in seconds.

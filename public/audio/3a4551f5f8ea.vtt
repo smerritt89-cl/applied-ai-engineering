@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+Make running the tests non-negotiable.
+
+2
+00:00:02.456 --> 00:00:06.317
+There’s a ladder of strictness, and the best-practices page lays it out.
+
+3
+00:00:06.597 --> 00:00:14.149
+At the bottom, ask in the prompt (“run the auth tests after, and keep going until they pass”); Claude decides when it’s satisfied.
+
+4
+00:00:14.429 --> 00:00:16.072
+Put the test command in CLAUDE.
+
+5
+00:00:16.352 --> 00:00:18.144
+md so it always knows how.
+
+6
+00:00:18.424 --> 00:00:22.456
+Next, a goal condition that a separate model checks after each turn.
+
+7
+00:00:22.736 --> 00:00:34.128
+At the top, a Stop hook: Claude Code runs your script whenever Claude tries to end its turn, and if the script exits with code 2, Claude is sent back to work with your stderr as the reason.
+
+8
+00:00:34.408 --> 00:00:40.424
+That’s enforced by the harness, so the turn doesn’t end until the check passes or the block limit is reached.
+
+9
+00:00:40.704 --> 00:00:49.664
+And independent of all of these, CI runs the suite on every pull request, because the last word should belong to something the agent doesn’t control.
+
+10
+00:00:49.944 --> 00:01:00.717
+A PostToolUse hook that runs fast tests after each edit is a useful complement: failures land in the agent’s context immediately, while it still has the change in mind.
+
+11
+00:01:00.997 --> 00:01:04.155
+Keep it fast, and leave the full suite for Stop and CI.

@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.685
+Gates that measure what you mean.
+
+2
+00:00:01.965 --> 00:00:07.427
+Better gates use what you learned in lesson 7: Must-pass cases fail the build on any failure.
+
+3
+00:00:07.707 --> 00:00:11.909
+Keep this list short and run those cases deterministically where you can.
+
+4
+00:00:12.189 --> 00:00:28.680
+A non-inferiority gate for everything else: compare the candidate with the baseline on the same questions, compute the paired difference and its standard error, and fail only if the lower confidence bound falls below minus a margin you chose in advance (say, 3 points).
+
+5
+00:00:28.960 --> 00:00:33.184
+This asks “could the candidate plausibly be worse by more than we tolerate?
+
+6
+00:00:33.464 --> 00:00:36.344
+”, which is the question a release decision needs.
+
+7
+00:00:36.624 --> 00:00:38.821
+Size the margin and the suite together.
+
+8
+00:00:39.101 --> 00:00:42.067
+From lesson 7, the bound’s half-width is about 1.
+
+9
+00:00:42.347 --> 00:00:45.845
+96 times the square root of (discordance rate over n).
+
+10
+00:00:46.125 --> 00:00:57.603
+A 200-question suite where systems disagree on 5 percent of questions gives a half-width of about 3 points, so a 3-point margin would fail identical systems half the time.
+
+11
+00:00:57.883 --> 00:01:04.859
+Either enlarge the suite, accept a larger margin on PRs, or keep the strict gate for the nightly run.
+
+12
+00:01:05.139 --> 00:01:16.829
+Promptfoo builds thresholds into its assertions (a test case can pass when its weighted score meets a threshold), and Inspect reports per-sample scores you can feed into the same analysis.
+
+13
+00:01:17.109 --> 00:01:24.896
+Whatever the tool, make the decision rule explicit, write it next to the suite, and don’t change it after seeing a result you dislike.

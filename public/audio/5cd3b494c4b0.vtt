@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.133
+Fallbacks and graceful degradation.
+
+2
+00:00:02.413 --> 00:00:10.499
+A fallback chain is an ordered list of ways to answer: the primary model, then a cheaper or different model, then a degraded response.
+
+3
+00:00:10.779 --> 00:00:12.848
+The lab’s chain is Claude Opus 5.
+
+4
+00:00:13.128 --> 00:00:14.984
+5, then Claude Sonnet 5.
+
+5
+00:00:15.264 --> 00:00:18.677
+5, then a static “temporarily unavailable” message.
+
+6
+00:00:18.957 --> 00:00:30.029
+Other useful degraded modes: serve a cached answer for a common question, queue the request and notify the user later, or turn the AI feature off and show the non-AI path.
+
+7
+00:00:30.309 --> 00:00:41.253
+Google’s SRE book adds advice that’s easy to skip: test the degraded path regularly, because code that only runs during incidents tends to be broken when you need it.
+
+8
+00:00:41.533 --> 00:00:46.013
+A fallback changes behavior, so treat it as a product decision with evidence.
+
+9
+00:00:46.293 --> 00:01:00.608
+Run your Studio 3 eval on the fallback model too, so you know how much quality you trade for availability, and record which model served each request (the lab’s model and notes fields) so your traces and dashboards can tell them apart.
+
+10
+00:01:00.888 --> 00:01:05.347
+A silent fallback that quietly lowers quality for a week is its own incident.
+
+11
+00:01:05.627 --> 00:01:20.048
+Across providers the same pattern applies, with more work: prompts and tool definitions may need adapting, structured output and refusal behaviors differ, and the providers’ rate limits and outages are independent, which is the point.
+
+12
+00:01:20.328 --> 00:01:29.224
+Keep the fallback behind the same interface (the lab’s two-method ModelClient ), and gate it on an eval run for that provider, not on a smoke test.
+
+13
+00:01:29.504 --> 00:01:32.107
+Refusal fallbacks have first-party support.
+
+14
+00:01:32.387 --> 00:01:53.059
+Anthropic’s refusal docs describe a beta fallbacks parameter: with fallbacks: "default" and the server-side-fallback-2026-07-01 beta header, a declined request is re-run on the fallback model Anthropic recommends for that refusal category, inside the same API call,
+
+15
+00:01:53.339 --> 00:01:55.301
+and the response records the handoff.
+
+16
+00:01:55.581 --> 00:02:06.461
+On the review date it is available on the Claude API and Claude Models on Google Cloud (Anthropic managed); other platforms use a client-side SDK middleware.
+
+17
+00:02:06.741 --> 00:02:11.221
+It is not supported on the Message Batches API, and Claude Haiku 5.
+
+18
+00:02:11.501 --> 00:02:13.592
+5 has no server-side fallback.
+
+19
+00:02:13.872 --> 00:02:19.077
+Every attempt, including the one that declined, counts against its own model’s rate limits.
+
+20
+00:02:19.357 --> 00:02:25.459
+Your own chain still matters: it covers outages and overload, and whatever still comes back refused.

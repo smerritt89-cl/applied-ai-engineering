@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.603
+Per-model prompt tuning, with equal budgets.
+
+2
+00:00:02.883 --> 00:00:13.549
+A prompt tuned for months on one model carries that model’s quirks: the phrasing it responds to, the formatting it needs spelled out, the failure modes you patched with extra instructions.
+
+3
+00:00:13.829 --> 00:00:19.141
+Run it unchanged on another model and you’re comparing a fitted system with an unfitted one.
+
+4
+00:00:19.421 --> 00:00:34.547
+Each provider publishes its own prompting guide (Anthropic’s prompting best practices, OpenAI’s prompt engineering guide, Google’s prompt design strategies for Gemini), and their advice differs in emphasis, as Studio 1 showed.
+
+5
+00:00:34.827 --> 00:00:41.845
+The incumbent advantage is real, and it biases most informal comparisons toward whatever the team already uses.
+
+6
+00:00:42.125 --> 00:00:44.216
+The fix is an equal tuning budget.
+
+7
+00:00:44.496 --> 00:00:48.272
+Split your questions into a development set and a held-out test set.
+
+8
+00:00:48.552 --> 00:01:00.819
+Give each candidate the same allowance on the dev set: the same number of prompt iterations, or the same engineer-hours, starting from the same task description and following that provider’s guidance.
+
+9
+00:01:01.099 --> 00:01:12.939
+Mechanical adaptations (each API’s parameter for the system prompt, its structured-output mechanism, its tool format) don’t count against the budget, because they are porting, not tuning.
+
+10
+00:01:13.219 --> 00:01:17.421
+Then freeze every configuration and score each once on the test set.
+
+11
+00:01:17.701 --> 00:01:19.195
+Two rules make this work.
+
+12
+00:01:19.475 --> 00:01:30.611
+The test set is touched once, at the end; if you iterate on it, the winner is partly the configuration that best fits those particular questions (lesson 7’s GoDeeper on searching).
+
+13
+00:01:30.891 --> 00:01:36.693
+And record the budget each candidate actually used, so a reader can see the comparison was even.
+
+14
+00:01:36.973 --> 00:01:47.875
+When a team can’t afford equal tuning, the honest report says “the incumbent prompt, unmodified, on the challenger” and treats a loss as inconclusive rather than as a verdict.

@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.093
+Product quantization: compress the vectors themselves.
+
+2
+00:00:03.373 --> 00:00:07.619
+HNSW and IVF reduce how many vectors you compare.
+
+3
+00:00:07.899 --> 00:00:15.429
+Product quantization (PQ), from Jégou, Douze, and Schmid (2011), reduces how big each vector is.
+
+4
+00:00:15.709 --> 00:00:18.995
+Split each d-dimensional vector into M sub-vectors.
+
+5
+00:00:19.275 --> 00:00:25.824
+For each sub-space, run k-means to learn a small codebook (with 8 bits, 256 centroids).
+
+6
+00:00:26.104 --> 00:00:29.624
+Store each sub-vector as the index of its nearest centroid.
+
+7
+00:00:29.904 --> 00:00:42.768
+A 1,024-dimensional float32 vector is 4,096 bytes; with M of 64 and 8-bit codes it becomes 64 bytes, a 64-fold reduction.
+
+8
+00:00:43.048 --> 00:00:59.944
+Distances can be computed without decompressing: the paper’s asymmetric method compares the uncompressed query with each stored code, using precomputed tables of distances from the query’s sub-vectors to every centroid, so scoring a vector costs M table lookups.
+
+9
+00:01:00.224 --> 00:01:03.275
+The price is approximation error in every distance.
+
+10
+00:01:03.555 --> 00:01:21.709
+Faiss combines PQ with IVF in its IVFPQ index, which its wiki describes as the usual choice for very large collections, and its index guide pairs compressed codes with refinement: retrieve a larger candidate set with compressed codes, then re-rank it with exact distances.
+
+11
+00:01:21.989 --> 00:01:26.555
+A simpler cousin is scalar or binary quantization of each coordinate.
+
+12
+00:01:26.835 --> 00:01:38.141
+Some providers return these directly: Voyage’s API can return int8 or binary vectors, which its docs describe as cutting storage by 4x and 32x.
+
+13
+00:01:38.421 --> 00:01:41.387
+As always, measure what it does to recall on your data.

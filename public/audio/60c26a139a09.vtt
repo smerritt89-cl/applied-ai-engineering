@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.280
+The inverted index.
+
+2
+00:00:01.560 --> 00:00:03.992
+A book’s index maps words to page numbers.
+
+3
+00:00:04.272 --> 00:00:13.979
+An inverted index does the same for a corpus: for each term, a postings list of the documents that contain it, usually with the count of occurrences in each.
+
+4
+00:00:14.259 --> 00:00:21.747
+To answer a query you look up each query term, take the union of the postings lists as candidates, and score only those.
+
+5
+00:00:22.027 --> 00:00:30.859
+A corpus of ten million chunks may have a few thousand candidates for a specific query, which is why keyword search is fast without any GPUs.
+
+6
+00:00:31.139 --> 00:00:41.208
+Three statistics fall out of the index, and every classic ranking function uses them: Term frequency, tf: how many times the term occurs in this document.
+
+7
+00:00:41.488 --> 00:00:45.285
+Document frequency, n: how many documents contain the term.
+
+8
+00:00:45.565 --> 00:00:47.464
+Rare terms are more informative.
+
+9
+00:00:47.744 --> 00:00:52.096
+Document length, dl, and the average length avgdl across the corpus.
+
+10
+00:00:52.376 --> 00:00:56.899
+Before any of that comes tokenization: the rule that turns text into terms.
+
+11
+00:00:57.179 --> 00:00:59.099
+This is where most real bugs live.
+
+12
+00:00:59.379 --> 00:01:16.616
+A tokenizer that lowercases and splits on every non-letter turns “TS-999” into “ts” and “999”, and now a query for TS-999 also matches every document that mentions 999 users.
+
+13
+00:01:16.896 --> 00:01:23.232
+Stemming (“renewals” to “renewal”), stop-word removal, and handling of accents all change what matches.
+
+14
+00:01:23.512 --> 00:01:26.115
+None of these choices is universally right.
+
+15
+00:01:26.395 --> 00:01:30.875
+Pick them for your corpus, and test them with the queries your users actually type.

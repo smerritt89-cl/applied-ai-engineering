@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.451
+What a language model is.
+
+2
+00:00:01.731 --> 00:00:05.784
+A language model assigns a probability to a sequence of tokens.
+
+3
+00:00:06.064 --> 00:00:24.347
+By the chain rule of probability, any distribution over sequences factors exactly as a product of next-token conditionals: P(c1, …, cT) = P(c1) times P(c2 given c1) times … times P(cT given c1 through cT minus 1).
+
+4
+00:00:24.627 --> 00:00:27.635
+This is not an approximation; it’s an identity.
+
+5
+00:00:27.915 --> 00:00:37.387
+An autoregressive model, which GPT is, learns those conditionals directly, and generating text means sampling from them one token at a time.
+
+6
+00:00:37.667 --> 00:00:41.272
+The approximation comes from what you allow each conditional to see.
+
+7
+00:00:41.552 --> 00:00:52.496
+A bigram model assumes the next character depends only on the current one: P(ct given everything before) is replaced by P(ct given ct minus 1).
+
+8
+00:00:52.776 --> 00:00:55.635
+That’s a first-order Markov chain over characters.
+
+9
+00:00:55.915 --> 00:01:07.541
+It is a terrible model of language and a perfect place to learn the whole framework, because you can fit it by counting, check it by hand, and then rebuild it as a neural network and watch both agree.
+
+10
+00:01:07.821 --> 00:01:09.784
+The dataset is makemore’s names.
+
+11
+00:01:10.064 --> 00:01:13.925
+txt: 32,033 names, one per line.
+
+12
+00:01:14.205 --> 00:01:18.365
+Each name becomes a short sequence wrapped in a special token, written “.
+
+13
+00:01:18.645 --> 00:01:20.736
+”, that marks both the start and the end.
+
+14
+00:01:21.016 --> 00:01:22.659
+With 26 letters plus “.
+
+15
+00:01:22.939 --> 00:01:25.563
+”, the vocabulary has 27 tokens.

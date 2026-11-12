@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.688
+The linear layer, the nonlinearity, and the embedding.
+
+2
+00:00:02.968 --> 00:00:06.275
+The linear layer’s gradients come straight from index notation.
+
+3
+00:00:06.555 --> 00:00:12.827
+Each output Y_nk is a sum over j of X_nj times W_jk, plus b_k.
+
+4
+00:00:13.107 --> 00:00:28.168
+Differentiating with respect to W_jk picks out X_nj from every row n that used it, so dW_jk sums dY_nk X_nj over n, which is the (j, k) entry of X transpose times dY.
+
+5
+00:00:28.448 --> 00:00:37.856
+Differentiating with respect to X_nj picks out W_jk for every output k that used it, giving dY times W transpose.
+
+6
+00:00:38.136 --> 00:00:43.725
+And b_k was broadcast over all n rows, so db sums dY over the batch axis.
+
+7
+00:00:44.005 --> 00:00:50.043
+There’s a pleasing symmetry here: the backward pass of a matrix multiply is two matrix multiplies.
+
+8
+00:00:50.323 --> 00:01:00.840
+That’s why a training step costs roughly three times a forward pass in compute (one forward multiply, two backward), a rule of thumb you’ll see in training-cost estimates.
+
+9
+00:01:01.120 --> 00:01:07.392
+The tanh backward is elementwise: multiply the incoming gradient by 1 minus the squared output.
+
+10
+00:01:07.672 --> 00:01:11.768
+And the embedding lookup is the one place where indexing creates subtlety.
+
+11
+00:01:12.048 --> 00:01:17.744
+The forward pass copies row C[ix] into each example that uses character ix.
+
+12
+00:01:18.024 --> 00:01:25.917
+The same character appears in many contexts, so the backward pass must add each example’s gradient into that row, not assign it.
+
+13
+00:01:26.197 --> 00:01:37.547
+In NumPy or PyTorch this is a scatter-add (or an explicit loop), and assignment silently drops all but one contribution, the tensor version of lesson 1’s overwrite bug.

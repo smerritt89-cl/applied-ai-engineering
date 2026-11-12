@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.067
+Reading the loss.
+
+2
+00:00:01.347 --> 00:00:08.813
+Each bracket is a log-ratio: how much more (or less) likely the trained model makes a response than the reference model does.
+
+3
+00:00:09.093 --> 00:00:22.384
+The loss pushes the chosen response’s log-ratio up and the rejected response’s down, and it is a logistic loss on the gap between them, exactly as if you were training a classifier to tell chosen from rejected.
+
+4
+00:00:22.664 --> 00:00:31.304
+When the gap is already large, the sigmoid saturates and that pair contributes little gradient; the effort goes to pairs the model still gets wrong.
+
+5
+00:00:31.584 --> 00:00:34.933
+Beta controls how far the model may move from the reference.
+
+6
+00:00:35.213 --> 00:00:41.229
+TRL’s documentation describes higher beta as less deviation, and its default is 0.
+
+7
+00:00:41.509 --> 00:00:42.149
+1.
+
+8
+00:00:42.429 --> 00:00:56.509
+The reference model is what keeps DPO from simply making the chosen text as likely as possible: the model is rewarded for preferring the chosen response more than the reference did, not for any particular absolute probability.
+
+9
+00:00:56.789 --> 00:00:59.392
+Two practical notes from the TRL docs.
+
+10
+00:00:59.672 --> 00:01:07.245
+A DPO dataset has three fields per example: prompt, chosen, and rejected (or the conversational equivalent).
+
+11
+00:01:07.525 --> 00:01:16.997
+And DPO works with PEFT, so you can train a LoRA adapter on preference pairs on top of your supervised adapter’s model, with the same tooling as week 3.
+
+12
+00:01:17.277 --> 00:01:32.787
+TRL also documents a long list of DPO variants with different loss shapes (IPO, a length-normalized loss, and many more), which tells you that the original loss has known weaknesses, such as a tendency to reward longer responses.

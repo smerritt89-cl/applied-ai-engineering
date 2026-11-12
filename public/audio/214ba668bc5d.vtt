@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.707
+Secrets: where the key lives.
+
+2
+00:00:01.987 --> 00:00:18.200
+The Twelve-Factor App’s rule is the usual starting point: config, including credentials, varies between deploys and belongs in the environment, not the code; its test is whether you could open-source the repository right now without leaking a credential.
+
+3
+00:00:18.480 --> 00:00:31.941
+OWASP’s Secrets Management Cheat Sheet adds the caveats: centralize secrets in a managed store, rotate them, scope each one to what needs it, keep them out of source code, Docker images, and CI logs, scan for leaks,
+
+4
+00:00:32.221 --> 00:00:38.749
+and remember that environment variables are visible to every process and can end up in logs and crash dumps.
+
+5
+00:00:39.029 --> 00:00:43.808
+Each example platform has a secret store that injects values at runtime.
+
+6
+00:00:44.088 --> 00:00:55.779
+Vercel environment variables are encrypted at rest and can be typed as Config or Secret, where Secret values are write-only after saving; changes apply only to new deployments.
+
+7
+00:00:56.059 --> 00:01:03.717
+Cloudflare secrets are set with wrangler secret put, hidden after creation, and read from the Worker’s env binding, with a.
+
+8
+00:01:03.997 --> 00:01:04.701
+dev.
+
+9
+00:01:04.981 --> 00:01:05.877
+vars or.
+
+10
+00:01:06.157 --> 00:01:08.824
+env file (git-ignored) for local development.
+
+11
+00:01:09.104 --> 00:01:23.333
+Cloud Run reads from Google Secret Manager, either as an environment variable resolved when the instance starts (the docs recommend pinning a version) or as a mounted volume read at access time, which suits rotation.
+
+12
+00:01:23.613 --> 00:01:33.171
+On the Anthropic side, the authentication docs recommend storing keys in a secrets manager, rotating them, and disabling any key you suspect has leaked.
+
+13
+00:01:33.451 --> 00:01:45.781
+They distinguish personal keys (for your own development) from service account keys (for shared and production workloads, so the key doesn’t break when a person leaves), let you set an expiration when you create a key,
+
+14
+00:01:46.061 --> 00:01:59.203
+and describe Workload Identity Federation for production workloads on cloud platforms: the service exchanges its cloud identity for a short-lived token, so there is no long-lived API key to leak at all.
+
+15
+00:01:59.483 --> 00:02:06.288
+Prefer federation where your platform supports it, and a scoped service account key from a secret store where it doesn’t.

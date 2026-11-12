@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.707
+When a NumPy array is enough.
+
+2
+00:00:01.987 --> 00:00:04.611
+Before choosing a database, do the arithmetic.
+
+3
+00:00:04.891 --> 00:00:08.496
+A float32 vector of dimension d takes 4d bytes.
+
+4
+00:00:08.776 --> 00:00:23.027
+A corpus of n chunks takes 4nd bytes: 100,000 chunks at 1,024 dimensions is about 410 MB, and 10,000 chunks is about 41 MB.
+
+5
+00:00:23.307 --> 00:00:34.549
+Exact search is one matrix-vector product (n times d multiply-adds) followed by a partial sort for the top k (NumPy’s argpartition does this without sorting everything).
+
+6
+00:00:34.829 --> 00:00:42.061
+On a laptop, that is a few milliseconds for tens of thousands of chunks and still well under a second for a few hundred thousand.
+
+7
+00:00:42.341 --> 00:01:00.091
+So for an internal tool over a few thousand documents, a nightly batch job, a prototype, or an evaluation harness, a NumPy array plus a JSON or Parquet file of metadata is often the right answer: zero infrastructure, exact results, and trivially reproducible.
+
+8
+00:01:00.371 --> 00:01:02.141
+The lab’s store is this design.
+
+9
+00:01:02.421 --> 00:01:21.600
+You can shrink it further: Voyage AI’s documentation (which Anthropic’s embeddings guide points to) notes that int8 and binary quantization cut storage by 4 and 32 times respectively, and its embeddings are normalized to length 1, so a dot product equals cosine similarity.
+
+10
+00:01:21.880 --> 00:01:35.576
+A single array stops being enough when one of these becomes true: the vectors no longer fit comfortably in memory; you need many concurrent writers or readers; documents change continuously and you need updates without rebuilding;
+
+11
+00:01:35.856 --> 00:01:43.301
+you need durable storage with backups and access control; or you need filters and keyword search that you don’t want to write yourself.
+
+12
+00:01:43.581 --> 00:01:46.760
+Those are operational reasons, not quality reasons.
+
+13
+00:01:47.040 --> 00:01:53.163
+A database does not make retrieval more accurate, and an ANN index makes it slightly less accurate.

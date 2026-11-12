@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.835
+What the trainer actually learns from.
+
+2
+00:00:02.115 --> 00:00:10.307
+Supervised fine-tuning minimizes next-token loss on your examples: the same objective as pretraining, applied to your text.
+
+3
+00:00:10.587 --> 00:00:15.771
+Which tokens count toward the loss is a setting, and its default may not be what you expect.
+
+4
+00:00:16.051 --> 00:00:34.056
+TRL’s documentation is explicit: for a conversational language-modeling dataset (a plain messages list), the default computes loss on the whole sequence, system prompt and user document included, unless you turn on assistant-only loss; for a prompt-completion dataset,
+
+5
+00:00:34.336 --> 00:00:37.195
+the default computes loss on the completion only.
+
+6
+00:00:37.475 --> 00:00:47.651
+The trainer applies the model’s chat template to conversational data for you, which turns the role-tagged turns into the exact token layout that model family expects.
+
+7
+00:00:47.931 --> 00:00:56.421
+Training on the whole sequence spends some of the learning on reproducing your system prompt and your documents, which is rarely the behavior you want.
+
+8
+00:00:56.701 --> 00:00:59.240
+Week 3 sets these options deliberately.
+
+9
+00:00:59.520 --> 00:01:05.920
+For now, the dataset decision is to keep the prompt and the answer cleanly separable, which both formats do.
+
+10
+00:01:06.200 --> 00:01:08.163
+The other default to know is length.
+
+11
+00:01:08.443 --> 00:01:17.659
+TRL truncates sequences longer than its maximum length (1,024 tokens by default in the version checked) and keeps the start.
+
+12
+00:01:17.939 --> 00:01:20.328
+For a chat example, the end is the answer.
+
+13
+00:01:20.608 --> 00:01:27.285
+A long document can therefore become an example whose answer was cut off, and training proceeds without a complaint.
+
+14
+00:01:27.565 --> 00:01:31.107
+That is why the validator below flags long examples itself.

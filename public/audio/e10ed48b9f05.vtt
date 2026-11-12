@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.840
+Chinchilla 2022: most models were undertrained.
+
+2
+00:00:04.120 --> 00:00:20.909
+In March 2022, Jordan Hoffmann and colleagues at DeepMind revisited the question with a more careful experimental design: over 400 models from 70 million to over 16 billion parameters, trained on 5 to 500 billion tokens.
+
+3
+00:00:21.189 --> 00:00:23.941
+Their conclusion contradicted the earlier reading.
+
+4
+00:00:24.221 --> 00:00:32.520
+For compute-optimal training, parameters and training tokens should grow in roughly equal proportion: double the model, double the data.
+
+5
+00:00:32.800 --> 00:00:35.637
+The paper’s headline test made the point concrete.
+
+6
+00:00:35.917 --> 00:00:39.693
+Chinchilla, a 70-billion-parameter model trained on about 1.
+
+7
+00:00:39.973 --> 00:00:49.723
+4 trillion tokens, used the same compute as DeepMind’s 280-billion-parameter Gopher but outperformed it on a wide range of evaluations.
+
+8
+00:00:50.003 --> 00:00:54.376
+Many large models of the era had too many parameters for the data they saw.
+
+9
+00:00:54.656 --> 00:01:06.560
+Two rules of thumb from this era are worth memorizing, because you will see them used in arguments: Training compute is about 6 times parameters times tokens (in floating-point operations).
+
+10
+00:01:06.840 --> 00:01:11.811
+A forward and backward pass costs roughly six operations per parameter per token.
+
+11
+00:01:12.091 --> 00:01:16.272
+Compute-optimal training uses roughly 20 tokens per parameter.
+
+12
+00:01:16.552 --> 00:01:20.669
+This is an approximation from the Chinchilla fits, not a law of nature.
+
+13
+00:01:20.949 --> 00:01:28.267
+One caution that working engineers care about: “compute-optimal” means the lowest training loss for a fixed training budget.
+
+14
+00:01:28.547 --> 00:01:29.997
+It ignores serving cost.
+
+15
+00:01:30.277 --> 00:01:44.720
+A smaller model trained on far more than 20 tokens per parameter costs more to train for the same loss but less to run millions of times, which is why many open-weight models are deliberately “overtrained” by the Chinchilla standard.

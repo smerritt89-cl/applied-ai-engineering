@@ -1,0 +1,33 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.280
+Byte Pair Encoding.
+
+2
+00:00:01.560 --> 00:00:10.563
+BPE started as a data compression method and was brought to NLP for subword units by Sennrich, Haddow, and Birch (2016).
+
+3
+00:00:10.843 --> 00:00:23.792
+The training algorithm is greedy and simple: count every adjacent pair of tokens in the training text, merge the most frequent pair into a new token, and repeat until the vocabulary reaches the target size.
+
+4
+00:00:24.072 --> 00:00:34.227
+Each merge shortens the sequence; the ratio of bytes to tokens is the compression ratio, which the lecture tracks as training proceeds (34:58).
+
+5
+00:00:34.507 --> 00:00:46.197
+The vocabulary is then 256 byte tokens plus one token per merge, and each merged token stands for a byte string (the concatenation of its two parts, recursively).
+
+6
+00:00:46.477 --> 00:01:02.285
+GPT-2’s vocabulary has 50,257 entries, which the lecture breaks down as 256 bytes, 50,000 merges, and one special token, <|endoftext|>, which marks document boundaries.
+
+7
+00:01:02.565 --> 00:01:14.235
+Encoding new text replays the merges, and the order matters: merges must be applied in the order they were learned (lowest new id first), because later merges are built out of earlier ones.
+
+8
+00:01:14.515 --> 00:01:34.611
+Decoding is a lookup plus a byte concatenation, with one catch the lecture highlights at 42:47: an arbitrary sequence of token ids may not form valid UTF-8 (for example, a lone continuation byte), so decoding must handle errors, typically by inserting the replacement character.

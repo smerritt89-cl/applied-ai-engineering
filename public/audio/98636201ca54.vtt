@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.600
+Why filters alone fail.
+
+2
+00:00:01.880 --> 00:00:12.867
+The first instinct is to detect the attack: a classifier on incoming content, a regex for “ignore previous instructions,” a second model asked “is this an injection?
+
+3
+00:00:13.147 --> 00:00:15.195
+” These help, and vendors use them.
+
+4
+00:00:15.475 --> 00:00:29.021
+Anthropic scans untrusted content entering the context with classifiers, Google describes purpose-built detection models for Gemini in Workspace, and OpenAI’s agent guide recommends input guardrails.
+
+5
+00:00:29.301 --> 00:00:35.979
+But all three vendors present them as one layer, not as the defense, and the reasons are worth stating precisely.
+
+6
+00:00:36.259 --> 00:00:39.821
+First, detectors are probabilistic, and you face volume.
+
+7
+00:00:40.101 --> 00:00:57.531
+Anthropic’s November 2025 research on browser agents reported reducing attack success to about 1% with its newest model and safeguards, and said plainly that 1% still represents meaningful risk and that no browser agent is immune.
+
+8
+00:00:57.811 --> 00:01:02.973
+A small miss rate times every document your agent reads is a steady stream of misses.
+
+9
+00:01:03.253 --> 00:01:04.853
+Second, attackers adapt.
+
+10
+00:01:05.133 --> 00:01:07.821
+Benchmark rates are measured against known attacks.
+
+11
+00:01:08.101 --> 00:01:18.320
+Anthropic’s May 2026 containment post reports that, on one red-teaming benchmark, a recent Claude model held attack success to roughly 0.
+
+12
+00:01:18.600 --> 00:01:24.744
+1% on a single attempt and around 5 to 6% after 100 adaptive attempts.
+
+13
+00:01:25.024 --> 00:01:28.309
+The attacker gets to retry; you have to win every time.
+
+14
+00:01:28.589 --> 00:01:32.493
+Third, detection judges content, and content can be disguised.
+
+15
+00:01:32.773 --> 00:01:39.963
+Encode the data in base64, split an instruction across two issues, phrase it as a policy notice from an admin.
+
+16
+00:01:40.243 --> 00:01:46.173
+A content filter sees text; it cannot see that the recipient address came from an untrusted issue.
+
+17
+00:01:46.453 --> 00:01:50.507
+The conclusion is not that model-level robustness is worthless.
+
+18
+00:01:50.787 --> 00:02:03.267
+It is valuable, it improves with each model generation, and it differs between models, which makes it a legitimate input to model selection (measure it on your own injection suite, as in this week’s lab).
+
+19
+00:02:03.547 --> 00:02:11.120
+The conclusion is that robustness lowers how often the agent tries something bad, while only design limits what happens when it does.

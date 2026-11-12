@@ -1,0 +1,37 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.005
+Counting is maximum likelihood.
+
+2
+00:00:02.285 --> 00:00:07.491
+Write n_ij for the number of times token j follows token i in the training data.
+
+3
+00:00:07.771 --> 00:00:15.344
+The model’s parameters are the conditional probabilities p_ij, one distribution per row i, with each row summing to 1.
+
+4
+00:00:15.624 --> 00:00:20.595
+The log-likelihood of the data is the sum over all pairs of n_ij log p_ij.
+
+5
+00:00:20.875 --> 00:00:24.416
+Maximize it row by row, subject to the row constraint.
+
+6
+00:00:24.696 --> 00:00:47.267
+With a Lagrange multiplier lambda for row i, setting the derivative of (sum over j of n_ij log p_ij, minus lambda times (sum over j of p_ij minus 1)) to zero gives n_ij / p_ij = lambda, so p_ij is proportional to n_ij, and normalizing gives p_ij = n_ij divided by the row total n_i.
+
+7
+00:00:47.547 --> 00:00:51.984
+The maximum likelihood estimate is just the row-normalized count matrix.
+
+8
+00:00:52.264 --> 00:01:04.808
+That’s what the video calls “training the model” at 12:45: counting is the closed-form solution of the same optimization problem that gradient descent solves approximately in the second half.
+
+9
+00:01:05.088 --> 00:01:13.323
+Having a closed form is rare, and it gives you a precious thing for the rest of the lecture: a known right answer to check the neural network against.

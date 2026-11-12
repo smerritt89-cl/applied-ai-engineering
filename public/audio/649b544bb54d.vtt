@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.581
+Granularity doesn’t matter, correctness does.
+
+2
+00:00:02.861 --> 00:00:19.565
+At 01:27:05 the video replaces the single tanh node with its definition, tanh(x) = (e to the 2x, minus 1) divided by (e to the 2x, plus 1), built from exp, addition, power, and multiplication nodes.
+
+3
+00:00:19.845 --> 00:00:21.744
+The gradient comes out identical.
+
+4
+00:00:22.024 --> 00:00:28.744
+This is the chain rule doing its job: the derivative of a composition doesn’t depend on how you group the pieces.
+
+5
+00:00:29.024 --> 00:00:31.243
+This has two practical consequences.
+
+6
+00:00:31.523 --> 00:00:35.043
+First, you’re free to choose the granularity of your operations.
+
+7
+00:00:35.323 --> 00:00:49.317
+Frameworks fuse common compositions (tanh, softmax plus cross-entropy, layer norm) into single operations with hand-derived backward passes, because the fused version is faster and often more numerically stable.
+
+8
+00:00:49.597 --> 00:00:57.043
+Second, any operation you can write as a composition of differentiable primitives gets a correct backward pass automatically.
+
+9
+00:00:57.323 --> 00:01:05.280
+You only need to hand-derive a backward pass when you want a fused, faster, or more stable version, and then you owe it a gradient check.
+
+10
+00:01:05.560 --> 00:01:07.480
+Division is a nice example.
+
+11
+00:01:07.760 --> 00:01:21.200
+micrograd implements a divided by b as a times b to the power minus 1, so the only new local derivative is the power rule: d(x to the k)/dx = k x to the (k minus 1).

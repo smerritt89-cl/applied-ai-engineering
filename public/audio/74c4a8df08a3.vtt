@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.688
+Saturated tanh, and gradients that vanish.
+
+2
+00:00:02.968 --> 00:00:05.656
+The hidden layer is tanh of a pre-activation.
+
+3
+00:00:05.936 --> 00:00:10.736
+If the pre-activations are large, most tanh outputs sit at plus or minus 1.
+
+4
+00:00:11.016 --> 00:00:15.304
+The derivative of tanh is 1 minus t squared, so at t = 0.
+
+5
+00:00:15.584 --> 00:00:20.533
+99 the unit passes back only about 2 percent of the gradient it receives.
+
+6
+00:00:20.813 --> 00:00:28.067
+A unit that is saturated for every example in the batch passes back essentially nothing: its incoming weights stop learning.
+
+7
+00:00:28.347 --> 00:00:40.784
+The lecture’s white-pixel plot (12:59) shows units against examples, white wherever the output is very close to plus or minus 1, and a column of all white is a dead neuron.
+
+8
+00:00:41.064 --> 00:00:43.112
+Other nonlinearities fail differently.
+
+9
+00:00:43.392 --> 00:00:56.832
+ReLU has derivative exactly 0 for negative inputs, so a ReLU unit whose pre-activation is negative for all inputs is permanently dead (a large learning rate can knock units into that state).
+
+10
+00:00:57.112 --> 00:00:59.480
+Sigmoid saturates at both ends like tanh.
+
+11
+00:00:59.760 --> 00:01:05.563
+Every squashing nonlinearity has a flat region, and the question is how much of the data lands there.
+
+12
+00:01:05.843 --> 00:01:14.397
+The fix is again a matter of scale: initialize the first layer so pre-activations have a standard deviation around 1, not 10.
+
+13
+00:01:14.677 --> 00:01:18.155
+Which raises the question: what scale is right, in general?

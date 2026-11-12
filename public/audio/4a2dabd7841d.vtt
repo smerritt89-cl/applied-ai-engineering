@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.515
+The reference architecture.
+
+2
+00:00:01.795 --> 00:00:05.507
+Northwind’s assistant (fictional, but typical) has these parts.
+
+3
+00:00:05.787 --> 00:00:09.947
+A web chat UI that renders the assistant’s answers as Markdown.
+
+4
+00:00:10.227 --> 00:00:16.029
+An API service that authenticates the customer, runs lesson 10’s guards, and calls the model.
+
+5
+00:00:16.309 --> 00:00:22.795
+A retrieval index over help-center articles, some written by staff and some imported from a community forum.
+
+6
+00:00:23.075 --> 00:00:26.808
+A booking tool that reads reservations from the company database.
+
+7
+00:00:27.088 --> 00:00:33.616
+An MCP server for the ticketing system, installed from a public package, that can create and update tickets.
+
+8
+00:00:33.896 --> 00:00:36.755
+Traces and logs in an observability service.
+
+9
+00:00:37.035 --> 00:00:39.808
+And the model provider, reached with an API key.
+
+10
+00:00:40.088 --> 00:00:50.115
+Draw it as a data flow diagram and mark the trust boundaries, the lines where data crosses from something you control to something you don’t, or between privilege levels.
+
+11
+00:00:50.395 --> 00:00:59.333
+In an LLM system there is one boundary that classic diagrams miss: every place where untrusted text enters the model’s context.
+
+12
+00:00:59.613 --> 00:01:01.341
+The customer’s message is one.
+
+13
+00:01:01.621 --> 00:01:03.584
+Retrieved forum posts are another.
+
+14
+00:01:03.864 --> 00:01:08.045
+Tool results, ticket contents, and anything fetched from the web are more.
+
+15
+00:01:08.325 --> 00:01:14.576
+The model can’t reliably tell instructions from data, so each of these is an entry point for instructions.

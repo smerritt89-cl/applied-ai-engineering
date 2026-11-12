@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.069
+From one tool call to a long task.
+
+2
+00:00:02.349 --> 00:00:06.232
+In Studio 1 you wrote a loop that ran a few tool calls and stopped.
+
+3
+00:00:06.512 --> 00:00:17.797
+Week 1 of this studio gave you the vocabulary: in Anthropic’s terms, a workflow follows code paths you wrote, while an agent lets the model direct its own process and tool use.
+
+4
+00:00:18.077 --> 00:00:22.429
+This week is about what that looks like when the task takes twenty or fifty steps.
+
+5
+00:00:22.709 --> 00:00:28.043
+Every agent framework you will meet runs the same cycle, and the names vary only slightly.
+
+6
+00:00:28.323 --> 00:00:34.595
+The ReAct paper (Yao and colleagues, 2022) interleaved reasoning traces with actions.
+
+7
+00:00:34.875 --> 00:00:42.405
+Anthropic’s post on the Claude Agent SDK describes it as gather context, take action, verify work, repeat.
+
+8
+00:00:42.685 --> 00:00:45.075
+This lesson uses three words: Plan.
+
+9
+00:00:45.355 --> 00:00:51.712
+The model reads the context and decides what to do next: answer, or request one or more tool calls.
+
+10
+00:00:51.992 --> 00:00:52.675
+Act.
+
+11
+00:00:52.955 --> 00:00:55.088
+Your code runs the requested tools.
+
+12
+00:00:55.368 --> 00:00:57.459
+The model never runs anything itself.
+
+13
+00:00:57.739 --> 00:00:58.656
+Observe.
+
+14
+00:00:58.936 --> 00:01:02.605
+The results go back into the context, and the model decides again.
+
+15
+00:01:02.885 --> 00:01:08.432
+Anthropic’s “Building effective agents” adds two points that matter more as tasks get longer.
+
+16
+00:01:08.712 --> 00:01:18.867
+The agent has to get “ground truth” from the environment at each step, meaning real tool results, test output, or file contents, rather than its own assumptions.
+
+17
+00:01:19.147 --> 00:01:25.227
+And it is common to add stopping conditions, such as a maximum number of iterations, to keep control.
+
+18
+00:01:25.507 --> 00:01:27.981
+The code around the model is called the harness.
+
+19
+00:01:28.261 --> 00:01:37.243
+It owns everything except the decision: what goes into the context, which tools exist, which calls are allowed, what gets logged, and when the loop ends.
+
+20
+00:01:37.523 --> 00:01:42.941
+When an agent misbehaves, the fix is usually in the harness, so this lesson is about the harness.

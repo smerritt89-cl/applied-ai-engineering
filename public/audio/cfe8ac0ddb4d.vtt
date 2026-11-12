@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.816
+Three server primitives, three different deciders.
+
+2
+00:00:03.096 --> 00:00:05.421
+Servers offer three kinds of capability.
+
+3
+00:00:05.701 --> 00:00:12.101
+The MCP docs organize them by who controls them, and that is the most useful way to remember them.
+
+4
+00:00:12.381 --> 00:00:14.045
+Tools are model-controlled.
+
+5
+00:00:14.325 --> 00:00:23.051
+They are functions with a name, a description, and a JSON Schema for inputs, discovered with tools/list and invoked with tools/call.
+
+6
+00:00:23.331 --> 00:00:26.936
+The model decides when to call one, based on the conversation.
+
+7
+00:00:27.216 --> 00:00:32.016
+Tools can read or write: search flights, send a message, create a calendar event.
+
+8
+00:00:32.296 --> 00:00:45.992
+Because a model can fire a tool without the user asking, the tools page says there should always be a human able to deny tool invocations, with clear indicators when tools run and confirmation prompts for operations.
+
+9
+00:00:46.272 --> 00:00:48.427
+Resources are application-driven.
+
+10
+00:00:48.707 --> 00:00:54.744
+They are data identified by URIs, such as file:///reports/q3.
+
+11
+00:00:55.024 --> 00:01:02.043
+md or tracker://summary, and a server can publish URI templates for families of resources.
+
+12
+00:01:02.323 --> 00:01:08.083
+The host decides how to use them: a picker the user browses, search, or automatic inclusion.
+
+13
+00:01:08.363 --> 00:01:10.709
+Resources are context, not actions.
+
+14
+00:01:10.989 --> 00:01:12.504
+Prompts are user-controlled.
+
+15
+00:01:12.784 --> 00:01:18.864
+They are reusable templates with arguments that the user picks explicitly, typically as slash commands.
+
+16
+00:01:19.144 --> 00:01:22.707
+The server writes the template; the user decides when to use it.
+
+17
+00:01:22.987 --> 00:01:29.685
+A good prompt packages a workflow (“triage this issue using these tools”) so users don’t have to rediscover it.
+
+18
+00:01:29.965 --> 00:01:31.843
+Two details matter in practice.
+
+19
+00:01:32.123 --> 00:01:41.573
+First, many hosts support tools far better than resources or prompts, so check what your target host actually surfaces before designing around a primitive.
+
+20
+00:01:41.853 --> 00:01:44.669
+Second, the control model tells you where risk lives.
+
+21
+00:01:44.949 --> 00:01:47.915
+A resource the user attaches is the user’s choice.
+
+22
+00:01:48.195 --> 00:01:53.805
+A tool call is the model’s choice, so tools are where your validation and approval effort goes.

@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.219
+Streaming changes the wait people feel.
+
+2
+00:00:02.499 --> 00:00:06.659
+Streaming sends the response as server-sent events while it is generated.
+
+3
+00:00:06.939 --> 00:00:15.536
+It doesn’t shorten time to finish, but for a person watching, it moves the felt wait from “until done” to “until the first useful words.
+
+4
+00:00:15.816 --> 00:00:25.245
+” Anthropic’s latency page lists streaming as one of three core strategies, and OpenAI’s guide calls it the most effective way to make users wait less.
+
+5
+00:00:25.525 --> 00:00:28.064
+Three details make streaming work in practice.
+
+6
+00:00:28.344 --> 00:00:29.645
+Thinking comes first.
+
+7
+00:00:29.925 --> 00:00:46.352
+On current Claude models the thinking display defaults to omitted, so a streamed response can show a long silence before text while the model reasons; you can request summarized thinking, or show a status line (“checking your order history…”) driven by tool-call events.
+
+8
+00:00:46.632 --> 00:00:48.189
+Measure the right timestamps.
+
+9
+00:00:48.469 --> 00:00:58.581
+Log the time you sent the request, the message_start event (a client-side stand-in for TTFT), the first text delta (first visible output), and the end.
+
+10
+00:00:58.861 --> 00:01:00.312
+Keep the final message.
+
+11
+00:01:00.592 --> 00:01:08.421
+The SDK’s streaming helper still gives you the complete message and its usage at the end, so you lose nothing for cost accounting.

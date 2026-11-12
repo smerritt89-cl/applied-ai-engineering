@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.685
+Why counting runs out of road.
+
+2
+00:00:01.965 --> 00:00:04.056
+The bigram model sees one character.
+
+3
+00:00:04.336 --> 00:00:16.155
+To see more, you could count longer contexts: a table indexed by the previous three characters has 27 cubed, or 19,683, rows of 27 entries each.
+
+4
+00:00:16.435 --> 00:00:26.504
+Most of those contexts never occur in 32,033 names, so most rows would be empty or nearly so, and the estimates in the rest would be noisy.
+
+5
+00:00:26.784 --> 00:00:31.285
+Every extra character of context multiplies the table by 27.
+
+6
+00:00:31.565 --> 00:00:42.019
+This is the curse of dimensionality for discrete models, and it’s the problem Bengio and colleagues set out to fix in “A Neural Probabilistic Language Model” (2003).
+
+7
+00:00:42.299 --> 00:00:58.192
+Their idea, which the lecture walks through at 01:48, is to map each token to a learned vector in a low-dimensional space, an embedding, and to predict the next token with a neural network that reads the concatenated embeddings of the context.
+
+8
+00:00:58.472 --> 00:01:06.771
+Similar tokens can end up with similar vectors, so evidence about one context transfers to contexts the model has never seen.
+
+9
+00:01:07.051 --> 00:01:12.064
+The paper did this for words; the lecture does it for characters, with a context of three.
+
+10
+00:01:12.344 --> 00:01:20.728
+This is the conceptual ancestor of every embedding you met in Studio 2, and of the token embedding table at the bottom of GPT.

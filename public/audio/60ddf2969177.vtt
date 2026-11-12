@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.389
+Layered defenses against test tampering.
+
+2
+00:00:02.669 --> 00:00:06.403
+No single control is enough, because each covers a different path.
+
+3
+00:00:06.683 --> 00:00:07.557
+Stack them.
+
+4
+00:00:07.837 --> 00:00:08.840
+Instructions.
+
+5
+00:00:09.120 --> 00:00:09.888
+CLAUDE.
+
+6
+00:00:10.168 --> 00:00:16.803
+md and the prompt say: don’t edit, skip, or delete tests; if a test seems wrong, stop and explain.
+
+7
+00:00:17.083 --> 00:00:20.347
+Necessary, and the research above shows it isn’t sufficient.
+
+8
+00:00:20.627 --> 00:00:21.757
+Permission rules.
+
+9
+00:00:22.037 --> 00:00:26.347
+A deny rule such as Edit(/tests/**) in.
+
+10
+00:00:26.627 --> 00:00:27.907
+claude/settings.
+
+11
+00:00:28.187 --> 00:00:29.125
+json.
+
+12
+00:00:29.405 --> 00:00:43.485
+The permissions docs say Read and Edit deny rules apply to Claude’s file tools and to file commands Claude Code recognizes in Bash ( sed, tee, redirections), but not to arbitrary scripts that open files themselves.
+
+13
+00:00:43.765 --> 00:00:50.784
+A PreToolUse hook that blocks Edit and Write on test paths, with a message telling the agent what to do instead.
+
+14
+00:00:51.064 --> 00:00:54.712
+Same coverage gap: it sees only the tools its matcher names.
+
+15
+00:00:54.992 --> 00:01:00.475
+The sandbox, for OS-level enforcement that applies to every process, including scripts.
+
+16
+00:01:00.755 --> 00:01:05.064
+Commit tests first, so any later change to them is a separate, visible diff.
+
+17
+00:01:05.344 --> 00:01:08.928
+Holdout tests the agent never sees, run after it finishes.
+
+18
+00:01:09.208 --> 00:01:16.312
+This is ImpossibleBench’s mitigation in practice, and it also catches fixes that special-case the visible tests.
+
+19
+00:01:16.592 --> 00:01:18.085
+The lab’s make_workspace.
+
+20
+00:01:18.365 --> 00:01:20.093
+py score does exactly this.
+
+21
+00:01:20.373 --> 00:01:21.931
+CI and review rules.
+
+22
+00:01:22.211 --> 00:01:35.459
+A CI step that fails if test files changed without a label or approval; GitHub’s CODEOWNERS can require a specific reviewer for tests/, and branch protection can require that review before merge.
+
+23
+00:01:35.739 --> 00:01:40.112
+Layers 2 through 4 are the harness; 5 through 7 are your process.
+
+24
+00:01:40.392 --> 00:01:46.216
+In a solo project, layers 1, 2, 3, 5, and 6 cost almost nothing to set up.

@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.323
+The low-rank update.
+
+2
+00:00:01.603 --> 00:00:20.333
+LoRA freezes each pretrained weight matrix W0, of shape d by k, and learns an additive update constrained to low rank: W0 + delta W, with delta W = B A, where B is d by r, A is r by k, and the rank r is much smaller than d and k.
+
+3
+00:00:20.613 --> 00:00:29.360
+The forward pass for an input x becomes h = W0 x + s B A x, where the scale s is alpha divided by r.
+
+4
+00:00:29.640 --> 00:00:32.243
+Four details carry most of the practical weight.
+
+5
+00:00:32.523 --> 00:00:33.675
+Initialization.
+
+6
+00:00:33.955 --> 00:00:46.157
+A starts random (Gaussian in the paper; PEFT’s default uses a Kaiming-uniform initialization) and B starts at zero, so B A is zero and training begins exactly at the pretrained model.
+
+7
+00:00:46.437 --> 00:00:47.525
+Parameter count.
+
+8
+00:00:47.805 --> 00:00:52.520
+The adapter has r times (d plus k) parameters instead of d times k.
+
+9
+00:00:52.800 --> 00:01:02.421
+For a 4096 by 4096 matrix at r = 8 that is 65,536 instead of about 16.
+
+10
+00:01:02.701 --> 00:01:04.259
+8 million, under 0.
+
+11
+00:01:04.539 --> 00:01:05.520
+4 percent.
+
+12
+00:01:05.800 --> 00:01:07.507
+The alpha over r scaling.
+
+13
+00:01:07.787 --> 00:01:22.037
+The paper sets alpha to the first rank it tries and doesn’t tune it, and explains why: with Adam, tuning alpha is roughly the same as tuning the learning rate, and dividing by r reduces how much you must retune when you change r.
+
+14
+00:01:22.317 --> 00:01:33.155
+PEFT implements alpha over r by default and offers use_rslora, which divides by the square root of r instead and is described as making higher ranks more effective.
+
+15
+00:01:33.435 --> 00:01:38.000
+Frameworks differ: MLX-LM takes a direct scale (default 20.
+
+16
+00:01:38.280 --> 00:01:39.859
+0) rather than alpha.
+
+17
+00:01:40.139 --> 00:01:42.592
+Convert before comparing configurations.
+
+18
+00:01:42.872 --> 00:01:44.109
+No inference cost.
+
+19
+00:01:44.389 --> 00:01:49.083
+After training you can compute W0 + s B A once and store it.
+
+20
+00:01:49.363 --> 00:01:55.592
+The merged layer is an ordinary dense layer, so a merged model is exactly as fast as the base model.
+
+21
+00:01:55.872 --> 00:01:59.712
+Or keep adapters separate and swap them, at a small runtime cost.

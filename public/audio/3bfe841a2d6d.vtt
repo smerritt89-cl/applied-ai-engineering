@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.877
+smolagents and code agents.
+
+2
+00:00:02.157 --> 00:00:10.115
+smolagents, from Hugging Face, is deliberately small: its docs say the agent logic fits in about a thousand lines of code.
+
+3
+00:00:10.395 --> 00:00:24.453
+It is model-agnostic (Hugging Face inference providers, LiteLLM for OpenAI, Anthropic, and others, local models through Transformers or Ollama) and can load tools from MCP servers and the Hub.
+
+4
+00:00:24.733 --> 00:00:27.208
+Its distinctive idea is the code agent.
+
+5
+00:00:27.488 --> 00:00:33.419
+A ToolCallingAgent works like everything else in this lesson: the model emits JSON tool calls.
+
+6
+00:00:33.699 --> 00:00:42.573
+A CodeAgent instead writes its actions as Python code that calls your tools as functions, so one step can loop, filter, and combine results.
+
+7
+00:00:42.853 --> 00:01:00.304
+Hugging Face’s conceptual guide cites research for this choice, including “Executable Code Actions Elicit Better LLM Agents” (Wang and colleagues, 2024), and argues that code is more composable and better represented in training data than JSON.
+
+8
+00:01:00.584 --> 00:01:09.096
+The guided tour is candid about the trade-off: code agents are more expressive but less predictable and need a secure execution environment.
+
+9
+00:01:09.376 --> 00:01:20.085
+The local interpreter restricts imports by default, and the docs offer sandboxed executors (E2B, Docker, Modal, Blaxel) for anything beyond experiments.
+
+10
+00:01:20.365 --> 00:01:35.384
+Runs end when the agent calls final_answer or reaches its maximum number of steps, and final_answer_checks lets you reject an answer that fails your validation and keep the agent working, a built-in version of “verify before you stop.
+
+11
+00:01:35.664 --> 00:01:39.824
+” Step logs record tokens per step, which makes it easy to inspect.
+
+12
+00:01:40.104 --> 00:01:48.787
+You will meet the same code-as-action idea in Claude’s programmatic tool calling, where Claude writes code that calls your tools inside a sandbox.

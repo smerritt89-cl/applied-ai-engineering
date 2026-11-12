@@ -1,0 +1,101 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.963
+What actually differs between models.
+
+2
+00:00:02.243 --> 00:00:04.355
+Retrieval quality is one axis.
+
+3
+00:00:04.635 --> 00:00:08.837
+When you shortlist, check these too, because each has broken real systems.
+
+4
+00:00:09.117 --> 00:00:11.187
+Input length and silent truncation.
+
+5
+00:00:11.467 --> 00:00:25.845
+Limits range from 256 word pieces for all-MiniLM-L6-v2 (its model card says longer input is truncated by default) to 32,000 tokens for Voyage’s current models.
+
+6
+00:00:26.125 --> 00:00:31.843
+A model that silently drops the second half of a long chunk can’t retrieve it by anything said there.
+
+7
+00:00:32.123 --> 00:00:35.067
+Week 2’s chunking decisions depend on this number.
+
+8
+00:00:35.347 --> 00:00:37.075
+Query and document roles.
+
+9
+00:00:37.355 --> 00:00:42.901
+Many retrieval models are trained asymmetrically and expect you to say which input is which.
+
+10
+00:00:43.181 --> 00:00:52.269
+Voyage takes input_type="query" or "document" and prepends a short instruction for each; its docs say not to omit it for retrieval.
+
+11
+00:00:52.549 --> 00:01:03.920
+Gemini’s gemini-embedding-001 takes task types such as RETRIEVAL_QUERY and RETRIEVAL_DOCUMENT, and gemini-embedding-2 uses text prefixes instead.
+
+12
+00:01:04.200 --> 00:01:06.781
+Cohere has search_query and search_document.
+
+13
+00:01:07.061 --> 00:01:18.453
+Open models use prefixes: E5 expects query: and passage:, Nomic expects search_query: and search_document:, and BGE adds an instruction before queries.
+
+14
+00:01:18.733 --> 00:01:22.317
+Getting this wrong rarely errors; it just quietly lowers quality.
+
+15
+00:01:22.597 --> 00:01:24.389
+Languages and modalities.
+
+16
+00:01:24.669 --> 00:01:33.352
+If your users ask in Spanish about English documents, you need a model trained for cross-lingual retrieval, and you need Spanish queries in your test set.
+
+17
+00:01:33.632 --> 00:01:35.339
+Dimensions and output types.
+
+18
+00:01:35.619 --> 00:01:37.752
+Size drives storage and search cost.
+
+19
+00:01:38.032 --> 00:01:49.445
+Several providers also offer int8 or binary outputs, which Voyage’s docs describe as reducing storage by 4x and 32x relative to 32-bit floats.
+
+20
+00:01:49.725 --> 00:01:51.517
+Cost, latency, rate limits.
+
+21
+00:01:51.797 --> 00:01:59.925
+Indexing is a one-time (or per-update) cost; query embedding sits on your request path, so its latency adds to every search.
+
+22
+00:02:00.205 --> 00:02:02.083
+Data handling and lifecycle.
+
+23
+00:02:02.363 --> 00:02:08.315
+Provider APIs see your text; check their data retention and training terms against your policy.
+
+24
+00:02:08.595 --> 00:02:12.328
+Providers also retire models, which forces a re-embed.
+
+25
+00:02:12.608 --> 00:02:14.443
+Open weights you pin don’t change.

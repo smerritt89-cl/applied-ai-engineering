@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.856
+Duplicates and near-duplicates.
+
+2
+00:00:02.136 --> 00:00:05.720
+Duplicates are the most common leak, and they hurt in two places.
+
+3
+00:00:06.000 --> 00:00:10.992
+In training, a repeated example counts several times, overweighting whatever it says.
+
+4
+00:00:11.272 --> 00:00:16.349
+Across splits, a duplicate in both train and test lets the model score by recall.
+
+5
+00:00:16.629 --> 00:00:36.192
+Lee and colleagues (2021) found that standard language-modeling datasets were full of near-duplicates, that train-test overlap affected over 4 percent of the validation sets they examined, and that deduplicated training data made models emit memorized text ten times less often.
+
+6
+00:00:36.472 --> 00:00:38.605
+Detect duplicates in two passes.
+
+7
+00:00:38.885 --> 00:00:50.256
+Exact duplicates: normalize the text (lowercase, collapse whitespace, strip punctuation if formatting differences don’t matter for your task), hash it, and group identical hashes.
+
+8
+00:00:50.536 --> 00:00:53.096
+This catches the same email exported twice.
+
+9
+00:00:53.376 --> 00:01:06.219
+Near-duplicates: break each normalized text into word shingles (every run of k consecutive words) and compare sets with Jaccard similarity, the size of the intersection over the size of the union.
+
+10
+00:01:06.499 --> 00:01:16.739
+A forwarded ticket with an added header, a meeting note re-posted with one typo fixed, or a templated email with a different customer name will share most of their shingles.
+
+11
+00:01:17.019 --> 00:01:25.403
+Choosing k and the threshold is an empirical step: compute similarities, sort the pairs, and read a sample around your candidate threshold.
+
+12
+00:01:25.683 --> 00:01:27.155
+Templates are the hard case.
+
+13
+00:01:27.435 --> 00:01:41.088
+Two invoices generated from the same template differ only in names and numbers, and whether they count as duplicates depends on what you want the test set to measure: if production is full of that template, you want it in training,
+
+14
+00:01:41.368 --> 00:01:47.427
+but you also want test cases that the model can’t solve by having memorized one filled-in copy.
+
+15
+00:01:47.707 --> 00:01:53.936
+Comparing every pair is quadratic, which is fine for thousands of documents and hopeless for millions.
+
+16
+00:01:54.216 --> 00:02:07.848
+At scale, MinHash compresses each shingle set into a short signature whose agreement rate estimates Jaccard similarity, and locality-sensitive hashing (LSH) buckets signatures so only likely pairs are compared.
+
+17
+00:02:08.128 --> 00:02:10.539
+The datasketch library documents both.

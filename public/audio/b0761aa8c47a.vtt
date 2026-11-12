@@ -1,0 +1,93 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.365
+The deploy checklist.
+
+2
+00:00:01.645 --> 00:00:06.232
+Run through this list before the first release, and automate what you can in CI.
+
+3
+00:00:06.512 --> 00:00:07.408
+Secrets.
+
+4
+00:00:07.688 --> 00:00:14.429
+The API key comes from the platform’s secret store or federation, never the repository or the image.
+
+5
+00:00:14.709 --> 00:00:21.493
+No public-prefixed variable holds anything secret, and your built client assets contain no sk-ant string.
+
+6
+00:00:21.773 --> 00:00:27.149
+Each environment has its own key, in its own workspace with its own spend and rate limits.
+
+7
+00:00:27.429 --> 00:00:33.445
+Keys have an owner (a service account), an expiration or rotation plan, and a revocation runbook.
+
+8
+00:00:33.725 --> 00:00:35.133
+Timeouts and retries.
+
+9
+00:00:35.413 --> 00:00:41.707
+SDK attempt timeout, inside the request deadline, inside the platform limit, each with margin.
+
+10
+00:00:41.987 --> 00:00:43.949
+Retries in exactly one layer.
+
+11
+00:00:44.229 --> 00:00:46.213
+Streams enforce a total deadline.
+
+12
+00:00:46.493 --> 00:00:47.667
+Failure handling.
+
+13
+00:00:47.947 --> 00:00:56.373
+Errors are classified; breakers per model; a fallback chain whose quality you’ve measured; a degraded mode you have exercised on purpose.
+
+14
+00:00:56.653 --> 00:00:57.997
+Models and prompts.
+
+15
+00:00:58.277 --> 00:01:05.488
+Model ids pinned per environment and on an evaluated allowlist; the eval and regression gate passed on this build.
+
+16
+00:01:05.768 --> 00:01:06.600
+Streaming.
+
+17
+00:01:06.880 --> 00:01:16.352
+Streaming verified end to end on the real platform, through any proxy or CDN in front of it, with a reply longer than your longest expected one.
+
+18
+00:01:16.632 --> 00:01:17.741
+Observability.
+
+19
+00:01:18.021 --> 00:01:32.443
+Each request logs environment, deploy version, model actually used, token usage, latency, the API’s request-id, and whether a fallback or degraded mode ran (week 3 turns this into traces and dashboards).
+
+20
+00:01:32.723 --> 00:01:33.960
+Abuse and limits.
+
+21
+00:01:34.240 --> 00:01:44.203
+Per-user rate limits and input size limits at the edge of your service; the OWASP LLM Top 10 review (week 4) scheduled before you widen access.
+
+22
+00:01:44.483 --> 00:01:45.357
+Rollback.
+
+23
+00:01:45.637 --> 00:01:52.251
+You know how to return to the previous deploy, and a model or prompt change can be rolled back the same way as code.

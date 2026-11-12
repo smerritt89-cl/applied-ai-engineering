@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.752
+Why an old method is in a modern RAG course.
+
+2
+00:00:03.032 --> 00:00:09.240
+In weeks 1 and 2 you built retrieval on embeddings: turn text into vectors, find the nearest ones.
+
+3
+00:00:09.520 --> 00:00:14.256
+That works well when the user’s words differ from the document’s words but mean the same thing.
+
+4
+00:00:14.536 --> 00:00:25.139
+It works less well when the user types something the embedding model has no special reason to preserve: a product code, an error number, a person’s surname, an internal project name.
+
+5
+00:00:25.419 --> 00:00:29.216
+Anthropic’s post on contextual retrieval gives a clean example.
+
+6
+00:00:29.496 --> 00:00:34.552
+A user searches a support database for “Error code TS-999”.
+
+7
+00:00:34.832 --> 00:00:43.408
+An embedding model finds content about error codes in general and can miss the one document that contains “TS-999”.
+
+8
+00:00:43.688 --> 00:00:46.035
+A keyword ranker finds that string directly.
+
+9
+00:00:46.315 --> 00:00:51.541
+The post’s recommendation, which you’ll implement next lesson, is to run both and combine them.
+
+10
+00:00:51.821 --> 00:00:55.832
+The research record supports keeping keyword search around, with nuance.
+
+11
+00:00:56.112 --> 00:01:11.515
+Karpukhin and colleagues (2020) showed a trained dense retriever beating a strong BM25 baseline by 9 to 19 points of top-20 accuracy on open-domain question answering, in the domain it was trained for.
+
+12
+00:01:11.795 --> 00:01:26.621
+The BEIR benchmark (Thakur and colleagues, 2021) then tested retrievers on 18 datasets they weren’t tuned for and found BM25 to be a robust baseline that many dense models of the time failed to beat.
+
+13
+00:01:26.901 --> 00:01:34.560
+Both findings hold: dense retrieval shines in domain, and keyword search is hard to beat out of domain and on exact terms.
+
+14
+00:01:34.840 --> 00:01:39.235
+Your company’s internal jargon is about as out of domain as text gets.
+
+15
+00:01:39.515 --> 00:01:51.525
+This lesson builds keyword search from first principles: the inverted index, then TF-IDF, then BM25, the ranking function behind Lucene, Elasticsearch, and OpenSearch.

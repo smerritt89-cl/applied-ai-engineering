@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.285
+Routing and cascades, and the simpler thing to try first.
+
+2
+00:00:03.565 --> 00:00:08.835
+A router sends each request to one of several models based on a prediction of difficulty.
+
+3
+00:00:09.115 --> 00:00:14.043
+A cascade tries a cheap model first and escalates to a stronger one when a check fails.
+
+4
+00:00:14.323 --> 00:00:16.093
+Both have research behind them.
+
+5
+00:00:16.373 --> 00:00:31.307
+Chen, Zaharia, and Zou’s FrugalGPT (2023) learned which combination of models to query and reported matching GPT-4’s performance with up to 98 percent cost reduction on their benchmarks.
+
+6
+00:00:31.587 --> 00:00:48.845
+RouteLLM (Ong and colleagues, 2024) trained routers on human preference data to choose between a strong and a weak model, and reported cost savings of over two times in certain cases without degrading response quality on the benchmarks they evaluated.
+
+7
+00:00:49.125 --> 00:00:54.864
+Those results are real, and they are measured on the authors’ tasks and the model prices of their time.
+
+8
+00:00:55.144 --> 00:01:04.403
+Before you build one, measure the simpler alternative Anthropic’s guidance recommends: the strongest model you’d consider, at lower effort, on your own tasks.
+
+9
+00:01:04.683 --> 00:01:06.347
+Its reasoning is concrete.
+
+10
+00:01:06.627 --> 00:01:22.243
+A newer model at lower effort often matches or beats a previous-generation model at high effort; one model means one cache namespace, while a cascade splits traffic across models whose caches are separate; and a router adds a component that can be wrong.
+
+11
+00:01:22.523 --> 00:01:30.928
+The guide’s rule: tune one model before you add a second, and build a pairing only if it beats the single model’s whole curve of score against spend.
+
+12
+00:01:31.208 --> 00:01:35.304
+If a router does earn its place, treat it like any model output and check it.
+
+13
+00:01:35.584 --> 00:01:49.365
+Log every routing decision, measure quality separately on the traffic routed down (the cheap path is where silent regressions hide), track the escalation rate, and keep a fixed eval that runs both paths on the same inputs.

@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.643
+The network, shape by shape.
+
+2
+00:00:01.923 --> 00:00:03.437
+Build the dataset first.
+
+3
+00:00:03.717 --> 00:00:10.309
+Every name becomes several examples: for “emma” with context length 3, the examples are “…” predicts e, “.
+
+4
+00:00:10.589 --> 00:00:11.805
+e” predicts m, “.
+
+5
+00:00:12.085 --> 00:00:15.861
+em” predicts m, “emm” predicts a, and “mma” predicts “.
+
+6
+00:00:16.141 --> 00:00:16.439
+”.
+
+7
+00:00:16.719 --> 00:00:18.276
+Contexts are padded with the “.
+
+8
+00:00:18.556 --> 00:00:19.836
+” token at the start.
+
+9
+00:00:20.116 --> 00:00:24.788
+That’s X, an integer array of shape (N, 3), and Y, the targets, shape (N).
+
+10
+00:00:25.068 --> 00:00:30.423
+Then the forward pass: Embed: C is a 27 by d matrix of trainable numbers.
+
+11
+00:00:30.703 --> 00:00:32.794
+C[X] has shape (N, 3, d).
+
+12
+00:00:33.074 --> 00:00:35.634
+Concatenate: view it as (N, 3d).
+
+13
+00:00:35.914 --> 00:00:42.399
+Hidden layer: h = tanh(emb W1 + b1), with W1 of shape (3d, H).
+
+14
+00:00:42.679 --> 00:00:49.612
+Output layer: logits = h W2 + b2, with W2 of shape (H, 27).
+
+15
+00:00:49.892 --> 00:00:53.434
+Loss: cross-entropy between softmax(logits) and Y.
+
+16
+00:00:53.714 --> 00:01:15.004
+Count the parameters for d = 10 and H = 200: C has 270, W1 and b1 have 30 x 200 + 200 = 6,200, W2 and b2 have 200 x 27 + 27 = 5,427, for 11,897 in total.
+
+17
+00:01:15.284 --> 00:01:20.639
+Compare 531,441 cells in a three-character count table.
+
+18
+00:01:20.919 --> 00:01:30.220
+Most of the model’s capacity is in the layers, not the embeddings, and the embedding size controls how much information each character can carry into them.
+
+19
+00:01:30.500 --> 00:01:40.399
+The lecture’s experiments at 01:00:49 and 01:07:16 probe exactly which of those is the bottleneck.

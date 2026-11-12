@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.243
+Orchestrator-workers: when the parts depend on the input.
+
+2
+00:00:03.523 --> 00:00:13.315
+In orchestrator-workers, a central model reads the input, decides what subtasks are needed, hands each to a worker call, and then synthesizes the results.
+
+3
+00:00:13.595 --> 00:00:18.501
+The post says it fits complex tasks where you cannot predict the subtasks in advance.
+
+4
+00:00:18.781 --> 00:00:29.939
+Its examples: coding changes where the number of files and the nature of each change depend on the task, and search tasks that gather and analyze information from several sources.
+
+5
+00:00:30.219 --> 00:00:38.240
+Structurally it resembles sectioning; the difference is that the subtasks are not predefined, so a model is now making a planning decision.
+
+6
+00:00:38.520 --> 00:00:52.536
+For the PM example: “Prepare the Monday portfolio review” might need one subtask per project that changed last week, plus one for a cross-project dependency, and the orchestrator can only know which by reading the inputs.
+
+7
+00:00:52.816 --> 00:01:05.467
+Have the orchestrator return its plan as structured output, so your code can validate it (a maximum number of subtasks, each with a clear goal and expected output format) before spending money on workers.
+
+8
+00:01:05.747 --> 00:01:10.973
+Workers can often run on a cheaper model, which is a routing decision inside the pattern.
+
+9
+00:01:11.253 --> 00:01:23.563
+Anthropic described this pattern in production in “How we built our multi-agent research system” (June 2025): a lead agent plans and spawns subagents that search in parallel.
+
+10
+00:01:23.843 --> 00:01:30.904
+Their internal evaluation found the multi-agent setup far outperformed a single agent on research tasks.
+
+11
+00:01:31.184 --> 00:01:40.059
+They also reported the cost: agents used about four times the tokens of chat interactions, and multi-agent systems about fifteen times.
+
+12
+00:01:40.339 --> 00:01:56.808
+And they listed where the pattern fits poorly: tasks where every worker needs the same context, tasks with many dependencies between workers (they note most coding tasks have fewer truly parallel parts than research), and tasks whose value doesn’t justify the tokens.
+
+13
+00:01:57.088 --> 00:02:12.320
+The checks: validate the plan before running it, cap the number of workers, give each worker a specific objective and output format (their post describes vague delegation producing duplicated work), and check the synthesis against the workers’ outputs,
+
+14
+00:02:12.600 --> 00:02:17.528
+since the synthesizer can drop or invent findings just like any other summarizer.

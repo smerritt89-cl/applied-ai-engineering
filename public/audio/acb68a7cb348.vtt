@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.024
+What runs when.
+
+2
+00:00:01.304 --> 00:00:03.565
+The constraint that shapes everything is cost.
+
+3
+00:00:03.845 --> 00:00:14.171
+A deterministic assertion runs in microseconds for free; a model-graded check on a long answer costs real money and seconds per case, and adds its own noise.
+
+4
+00:00:14.451 --> 00:00:27.101
+So you tier the suite by cost and speed, the same way the pytest docs recommend splitting fast, reliable tests from slower integration tests and gating CI on the fast ones while monitoring the rest.
+
+5
+00:00:27.381 --> 00:00:29.792
+On every commit (offline, seconds, free).
+
+6
+00:00:30.072 --> 00:00:33.016
+Unit tests for prompt templating and output parsing.
+
+7
+00:00:33.296 --> 00:00:37.243
+Unit tests for every grader, on hand-written good and bad outputs.
+
+8
+00:00:37.523 --> 00:00:43.773
+And, most valuable, replays: recorded model responses fed through your current parsing and grading code.
+
+9
+00:00:44.053 --> 00:00:50.752
+If someone changes a grader, a regex, or a parser, replays show the effect immediately and deterministically.
+
+10
+00:00:51.032 --> 00:00:55.789
+On every pull request that touches prompts or models (minutes, cents to dollars).
+
+11
+00:00:56.069 --> 00:01:05.349
+A smaller live set, a few dozen to a couple of hundred cases, focused on the must-pass list and recent bugs, compared against the baseline from main.
+
+12
+00:01:05.629 --> 00:01:10.344
+Cache responses keyed on the full request, so unchanged prompts don’t pay twice.
+
+13
+00:01:10.624 --> 00:01:13.419
+Nightly or on a schedule (longer, the real bill).
+
+14
+00:01:13.699 --> 00:01:22.872
+The full suite, live and uncached, with model-graded checks and several trials per question, analyzed with the paired statistics from lesson 7.
+
+15
+00:01:23.152 --> 00:01:26.075
+This is what catches model-side drift you didn’t cause.
+
+16
+00:01:26.355 --> 00:01:28.296
+Before a release or model switch.
+
+17
+00:01:28.576 --> 00:01:34.293
+The full suite plus a human spot check of a random sample of outputs, because graders drift too.
+
+18
+00:01:34.573 --> 00:01:41.912
+Anthropic’s guide notes that automated evals can run on every commit and model upgrade as a first line of defense.
+
+19
+00:01:42.192 --> 00:01:44.432
+The tiering is what makes that affordable.
+
+20
+00:01:44.712 --> 00:01:55.293
+Hamel and Shreya add the other half: retire or run less often the evals that keep passing, and be most aggressive about it with expensive ones such as LLM judges.

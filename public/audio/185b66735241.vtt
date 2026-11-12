@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.557
+Up front or just in time.
+
+2
+00:00:01.837 --> 00:00:04.632
+There are two ways to get information into the context.
+
+3
+00:00:04.912 --> 00:00:12.037
+Up front: retrieve or paste everything that might be relevant before the model starts, the classic RAG pattern from Studio 2.
+
+4
+00:00:12.317 --> 00:00:21.512
+Just in time: give the agent lightweight references (file paths, document ids, queries) and tools to load content when it decides it needs it.
+
+5
+00:00:21.792 --> 00:00:36.811
+Anthropic’s context engineering post argues that agents increasingly benefit from just-in-time retrieval, because the agent can follow the trail, use metadata such as file names and folder structure as clues, and keep only what matters.
+
+6
+00:00:37.091 --> 00:00:50.445
+Their Agent SDK post recommends starting with agentic search (letting the agent use tools like grep over files) and adding semantic search only when you need the speed or the variety of queries it handles.
+
+7
+00:00:50.725 --> 00:00:56.272
+The trade-off is real: runtime exploration is slower, and it only works with good tools.
+
+8
+00:00:56.552 --> 00:01:01.117
+An agent with a bad search tool wastes its budget opening the wrong documents.
+
+9
+00:01:01.397 --> 00:01:03.339
+Most real systems are hybrid.
+
+10
+00:01:03.619 --> 00:01:07.523
+Claude Code is the standard example in the post: it loads CLAUDE.
+
+11
+00:01:07.803 --> 00:01:14.032
+md files into context at the start, then uses glob and grep to find everything else as it works.
+
+12
+00:01:14.312 --> 00:01:16.744
+You can apply the same split to your own agents.
+
+13
+00:01:17.024 --> 00:01:23.424
+Put in up front the small, stable, always-relevant material (the task, the rules, a map of what exists).
+
+14
+00:01:23.704 --> 00:01:32.600
+Leave the large, variable material (document bodies, logs, query results) behind tools that return small, paginated results.
+
+15
+00:01:32.880 --> 00:01:37.019
+The post’s general advice fits here too: do the simplest thing that works.
+
+16
+00:01:37.299 --> 00:01:41.971
+If your corpus is twenty pages and fits comfortably, paste it in and skip the tools.

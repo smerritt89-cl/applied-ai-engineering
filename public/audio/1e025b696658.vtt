@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.835
+What a vector store actually does.
+
+2
+00:00:02.115 --> 00:00:05.635
+Strip away the marketing and a vector store does five jobs.
+
+3
+00:00:05.915 --> 00:00:10.032
+It stores vectors alongside an id, the chunk text, and metadata.
+
+4
+00:00:10.312 --> 00:00:18.696
+It searches: given a query vector, return the k nearest stored vectors by cosine similarity, dot product, or Euclidean distance.
+
+5
+00:00:18.976 --> 00:00:27.083
+It filters: restrict the search to records whose metadata matches a condition (this tenant, these groups, documents after this date).
+
+6
+00:00:27.363 --> 00:00:31.693
+It updates: insert, replace, and delete records as documents change.
+
+7
+00:00:31.973 --> 00:00:39.077
+And, for most production systems, it persists and serves this reliably, with backups, concurrency, and access control.
+
+8
+00:00:39.357 --> 00:00:45.992
+You built the first three in week 1 with a list and a loop, and the lab this week adds the rest in about a hundred lines.
+
+9
+00:00:46.272 --> 00:00:51.691
+Every product in this lesson is a faster, more durable, more operable version of that loop.
+
+10
+00:00:51.971 --> 00:01:00.888
+That framing helps you evaluate them: ask how each one does search, filtering, updates, and operations, and which of those your application stresses.
+
+11
+00:01:01.168 --> 00:01:03.323
+One more distinction does a lot of work.
+
+12
+00:01:03.603 --> 00:01:11.048
+Exact (brute-force) search compares the query with every stored vector, so it always returns the true nearest neighbors.
+
+13
+00:01:11.328 --> 00:01:21.739
+Approximate nearest neighbor (ANN) search uses an index to look at a small fraction of vectors and return results that are usually, not always, the true nearest neighbors.
+
+14
+00:01:22.019 --> 00:01:38.851
+The dominant ANN index today is HNSW (Hierarchical Navigable Small World graphs, introduced by Malkov and Yashunin in 2016): a layered graph in which a search hops greedily toward the query, coarse layers first, then fine ones.
+
+15
+00:01:39.131 --> 00:01:42.672
+It is fast and accurate, and it costs memory and build time.
+
+16
+00:01:42.952 --> 00:01:57.480
+pgvector’s README summarizes the trade-off well: by default it does exact search with perfect recall, and once you add an approximate index you trade some recall for speed, so the same query can return different results than before.

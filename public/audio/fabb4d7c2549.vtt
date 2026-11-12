@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.621
+Caching is a prefix match.
+
+2
+00:00:01.901 --> 00:00:07.640
+When you mark part of a request with cache_control, the API stores the processed prefix up to that point.
+
+3
+00:00:07.920 --> 00:00:15.856
+A later request whose prompt starts with exactly the same bytes up to that point reads the stored prefix instead of processing it again.
+
+4
+00:00:16.136 --> 00:00:17.992
+Three rules govern everything else.
+
+5
+00:00:18.272 --> 00:00:21.365
+Render order is tools, then system, then messages.
+
+6
+00:00:21.645 --> 00:00:25.059
+The cache key covers everything before a breakpoint in that order.
+
+7
+00:00:25.339 --> 00:00:31.632
+A breakpoint on the last system block therefore caches your tool definitions and system prompt together.
+
+8
+00:00:31.912 --> 00:00:34.813
+Any byte change invalidates everything after it.
+
+9
+00:00:35.093 --> 00:00:42.112
+A different timestamp, a reordered JSON key, one extra tool: the prefix no longer matches from that point on.
+
+10
+00:00:42.392 --> 00:00:45.571
+The docs’ invalidation table adds settings to the list.
+
+11
+00:00:45.851 --> 00:01:04.475
+Changing tool definitions invalidates the whole cache; changing tool_choice or adding an image invalidates the message part; changing thinking or effort settings always invalidates the message part; and requests at different speeds (fast mode versus standard) don’t share cached prefixes.
+
+12
+00:01:04.755 --> 00:01:09.960
+Caches are also scoped per model, and isolated per workspace on the Claude API.
+
+13
+00:01:10.240 --> 00:01:12.523
+Small prefixes don’t cache, silently.
+
+14
+00:01:12.803 --> 00:01:22.531
+Each model has a minimum cacheable length (512 tokens on the current Opus, Sonnet, and Haiku models, per the caching docs at the time of writing).
+
+15
+00:01:22.811 --> 00:01:27.952
+Below it, the request runs uncached with no error, and both cache meters read zero.
+
+16
+00:01:28.232 --> 00:01:30.856
+Mechanically you have two ways to mark the cache.
+
+17
+00:01:31.136 --> 00:01:41.120
+Automatic caching is a top-level cache_control field; the API places the breakpoint on the last cacheable block and moves it forward as a conversation grows.
+
+18
+00:01:41.400 --> 00:01:46.072
+Explicit breakpoints go on specific content blocks, up to four per request.
+
+19
+00:01:46.352 --> 00:01:58.853
+Use explicit breakpoints when the end of the prompt is unique per request (a one-off question, retrieved rows): put the marker at the end of the shared part, or every request writes an entry nobody reads.

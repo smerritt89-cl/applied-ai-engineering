@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.179
+Defense by design: the dual LLM pattern.
+
+2
+00:00:03.459 --> 00:00:09.624
+If you can’t stop the model from being fooled, arrange things so a fooled model has nothing dangerous to do.
+
+3
+00:00:09.904 --> 00:00:17.029
+Willison’s dual LLM pattern (April 2023) is the first well-known design of this kind.
+
+4
+00:00:17.309 --> 00:00:23.133
+A privileged LLM receives only trusted input (the user’s request) and has the tools.
+
+5
+00:00:23.413 --> 00:00:28.021
+A quarantined LLM handles untrusted content and has no tools.
+
+6
+00:00:28.301 --> 00:00:30.755
+A plain controller program sits between them.
+
+7
+00:00:31.035 --> 00:00:43.387
+When the privileged model needs an email summarized, it never sees the email: the controller fetches it, hands it to the quarantined model, and stores the result in a variable such as $VAR1.
+
+8
+00:00:43.667 --> 00:00:55.080
+The privileged model can ask for $VAR1 to be shown to the user or passed to a tool, but it never reads its contents, so instructions inside it can’t steer the privileged model.
+
+9
+00:00:55.360 --> 00:00:58.219
+Willison was candid about the costs in the same post.
+
+10
+00:00:58.499 --> 00:01:12.472
+It is awkward to build, it limits what the assistant can do, users can still be socially engineered by what the quarantined model produces, and he argued that asking users to approve everything would fail because of dialog fatigue.
+
+11
+00:01:12.752 --> 00:01:28.389
+There is also a hole that later work fixed: even if the privileged model never reads $VAR1, untrusted content can still influence which data flows where, for example if the recipient of an email is itself extracted from untrusted text.

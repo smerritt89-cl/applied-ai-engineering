@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.941
+Cost and operations trade-offs.
+
+2
+00:00:02.221 --> 00:00:04.867
+The costs that matter are rarely the vector math.
+
+3
+00:00:05.147 --> 00:00:13.424
+Embedding cost is paid at ingestion and again on every re-embed (a model change, a chunking change, contextual retrieval).
+
+4
+00:00:13.704 --> 00:00:21.597
+Estimate it as total tokens times the embedding price, and keep the content hash so unchanged documents are never re-embedded.
+
+5
+00:00:21.877 --> 00:00:28.021
+Storage and memory scale with chunks times dimensions; smaller chunks and overlap multiply both.
+
+6
+00:00:28.301 --> 00:00:40.717
+HNSW indexes add graph memory and take time to build; pgvector notes HNSW has a better speed-recall trade-off than IVFFlat but slower builds and more memory.
+
+7
+00:00:40.997 --> 00:00:43.493
+Operations is where options differ most.
+
+8
+00:00:43.773 --> 00:00:48.147
+An embedded store has no server to run but one process owns the files.
+
+9
+00:00:48.427 --> 00:00:56.064
+pgvector inherits everything your team already does for Postgres: backups, monitoring, migrations, access control.
+
+10
+00:00:56.344 --> 00:01:01.869
+A dedicated database is one more service to secure, upgrade, and page someone about.
+
+11
+00:01:02.149 --> 00:01:19.408
+A managed service removes that work in exchange for usage-based pricing, data leaving your network, and lock-in, which you can reduce by keeping your ingestion pipeline and chunk store portable (the lab’s JSON file is a crude version of this: you can rebuild any index from it).
+
+12
+00:01:19.688 --> 00:01:35.773
+A defensible decision for most teams: NumPy or an embedded store while the corpus is small and you are still changing chunking; pgvector if you already run Postgres; a dedicated or managed vector database when scale, multitenancy features,
+
+13
+00:01:36.053 --> 00:01:40.107
+or hybrid search at high volume justify running or buying one.
+
+14
+00:01:40.387 --> 00:01:51.651
+Revisit the choice with numbers (latency at your p95, recall@k with the ANN index versus exact search, monthly cost) rather than with a vendor’s benchmark chart.

@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.411
+Tool poisoning, shadowing, and rug pulls.
+
+2
+00:00:02.691 --> 00:00:12.312
+The tool list is itself an attack surface, because the model reads tool names and descriptions as instructions and users usually see only a short summary.
+
+3
+00:00:12.592 --> 00:00:13.680
+Tool poisoning.
+
+4
+00:00:13.960 --> 00:00:33.821
+In April 2025, Invariant Labs showed a tool that claimed to add two numbers while its description, which the client UI did not display in full, told the model to read the user’s MCP configuration file and SSH private key and pass them in an extra parameter, without mentioning it to the user.
+
+5
+00:00:34.101 --> 00:00:41.845
+Their experiments used Cursor, and they said the attack applies to any client that does not properly display and validate descriptions.
+
+6
+00:00:42.125 --> 00:00:43.021
+Shadowing.
+
+7
+00:00:43.301 --> 00:00:54.949
+The same research showed that a malicious server’s description can change how the model uses a different, trusted server’s tools, for instance telling it to send every email to an attacker’s address.
+
+8
+00:00:55.229 --> 00:00:57.597
+The malicious tool never has to be called.
+
+9
+00:00:57.877 --> 00:01:07.648
+This is possible because all connected servers’ descriptions share one model context, which is why the local-server guide says to keep your server roster small.
+
+10
+00:01:07.928 --> 00:01:08.888
+Rug pulls.
+
+11
+00:01:09.168 --> 00:01:12.667
+A server can change its tool definitions after you approved it.
+
+12
+00:01:12.947 --> 00:01:16.168
+Install-time review does not cover what arrives later.
+
+13
+00:01:16.448 --> 00:01:30.336
+Willison’s write-up of these attacks includes an Invariant demonstration in which a server swapped its definitions to hijack a WhatsApp server’s send tool, with padding that pushed the stolen data out of view in the client UI.
+
+14
+00:01:30.616 --> 00:01:32.899
+The mitigations sit with clients and with you.
+
+15
+00:01:33.179 --> 00:01:46.747
+Clients should show full descriptions, alert when they change, and display every invocation with its arguments; the local-server guide says to prefer clients that pin tool definitions at approval and re-prompt on change.
+
+16
+00:01:47.027 --> 00:02:00.552
+You should read every tool description before relying on a server (the Inspector shows them with no model in the loop), remove servers whose descriptions contain instructions unrelated to the tool’s job, and pin versions.
+
+17
+00:02:00.832 --> 00:02:08.747
+The specification adds one rule for clients: treat tool annotations as untrusted unless they come from a trusted server.
+
+18
+00:02:09.027 --> 00:02:11.608
+A destructive tool can claim to be read-only.

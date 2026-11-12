@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.560
+Why a low-rank update is enough (when it is).
+
+2
+00:00:02.840 --> 00:00:18.797
+The motivating evidence came first from Aghajanyan, Zettlemoyer, and Gupta (2020), building on a method by Li and colleagues (2018): train a model only inside a random low-dimensional subspace of its parameter space,
+
+3
+00:00:19.077 --> 00:00:24.304
+and find the smallest dimension that reaches 90 percent of full fine-tuning performance.
+
+4
+00:00:24.584 --> 00:00:28.040
+That smallest dimension is the task’s intrinsic dimension.
+
+5
+00:00:28.320 --> 00:00:41.739
+Their headline result: optimizing only 200 parameters, randomly projected into the full space, let RoBERTa reach 90 percent of full-parameter performance on the MRPC paraphrase task.
+
+6
+00:00:42.019 --> 00:00:52.131
+They also found that pretraining lowers intrinsic dimension and that, after a fixed amount of pretraining, larger models tend to have lower intrinsic dimension.
+
+7
+00:00:52.411 --> 00:00:59.899
+Hu and colleagues turned that into a hypothesis about the weight update: the change a task needs has low intrinsic rank.
+
+8
+00:01:00.179 --> 00:01:08.477
+On GPT-3 they found ranks as small as 1 or 2 sufficed when adapting the query and value projections on their benchmarks.
+
+9
+00:01:08.757 --> 00:01:11.168
+Their analysis section adds a mechanism.
+
+10
+00:01:11.448 --> 00:01:24.291
+The learned update correlates with the pretrained weights more than a random matrix does, but it emphasizes directions the pretrained weights do not emphasize, and amplifies them by a large factor (about 21.
+
+11
+00:01:24.571 --> 00:01:27.451
+5 at r = 4 in one layer they studied).
+
+12
+00:01:27.731 --> 00:01:33.405
+In their words, the adaptation amplifies features that were already learned but not emphasized.
+
+13
+00:01:33.685 --> 00:01:37.589
+Now the counterweight, because the early results were on modest tasks.
+
+14
+00:01:37.869 --> 00:01:51.779
+Biderman and colleagues (2024) compared LoRA and full fine-tuning on code and math, with around 100,000 instruction pairs and with 20 billion tokens of continued pretraining.
+
+15
+00:01:52.059 --> 00:02:04.112
+LoRA substantially underperformed full fine-tuning in their standard low-rank settings; full fine-tuning learned weight changes with rank 10 to 100 times higher than typical LoRA ranks.
+
+16
+00:02:04.392 --> 00:02:05.843
+It also forgot less.
+
+17
+00:02:06.123 --> 00:02:20.352
+Thinking Machines (2025) reached a reconciling picture: LoRA matched full fine-tuning on small-to-medium instruction and reasoning datasets, and fell behind when the dataset exceeded the adapter’s capacity.
+
+18
+00:02:20.632 --> 00:02:29.891
+The working rule: a narrow behavior learned from thousands of examples (a format, a labeling scheme, a style) is well within LoRA’s comfort zone.
+
+19
+00:02:30.171 --> 00:02:37.211
+Teaching a model a large new domain from billions of tokens is not, and needs higher ranks or full fine-tuning.

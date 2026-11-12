@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.029
+Faster models, fast mode, and precomputation.
+
+2
+00:00:03.309 --> 00:00:05.955
+Smaller models generate faster per token.
+
+3
+00:00:06.235 --> 00:00:16.965
+The cookbook measured output speed on its workload at about 581 tokens per second for Haiku, 236 for Sonnet, and 153 for Opus.
+
+4
+00:00:17.245 --> 00:00:21.789
+But per-task time is what matters, and it measured Sonnet’s median task at 3.
+
+5
+00:00:22.069 --> 00:00:24.181
+5 seconds and Haiku’s at 4.
+
+6
+00:00:24.461 --> 00:00:28.536
+0, because the smaller model wrote more tokens and accuracy fell.
+
+7
+00:00:28.816 --> 00:00:35.515
+A faster model is not automatically a faster task, and switching models is a migration: re-run the eval.
+
+8
+00:00:35.795 --> 00:00:40.040
+Fast mode runs the same model with a faster inference configuration.
+
+9
+00:00:40.320 --> 00:00:42.283
+Anthropic’s docs list up to 2.
+
+10
+00:00:42.563 --> 00:00:50.328
+5 times higher output tokens per second, focused on output speed rather than TTFT, on Claude Opus 5.
+
+11
+00:00:50.608 --> 00:00:59.483
+5 (generally available) and a few other models, at a premium (8 and 40 dollars per million input and output tokens on Opus 5.
+
+12
+00:00:59.763 --> 00:01:02.707
+5 at the time of writing, twice the standard rate).
+
+13
+00:01:02.987 --> 00:01:15.936
+It has its own rate limit, isn’t available with the Batch API, and requests at different speeds don’t share cached prefixes, so falling back to standard speed on a 429 is also a cache miss.
+
+14
+00:01:16.216 --> 00:01:24.813
+In the cookbook it cut median and p90 task time by 53 to 59 percent at every effort level, at roughly double the cost.
+
+15
+00:01:25.093 --> 00:01:31.301
+When you report a paid lever like this, always show beside it what the no-cost changes achieved on their own.
+
+16
+00:01:31.581 --> 00:01:34.952
+Precompute whatever doesn’t need to happen while the user waits.
+
+17
+00:01:35.232 --> 00:01:44.832
+OpenAI’s guide ends its list with “don’t default to an LLM”: hard-coded responses, precomputed outputs, and ordinary caching where they fit.
+
+18
+00:01:45.112 --> 00:02:04.248
+In practice: generate summaries and classifications in a nightly batch job (half price, lesson 5) and serve them from your database; cache final answers in your own application keyed by a normalized input, with an expiry and an invalidation rule; and pre-warm the prompt cache before traffic arrives.
+
+19
+00:02:04.528 --> 00:02:20.485
+Anthropic’s caching docs describe sending a request with max_tokens set to 0, which writes the cache without generating output; the cookbook measured a first turn on a 146,000-token prompt falling from 1.
+
+20
+00:02:20.765 --> 00:02:21.981
+0 to 0.
+
+21
+00:02:22.261 --> 00:02:23.563
+8 seconds this way.
+
+22
+00:02:23.843 --> 00:02:31.373
+Pre-warming costs a cache write, so it pays only when the first request’s latency is user-visible and the prefix is large.

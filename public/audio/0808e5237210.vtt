@@ -1,0 +1,213 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.240
+The GenAI semantic conventions.
+
+2
+00:00:02.520 --> 00:00:09.731
+If every team invents its own attribute names, every tool has to be told what llm_model or modelName means.
+
+3
+00:00:10.011 --> 00:00:13.360
+OpenTelemetry’s semantic conventions fix the names.
+
+4
+00:00:13.640 --> 00:00:18.739
+For generative AI they define, among others: An inference span named {gen_ai.
+
+5
+00:00:19.019 --> 00:00:20.000
+operation.
+
+6
+00:00:20.280 --> 00:00:21.560
+name} {gen_ai.
+
+7
+00:00:21.840 --> 00:00:22.693
+request.
+
+8
+00:00:22.973 --> 00:00:27.048
+model}, such as chat claude-opus-5-5, with kind Client.
+
+9
+00:00:27.328 --> 00:00:28.757
+Required gen_ai.
+
+10
+00:00:29.037 --> 00:00:30.019
+operation.
+
+11
+00:00:30.299 --> 00:00:31.707
+name and gen_ai.
+
+12
+00:00:31.987 --> 00:00:32.883
+provider.
+
+13
+00:00:33.163 --> 00:00:34.613
+name; gen_ai.
+
+14
+00:00:34.893 --> 00:00:35.747
+request.
+
+15
+00:00:36.027 --> 00:00:37.371
+model, gen_ai.
+
+16
+00:00:37.651 --> 00:00:38.547
+response.
+
+17
+00:00:38.827 --> 00:00:40.171
+model, gen_ai.
+
+18
+00:00:40.451 --> 00:00:41.347
+response.
+
+19
+00:00:41.627 --> 00:00:43.504
+finish_reasons, gen_ai.
+
+20
+00:00:43.784 --> 00:00:44.637
+usage.
+
+21
+00:00:44.917 --> 00:00:46.944
+input_tokens, and gen_ai.
+
+22
+00:00:47.224 --> 00:00:48.077
+usage.
+
+23
+00:00:48.357 --> 00:00:51.877
+output_tokens as recommended attributes; gen_ai.
+
+24
+00:00:52.157 --> 00:00:52.904
+prompt.
+
+25
+00:00:53.184 --> 00:00:54.592
+name and gen_ai.
+
+26
+00:00:54.872 --> 00:00:55.619
+prompt.
+
+27
+00:00:55.899 --> 00:00:58.075
+version for named templates; error.
+
+28
+00:00:58.355 --> 00:00:59.720
+type when the call fails.
+
+29
+00:01:00.000 --> 00:01:02.773
+A tool span named execute_tool {gen_ai.
+
+30
+00:01:03.053 --> 00:01:03.821
+tool.
+
+31
+00:01:04.101 --> 00:01:08.347
+name}, with kind Internal, and agent spans such as invoke_agent.
+
+32
+00:01:08.627 --> 00:01:10.248
+One detail bites people.
+
+33
+00:01:10.528 --> 00:01:12.640
+The conventions define gen_ai.
+
+34
+00:01:12.920 --> 00:01:13.773
+usage.
+
+35
+00:01:14.053 --> 00:01:20.325
+input_tokens to include cached tokens, and record cache reads and writes in separate attributes as well.
+
+36
+00:01:20.605 --> 00:01:21.864
+Claude’s own usage.
+
+37
+00:01:22.144 --> 00:01:24.747
+input_tokens counts only uncached input.
+
+38
+00:01:25.027 --> 00:01:32.515
+If you copy the provider’s field straight into the convention’s attribute, every cache hit makes your input counts look smaller than they are.
+
+39
+00:01:32.795 --> 00:01:34.949
+Status, verified for this lesson.
+
+40
+00:01:35.229 --> 00:01:43.165
+The GenAI conventions are marked Development, OpenTelemetry’s label for conventions that may still change in breaking ways.
+
+41
+00:01:43.445 --> 00:01:46.453
+In June 2026, release v1.
+
+42
+00:01:46.733 --> 00:01:47.651
+42.
+
+43
+00:01:47.931 --> 00:01:52.240
+0 of the core semantic conventions deprecated all gen_ai.
+
+44
+00:01:52.520 --> 00:02:01.544
+* definitions there and moved them to a dedicated repository, semantic-conventions-genai; the old pages on opentelemetry.
+
+45
+00:02:01.824 --> 00:02:03.104
+io now point to it.
+
+46
+00:02:03.384 --> 00:02:09.549
+Names are still moving: a 2026 OpenTelemetry blog post charts gen_ai.
+
+47
+00:02:09.829 --> 00:02:10.619
+client.
+
+48
+00:02:10.899 --> 00:02:11.880
+operation.
+
+49
+00:02:12.160 --> 00:02:16.896
+duration, while the current spec says inference calls should report gen_ai.
+
+50
+00:02:17.176 --> 00:02:17.965
+client.
+
+51
+00:02:18.245 --> 00:02:19.120
+inference.
+
+52
+00:02:19.400 --> 00:02:20.680
+duration instead.
+
+53
+00:02:20.960 --> 00:02:30.624
+Treat the names as a versioned dependency: pin your instrumentation and convention versions, and re-test the dashboards and alerts that query them when you upgrade.

@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.069
+Week 1: from a script to a service.
+
+2
+00:00:02.349 --> 00:00:05.528
+Every studio so far ended with code you ran yourself.
+
+3
+00:00:05.808 --> 00:00:17.179
+This studio is about what changes when other people use it: they arrive at the same time, from browsers and phones, at hours you don’t choose, while the model provider has its own bad minutes.
+
+4
+00:00:17.459 --> 00:00:24.712
+Week 1 covers the shape of the service (this lesson), how it survives failures (lesson 2), and where it runs (lesson 3).
+
+5
+00:00:24.992 --> 00:00:29.579
+Weeks 2 to 4 add cost and latency work, observability, and guardrails.
+
+6
+00:00:29.859 --> 00:00:35.299
+Start with one rule that has no exceptions in this course: the model call lives on your server.
+
+7
+00:00:35.579 --> 00:00:48.507
+Anthropic’s authentication docs are direct about it: call the API from your own back end, not from code in your users’ browsers, because anyone who uses a page can read an API key in that page’s code.
+
+8
+00:00:48.787 --> 00:00:52.712
+A leaked key is billed to you, and it works from anywhere until you revoke it.
+
+9
+00:00:52.992 --> 00:00:55.040
+Secrecy is only half the reason.
+
+10
+00:00:55.320 --> 00:00:59.523
+Your back end is the one place where you control what happens around the call.
+
+11
+00:00:59.803 --> 00:01:14.139
+It is where you authenticate the user, apply per-user quotas and spend caps, assemble the system prompt so users cannot edit it, validate and post-process the output, log the request for debugging and evals, and choose the model.
+
+12
+00:01:14.419 --> 00:01:16.957
+Each of those is a later lesson in this studio.
+
+13
+00:01:17.237 --> 00:01:21.227
+None of them is possible if the browser talks to the provider directly.
+
+14
+00:01:21.507 --> 00:01:29.165
+The same logic applies to mobile apps and desktop clients: a binary you ship is readable by anyone who wants to read it.
+
+15
+00:01:29.445 --> 00:01:45.936
+Anthropic does offer a narrow alternative for iOS and macOS apps (App Attest, which issues short-lived tokens to verified installations), but the default design for this course is a thin client in front of a back end that owns every model call.

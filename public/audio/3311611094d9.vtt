@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.877
+The loss you should see at step zero.
+
+2
+00:00:02.157 --> 00:00:07.811
+Before any training, a classifier knows nothing, so it should spread probability roughly evenly.
+
+3
+00:00:08.091 --> 00:00:13.424
+For 27 characters, that means an initial loss near log 27, about 3.
+
+4
+00:00:13.704 --> 00:00:14.472
+30.
+
+5
+00:00:14.752 --> 00:00:26.059
+The lecture’s network starts far above that, because its output layer produces large logits at random: the softmax is confidently wrong, and the loss pays for confidence it hasn’t earned.
+
+6
+00:00:26.339 --> 00:00:32.867
+The first many training steps are then spent just shrinking the logits, the “hockey stick” at the start of the loss curve.
+
+7
+00:00:33.147 --> 00:00:44.517
+The fix at 04:19 is to initialize the output layer’s weights small and its bias at zero, so the initial logits are near 0 and the softmax is near uniform.
+
+8
+00:00:44.797 --> 00:00:52.115
+The general rule is worth memorizing as a check: compute the loss you expect at initialization and assert you see it.
+
+9
+00:00:52.395 --> 00:00:54.869
+For a C-way classifier that is log C.
+
+10
+00:00:55.149 --> 00:01:03.363
+For a model whose initial loss is far above that baseline, something is scaled wrong, and the first part of training will be wasted undoing it.
+
+11
+00:01:03.643 --> 00:01:05.883
+This check transfers beyond toy models.
+
+12
+00:01:06.163 --> 00:01:13.096
+When you fine-tune, the initial loss on your data tells you whether the data and the model agree before you’ve changed anything.
+
+13
+00:01:13.376 --> 00:01:19.435
+A suspicious starting value is often a tokenization or formatting bug, not a modeling problem.

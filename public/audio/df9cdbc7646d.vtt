@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.475
+From TF-IDF to BM25.
+
+2
+00:00:02.755 --> 00:00:11.117
+TF-IDF scores a document for a query by summing, over query terms, term frequency times inverse document frequency.
+
+3
+00:00:11.397 --> 00:00:15.920
+A common idf is log(N / n), where N is the number of documents.
+
+4
+00:00:16.200 --> 00:00:29.085
+It captures two good intuitions: a term that appears often in a document is probably what the document is about, and a term that appears in few documents is a better discriminator than one that appears everywhere.
+
+5
+00:00:29.365 --> 00:00:31.093
+It also has two weaknesses.
+
+6
+00:00:31.373 --> 00:00:42.723
+Term frequency counts linearly, so a document that says “license” twenty times scores twenty times higher on that term than one that says it once, though it isn’t twenty times more relevant.
+
+7
+00:00:43.003 --> 00:00:46.907
+And long documents accumulate higher counts just by being long.
+
+8
+00:00:47.187 --> 00:00:49.171
+BM25 fixes both.
+
+9
+00:00:49.451 --> 00:01:02.187
+Robertson and Zaragoza’s survey “The Probabilistic Relevance Framework: BM25 and Beyond” (2009) derives it from a probabilistic model of relevance; here is the result.
+
+10
+00:01:02.467 --> 00:01:19.405
+For a query Q and document D: score(D, Q) = sum over query terms q of idf(q) times tf(q, D) times (k1 + 1), divided by tf(q, D) + k1 times (1 minus b plus b times dl / avgdl).
+
+11
+00:01:19.685 --> 00:01:26.768
+The idf is the Robertson and Sparck Jones weight with no relevance information: log((N minus n plus 0.
+
+12
+00:01:27.048 --> 00:01:29.011
+5) / (n plus 0.
+
+13
+00:01:29.291 --> 00:01:30.101
+5)).
+
+14
+00:01:30.381 --> 00:01:37.891
+That goes negative for terms in more than half the documents, so Lucene uses log(1 + (N minus n plus 0.
+
+15
+00:01:38.171 --> 00:01:40.133
+5) / (n plus 0.
+
+16
+00:01:40.413 --> 00:01:42.504
+5)), which is always positive.
+
+17
+00:01:42.784 --> 00:01:45.067
+You’ll use the Lucene form in the exercise.
+
+18
+00:01:45.347 --> 00:01:58.147
+The (k1 + 1) in the numerator is a constant per term, so it doesn’t change the ranking; the survey notes that it is included so a single occurrence weighs the same as in the plain RSJ weight.

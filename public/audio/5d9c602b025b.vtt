@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.451
+Wiring it into CI.
+
+2
+00:00:01.731 --> 00:00:05.187
+In GitHub Actions, the tiers map onto workflow triggers.
+
+3
+00:00:05.467 --> 00:00:13.509
+A pull_request trigger with a paths filter runs the live smoke set only when prompts, model config, or the eval itself change.
+
+4
+00:00:13.789 --> 00:00:21.661
+A schedule trigger with a cron expression runs the nightly suite, and workflow_dispatch lets someone run it by hand before a release.
+
+5
+00:00:21.941 --> 00:00:24.779
+Three details from GitHub’s docs are worth knowing.
+
+6
+00:00:25.059 --> 00:00:32.717
+Cron schedules run in UTC unless you set a time zone, and they run only on the latest commit of the default branch.
+
+7
+00:00:32.997 --> 00:00:38.907
+Scheduled runs can be delayed at busy times, especially the top of the hour, so pick an odd minute.
+
+8
+00:00:39.187 --> 00:00:51.091
+And in public repositories, scheduled workflows are disabled automatically after 60 days without repository activity, which can silently stop a nightly eval on a quiet project.
+
+9
+00:00:51.371 --> 00:00:56.448
+API keys go in the repository’s encrypted secrets, never in the workflow file.
+
+10
+00:00:56.728 --> 00:01:02.573
+Upload the results file and manifest as a build artifact so anyone can rerun the analysis.
+
+11
+00:01:02.853 --> 00:01:10.939
+The lab for this week includes a complete example workflow that runs the offline gate; it sits in the lab folder rather than in.
+
+12
+00:01:11.219 --> 00:01:16.552
+github/workflows, so it documents the pattern without running on this repository.

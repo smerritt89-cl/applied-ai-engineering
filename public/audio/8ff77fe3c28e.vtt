@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.965
+One frozen test set, one metric, for everyone.
+
+2
+00:00:03.245 --> 00:00:11.587
+Start with the rule that makes every other number meaningful: every system is scored on the same frozen test set with the same scoring code.
+
+3
+00:00:11.867 --> 00:00:23.451
+Frozen means the cases and gold labels are fixed before any system is run, stored in the repository, and identified by a fingerprint (a hash of ids, inputs, and labels).
+
+4
+00:00:23.731 --> 00:00:31.027
+Every recorded run stores the fingerprint it was scored against, and your scorer refuses to compare runs whose fingerprints differ.
+
+5
+00:00:31.307 --> 00:00:40.971
+That one check catches the most common silent error in comparisons: someone fixes three gold labels between runs, and the “improvement” is the label fix.
+
+6
+00:00:41.251 --> 00:00:44.600
+The test set must also be one that no system was tuned on.
+
+7
+00:00:44.880 --> 00:00:51.067
+For the fine-tuned model that means no test case, and no near-duplicate of one, appears in the training data.
+
+8
+00:00:51.347 --> 00:01:03.912
+Deng and colleagues (2023) document how often public benchmarks leak into training corpora and how much that inflates scores; your own pipeline can leak the same way at small scale.
+
+9
+00:01:04.192 --> 00:01:12.235
+If training and test examples were both sampled from the same week of meetings, a model can score well by recognizing recurring phrases.
+
+10
+00:01:12.515 --> 00:01:20.877
+Split by source (by meeting, by customer, by month) rather than by row, and run a near-duplicate check between the splits before training.
+
+11
+00:01:21.157 --> 00:01:26.597
+For the frontier model, “not tuned on” means you didn’t iterate its prompt against the test cases.
+
+12
+00:01:26.877 --> 00:01:30.227
+Tune prompts on a dev split, then run the test split once.
+
+13
+00:01:30.507 --> 00:01:32.768
+Same inputs does not mean same prompt.
+
+14
+00:01:33.048 --> 00:01:40.963
+The fine-tuned model expects the short format it was trained on; the frontier model does best with instructions and a few examples.
+
+15
+00:01:41.243 --> 00:01:48.688
+Give each system its reasonable best prompt, with a comparable tuning budget, and record each prompt version with its results.
+
+16
+00:01:48.968 --> 00:01:54.387
+What you must hold constant is the input each system sees, the output schema, and the scoring.

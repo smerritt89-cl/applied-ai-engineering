@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.904
+Cost per 1,000 tasks, including the hardware.
+
+2
+00:00:04.184 --> 00:00:09.987
+Quality differences are often small and uncertain; cost differences are often large and certain.
+
+3
+00:00:10.267 --> 00:00:20.464
+Compute cost per 1,000 tasks for each system, because per-request prices are too small to reason about and per-month totals depend on volume.
+
+4
+00:00:20.744 --> 00:00:33.373
+For an API model, cost per task is input tokens times the input price plus output tokens times the output price, using the token counts you recorded during the benchmark, not an estimate.
+
+5
+00:00:33.653 --> 00:00:46.347
+Include everything a task actually consumes: system prompt and few-shot examples (often most of the input), retries after validation failures, and any reasoning tokens the model bills as output.
+
+6
+00:00:46.627 --> 00:00:50.360
+Check the provider’s pricing page on the day you write the report.
+
+7
+00:00:50.640 --> 00:00:54.587
+As of this lesson’s review date, Anthropic lists Claude Haiku 5.
+
+8
+00:00:54.867 --> 00:00:56.232
+5 at $0.
+
+9
+00:00:56.512 --> 00:00:57.941
+10 and $0.
+
+10
+00:00:58.221 --> 00:01:02.211
+50 per million input and output tokens and Claude Sonnet 5.
+
+11
+00:01:02.491 --> 00:01:12.560
+5 at $2 and $10, with a 50 percent discount for batch processing; those numbers change, which is why your report records the date and the source.
+
+12
+00:01:12.840 --> 00:01:24.488
+For a self-hosted model, the unit is GPU time, and the formula is the GPU’s hourly price divided by the tasks it completes per hour, times 1,000.
+
+13
+00:01:24.768 --> 00:01:26.603
+Two inputs are easy to get wrong.
+
+14
+00:01:26.883 --> 00:01:35.885
+Throughput must be measured, at the batch size and concurrency you will actually run (lesson 11 explains why throughput depends so much on batching).
+
+15
+00:01:36.165 --> 00:01:39.835
+Utilization is the share of paid hours that do useful work.
+
+16
+00:01:40.115 --> 00:01:53.469
+A rented GPU bills whether or not requests arrive; Hugging Face Inference Endpoints, for example, bills per minute while an endpoint is running and lists one NVIDIA L4 on AWS at $0.
+
+17
+00:01:53.749 --> 00:01:55.861
+80 per hour at the time of writing.
+
+18
+00:01:56.141 --> 00:02:04.376
+If your traffic keeps the GPU busy 20 percent of the time, your effective cost per task is five times the busy-GPU figure.
+
+19
+00:02:04.656 --> 00:02:09.499
+Scale-to-zero and batch scheduling change utilization, so say which you assume.
+
+20
+00:02:09.779 --> 00:02:18.717
+Then name the costs that aren’t per task: engineering time to build and maintain serving, monitoring, on-call, and retraining when the task drifts.
+
+21
+00:02:18.997 --> 00:02:27.957
+You don’t have to put a dollar figure on them, but a report that compares only GPU-hours to API tokens understates the cost of self-hosting.

@@ -1,0 +1,93 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.280
+Reading loss curves.
+
+2
+00:00:01.560 --> 00:00:07.981
+Log the training loss every few steps and evaluate on a held-out validation set at regular intervals.
+
+3
+00:00:08.261 --> 00:00:22.704
+TRL logs the mean loss over scored tokens, plus the mean token accuracy (how often the model’s top prediction is the target token) and the entropy of its predictions, which helps tell confident from uncertain models.
+
+4
+00:00:22.984 --> 00:00:24.669
+Then read the two curves together.
+
+5
+00:00:24.949 --> 00:00:26.549
+Both falling, then flattening.
+
+6
+00:00:26.829 --> 00:00:27.576
+Normal.
+
+7
+00:00:27.856 --> 00:00:33.125
+The gap between them is the generalization gap; a small, stable gap is what you want.
+
+8
+00:00:33.405 --> 00:00:36.371
+Training keeps falling, validation turns upward.
+
+9
+00:00:36.651 --> 00:00:41.301
+Overfitting: the model is fitting training examples in ways that don’t transfer.
+
+10
+00:00:41.581 --> 00:00:46.829
+Prefer an earlier checkpoint, fewer epochs, a lower learning rate, or more varied data.
+
+11
+00:00:47.109 --> 00:00:50.224
+A staircase in the training loss at each epoch boundary.
+
+12
+00:00:50.504 --> 00:00:52.189
+Howard and Whitaker at fast.
+
+13
+00:00:52.469 --> 00:01:04.928
+ai (2023) reported sharp drops at the start of each new epoch when fine-tuning LLMs, which they read as the model memorizing examples after a single exposure.
+
+14
+00:01:05.208 --> 00:01:13.165
+In their experiments, validation loss rose while validation accuracy kept improving, which they attributed to overconfidence.
+
+15
+00:01:13.445 --> 00:01:22.277
+They framed this as early work, but the practical lesson holds: a rising validation loss is a prompt to check the task metric, not a verdict.
+
+16
+00:01:22.557 --> 00:01:23.560
+A flat line.
+
+17
+00:01:23.840 --> 00:01:29.536
+Learning rate too low, the wrong parameters frozen, or (common) almost every label masked.
+
+18
+00:01:29.816 --> 00:01:31.907
+Decode one batch’s labels and look.
+
+19
+00:01:32.187 --> 00:01:33.445
+Spikes or NaN.
+
+20
+00:01:33.725 --> 00:01:38.824
+Learning rate too high, mixed-precision overflow, or an example with nothing to score.
+
+21
+00:01:39.104 --> 00:01:42.069
+Training loss near zero within a few dozen steps.
+
+22
+00:01:42.349 --> 00:01:48.749
+Either the task is trivially templated (your lab’s synthetic data is), or the answers leak into the prompts.
+
+23
+00:01:49.029 --> 00:01:52.101
+Check for duplicates between splits before celebrating.

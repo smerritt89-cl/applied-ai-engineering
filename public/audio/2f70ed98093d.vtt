@@ -1,0 +1,117 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.155
+Four ways to build an agent with Claude.
+
+2
+00:00:02.435 --> 00:00:06.893
+Anthropic offers four routes, and two of them have confusingly similar names.
+
+3
+00:00:07.173 --> 00:00:16.347
+Two questions separate them: who supplies the harness (the loop and context management) and who supplies the deployment (where the agent and its tools run).
+
+4
+00:00:16.627 --> 00:00:18.397
+Plain code, the manual loop.
+
+5
+00:00:18.677 --> 00:00:22.795
+You call the Messages API and write the loop yourself, as in the lab.
+
+6
+00:00:23.075 --> 00:00:24.909
+You own the harness and the hosting.
+
+7
+00:00:25.189 --> 00:00:27.792
+Maximum control, no beta dependency.
+
+8
+00:00:28.072 --> 00:00:29.139
+The tool runner.
+
+9
+00:00:29.419 --> 00:00:32.704
+A helper in the regular anthropic SDK ( client.
+
+10
+00:00:32.984 --> 00:00:33.816
+beta.
+
+11
+00:00:34.096 --> 00:00:35.013
+messages.
+
+12
+00:00:35.293 --> 00:00:38.323
+tool_runner in Python, with @beta_tool functions).
+
+13
+00:00:38.603 --> 00:00:48.373
+It runs the request, execute, repeat cycle for tools you define, wraps tool exceptions as is_error results, and stops at max_iterations if you set it.
+
+14
+00:00:48.653 --> 00:00:52.429
+It has no built-in tools, no filesystem, and no sandbox.
+
+15
+00:00:52.709 --> 00:00:53.648
+You host it.
+
+16
+00:00:53.928 --> 00:01:05.960
+The tool runner docs suggest the manual loop when you need human approval, custom logging, or conditional execution, although the SDK also exposes per-iteration hooks for some of this.
+
+17
+00:01:06.240 --> 00:01:07.968
+The Claude Agent SDK.
+
+18
+00:01:08.248 --> 00:01:15.736
+A separate package ( claude-agent-sdk for Python, @anthropic-ai/claude-agent-sdk for TypeScript).
+
+19
+00:01:16.016 --> 00:01:22.928
+It is Claude Code as a library, renamed from the Claude Code SDK in September 2025.
+
+20
+00:01:23.208 --> 00:01:39.635
+You call query() with a prompt and options, and it drives the full Claude Code harness: built-in tools for reading, writing, and editing files, running shell commands, and searching, plus hooks, permissions, sessions, subagents, MCP, and automatic compaction.
+
+21
+00:01:39.915 --> 00:01:41.109
+You still host it.
+
+22
+00:01:41.389 --> 00:01:48.280
+Claude Managed Agents (beta, header managed-agents-2026-04-01 ).
+
+23
+00:01:48.560 --> 00:01:51.184
+Anthropic runs the harness and the deployment.
+
+24
+00:01:51.464 --> 00:02:06.205
+You create an agent (model, system prompt, tools, MCP servers, skills) once, then start sessions in an environment, either an Anthropic-managed cloud sandbox or a self-hosted sandbox, and exchange events with it.
+
+25
+00:02:06.485 --> 00:02:09.515
+It suits long-running, asynchronous, and scheduled work.
+
+26
+00:02:09.795 --> 00:02:12.461
+The tool runner is not the Agent SDK.
+
+27
+00:02:12.741 --> 00:02:20.933
+One is a thin loop over your tools inside the client SDK; the other is a batteries-included coding and filesystem agent.
+
+28
+00:02:21.213 --> 00:02:23.091
+Both run on your infrastructure.
+
+29
+00:02:23.371 --> 00:02:25.355
+Only Managed Agents is hosted.

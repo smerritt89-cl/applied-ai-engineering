@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.752
+Scoring a model: negative log-likelihood.
+
+2
+00:00:03.032 --> 00:00:10.136
+The likelihood of the dataset is the product of the probabilities the model assigns to every bigram that actually occurs.
+
+3
+00:00:10.416 --> 00:00:18.203
+That product is a tiny number (thousands of factors below 1), so you work with its logarithm, which turns the product into a sum.
+
+4
+00:00:18.483 --> 00:00:25.523
+Flip the sign so that lower is better, and divide by the number of bigrams so the loss doesn’t depend on dataset size.
+
+5
+00:00:25.803 --> 00:00:34.464
+That’s the average negative log-likelihood (NLL), which for classification is the same quantity as cross-entropy between the data and the model.
+
+6
+00:00:34.744 --> 00:00:36.536
+Anchor it with two reference points.
+
+7
+00:00:36.816 --> 00:00:43.664
+A model that assigns every token probability 1/27 scores log 27, about 3.
+
+8
+00:00:43.944 --> 00:00:46.013
+296, on any data.
+
+9
+00:00:46.293 --> 00:00:48.064
+A perfect model scores 0.
+
+10
+00:00:48.344 --> 00:00:51.629
+For this lesson, the counting model was fit to all of names.
+
+11
+00:00:51.909 --> 00:00:58.267
+txt with the method in the video, and its average NLL on that same data comes out at about 2.
+
+12
+00:00:58.547 --> 00:00:59.997
+454.
+
+13
+00:01:00.277 --> 00:01:05.824
+So the bigram structure is real (it beats uniform comfortably), and there’s lots left to learn.
+
+14
+00:01:06.104 --> 00:01:18.221
+Exponentiate the NLL and you get perplexity, the effective number of equally likely choices the model is torn between at each step: about 27 for the uniform model, about 11.
+
+15
+00:01:18.501 --> 00:01:19.909
+6 for the bigram model.
+
+16
+00:01:20.189 --> 00:01:26.376
+You’ll see perplexity in older papers and NLL (often called “loss”) in nearly everything recent.

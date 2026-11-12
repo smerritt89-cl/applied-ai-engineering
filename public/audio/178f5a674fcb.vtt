@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.475
+Stage 1: ingestion and the index.
+
+2
+00:00:02.755 --> 00:00:07.192
+Ingestion turns documents into passages you can retrieve and cite.
+
+3
+00:00:07.472 --> 00:00:19.781
+Parse and clean: extract text from HTML, Markdown, reStructuredText, or PDF; drop navigation, boilerplate, and duplicate pages; keep headings, because they carry meaning.
+
+4
+00:00:20.061 --> 00:00:27.059
+Chunk using what you measured in week 2, respecting the document’s own structure (sections, list items) where you can.
+
+5
+00:00:27.339 --> 00:00:38.539
+Attach metadata to every chunk: document id, title, section path, URL, license, last-modified or effective date, and status (current, superseded, archived).
+
+6
+00:00:38.819 --> 00:00:50.531
+Barnett and colleagues found that metadata such as file names and chunk numbers improved retrieval; dates and status are what let you fix the outdated-source failure from lesson 11.
+
+7
+00:00:50.811 --> 00:00:58.192
+Give every chunk a deterministic id, built from the document id, the section, and a short hash of the chunk text.
+
+8
+00:00:58.472 --> 00:01:07.069
+Re-running ingestion on unchanged text must produce identical ids, or yesterday’s logs and today’s index stop lining up.
+
+9
+00:01:07.349 --> 00:01:14.645
+Version the index: record which ingestion settings and embedding model built it, and log that version on every query.
+
+10
+00:01:14.925 --> 00:01:23.075
+Then build two indexes from the same chunks: a keyword index (BM25) and a vector index from your chosen embedding model.
+
+11
+00:01:23.355 --> 00:01:34.619
+Which embedding model is a week 1 decision you should have evidence for; the important part here is that switching models means re-embedding everything, so record the model id with the index.

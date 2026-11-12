@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.133
+Neurons, layers, and parameters.
+
+2
+00:00:02.413 --> 00:00:10.200
+A neuron with inputs x1 through xn computes tanh(w1 x1 + … + wn xn + b).
+
+3
+00:00:10.480 --> 00:00:14.299
+Its weights and bias are its parameters, the numbers training adjusts.
+
+4
+00:00:14.579 --> 00:00:19.656
+A layer of m such neurons maps a vector in R^n to a vector in R^m.
+
+5
+00:00:19.936 --> 00:00:29.451
+Stack layers and you have an MLP: MLP(3, [4, 4, 1]) maps 3 inputs through two hidden layers of 4 neurons to a single output.
+
+6
+00:00:29.731 --> 00:00:38.435
+Mathematically, a layer is x maps to tanh(W x + b), with W an m-by-n matrix applied elementwise through tanh.
+
+7
+00:00:38.715 --> 00:00:51.024
+The scalar version in micrograd builds that matrix product out of individual multiply and add nodes, which is why it is slow and why it is so good for learning: you can inspect every single number.
+
+8
+00:00:51.304 --> 00:00:52.605
+Why the nonlinearity?
+
+9
+00:00:52.885 --> 00:01:00.864
+Without it, a stack of layers collapses to a single affine map (a product of matrices is a matrix), so depth would add nothing.
+
+10
+00:01:01.144 --> 00:01:05.219
+With it, the MLP can approximate a much richer family of functions.
+
+11
+00:01:05.499 --> 00:01:15.376
+And tanh in particular squashes outputs into the interval from minus 1 to 1, which matches the targets of plus or minus 1 in the video’s tiny dataset.

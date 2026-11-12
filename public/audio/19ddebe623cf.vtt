@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.109
+What not to log.
+
+2
+00:00:01.389 --> 00:00:04.803
+The OWASP Logging Cheat Sheet is the standard starting list.
+
+3
+00:00:05.083 --> 00:00:21.253
+It says these should usually not be recorded directly in logs: session identifiers (log a hash if you need to correlate), access tokens, passwords, database connection strings, encryption keys and other primary secrets, bank account and payment card data,
+
+4
+00:00:21.533 --> 00:00:35.656
+sensitive personal data such as health data and government identifiers, data classified higher than the logging system is allowed to hold, commercially sensitive information, information that is illegal to collect where you operate,
+
+5
+00:00:35.936 --> 00:00:40.032
+and information a user has opted out of or not consented to.
+
+6
+00:00:40.312 --> 00:00:54.008
+It also flags ordinary personal data (names, phone numbers, email addresses) as needing special treatment: remove, mask, hash, or pseudonymize it when the person’s identity isn’t needed for the log’s purpose.
+
+7
+00:00:54.288 --> 00:00:59.643
+For an LLM system, add these to the list: Prompt and response text by default.
+
+8
+00:00:59.923 --> 00:01:03.208
+Record ids, versions, token counts, and outcomes.
+
+9
+00:01:03.488 --> 00:01:12.000
+Capture content only under a policy that says where it goes, who can read it, and when it is deleted (the opt-in default from lesson 7).
+
+10
+00:01:12.280 --> 00:01:13.965
+Tool arguments and results.
+
+11
+00:01:14.245 --> 00:01:18.661
+The model writes tool arguments, and users can talk it into putting anything there.
+
+12
+00:01:18.941 --> 00:01:25.683
+A search_orders call may carry an email address; a code tool’s result may contain an environment variable.
+
+13
+00:01:25.963 --> 00:01:27.349
+Retrieved documents.
+
+14
+00:01:27.629 --> 00:01:31.000
+Log document ids and chunk ids, not the text.
+
+15
+00:01:31.280 --> 00:01:35.483
+The text is already in your document store, under that store’s access rules.
+
+16
+00:01:35.763 --> 00:01:37.405
+Secrets that reach the model.
+
+17
+00:01:37.685 --> 00:01:45.963
+If a key or token ever appears in a prompt (a user pastes one, a tool returns one), it is now in every copy of that prompt.
+
+18
+00:01:46.243 --> 00:01:48.547
+System prompts in client-visible logs.
+
+19
+00:01:48.827 --> 00:01:54.608
+Your prompts are intellectual property and sometimes contain internal rules you don’t want exposed.

@@ -1,0 +1,37 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.387
+Code points and bytes.
+
+2
+00:00:01.667 --> 00:00:15.341
+A Python string is a sequence of Unicode code points, integers assigned to characters by the Unicode standard ( ord("a") is 97, and an emoji’s code point is above 100,000).
+
+3
+00:00:15.621 --> 00:00:23.557
+There are well over a hundred thousand assigned code points, and the standard keeps growing, so code points make an awkward base vocabulary.
+
+4
+00:00:23.837 --> 00:00:39.112
+UTF-8 encodes each code point as 1 to 4 bytes: ASCII characters take 1 byte, most Latin, Greek, and Cyrillic letters with accents take 2, most Chinese, Japanese, and Korean characters take 3, and emoji take 4.
+
+5
+00:00:39.392 --> 00:00:48.117
+It’s backward compatible with ASCII and dominant on the web, which is why the lecture prefers it over UTF-16 and UTF-32.
+
+6
+00:00:48.397 --> 00:00:53.432
+The GPT-2 paper (Radford and colleagues, 2019, section 2.
+
+7
+00:00:53.712 --> 00:01:12.379
+2) gives the argument for a byte-level base: a tokenizer working on code points would need a base vocabulary of over 130,000 symbols before adding any multi-symbol tokens, whereas bytes need only 256, and any string at all can be represented.
+
+8
+00:01:12.659 --> 00:01:19.357
+Feeding raw bytes straight into a model would make sequences long (one token per byte), so BPE compresses them.
+
+9
+00:01:19.637 --> 00:01:29.941
+The lecture’s “daydreaming” aside at 22:47 notes that deleting tokenization and modeling raw bytes would be cleaner if the sequence-length cost could be solved.

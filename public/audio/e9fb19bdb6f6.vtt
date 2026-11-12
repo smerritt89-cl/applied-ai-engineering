@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.392
+After the incident: postmortems that leave tests behind.
+
+2
+00:00:03.672 --> 00:00:19.651
+Google’s SRE book describes blameless postmortems: written records of an incident, its impact, the actions taken, the contributing causes, and follow-up actions, written on the assumption that everyone acted in good faith with the information they had.
+
+3
+00:00:19.931 --> 00:00:24.880
+Blame makes people hide problems, so the focus is fixing systems and processes.
+
+4
+00:00:25.160 --> 00:00:39.411
+It also recommends agreeing on triggers in advance, such as user-visible degradation past a threshold, any data loss, on-call intervention like a rollback, or a monitoring failure that meant a problem was found by hand.
+
+5
+00:00:39.691 --> 00:00:44.512
+For LLM incidents, add three items to every postmortem’s action list.
+
+6
+00:00:44.792 --> 00:00:55.779
+A test: the inputs that triggered the failure, and close variants, go into the eval set or the red-team set with the expected safe behavior, so the failure can’t return silently.
+
+7
+00:00:56.059 --> 00:01:03.269
+A signal: the monitor or alert that would have caught it sooner, whether an online eval, a guard alert, or a cost threshold.
+
+8
+00:01:03.549 --> 00:01:09.373
+A control: the guard, access check, or limit that was missing or failed, with an owner and a date.
+
+9
+00:01:09.653 --> 00:01:16.352
+Then rerun the full eval suite against the fix, because a fix for one failure often shifts behavior elsewhere.
+
+10
+00:01:16.632 --> 00:01:30.541
+Public incident collections, such as the AI Incident Database, are useful reading when you write your threat model: they show how real AI systems have failed in public, and which of those failures your own launch checklist would have caught.

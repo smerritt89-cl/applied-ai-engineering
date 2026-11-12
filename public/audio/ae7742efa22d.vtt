@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.389
+Brute force is simple, exact, and linear.
+
+2
+00:00:02.669 --> 00:00:11.011
+The top_k you wrote in lesson 1 is exact (or brute-force, or flat) search: score the query against every vector, keep the best k.
+
+3
+00:00:11.291 --> 00:00:12.976
+Its cost is easy to state.
+
+4
+00:00:13.256 --> 00:00:20.317
+For n vectors of dimension d, each query takes n times d multiply-adds and reads every vector from memory.
+
+5
+00:00:20.597 --> 00:00:31.755
+At 10 million vectors of 1,024 dimensions, that’s about 10 billion multiply-adds per query and roughly 41 GB of float32 vectors to stream through.
+
+6
+00:00:32.035 --> 00:00:37.987
+Before you reach for anything cleverer, run the numbers for your own case, because brute force is often enough.
+
+7
+00:00:38.267 --> 00:00:55.397
+A help center with 50,000 chunks at 1,024 dimensions is about 200 MB of vectors and around 50 million multiply-adds per query, well within what an optimized matrix library does on one CPU in a few milliseconds.
+
+8
+00:00:55.677 --> 00:01:13.896
+The Faiss documentation describes its flat index as the only index that guarantees exact results, recommends it as the baseline every other index is measured against, and notes it is the best choice when you’ll run only a modest number of searches, since building an index won’t pay for itself.
+
+9
+00:01:14.176 --> 00:01:20.384
+pgvector, the Postgres extension, does exact search by default and calls that perfect recall.
+
+10
+00:01:20.664 --> 00:01:29.261
+Exact search stops being enough when the corpus reaches millions of vectors, when you need many queries per second, or when the vectors don’t fit in memory.
+
+11
+00:01:29.541 --> 00:01:32.379
+Then you trade a little accuracy for a lot of speed.

@@ -1,0 +1,129 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.685
+Correcting a measured pass rate.
+
+2
+00:00:01.965 --> 00:00:05.699
+Here’s the payoff of measuring TPR and TNR separately.
+
+3
+00:00:05.979 --> 00:00:15.173
+Once the judge is frozen, you run it on new outputs that nobody labeled, say last week’s production replies, and it reports an observed pass rate q.
+
+4
+00:00:15.453 --> 00:00:22.259
+That number is biased by the judge’s errors: it counts failures the judge let through, and misses passes it flagged.
+
+5
+00:00:22.539 --> 00:00:24.885
+If you know the error rates, you can undo that.
+
+6
+00:00:25.165 --> 00:00:27.683
+Let p be the true pass rate on the new outputs.
+
+7
+00:00:27.963 --> 00:00:37.307
+A truly passing output is called pass with probability TPR; a truly failing one is called pass with probability 1 minus TNR.
+
+8
+00:00:37.587 --> 00:00:41.853
+So, assuming the judge’s error rates on new outputs match what you measured,.
+
+9
+00:00:42.133 --> 00:00:47.637
+q = TPR times p plus (1 minus TNR) times (1 minus p).
+
+10
+00:00:47.917 --> 00:00:49.283
+This is linear in p.
+
+11
+00:00:49.563 --> 00:00:56.517
+Collect the terms: q = p times (TPR plus TNR minus 1) plus (1 minus TNR).
+
+12
+00:00:56.797 --> 00:00:57.651
+Solving,.
+
+13
+00:00:57.931 --> 00:01:03.584
+p = (q plus TNR minus 1) / (TPR plus TNR minus 1).
+
+14
+00:01:03.864 --> 00:01:19.928
+Epidemiologists have used exactly this estimator since Rogan and Gladen’s 1978 paper on estimating disease prevalence from an imperfect screening test, where TPR is the test’s sensitivity and TNR its specificity.
+
+15
+00:01:20.208 --> 00:01:22.533
+Three properties follow from the algebra.
+
+16
+00:01:22.813 --> 00:01:27.955
+A perfect judge (TPR = TNR = 1) leaves q unchanged.
+
+17
+00:01:28.235 --> 00:01:39.883
+The denominator must be positive: if TPR plus TNR is 1 or less, the judge is no better than a coin weighted to its own pass rate and q carries no information about p.
+
+18
+00:01:40.163 --> 00:01:44.365
+And sampling noise can push the estimate outside 0 to 1, so clip it.
+
+19
+00:01:44.645 --> 00:01:50.725
+A worked example: the judge passes 79 percent of production replies, with TPR 0.
+
+20
+00:01:51.005 --> 00:01:52.776
+90 and TNR 0.
+
+21
+00:01:53.056 --> 00:01:54.699
+70 from the test split.
+
+22
+00:01:54.979 --> 00:01:56.600
+Then p = (0.
+
+23
+00:01:56.880 --> 00:01:58.437
+79 plus 0.
+
+24
+00:01:58.717 --> 00:02:00.915
+70 minus 1) / (0.
+
+25
+00:02:01.195 --> 00:02:02.496
+90 plus 0.
+
+26
+00:02:02.776 --> 00:02:04.973
+70 minus 1) = 0.
+
+27
+00:02:05.253 --> 00:02:06.811
+49 / 0.
+
+28
+00:02:07.091 --> 00:02:08.520
+60, about 0.
+
+29
+00:02:08.800 --> 00:02:09.739
+82.
+
+30
+00:02:10.019 --> 00:02:17.293
+The correction went up here, because the judge misses more good replies than the extra bad ones it lets through at this pass rate.
+
+31
+00:02:17.573 --> 00:02:19.707
+With a more lenient judge it goes down.
+
+32
+00:02:19.987 --> 00:02:21.885
+Don’t guess the direction; compute it.

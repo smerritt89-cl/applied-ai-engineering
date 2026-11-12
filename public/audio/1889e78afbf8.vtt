@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.776
+Output validation: check what came back against facts you control.
+
+2
+00:00:04.056 --> 00:00:09.240
+Output guards work best when they compare the model’s output with something the model can’t change.
+
+3
+00:00:09.520 --> 00:00:10.373
+Schemas.
+
+4
+00:00:10.653 --> 00:00:15.283
+Structured outputs guarantee shape, not truth (you learned this in Studio 1).
+
+5
+00:00:15.563 --> 00:00:20.491
+Keep the schema check, and keep the cross-field rules and evidence checks that sit on top of it.
+
+6
+00:00:20.771 --> 00:00:21.688
+Groundedness.
+
+7
+00:00:21.968 --> 00:00:32.272
+For anything that answers from documents, verify citations in code: the cited passage was actually retrieved, and the quoted text appears in it (Studio 2).
+
+8
+00:00:32.552 --> 00:00:38.504
+Where the claim needs judgment, a narrow LLM check (“does this passage support this sentence?
+
+9
+00:00:38.784 --> 00:00:41.664
+”) helps, measured against your labels like any judge.
+
+10
+00:00:41.944 --> 00:00:43.843
+PII the user didn’t supply.
+
+11
+00:00:44.123 --> 00:00:55.195
+If the reply contains an email or phone number that wasn’t in the user’s own message, it probably came from somewhere it shouldn’t, such as another customer’s record retrieved by a tool.
+
+12
+00:00:55.475 --> 00:00:56.819
+Redact it and log it.
+
+13
+00:00:57.099 --> 00:00:58.549
+System prompt leakage.
+
+14
+00:00:58.829 --> 00:01:04.013
+Plant a random canary string in the system prompt and block any output containing it.
+
+15
+00:01:04.293 --> 00:01:19.355
+Anthropic’s guidance on prompt leaks recommends exactly this kind of post-processing, and warns that elaborate leak-proofing instructions can degrade task performance; it also says to leave out proprietary details the model doesn’t need.
+
+16
+00:01:19.635 --> 00:01:21.960
+A canary detects verbatim leaks only.
+
+17
+00:01:22.240 --> 00:01:29.664
+A model can paraphrase its instructions, which is why the real fix is having nothing secret in the prompt (lesson 11).
+
+18
+00:01:29.944 --> 00:01:31.181
+Links and actions.
+
+19
+00:01:31.461 --> 00:01:36.411
+Allow links only to hosts you list, and compare hostnames, not substrings ( help.
+
+20
+00:01:36.691 --> 00:01:37.544
+example.
+
+21
+00:01:37.824 --> 00:01:38.549
+com.
+
+22
+00:01:38.829 --> 00:01:39.555
+evil.
+
+23
+00:01:39.835 --> 00:01:41.456
+test contains your domain).
+
+24
+00:01:41.736 --> 00:01:48.221
+If output will be rendered as HTML, escape it: lesson 11’s exercise builds that sanitizer.

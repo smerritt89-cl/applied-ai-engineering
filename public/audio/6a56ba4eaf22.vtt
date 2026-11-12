@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.600
+The objective, precisely.
+
+2
+00:00:01.880 --> 00:00:08.365
+Take one training example and render it with the model’s chat template into a token sequence x of length T.
+
+3
+00:00:08.645 --> 00:00:19.184
+A causal language model with parameters theta gives, at each position t, a distribution over the vocabulary for the next token, conditioned on everything before it.
+
+4
+00:00:19.464 --> 00:00:27.144
+The per-token loss at position t is the negative log-probability the model assigned to the token that actually comes next.
+
+5
+00:00:27.424 --> 00:00:32.587
+Now let M be the set of positions whose next token you want to learn (the “trained” positions).
+
+6
+00:00:32.867 --> 00:00:37.816
+The SFT loss for the example is the average of those per-token losses over M.
+
+7
+00:00:38.096 --> 00:00:44.368
+For a batch, trainers average over all trained positions in the batch, so every scored token counts equally.
+
+8
+00:00:44.648 --> 00:00:55.549
+TRL’s documentation describes the loss as token-level cross-entropy and notes the one-position shift: the model at position t is scored on token t + 1.
+
+9
+00:00:55.829 --> 00:00:57.877
+Two equivalent views are worth having.
+
+10
+00:00:58.157 --> 00:01:04.024
+Statistically, minimizing this loss is maximum likelihood estimation of theta on your data.
+
+11
+00:01:04.304 --> 00:01:17.552
+Information-theoretically, the expected per-token loss is the cross-entropy between the data’s next-token distribution and the model’s, which equals the data’s own entropy plus the KL divergence from data to model.
+
+12
+00:01:17.832 --> 00:01:25.469
+The entropy term is fixed by your data, so training reduces the KL term, and the loss can’t go below the entropy of the data.
+
+13
+00:01:25.749 --> 00:01:37.611
+That floor is why a loss of exactly zero on real text is a warning sign, not an achievement (for templated, deterministic targets like JSON labels, the floor really is near zero).
+
+14
+00:01:37.891 --> 00:01:41.325
+The loss is in nats per token when natural logs are used.
+
+15
+00:01:41.605 --> 00:01:47.131
+Its exponential is perplexity, the effective number of equally likely choices per token.
+
+16
+00:01:47.411 --> 00:01:48.584
+A loss of 0.
+
+17
+00:01:48.864 --> 00:01:51.125
+7 means a perplexity of about 2.

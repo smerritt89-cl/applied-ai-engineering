@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+The same model as a neural network.
+
+2
+00:00:02.456 --> 00:00:09.795
+The second half of the video rebuilds the bigram model with gradient descent, and this is where it starts looking like deep learning.
+
+3
+00:00:10.075 --> 00:00:17.520
+Encode the current character as a one-hot vector x in R^27 (all zeros except a 1 at its index).
+
+4
+00:00:17.800 --> 00:00:24.541
+Multiply by a 27 by 27 weight matrix W to get 27 numbers called logits.
+
+5
+00:00:24.821 --> 00:00:31.157
+Exponentiate and normalize (the softmax ) to get a probability distribution over the next character.
+
+6
+00:00:31.437 --> 00:00:33.677
+The loss is the same average NLL.
+
+7
+00:00:33.957 --> 00:00:35.877
+Backpropagate and step W.
+
+8
+00:00:36.157 --> 00:00:38.824
+Two notes in the video tie this back to counting.
+
+9
+00:00:39.104 --> 00:00:46.528
+First (01:47:49), x times W with a one-hot x just selects row i of W.
+
+10
+00:00:46.808 --> 00:00:59.331
+So the network is a lookup table of logits, one row per current character, and an embedding layer in a transformer is the same idea: indexing a matrix instead of multiplying by a one-hot vector.
+
+11
+00:00:59.611 --> 00:01:03.685
+Second, the softmax of row i is the model’s P(next given i).
+
+12
+00:01:03.965 --> 00:01:13.992
+The NLL is minimized when that softmax equals the empirical row distribution, which happens when the logits equal log counts plus any per-row constant.
+
+13
+00:01:14.272 --> 00:01:20.544
+So gradient descent converges toward the counting model: exp of the logits plays the role of the counts.
+
+14
+00:01:20.824 --> 00:01:36.419
+The second note (01:50:18) maps smoothing onto the network: adding a penalty proportional to the mean of W squared pulls all logits toward 0, which pushes every row toward uniform, exactly what pseudo-counts do.
+
+15
+00:01:36.699 --> 00:01:41.371
+Regularization in neural networks is, very often, a prior in disguise.

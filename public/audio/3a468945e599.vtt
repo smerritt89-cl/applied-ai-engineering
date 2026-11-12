@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.579
+Why logs stop being enough.
+
+2
+00:00:01.859 --> 00:00:08.365
+In Studio 1 a request was one model call, and one log line per call told you most of what you needed.
+
+3
+00:00:08.645 --> 00:00:10.992
+The systems you’ve built since are not like that.
+
+4
+00:00:11.272 --> 00:00:16.307
+A RAG answer is retrieval, maybe reranking, a model call, and a citation check.
+
+5
+00:00:16.587 --> 00:00:21.963
+An agent is a loop: model call, tool call, model call, tool call, until it stops.
+
+6
+00:00:22.243 --> 00:00:28.835
+A single user request can become a dozen operations across your code, a model provider, and a few tools.
+
+7
+00:00:29.115 --> 00:00:36.347
+When that request is slow, wrong, or expensive, the question you need answered is about the request, not any single call.
+
+8
+00:00:36.627 --> 00:00:38.013
+Which step took the time?
+
+9
+00:00:38.293 --> 00:00:40.128
+Which tool returned the bad data?
+
+10
+00:00:40.408 --> 00:00:43.779
+How many model calls did the agent make, and why so many?
+
+11
+00:00:44.059 --> 00:00:54.789
+Separate log lines can hold all the facts and still make these questions slow to answer, because nothing ties the lines of one request together or says which step caused which.
+
+12
+00:00:55.069 --> 00:00:58.440
+Tracing is the standard answer from distributed systems.
+
+13
+00:00:58.720 --> 00:01:08.149
+Every request gets an identifier, every step records its start, end, and outcome under that identifier, and each step points to the step that called it.
+
+14
+00:01:08.429 --> 00:01:11.352
+The result is a tree you can read like a timeline.
+
+15
+00:01:11.632 --> 00:01:20.720
+For LLM systems tracing has a second payoff: the traces you collect are the raw material for error analysis and evals (Studio 3).
+
+16
+00:01:21.000 --> 00:01:30.621
+Hamel Husain and Shreya Shankar’s evals FAQ puts reading real traces at the center of error analysis, and you can only read what you recorded.

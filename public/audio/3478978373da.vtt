@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.624
+Alerts that wake people only for good reasons.
+
+2
+00:00:02.904 --> 00:00:13.507
+The SRE book’s rules for what should page are short: a page must be urgent, actionable, and about a symptom users feel, not a cause, and every page should be actionable.
+
+3
+00:00:13.787 --> 00:00:29.061
+The SRE workbook adds four properties to judge any alert by: precision (the share of alerts that were real), recall (the share of real incidents that alerted), detection time, and reset time (how long it keeps firing after the problem ends).
+
+4
+00:00:29.341 --> 00:00:35.016
+A noisy alert has low precision; people learn to ignore it, and then it has low recall too.
+
+5
+00:00:35.296 --> 00:00:40.907
+The workbook’s recommended design for availability alerts is multiwindow, multi-burn-rate.
+
+6
+00:00:41.187 --> 00:00:44.984
+Start from a service-level objective (SLO), say 99.
+
+7
+00:00:45.264 --> 00:00:48.251
+9 percent of requests succeed over 30 days.
+
+8
+00:00:48.531 --> 00:00:57.597
+The allowed failures are the error budget, and the burn rate is how fast you’re spending it: burn rate 1 spends exactly the whole budget in the 30 days.
+
+9
+00:00:57.877 --> 00:00:59.072
+For a 99.
+
+10
+00:00:59.352 --> 00:01:07.288
+9 percent SLO the workbook suggests paging when 2 percent of the monthly budget burns within an hour (burn rate 14.
+
+11
+00:01:07.568 --> 00:01:14.992
+4) or 5 percent within six hours (burn rate 6), and opening a ticket when 10 percent burns within three days.
+
+12
+00:01:15.272 --> 00:01:27.304
+Each rule also requires a short window (about one twelfth of the long one) to exceed the same rate, so the alert stops soon after the problem does instead of firing for an hour on stale data.
+
+13
+00:01:27.584 --> 00:01:46.635
+Translating that to an LLM system: Page on availability burn (errors, timeouts, and possibly refusals on routes where a refusal is a failure), on latency SLO burn for interactive routes, and on cost burn: spend per hour far above budget usually means a loop, a retry storm,
+
+14
+00:01:46.915 --> 00:01:49.816
+or abuse, and it is both urgent and actionable.
+
+15
+00:01:50.096 --> 00:02:00.912
+Ticket for quality: a corrected pass rate below threshold over a window, sustained drift, rising thumbs-down rate, a judge whose agreement with fresh human labels dropped.
+
+16
+00:02:01.192 --> 00:02:03.133
+Dashboard only for everything else.
+
+17
+00:02:03.413 --> 00:02:05.995
+Two cautions from the workbook apply directly.
+
+18
+00:02:06.275 --> 00:02:16.088
+Low-traffic routes make rates jumpy (one failure in ten requests looks like a disaster), so combine routes, lengthen windows, or add synthetic traffic.
+
+19
+00:02:16.368 --> 00:02:26.501
+And very strict targets can’t be defended by alerting alone; at some point the defense is design (fallback models, canary releases) rather than faster pages.

@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:00.981
+Review sheet.
+
+2
+00:00:01.261 --> 00:00:08.515
+A chunk of T + 1 tokens trains T next-token predictions at once; block_size is the context window.
+
+3
+00:00:08.795 --> 00:00:14.597
+Single-head causal attention: y_t = sum over s at most t of softmax(q_t.
+
+4
+00:00:14.877 --> 00:00:20.083
+k_s / sqrt(d)) v_s, a convex combination of past values.
+
+5
+00:00:20.363 --> 00:00:23.456
+Divide by sqrt(head size) because q.
+
+6
+00:00:23.736 --> 00:00:25.101
+k has variance d.
+
+7
+00:00:25.381 --> 00:00:32.933
+Attention is permutation equivariant, so add position embeddings, which fixes the maximum context in the parameters.
+
+8
+00:00:33.213 --> 00:00:44.029
+A block is x + attention(LayerNorm(x)), then x + MLP(LayerNorm(x)); residual paths keep gradients flowing; LayerNorm normalizes per token.
+
+9
+00:00:44.309 --> 00:00:47.019
+Calibrate against published numbers (about 1.
+
+10
+00:00:47.299 --> 00:00:52.013
+47 for nanoGPT’s GPU config) before trusting your own.
+
+11
+00:00:52.293 --> 00:00:58.203
+Next lesson: the tokenizer, the stage that turns text into the integers all of this consumes.

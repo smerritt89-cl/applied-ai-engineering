@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.816
+Context rot: why more context is not free.
+
+2
+00:00:03.096 --> 00:00:06.531
+The Anthropic post uses two phrases you will hear often.
+
+3
+00:00:06.811 --> 00:00:13.936
+Context rot: as the number of tokens grows, the model’s ability to recall information from the context declines.
+
+4
+00:00:14.216 --> 00:00:19.101
+Attention budget: every token added draws down a finite amount of attention.
+
+5
+00:00:19.381 --> 00:00:31.968
+Their explanation is architectural (in a transformer, every token attends to every other, so relationships grow with the square of the length) plus a training one (models see fewer very long sequences).
+
+6
+00:00:32.248 --> 00:00:35.192
+They describe the decline as gradual, not a cliff.
+
+7
+00:00:35.472 --> 00:00:44.432
+The best-known measurement is Chroma’s July 2025 report “Context Rot,” which tested 18 models from several providers.
+
+8
+00:00:44.712 --> 00:00:48.595
+On deliberately simple tasks, performance fell as input length grew.
+
+9
+00:00:48.875 --> 00:00:56.832
+Distractors (text similar to the answer but wrong) made it worse, and so did lower similarity between the question and the answer text.
+
+10
+00:00:57.112 --> 00:01:09.464
+On a long-conversation memory benchmark, models did much better with a focused prompt of a few hundred relevant tokens than with the full history of about 113,000 tokens.
+
+11
+00:01:09.744 --> 00:01:22.245
+Earlier, the 2023 “Lost in the Middle” paper (Liu and colleagues) found that models used information at the start and end of a long context more reliably than information in the middle.
+
+12
+00:01:22.525 --> 00:01:24.104
+Read the evidence carefully.
+
+13
+00:01:24.384 --> 00:01:30.400
+Chroma is a vector database company, the report is not peer reviewed, and the tasks are synthetic.
+
+14
+00:01:30.680 --> 00:01:35.117
+Models change, and some newer ones handle long inputs better than the ones tested.
+
+15
+00:01:35.397 --> 00:01:49.349
+But the direction is consistent across independent studies and with Anthropic’s own guidance, and it predicts what you will see in agent traces: an agent that has read thirty documents starts missing a fact it read in the fifth.
+
+16
+00:01:49.629 --> 00:01:52.595
+The practical rule is not “keep contexts tiny.
+
+17
+00:01:52.875 --> 00:01:56.587
+” It is “keep contexts relevant,” and measure on your own tasks.

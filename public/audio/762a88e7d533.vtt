@@ -1,0 +1,85 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.069
+What to record on every model call.
+
+2
+00:00:02.349 --> 00:00:09.112
+The test for a field is simple: will you filter, group, or alert on it, or will you need it to reproduce a problem?
+
+3
+00:00:09.392 --> 00:00:11.547
+For a model call, these pass the test.
+
+4
+00:00:11.827 --> 00:00:14.088
+Model requested and model returned.
+
+5
+00:00:14.368 --> 00:00:17.547
+They can differ (aliases, fallbacks, provider routing).
+
+6
+00:00:17.827 --> 00:00:21.432
+When quality shifts, the first question is whether the model changed.
+
+7
+00:00:21.712 --> 00:00:23.013
+Prompt name and version.
+
+8
+00:00:23.293 --> 00:00:30.440
+Your prompts are code; a version string on every call is what lets you say “quality dropped when triage-v4 shipped.
+
+9
+00:00:30.720 --> 00:00:33.003
+” Without it, a regression is a mystery.
+
+10
+00:00:33.283 --> 00:00:41.944
+Tokens, split by kind: uncached input, cache reads, cache writes, and output, plus reasoning tokens where the provider reports them.
+
+11
+00:00:42.224 --> 00:00:52.187
+Claude’s usage object reports input_tokens separately from cache_read_input_tokens and cache_creation_input_tokens, and each kind has its own price.
+
+12
+00:00:52.467 --> 00:00:59.165
+Latency: total duration, plus time to first token for streamed calls, because that’s what a user feels.
+
+13
+00:00:59.445 --> 00:01:03.627
+Cost, computed by your code from tokens and a versioned price table.
+
+14
+00:01:03.907 --> 00:01:10.179
+Providers don’t put a price on each response, and prices change, so the table belongs in version control.
+
+15
+00:01:10.459 --> 00:01:17.179
+Finish reason ( end_turn, max_tokens, tool_use, refusal on Claude; other providers use other names).
+
+16
+00:01:17.459 --> 00:01:22.472
+Truncations and refusals are failures that return HTTP 200.
+
+17
+00:01:22.752 --> 00:01:30.219
+Tool calls: the tool name and outcome on a child span, with arguments only if your privacy rules allow (lesson 8).
+
+18
+00:01:30.499 --> 00:01:37.219
+Errors: a low-cardinality error type (such as rate_limit_error or a timeout), and Error status on the span.
+
+19
+00:01:37.499 --> 00:01:46.395
+Context ids: trace id, a pseudonymous user or session id, the feature or route, and the experiment arm if you’re running one.
+
+20
+00:01:46.675 --> 00:01:49.619
+Notice what’s missing: the prompt and response text.
+
+21
+00:01:49.899 --> 00:01:53.205
+That’s a deliberate default, and the next section explains it.

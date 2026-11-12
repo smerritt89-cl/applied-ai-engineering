@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.005
+What it doesn’t do well: new knowledge.
+
+2
+00:00:02.285 --> 00:00:08.216
+The intuition “fine-tune on our documents and the model will know them” is common and mostly wrong.
+
+3
+00:00:08.496 --> 00:00:10.672
+Two studies are worth knowing by name.
+
+4
+00:00:10.952 --> 00:00:18.312
+Gekhman and colleagues (2024), “Does Fine-Tuning LLMs on New Knowledge Encourage Hallucinations?
+
+5
+00:00:18.592 --> 00:00:22.197
+”, ran a controlled experiment with closed-book question answering.
+
+6
+00:00:22.477 --> 00:00:31.864
+Before training, they sorted each example by whether the base model already knew the answer, then varied the share of unknown answers in the fine-tuning set.
+
+7
+00:00:32.144 --> 00:00:33.723
+Two findings matter for you.
+
+8
+00:00:34.003 --> 00:00:41.171
+First, examples with new facts were learned much more slowly than examples consistent with what the model already knew.
+
+9
+00:00:41.451 --> 00:00:49.173
+Second, once the model did fit those new facts, its tendency to hallucinate on held-out test questions grew roughly linearly.
+
+10
+00:00:49.453 --> 00:00:57.880
+The authors conclude that models acquire facts mostly in pretraining and that fine-tuning mostly teaches them to use what they already have.
+
+11
+00:00:58.160 --> 00:01:02.576
+Their own caveat: one model (PaLM 2-S) and one task format.
+
+12
+00:01:02.856 --> 00:01:07.485
+Ovadia and colleagues (2023), “Fine-Tuning or Retrieval?
+
+13
+00:01:07.765 --> 00:01:20.715
+”, compared continued training on raw text with retrieval for three 7-billion-parameter open models, on subsets of the MMLU benchmark and on a set of questions about events after the models’ training cutoff.
+
+14
+00:01:20.995 --> 00:01:27.032
+Retrieval consistently beat fine-tuning, both for knowledge the models had seen and for new knowledge.
+
+15
+00:01:27.312 --> 00:01:32.069
+On the current-events questions, for example, Mistral 7B scored about 0.
+
+16
+00:01:32.349 --> 00:01:34.483
+48 with no help, about 0.
+
+17
+00:01:34.763 --> 00:01:38.517
+50 after fine-tuning on the relevant text, and about 0.
+
+18
+00:01:38.797 --> 00:01:40.355
+88 with retrieval.
+
+19
+00:01:40.635 --> 00:01:49.211
+Training on ten paraphrases of each fact helped fine-tuning noticeably, which hints at why one pass over a document teaches so little.
+
+20
+00:01:49.491 --> 00:01:54.376
+In their setup, adding fine-tuning on top of retrieval didn’t beat retrieval alone.
+
+21
+00:01:54.656 --> 00:01:59.520
+The practical rule follows: facts go in the context, behavior goes in the weights.
+
+22
+00:01:59.800 --> 00:02:10.360
+Retrieval also gives you what fine-tuning can’t: you can update a fact by editing the index, cite where an answer came from, and verify the answer against the retrieved text.

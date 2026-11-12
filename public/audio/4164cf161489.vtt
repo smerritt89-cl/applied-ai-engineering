@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.176
+What fills the window over a long task.
+
+2
+00:00:02.456 --> 00:00:08.088
+Picture the research agent from the lab, twenty steps into a question about a project’s launch risks.
+
+3
+00:00:08.368 --> 00:00:14.469
+Its context window now holds: the system prompt and tool definitions, sent on every request;.
+
+4
+00:00:14.749 --> 00:00:17.160
+the task, the user’s original message;.
+
+5
+00:00:17.440 --> 00:00:21.621
+every assistant turn: text, thinking blocks, and tool_use requests;.
+
+6
+00:00:21.901 --> 00:00:26.061
+every tool result: search hits, document pages, error messages.
+
+7
+00:00:26.341 --> 00:00:27.707
+The first two are fixed.
+
+8
+00:00:27.987 --> 00:00:40.061
+The last two grow with every step, and tool results usually grow fastest: one document read can be thousands of tokens, and the model rarely needs it again after it has extracted the fact it wanted.
+
+9
+00:00:40.341 --> 00:00:52.075
+The Claude Agent SDK docs make the same observation about Claude Code’s own loop: everything accumulates within a session, and large tool outputs consume significant context.
+
+10
+00:00:52.355 --> 00:00:53.955
+Growth costs you in three ways.
+
+11
+00:00:54.235 --> 00:01:03.664
+Money and latency, because the whole history is resent on every request (prompt caching softens this, since an unchanged prefix is cheaper to read).
+
+12
+00:01:03.944 --> 00:01:07.272
+Hard limits, because even a 1M-token window ends.
+
+13
+00:01:07.552 --> 00:01:14.677
+And quality, which is the subject of the next section, because a model does not use a long context as well as a short one.
+
+14
+00:01:14.957 --> 00:01:18.968
+Context engineering is Anthropic’s name for managing all of this.
+
+15
+00:01:19.248 --> 00:01:33.541
+Their September 2025 post defines it as curating and maintaining the whole set of tokens the model sees at each step (instructions, tools, external data, message history), not just writing the first prompt.
+
+16
+00:01:33.821 --> 00:01:40.840
+The guiding principle they give is to find the smallest set of high-signal tokens that makes the desired outcome likely.

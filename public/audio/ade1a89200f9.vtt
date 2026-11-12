@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.517
+What an LLM workload asks of a host.
+
+2
+00:00:02.797 --> 00:00:08.173
+A typical web request spends a few milliseconds of CPU and returns in under a second.
+
+3
+00:00:08.453 --> 00:00:13.808
+An LLM request is different in three ways, and they decide which hosting options fit.
+
+4
+00:00:14.088 --> 00:00:15.816
+It is long and mostly waiting.
+
+5
+00:00:16.096 --> 00:00:22.496
+A model call can take seconds to minutes, and almost all of that time your code is idle, waiting on the network.
+
+6
+00:00:22.776 --> 00:00:29.901
+Platforms that bill or limit by CPU time treat that very differently from platforms that limit wall-clock time.
+
+7
+00:00:30.181 --> 00:00:31.163
+It streams.
+
+8
+00:00:31.443 --> 00:00:35.859
+A chat reply is a response body that keeps arriving for tens of seconds.
+
+9
+00:00:36.139 --> 00:00:42.688
+The host has to support streamed responses, and its limits have to count streaming time in a way you can live with.
+
+10
+00:00:42.968 --> 00:00:44.781
+It carries a valuable secret.
+
+11
+00:00:45.061 --> 00:00:51.760
+The model API key can spend real money and, depending on its permissions, read your organization’s data.
+
+12
+00:00:52.040 --> 00:00:57.544
+It has to reach the server without ever touching the browser, the repository, or a log line.
+
+13
+00:00:57.824 --> 00:01:11.797
+This lesson looks at three common hosting shapes through those three lenses, with one documented example each: serverless functions (Vercel Functions), edge workers (Cloudflare Workers), and containers (Google Cloud Run).
+
+14
+00:01:12.077 --> 00:01:19.523
+These are examples, not endorsements; many other hosts follow the same shapes, and the questions you ask of them are the same.
+
+15
+00:01:19.803 --> 00:01:24.816
+The numbers below were checked against each platform’s documentation on the review date.
+
+16
+00:01:25.096 --> 00:01:27.912
+Limits change, so check them again when you deploy.

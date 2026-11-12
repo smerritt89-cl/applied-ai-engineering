@@ -1,0 +1,93 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.283
+Multi-tenancy and access control.
+
+2
+00:00:02.563 --> 00:00:10.328
+If your system serves more than one customer, team, or permission level, the most damaging retrieval failure is not a wrong answer.
+
+3
+00:00:10.608 --> 00:00:14.576
+It is a right answer from a document the user was not allowed to see.
+
+4
+00:00:14.856 --> 00:00:30.152
+OWASP’s 2025 entry on vector and embedding weaknesses lists exactly this: weak access controls exposing sensitive embedded data, and cross-context leaks in multi-tenant systems that share one vector database.
+
+5
+00:00:30.432 --> 00:00:39.499
+It also notes that embeddings can be partially inverted to recover source text, so treat vectors as being as sensitive as the documents they came from.
+
+6
+00:00:39.779 --> 00:00:44.963
+The isolation mechanisms differ by store: Namespaces or collections per tenant.
+
+7
+00:00:45.243 --> 00:00:54.309
+Pinecone recommends one namespace per tenant: each is stored separately, which gives physical isolation and makes offboarding a tenant one delete.
+
+8
+00:00:54.589 --> 00:01:02.952
+Qdrant, by contrast, says a collection per tenant is rarely efficient and is best kept for a few tenants that need strict isolation.
+
+9
+00:01:03.232 --> 00:01:05.109
+One collection with a tenant field.
+
+10
+00:01:05.389 --> 00:01:15.949
+Qdrant’s recommended default for many small tenants: a group_id -style payload field filtered on every request, with the payload index marked is_tenant (version 1.
+
+11
+00:01:16.229 --> 00:01:19.579
+11 and later) so each tenant’s data is stored together.
+
+12
+00:01:19.859 --> 00:01:32.339
+Its docs add a subtle warning: BM25 and IDF statistics are shared across tenants by default, so keyword scores can be influenced by other tenants’ documents unless you scope them.
+
+13
+00:01:32.619 --> 00:01:33.984
+Row-level security.
+
+14
+00:01:34.264 --> 00:01:42.179
+In Postgres, a row security policy makes the database itself add the tenant condition to every query for a given role.
+
+15
+00:01:42.459 --> 00:01:57.733
+Mind the Postgres docs’ caveats: superusers and roles with the BYPASSRLS attribute always bypass row security, and table owners do too unless you set FORCE ROW LEVEL SECURITY, so the application must connect as an ordinary role.
+
+16
+00:01:58.013 --> 00:02:05.139
+A table with row security enabled and no policy denies everything, which is the fail-closed default you want.
+
+17
+00:02:05.419 --> 00:02:08.043
+Whatever the mechanism, the rules are the same.
+
+18
+00:02:08.323 --> 00:02:15.320
+The tenant and group values come from the authenticated session on the server, never from request input or from the model.
+
+19
+00:02:15.600 --> 00:02:23.195
+The query path makes the filter impossible to skip (a required argument, a policy in the database, a per-tenant client).
+
+20
+00:02:23.475 --> 00:02:28.808
+Permission changes in the source system propagate to the index on a schedule you can state.
+
+21
+00:02:29.088 --> 00:02:35.979
+And a test plants canary documents in one tenant and fails the build if any query from another tenant ever returns them.
+
+22
+00:02:36.259 --> 00:02:41.784
+Log every retrieval with the identity and filter used, so you can answer “who could have seen this?
+
+23
+00:02:42.064 --> 00:02:43.301
+” after an incident.

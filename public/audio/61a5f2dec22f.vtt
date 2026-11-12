@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:04.672
+DPO: preference tuning without a reward model or reinforcement learning.
+
+2
+00:00:04.952 --> 00:00:18.797
+Rafailov and colleagues (2023) noticed that the RLHF objective (maximize reward, minus beta times the KL divergence from a reference model) has a known closed-form optimum.
+
+3
+00:00:19.077 --> 00:00:26.523
+The optimal policy is the reference model’s distribution reweighted by the exponential of the reward divided by beta.
+
+4
+00:00:26.803 --> 00:00:40.840
+Turn that around and the reward can be written in terms of the policy itself: the reward of a response is beta times the log of how much more likely the policy makes it than the reference does, plus a term that depends only on the prompt.
+
+5
+00:00:41.120 --> 00:00:49.227
+Substitute that into the Bradley-Terry model of preferences, and the prompt-only term cancels, because both responses share the prompt.
+
+6
+00:00:49.507 --> 00:00:57.891
+What is left is a loss you can minimize directly on preference pairs, with ordinary gradient descent: Direct Preference Optimization.
+
+7
+00:00:58.171 --> 00:01:03.269
+No separate reward model, no sampling from the model during training, no PPO.
+
+8
+00:01:03.549 --> 00:01:17.224
+The paper describes the result as a simple classification loss and reports it matching or beating PPO-based RLHF on the tasks it tested (sentiment control, summarization, single-turn dialogue).
+
+9
+00:01:17.504 --> 00:01:22.795
+The title states the idea compactly: your language model is secretly a reward model.
+
+10
+00:01:23.075 --> 00:01:39.779
+In the loss below, x is the prompt, y-plus the preferred response, y-minus the rejected one, pi-theta the model you are training, pi-ref the frozen reference (usually your supervised model), sigma the sigmoid, and beta the strength of the tie to the reference.

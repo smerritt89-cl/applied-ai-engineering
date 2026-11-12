@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.133
+The eval set comes before the system.
+
+2
+00:00:02.413 --> 00:00:07.896
+The most important ordering rule in the capstone: build the eval set before you build the system.
+
+3
+00:00:08.176 --> 00:00:09.392
+There are two reasons.
+
+4
+00:00:09.672 --> 00:00:10.952
+The first is bias.
+
+5
+00:00:11.232 --> 00:00:18.144
+Once a system exists, you unconsciously write test cases it can handle, because those are the cases you have been looking at.
+
+6
+00:00:18.424 --> 00:00:23.565
+Cases written first describe the user’s job; cases written later describe your system.
+
+7
+00:00:23.845 --> 00:00:34.512
+Anthropic’s guide to agent evals makes the same practical point from the other side: evals get harder to build the longer you wait, and you don’t need hundreds of tasks to start.
+
+8
+00:00:34.792 --> 00:00:44.840
+It suggests that 20 to 50 tasks drawn from real failures is a good beginning, and that the manual checks you already run during development are a natural source.
+
+9
+00:00:45.120 --> 00:00:48.683
+The second reason is that the eval set is the specification.
+
+10
+00:00:48.963 --> 00:01:00.803
+Writing 100 cases with expected outcomes forces decisions you would otherwise defer: what counts as a correct answer, when the system should abstain, which mistakes are worse than others.
+
+11
+00:01:01.083 --> 00:01:06.288
+For the capstone, aim for at least 100 cases in week 1 and grow it through week 4.
+
+12
+00:01:06.568 --> 00:01:21.352
+Tag each by source: realistic cases written from the user’s job, synthetic cases generated for coverage (and spot-checked), should-abstain cases the system must decline, and adversarial cases such as injected instructions.
+
+13
+00:01:21.632 --> 00:01:36.459
+Split it into dev and a sealed held-out set of at least a quarter of the cases, as Hamel Husain’s evals FAQ and Studio 3 describe, and decide now how rarely you will run held-out (end of weeks 2, 4, and 6 is a good rule).
+
+14
+00:01:36.739 --> 00:01:45.016
+Prefer binary pass or fail labels with a written reason, because they are faster to label consistently and easier to put an interval on.

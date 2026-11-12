@@ -1,0 +1,77 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.301
+Batch Normalization.
+
+2
+00:00:01.581 --> 00:00:10.989
+Ioffe and Szegedy (2015) proposed a blunter instrument: if you want pre-activations to be roughly standard normal, standardize them.
+
+3
+00:00:11.269 --> 00:00:23.899
+For each feature, compute the mean and variance over the current minibatch, subtract and divide, and then apply a learned scale gamma and shift beta, so the network can undo the normalization wherever that helps.
+
+4
+00:00:24.179 --> 00:00:27.379
+The layer sits between a linear layer and its nonlinearity.
+
+5
+00:00:27.659 --> 00:00:32.160
+Several consequences follow, and the lecture covers each: Redundant bias.
+
+6
+00:00:32.440 --> 00:00:39.523
+Mean subtraction removes any constant the previous layer added, so its bias does nothing and is usually disabled.
+
+7
+00:00:39.803 --> 00:00:41.360
+Beta takes over the job.
+
+8
+00:00:41.640 --> 00:00:49.853
+You’ll see this as bias=False before BatchNorm in the ResNet code the lecture reads at 01:04:50.
+
+9
+00:00:50.133 --> 00:00:51.029
+Two modes.
+
+10
+00:00:51.309 --> 00:00:55.320
+At inference there may be one example, so batch statistics don’t exist.
+
+11
+00:00:55.600 --> 00:01:02.619
+BatchNorm keeps running averages of the mean and variance during training (PyTorch’s default momentum is 0.
+
+12
+00:01:02.899 --> 00:01:04.819
+1) and uses them at inference.
+
+13
+00:01:05.099 --> 00:01:07.680
+Forgetting to switch modes is a classic bug.
+
+14
+00:01:07.960 --> 00:01:09.005
+Batch coupling.
+
+15
+00:01:09.285 --> 00:01:13.616
+During training each example’s output depends on the others in its batch.
+
+16
+00:01:13.896 --> 00:01:20.019
+That jitter acts as a regularizer, but it also makes behavior depend on batch size and composition.
+
+17
+00:01:20.299 --> 00:01:29.216
+The lecture’s description links Wu and Johnson’s “Rethinking Batch in BatchNorm” (2021) for the practical problems this causes.
+
+18
+00:01:29.496 --> 00:01:43.939
+A detail you’ll meet next lesson: PyTorch’s BatchNorm1d uses the biased variance (divide by n) to normalize during training, but the unbiased estimate (divide by n minus 1) for the running variance.
+
+19
+00:01:44.219 --> 00:01:48.165
+The Backprop Ninja lecture digresses on exactly this mismatch.

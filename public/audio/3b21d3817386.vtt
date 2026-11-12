@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.368
+Thresholds, and why naive gates flake.
+
+2
+00:00:02.648 --> 00:00:06.701
+The obvious gate is “fail if the pass rate is below 90 percent.
+
+3
+00:00:06.981 --> 00:00:11.291
+” On a live suite, that gate is a statistical test with a hidden error rate.
+
+4
+00:00:11.571 --> 00:00:17.203
+With 60 questions and a true pass rate of 92 percent, the standard error is about 3.
+
+5
+00:00:17.483 --> 00:00:26.869
+5 points, so the observed rate falls below 90 percent on about one run in five (54 or more passes out of 60 are needed) with nothing wrong.
+
+6
+00:00:27.149 --> 00:00:31.181
+Engineers learn to rerun until green, and then the gate catches nothing.
+
+7
+00:00:31.461 --> 00:00:42.320
+The pytest docs describe flaky tests as tests that fail intermittently without a clear reason, and name the cost: people stop trusting results and real failures get overlooked.
+
+8
+00:00:42.600 --> 00:00:45.459
+Their suggestions translate directly to evals.
+
+9
+00:00:45.739 --> 00:00:49.088
+Gate CI on the reliable suite and monitor the others.
+
+10
+00:00:49.368 --> 00:00:59.651
+Use a temporary quarantine (an xfail mark that doesn’t fail the build) for a known-flaky case, but don’t leave it there, since the docs warn against keeping that permanently.
+
+11
+00:00:59.931 --> 00:01:11.472
+Plugins that rerun failures exist; for evals, automatic reruns are an especially bad idea, because rerunning a noisy measurement until it passes is selecting on the outcome.

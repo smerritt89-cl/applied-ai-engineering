@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.264
+Source 3: synthetic generation, along dimensions.
+
+2
+00:00:03.544 --> 00:00:12.099
+When you need more coverage than logs and experts provide (new features, rare slices, pre-launch), you can generate inputs with a model.
+
+3
+00:00:12.379 --> 00:00:16.709
+Done naively it produces a pile of near-identical polite questions.
+
+4
+00:00:16.989 --> 00:00:34.376
+The evals FAQ describes a more disciplined method, which this week’s lab implements: Choose dimensions that capture how real inputs vary, starting from your failure hypotheses: for the support bot, topic, plan, and the customer’s style (terse, frustrated, multi-part).
+
+5
+00:00:34.656 --> 00:00:40.715
+Write about 20 tuples by hand, one value per dimension, to check that the dimensions make sense.
+
+6
+00:00:40.995 --> 00:00:49.507
+Scale up with either a cross product of the values (filtering out combinations that make no sense) or by asking a model to propose tuples.
+
+7
+00:00:49.787 --> 00:00:59.003
+The FAQ notes the trade-off: the cross product is systematic, while model-proposed tuples can be more realistic but may skip rare combinations.
+
+8
+00:00:59.283 --> 00:01:06.557
+Generate in two steps: first the structured tuples, then a separate call that turns each tuple into a natural message.
+
+9
+00:01:06.837 --> 00:01:09.653
+Separating them reduces repetitive phrasing.
+
+10
+00:01:09.933 --> 00:01:26.829
+Husain’s field guide frames the same idea as features, scenarios, and personas, and adds two checks: ground generated inputs in your real system (real product names, real constraints), and verify that each one actually triggers the scenario it was meant to.
+
+11
+00:01:27.109 --> 00:01:34.363
+Anthropic’s eval docs also suggest using Claude to expand a hand-written baseline set into many more cases.
+
+12
+00:01:34.643 --> 00:01:35.645
+Then read them.
+
+13
+00:01:35.925 --> 00:01:40.277
+A “frustrated” message that reads as calm doesn’t test frustration.
+
+14
+00:01:40.557 --> 00:01:55.192
+And remember the limits the FAQ spells out: synthetic data can’t tell you how common a failure is, and it is unreliable in specialized or high-stakes domains where the model generating the cases doesn’t know the edge cases either.
+
+15
+00:01:55.472 --> 00:02:06.523
+One precaution worth taking on model selection: when you can, generate with a different model family than the one under test, so the test inputs don’t share the system’s blind spots.
+
+16
+00:02:06.803 --> 00:02:09.299
+That reduces the risk; it doesn’t remove it.

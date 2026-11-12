@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.515
+Choosing: three questions.
+
+2
+00:00:01.795 --> 00:00:14.275
+You can choose the pattern with three questions about the task, answered from measurements rather than guesses (log a sample of real or realistic requests and look at the duration distribution, not the average).
+
+3
+00:00:14.555 --> 00:00:16.837
+Is a person watching the output appear?
+
+4
+00:00:17.117 --> 00:00:20.637
+If yes and the output is more than a sentence or two, stream.
+
+5
+00:00:20.917 --> 00:00:23.648
+If no, don’t pay the complexity cost of streaming.
+
+6
+00:00:23.928 --> 00:00:25.869
+How long does it take at the slow end?
+
+7
+00:00:26.149 --> 00:00:28.560
+Use something like the 99th percentile.
+
+8
+00:00:28.840 --> 00:00:34.259
+If that is comfortably within a few seconds to a minute, a synchronous call (or a stream) is fine.
+
+9
+00:00:34.539 --> 00:00:45.163
+If it can run for minutes, or involves many model calls, move it to a background job, because your host’s request limit, the user’s patience, and flaky networks will all cut it off.
+
+10
+00:00:45.443 --> 00:00:46.701
+Can it wait for hours?
+
+11
+00:00:46.981 --> 00:00:53.019
+If the results feed a report, an index, or tomorrow’s queue, use batch processing and take the discount.
+
+12
+00:00:53.299 --> 00:01:04.904
+Most real products mix patterns: a streaming chat endpoint, a background job for “analyze this folder,” and a nightly batch that re-labels yesterday’s conversations for your eval set.
+
+13
+00:01:05.184 --> 00:01:11.989
+The pieces share one back end, one set of secrets, and one logging pipeline, which is what lesson 3 deploys.

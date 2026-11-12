@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.792
+Hosts, clients, and servers.
+
+2
+00:00:02.072 --> 00:00:05.293
+MCP has three roles, and the names are precise.
+
+3
+00:00:05.573 --> 00:00:11.163
+The host is the AI application the user works in: Claude Code, Claude Desktop, an IDE.
+
+4
+00:00:11.443 --> 00:00:14.024
+It owns the conversation and the model calls.
+
+5
+00:00:14.304 --> 00:00:21.877
+It creates and manages connections, enforces security policies and consent, and decides what context reaches the model.
+
+6
+00:00:22.157 --> 00:00:24.696
+A client is a connector inside the host.
+
+7
+00:00:24.976 --> 00:00:31.077
+Each client talks to exactly one server, so a host connected to five servers runs five clients.
+
+8
+00:00:31.357 --> 00:00:37.715
+That one-to-one rule is a security boundary: the host, not the servers, decides what flows between them.
+
+9
+00:00:37.995 --> 00:00:44.544
+A server is a program that exposes capabilities: tools to call, resources to read, prompts to offer.
+
+10
+00:00:44.824 --> 00:00:48.344
+It can be a local process on your machine or a remote service.
+
+11
+00:00:48.624 --> 00:00:54.555
+The specification’s design principles are worth knowing because they explain the shape of everything else.
+
+12
+00:00:54.835 --> 00:01:00.232
+Servers should be extremely easy to build, with the host absorbing orchestration complexity.
+
+13
+00:01:00.512 --> 00:01:03.776
+Servers should be composable, each focused on one job.
+
+14
+00:01:04.056 --> 00:01:14.104
+And servers should not be able to read the whole conversation, nor see into other servers: the full history stays with the host, and each server receives only what it needs.
+
+15
+00:01:14.384 --> 00:01:25.520
+When you hear “MCP gave the agent access to X,” the precise version is “the host connected a client to a server that exposes X, and the model can ask the host to call it.
+
+16
+00:01:25.800 --> 00:01:26.098
+”.
+
+17
+00:01:26.378 --> 00:01:28.703
+Messages are JSON-RPC 2.
+
+18
+00:01:28.983 --> 00:01:34.444
+0: requests with a method name and parameters, responses with a result or an error.

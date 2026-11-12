@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.475
+Subagents: isolation, not savings.
+
+2
+00:00:02.755 --> 00:00:07.107
+A subagent is a separate agent loop with its own fresh context window.
+
+3
+00:00:07.387 --> 00:00:19.141
+The lead agent hands it a task (“find every open risk in the vendor documents”), the subagent spends as many tokens as it needs searching and reading, and it returns a condensed result.
+
+4
+00:00:19.421 --> 00:00:32.435
+Anthropic’s context engineering post describes subagents that may use tens of thousands of tokens exploring and return summaries of about 1,000 to 2,000 tokens.
+
+5
+00:00:32.715 --> 00:00:36.704
+The lead’s context grows by the summary, not by the exploration.
+
+6
+00:00:36.984 --> 00:00:41.699
+Two cautions from Anthropic’s multi-agent research post keep this honest.
+
+7
+00:00:41.979 --> 00:00:58.661
+First, cost: they report agents using about four times the tokens of a chat interaction and multi-agent systems about fifteen times, and they say multi-agent setups pay off mainly on valuable tasks with lots of parallelizable, separable work.
+
+8
+00:00:58.941 --> 00:01:09.864
+Second, fit: tasks where every agent needs shared context, or with many dependencies between subtasks, are poor fits, and they name most coding tasks as examples.
+
+9
+00:01:10.144 --> 00:01:20.597
+The same post suggests that subagents write large outputs to a file system and pass back lightweight references, so the lead does not have to copy them through its context.
+
+10
+00:01:20.877 --> 00:01:32.291
+For model selection, subagents are where cheaper models and lower effort often fit: reading-heavy, well-scoped subtasks can run on a smaller model while the lead stays on the strongest one.
+
+11
+00:01:32.571 --> 00:01:39.760
+Measure it on your tasks before assuming it helps, and remember that a subagent’s summary is model output the lead will trust.
+
+12
+00:01:40.040 --> 00:01:47.635
+If the summary is the evidence for a decision, ask the subagent to include the source ids it relied on, and spot-check them.

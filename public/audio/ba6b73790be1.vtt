@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.365
+Three kinds of failure.
+
+2
+00:00:01.645 --> 00:00:09.731
+A model call can fail in three ways that need three different responses, so the first job of any resilience code is to tell them apart.
+
+3
+00:00:10.011 --> 00:00:13.317
+Transient failures might succeed if you try again later.
+
+4
+00:00:13.597 --> 00:00:35.635
+The Claude API’s errors docs list them: 429 rate_limit_error when you’ve exceeded a rate limit, 500 api_error for an internal problem (the docs say to retry with exponential backoff), 504 timeout_error, and 529 overloaded_error when the API is temporarily overloaded across all users.
+
+5
+00:00:35.915 --> 00:00:40.352
+Add the network’s own failures: connection resets and timeouts on your side.
+
+6
+00:00:40.632 --> 00:00:45.645
+The response to a transient failure is to wait and retry, or move to another model.
+
+7
+00:00:45.925 --> 00:01:07.984
+Permanent failures will fail the same way however often you try: 400 invalid_request_error (a malformed request, an unsupported parameter, a spend limit you set yourself), 401 for a bad key, 403 for missing permission, 404 for an unknown model id, 413 for a request over the size limit.
+
+8
+00:01:08.264 --> 00:01:15.432
+Retrying these wastes time, and falling back to another model usually fails too, because the bug is in your request.
+
+9
+00:01:15.712 --> 00:01:21.749
+The response is to fail fast, log it with the request-id the API returns, and fix the code.
+
+10
+00:01:22.029 --> 00:01:40.461
+One trap: a 429 is usually transient, but the rate-limits docs describe a 429 for reaching your tier’s monthly spend cap that carries no retry-after header and keeps failing until access resumes; its error details include enforced_spend_limit_reached.
+
+11
+00:01:40.741 --> 00:01:43.515
+Classify on the details, not just the status.
+
+12
+00:01:43.795 --> 00:01:45.651
+Refusals are not errors at all.
+
+13
+00:01:45.931 --> 00:02:00.096
+Current Claude models include safety classifiers that can decline a request; you get a normal HTTP 200 response with stop_reason: "refusal" and a stop_details object naming the policy category.
+
+14
+00:02:00.376 --> 00:02:03.789
+The service is healthy, it has answered, and the answer is no.
+
+15
+00:02:04.069 --> 00:02:14.416
+Anthropic’s refusal docs note that re-sending the same request to the same model usually earns another refusal, so the response is a different model, not a retry.
+
+16
+00:02:14.696 --> 00:02:23.720
+Refusals can also arrive mid-stream, after partial text, in which case the docs say to treat the partial output as incomplete and discard it.

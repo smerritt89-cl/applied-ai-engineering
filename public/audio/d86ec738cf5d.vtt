@@ -1,0 +1,105 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.133
+The knobs that matter, and where to start.
+
+2
+00:00:02.413 --> 00:00:05.336
+Most SFT runs come down to a few choices.
+
+3
+00:00:05.616 --> 00:00:13.531
+The values below are starting points from documentation, not laws; each one is a hypothesis your validation metric tests.
+
+4
+00:00:13.811 --> 00:00:14.792
+Learning rate.
+
+5
+00:00:15.072 --> 00:00:17.035
+The single most consequential setting.
+
+6
+00:00:17.315 --> 00:00:23.629
+TRL’s SFTConfig defaults to 2e-5, a typical value for updating all weights.
+
+7
+00:00:23.909 --> 00:00:31.227
+For adapters, TRL’s docs suggest a higher rate, around 1e-4, because only the new parameters are learning.
+
+8
+00:00:31.507 --> 00:00:45.267
+Thinking Machines (Schulman and colleagues, 2025) measured the optimal LoRA learning rate at roughly 10 times the optimal full fine-tuning rate across their experiments, and said they lack a full theory for why.
+
+9
+00:00:45.547 --> 00:00:51.179
+Too high shows up as a loss that spikes or goes to NaN; too low as a curve that barely moves.
+
+10
+00:00:51.459 --> 00:00:52.781
+Schedule and warmup.
+
+11
+00:00:53.061 --> 00:01:01.381
+A short warmup (a few percent of steps) followed by linear or cosine decay is standard and is what the Hugging Face Trainer provides.
+
+12
+00:01:01.661 --> 00:01:07.229
+Warmup avoids large early updates while the optimizer’s moment estimates are still noisy.
+
+13
+00:01:07.509 --> 00:01:08.384
+Epochs.
+
+14
+00:01:08.664 --> 00:01:10.819
+One pass over the data is an epoch.
+
+15
+00:01:11.099 --> 00:01:12.763
+TRL’s default is 3.
+
+16
+00:01:13.043 --> 00:01:18.589
+Unsloth’s guide (vendor documentation) suggests 1 to 3 to avoid overfitting.
+
+17
+00:01:18.869 --> 00:01:23.200
+Small, repetitive datasets overfit in fewer passes than you would guess.
+
+18
+00:01:23.480 --> 00:01:24.504
+Batch size.
+
+19
+00:01:24.784 --> 00:01:31.696
+The effective batch size is the per-device batch times gradient accumulation steps times the number of devices.
+
+20
+00:01:31.976 --> 00:01:42.301
+Gradient accumulation lets you reach a larger effective batch on a small GPU by summing gradients over several micro-batches before one optimizer step.
+
+21
+00:01:42.581 --> 00:01:51.072
+Thinking Machines found LoRA less tolerant of large batches than full fine-tuning, so don’t push the effective batch up just because you can.
+
+22
+00:01:51.352 --> 00:01:52.397
+Sequence length.
+
+23
+00:01:52.677 --> 00:01:57.520
+TRL truncates to max_length (1024 tokens by default).
+
+24
+00:01:57.800 --> 00:02:05.736
+Check your token-length distribution first: truncation that cuts off the answer removes exactly the tokens you wanted to train on.
+
+25
+00:02:06.016 --> 00:02:17.387
+Maxime Labonne’s LLM course lists the same set of knobs (learning rate with a scheduler, batch size with gradient accumulation, epochs, optimizer, weight decay, warmup).
+
+26
+00:02:17.667 --> 00:02:22.211
+When you change one, change only that one, and compare on the same held-out set.

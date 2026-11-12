@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.728
+Make rollback a config change.
+
+2
+00:00:02.008 --> 00:00:08.643
+The most valuable item on that list is the one teams skip: rollback that takes seconds and needs no deploy.
+
+3
+00:00:08.923 --> 00:00:13.019
+In an LLM system, behavior is determined by more than code.
+
+4
+00:00:13.299 --> 00:00:21.619
+The prompt, the model id, the effort setting, the guard thresholds, the retrieval index version, and the tool list all change what users see.
+
+5
+00:00:21.899 --> 00:00:30.176
+If any of them can only be changed by shipping code, your rollback is as slow as your deploy pipeline, at the moment you can least afford it.
+
+6
+00:00:30.456 --> 00:00:38.264
+So version all of them as configuration, record the active versions on every trace (week 3), and put them behind flags.
+
+7
+00:00:38.544 --> 00:00:42.043
+A rollback then means pointing the flag at the previous version.
+
+8
+00:00:42.323 --> 00:00:44.136
+Two details bite in practice.
+
+9
+00:00:44.416 --> 00:00:54.549
+First, keep the previous model available: if you migrated because the old model is being deprecated, know its retirement date, because after it you can’t roll back to it.
+
+10
+00:00:54.829 --> 00:00:57.069
+Second, test the rollback before launch.
+
+11
+00:00:57.349 --> 00:01:01.253
+A rollback path that has never been exercised is a hypothesis.
+
+12
+00:01:01.533 --> 00:01:11.539
+Pair rollback with kill switches: a flag that disables the whole feature (showing a static message or routing to a person) and a flag per tool with side effects.
+
+13
+00:01:11.819 --> 00:01:20.523
+Mitigation in an incident is often “turn off the booking tool” rather than “turn off the assistant”, and you want that to be one click, not a code change.

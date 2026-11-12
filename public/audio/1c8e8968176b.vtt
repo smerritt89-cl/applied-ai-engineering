@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.776
+Subagents: isolation, restriction, and a fresh pair of eyes.
+
+2
+00:00:04.056 --> 00:00:08.899
+A subagent runs its own loop in its own context window and returns a summary.
+
+3
+00:00:09.179 --> 00:00:11.803
+Custom subagents are Markdown files in.
+
+4
+00:00:12.083 --> 00:00:15.347
+claude/agents/ (project) or ~/.
+
+5
+00:00:15.627 --> 00:00:33.867
+claude/agents/ (personal), with frontmatter that requires a name and a description (which tells Claude when to delegate) and optionally sets tools, disallowedTools, model, permissionMode, skills to preload, isolation: worktree to work in a temporary git worktree, maxTurns, and more.
+
+6
+00:00:34.147 --> 00:00:38.627
+Built-in subagents include a read-only Explore agent and a Plan agent.
+
+7
+00:00:38.907 --> 00:00:43.451
+The best-practices doc is unusually candid about what subagents are for.
+
+8
+00:00:43.731 --> 00:00:58.856
+They pay off for running independent work at the same time, keeping noisy output (a full test run, a wide search) out of your main conversation, getting a reviewer that hasn’t seen how the code was written, and giving a task fewer tools than the main session.
+
+9
+00:00:59.136 --> 00:01:05.003
+They don’t make answers smarter: by default it’s the same model (or a smaller one) on the same task.
+
+10
+00:01:05.283 --> 00:01:11.896
+They cost tokens, since each sends its own requests, and a fresh one may be slower because it must rebuild context.
+
+11
+00:01:12.176 --> 00:01:13.669
+The restriction is real.
+
+12
+00:01:13.949 --> 00:01:21.693
+A subagent with tools: Read, Grep, Glob can’t edit anything, and Claude Code enforces that rather than asking nicely.
+
+13
+00:01:21.973 --> 00:01:25.472
+Pair it with model: haiku for simple jobs to cut cost.
+
+14
+00:01:25.752 --> 00:01:33.496
+This makes the classic pattern cheap to set up: an implementer in the main session and a read-only reviewer with a short, specific brief.

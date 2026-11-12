@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.005
+Authentication for remote servers.
+
+2
+00:00:02.285 --> 00:00:07.747
+Authorization in MCP is optional, and the specification scopes it by transport.
+
+3
+00:00:08.027 --> 00:00:12.656
+Servers on an HTTP transport should follow the authorization section.
+
+4
+00:00:12.936 --> 00:00:17.971
+Servers on stdio should not, and should take credentials from the environment instead.
+
+5
+00:00:18.251 --> 00:00:29.813
+The MCP tutorial recommends authorization whenever a server handles user-specific data, needs an audit trail of who did what, or fronts APIs that need user consent.
+
+6
+00:00:30.093 --> 00:00:31.544
+The model is OAuth 2.
+
+7
+00:00:31.824 --> 00:00:34.149
+1, with roles you may know from web work.
+
+8
+00:00:34.429 --> 00:00:39.763
+The MCP server is a resource server: it accepts and validates access tokens.
+
+9
+00:00:40.043 --> 00:00:43.861
+The MCP client is an OAuth client acting for the user.
+
+10
+00:00:44.141 --> 00:00:48.621
+A separate authorization server interacts with the user and issues tokens.
+
+11
+00:00:48.901 --> 00:00:59.888
+Servers must publish OAuth Protected Resource Metadata (RFC 9728), which is how a client discovers which authorization server to use.
+
+12
+00:01:00.168 --> 00:01:07.123
+Clients send the token in the Authorization: Bearer header on every request, and never in a URL query string.
+
+13
+00:01:07.403 --> 00:01:09.771
+The server-side rules are short and strict.
+
+14
+00:01:10.051 --> 00:01:19.523
+Servers must validate tokens, and must check that each token was issued for them as its intended audience (RFC 8707).
+
+15
+00:01:19.803 --> 00:01:23.963
+Invalid or expired tokens get HTTP 401.
+
+16
+00:01:24.243 --> 00:01:31.155
+Servers must only accept tokens valid for their own resources, and must not accept or transit any other tokens.
+
+17
+00:01:31.435 --> 00:01:38.347
+That last rule forbids token passthrough: taking a token from the client and forwarding it to a downstream API.
+
+18
+00:01:38.627 --> 00:01:41.720
+The security page explains why it is dangerous.
+
+19
+00:01:42.000 --> 00:01:55.525
+The downstream API may trust the token as if your server had validated it (the confused deputy problem), its rate limits and audit logs see the wrong identity, and a stolen token can use your server as a proxy.
+
+20
+00:01:55.805 --> 00:02:00.435
+If your server calls another API, it gets its own token for that API.
+
+21
+00:02:00.715 --> 00:02:03.744
+Two practical points from the MCP tutorial.
+
+22
+00:02:04.024 --> 00:02:12.856
+Use an existing identity provider or authorization server rather than writing your own, and check that it can bind the audience to your server specifically.
+
+23
+00:02:13.136 --> 00:02:16.272
+And use well-tested libraries for token validation.
+
+24
+00:02:16.552 --> 00:02:31.080
+In the 2026-07-28 revision, Client ID Metadata Documents are the preferred way for clients to register, and Dynamic Client Registration is deprecated but kept for compatibility.

@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.240
+Start with the decision, then the margins.
+
+2
+00:00:02.520 --> 00:00:06.445
+Write one paragraph that states the decision your benchmark informs.
+
+3
+00:00:06.725 --> 00:00:17.861
+For example: “Should our weekly meeting-notes pipeline (about 40,000 snippets a month) move from a frontier API model to a self-hosted fine-tuned model?
+
+4
+00:00:18.141 --> 00:00:30.344
+” Everything else follows from that sentence: the volume sets the cost math, the pipeline sets the latency requirement (batch, so p95 matters little), and the users set which fields matter most.
+
+5
+00:00:30.624 --> 00:00:42.080
+Then name the three systems precisely: the frontier model and its prompt, the base model you will fine-tune, and the fine-tuned model (base plus your adapter, served the same way as the base).
+
+6
+00:00:42.360 --> 00:00:51.960
+Name a fourth if the cost math calls for it: the cheapest API model you expect could pass, so the comparison isn’t only against the most expensive option.
+
+7
+00:00:52.240 --> 00:01:01.115
+Next, write the decision rule before any run: the metric (exact match on the frozen test set, with per-field accuracy reported alongside),
+
+8
+00:01:01.395 --> 00:01:13.619
+the margin (“the fine-tuned model is acceptable if the lower bound of the paired 95 percent interval against the frontier model is above minus 3 points”), and the cost and latency conditions.
+
+9
+00:01:13.899 --> 00:01:20.619
+Also write the scoring rules: what normalization each field gets, and that unparseable outputs count as wrong.
+
+10
+00:01:20.899 --> 00:01:27.747
+These are the choices that are tempting to adjust after seeing results, which is exactly why they go in the plan first.
+
+11
+00:01:28.027 --> 00:01:35.984
+Studio 3 called this deciding before you run; it is even more important here, because you built the candidate and you want it to win.

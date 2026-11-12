@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.051
+Which traces to review: sampling production traffic.
+
+2
+00:00:03.331 --> 00:00:06.872
+You can’t read everything, so the question is which traces to read.
+
+3
+00:00:07.152 --> 00:00:14.427
+The evals FAQ lists sampling strategies from most exploratory to most targeted, and each has a blind spot.
+
+4
+00:00:14.707 --> 00:00:19.144
+Random sampling gives you an unbiased picture but can miss rare failures.
+
+5
+00:00:19.424 --> 00:00:25.995
+Clustering traces by topic or embedding shows you groups you didn’t know existed, but depends on how you cluster.
+
+6
+00:00:26.275 --> 00:00:33.613
+Outliers in latency, cost, or number of tool calls are cheap to find, though an unusual trace isn’t always a bad one.
+
+7
+00:00:33.893 --> 00:00:39.589
+Classifier or judge flags find failures you already know how to detect, and nothing else.
+
+8
+00:00:39.869 --> 00:00:43.539
+Negative user feedback finds what users bothered to report.
+
+9
+00:00:43.819 --> 00:00:57.515
+The FAQ’s recommendation is to mix them: keep some random traces in every batch, so you keep measuring the overall rate and keep finding the unknown, and add targeted traces to dig into rare or known failure modes.
+
+10
+00:00:57.795 --> 00:01:06.755
+Its rough cadence for a live product is a fresh batch of at least 100 traces every two to four weeks, plus a small weekly look at outliers.
+
+11
+00:01:07.035 --> 00:01:13.221
+Stop a review round at theoretical saturation: when new traces stop revealing new failure types.
+
+12
+00:01:13.501 --> 00:01:16.296
+Keep the two purposes separate in your analysis.
+
+13
+00:01:16.576 --> 00:01:24.235
+The random slice is your measurement: its pass rate, with a confidence interval from week 3, is your estimate of production quality.
+
+14
+00:01:24.515 --> 00:01:32.664
+The targeted slices are for discovery: they are deliberately enriched with failures, so their pass rate says nothing about overall quality.
+
+15
+00:01:32.944 --> 00:01:38.320
+Mixing them into one number is a classic way to scare or reassure yourself for no reason.
+
+16
+00:01:38.600 --> 00:01:39.624
+Two more rules.
+
+17
+00:01:39.904 --> 00:01:44.341
+Sample from the traffic you actually care about (filter out internal testing).
+
+18
+00:01:44.621 --> 00:01:55.629
+And watch privacy: production traces contain customer data, so reviewers need the same access controls as anyone else who sees it, and you should redact what the review doesn’t need.

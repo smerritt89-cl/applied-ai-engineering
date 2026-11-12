@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.197
+Fewer calls, and calls that overlap.
+
+2
+00:00:02.477 --> 00:00:11.437
+The first term of the equation multiplies TTFT by the number of calls, and in an agent each call also adds the time spent between calls.
+
+3
+00:00:11.717 --> 00:00:14.043
+Two families of fixes: Fewer calls.
+
+4
+00:00:14.323 --> 00:00:18.547
+Combine sequential steps into one prompt when the model can do them together.
+
+5
+00:00:18.827 --> 00:00:28.235
+Prefetch what your application already knows the agent will need (the customer’s account, the order) and put it in the first request instead of waiting for a tool call.
+
+6
+00:00:28.515 --> 00:00:30.669
+Make list tools return more per page.
+
+7
+00:00:30.949 --> 00:00:34.064
+In the cookbook, prefetching cut calls per task from 3.
+
+8
+00:00:34.344 --> 00:00:35.368
+5 to 2.
+
+9
+00:00:35.648 --> 00:00:40.619
+4 and median time by 13 percent; bigger pages cut it by 10 percent.
+
+10
+00:00:40.899 --> 00:00:42.392
+Overlap the calls you keep.
+
+11
+00:00:42.672 --> 00:00:45.531
+Claude can request several tool calls in one turn.
+
+12
+00:00:45.811 --> 00:00:57.757
+Run independent, read-only tools concurrently, and return all the results together in a single user message (splitting them across messages teaches the model to stop calling in parallel).
+
+13
+00:00:58.037 --> 00:01:07.872
+Run independent subtasks as concurrent requests, each with its own model and effort: the cookbook’s parallel Haiku subagents cut one task from 9.
+
+14
+00:01:08.152 --> 00:01:09.261
+5 to 5.
+
+15
+00:01:09.541 --> 00:01:11.781
+7 seconds with the same decisions.
+
+16
+00:01:12.061 --> 00:01:28.531
+Two cautions: concurrency raises cost when each subtask rereads its own context, and parallel requests with identical prefixes don’t share a cache until the first one has started responding, so fire one, wait for it to start streaming, then fire the rest.

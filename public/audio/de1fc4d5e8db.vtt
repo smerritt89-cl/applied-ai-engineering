@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.645
+Metadata filtering, and the post-filter trap.
+
+2
+00:00:02.925 --> 00:00:10.477
+Almost every real query has a filter: this tenant, these permission groups, this product line, documents from the current year.
+
+3
+00:00:10.757 --> 00:00:16.240
+How the store combines the filter with nearest-neighbor search matters more than any benchmark number.
+
+4
+00:00:16.520 --> 00:00:18.056
+There are two basic orders.
+
+5
+00:00:18.336 --> 00:00:22.731
+Pre-filtering restricts the candidates to records that match, then ranks them.
+
+6
+00:00:23.011 --> 00:00:28.259
+Post-filtering ranks first, takes the top candidates, then drops the ones that don’t match.
+
+7
+00:00:28.539 --> 00:00:41.680
+Post-filtering is simpler for an ANN index, and it fails in a specific way: when the filter is selective, most of the top candidates are discarded and you get fewer results than you asked for, sometimes none.
+
+8
+00:00:41.960 --> 00:00:54.355
+The pgvector README spells out a concrete case: with an HNSW index, a filter matching 10 percent of rows, and the default candidate list of 40, you get about 4 rows on average.
+
+9
+00:00:54.635 --> 00:00:58.731
+Its fixes include iterative index scans (added in version 0.
+
+10
+00:00:59.011 --> 00:00:59.672
+8.
+
+11
+00:00:59.952 --> 00:01:06.821
+0, which keep scanning until enough rows match), partial indexes for common filter values, and partitioning.
+
+12
+00:01:07.101 --> 00:01:10.984
+For permissions, post-filtering is worse than a performance problem.
+
+13
+00:01:11.264 --> 00:01:22.485
+It lets restricted documents take part in ranking, it returns empty results that look like “no answer exists,” and it puts the safety of the system on a step that is easy to forget.
+
+14
+00:01:22.765 --> 00:01:25.453
+The exercise below makes the difference visible.
+
+15
+00:01:25.733 --> 00:01:40.411
+Dedicated databases like Qdrant and Chroma apply filters during the search, and Qdrant recommends creating a payload index on every field you filter by; check how your store does it, and test with a selective filter before you trust it.

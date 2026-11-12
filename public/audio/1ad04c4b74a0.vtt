@@ -1,0 +1,89 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.581
+What k1 and b do, for a mathematician.
+
+2
+00:00:02.861 --> 00:00:06.723
+Fix a term and look at its contribution as a function of tf.
+
+3
+00:00:07.003 --> 00:00:12.165
+Write K for k1 times (1 minus b plus b times dl / avgdl).
+
+4
+00:00:12.445 --> 00:00:24.669
+The contribution is proportional to tf / (tf + K), a saturating hyperbola: zero at tf = 0, increasing and concave, with horizontal asymptote 1.
+
+5
+00:00:24.949 --> 00:00:35.552
+Multiplying by (k1 + 1) scales it so the asymptote is k1 + 1 and, for an average-length document, tf = 1 gives exactly 1.
+
+6
+00:00:35.832 --> 00:00:37.731
+k1 controls saturation.
+
+7
+00:00:38.011 --> 00:00:43.600
+With k1 = 0 the function is a step: present or absent, a binary model.
+
+8
+00:00:43.880 --> 00:00:51.709
+As k1 grows, saturation comes later and the function approaches linear tf, which is TF-IDF’s behavior.
+
+9
+00:00:51.989 --> 00:00:59.264
+Typical values sit between those extremes, so the second mention of a term adds a lot and the twentieth adds almost nothing.
+
+10
+00:00:59.544 --> 00:01:01.699
+b controls length normalization.
+
+11
+00:01:01.979 --> 00:01:09.637
+The factor (1 minus b plus b times dl / avgdl) is a convex combination of 1 and the relative length.
+
+12
+00:01:09.917 --> 00:01:12.328
+At b = 0 length is ignored.
+
+13
+00:01:12.608 --> 00:01:23.360
+At b = 1 term frequency is judged fully relative to length: a document twice the average length needs twice the occurrences to earn the same contribution.
+
+14
+00:01:23.640 --> 00:01:39.725
+Robertson and Zaragoza frame this as two hypotheses about long documents, verbosity (the author used more words for the same content, so normalize) and scope (the document covers more ground, so don’t), and b as a soft mix of the two.
+
+15
+00:01:40.005 --> 00:01:44.464
+On values: Lucene and Elasticsearch default to k1 = 1.
+
+16
+00:01:44.744 --> 00:01:46.301
+2 and b = 0.
+
+17
+00:01:46.581 --> 00:01:47.605
+75.
+
+18
+00:01:47.885 --> 00:01:52.408
+The survey reports that experiments generally found values in roughly 0.
+
+19
+00:01:52.688 --> 00:01:53.797
+5 to 0.
+
+20
+00:01:54.077 --> 00:01:55.379
+8 for b and 1.
+
+21
+00:01:55.659 --> 00:02:06.347
+2 to 2 for k1 to work well in many circumstances, while noting that the model gives no guidance on setting them and that the best values depend on the documents and queries.
+
+22
+00:02:06.627 --> 00:02:15.160
+That last point is your cue: these are hyperparameters you can tune on a labeled query set, which is exactly what lesson 9 teaches you to build.

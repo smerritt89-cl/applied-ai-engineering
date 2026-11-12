@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.987
+Edge workers: Cloudflare Workers as the example.
+
+2
+00:00:03.267 --> 00:00:13.805
+An edge worker runs your code in many locations close to users, in a lightweight runtime (JavaScript and related languages, with a restricted set of APIs).
+
+3
+00:00:14.085 --> 00:00:24.219
+Cold starts are small and global latency is low, which makes workers popular for API gateways and proxies, including proxies in front of model APIs.
+
+4
+00:00:24.499 --> 00:00:39.603
+The surprise in Cloudflare’s limits page is that the primary limit is CPU time, not wall-clock time: 10 milliseconds per HTTP request on the Free plan, and on Paid a default of 30 seconds that you can raise to 5 minutes.
+
+5
+00:00:39.883 --> 00:00:54.688
+The docs state that waiting on network requests does not count toward CPU time, and that there is no hard limit on duration for HTTP-triggered Workers: as long as the client stays connected, the Worker can keep processing and streaming.
+
+6
+00:00:54.968 --> 00:01:03.181
+A Worker that forwards a model stream does very little computation per chunk, so it can stream a long reply while using little CPU.
+
+7
+00:01:03.461 --> 00:01:04.485
+Two cautions.
+
+8
+00:01:04.765 --> 00:01:17.672
+First, the docs warn that when the client disconnects, tasks associated with that request may be canceled, so work that must finish after the user closes the tab (logging, billing records) needs ctx.
+
+9
+00:01:17.952 --> 00:01:25.888
+waitUntil(), which the docs say can run for up to 30 seconds after the response is sent or the client disconnects, or a queue.
+
+10
+00:01:26.168 --> 00:01:34.232
+Second, the runtime is not a general server: heavy Python dependencies, long-running loops, and background workers belong elsewhere.

@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.621
+Derivatives, numerically.
+
+2
+00:00:01.901 --> 00:00:11.800
+For a function f of one variable, the derivative at x is the limit of (f(x + h) minus f(x)) divided by h as h goes to zero.
+
+3
+00:00:12.080 --> 00:00:14.853
+The video estimates it by just picking a small h.
+
+4
+00:00:15.133 --> 00:00:31.411
+That one-sided estimate has error of order h: by Taylor’s theorem, f(x + h) = f(x) + h f’(x) + (h squared over 2) f’‘(x) + …, so the quotient equals f’(x) + (h/2) f’’(x) + higher terms.
+
+5
+00:00:31.691 --> 00:00:41.248
+The central difference, (f(x + h) minus f(x minus h)) over 2h, cancels the second-order term, leaving error of order h squared.
+
+6
+00:00:41.528 --> 00:00:49.443
+With h around 1e-5 or 1e-6 in double precision you get about ten correct digits for well-behaved functions.
+
+7
+00:00:49.723 --> 00:00:57.915
+Push h much smaller and floating-point cancellation takes over: you subtract two nearly equal numbers and lose the digits you wanted.
+
+8
+00:00:58.195 --> 00:01:03.165
+Numerical derivatives cost one or two extra function evaluations per input.
+
+9
+00:01:03.445 --> 00:01:10.677
+For a network with a million parameters, that’s two million forward passes per gradient, which is why nobody trains this way.
+
+10
+00:01:10.957 --> 00:01:13.091
+But they are the perfect independent check.
+
+11
+00:01:13.371 --> 00:01:18.704
+Every gradient you compute analytically in this elective, you’ll test against a central difference.
+
+12
+00:01:18.984 --> 00:01:26.067
+In ML engineering this is called a gradient check, and it’s the first test to write for any hand-written backward pass.

@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.557
+One example, one line.
+
+2
+00:00:01.837 --> 00:00:13.485
+The format most tools accept is chat JSONL: one JSON object per line, each with a messages list of turns that have a role (system, user, or assistant) and content.
+
+3
+00:00:13.765 --> 00:00:20.421
+OpenAI’s fine-tuning API uses it, and Hugging Face TRL calls it the conversational format.
+
+4
+00:00:20.701 --> 00:00:28.573
+TRL also accepts a prompt-completion variant, where the turns before the answer go under prompt and the answer under completion.
+
+5
+00:00:28.853 --> 00:00:39.861
+For the extraction task, an example looks like the block below: the system prompt you will use in production, the document as the user turn, and the gold label as the assistant turn.
+
+6
+00:00:40.141 --> 00:00:46.029
+A few rules make the difference between a dataset that trains well and one that doesn’t: Match production.
+
+7
+00:00:46.309 --> 00:00:51.643
+Use the same system prompt and the same user-message layout the deployed model will see.
+
+8
+00:00:51.923 --> 00:00:57.021
+A model trained on one layout and served with another is being tested off-distribution.
+
+9
+00:00:57.301 --> 00:00:59.733
+Make the target exactly what you want back.
+
+10
+00:01:00.013 --> 00:01:08.909
+For extraction, that is the JSON object and nothing else: no “Here are the items:” preamble, unless you want the model to say it every time.
+
+11
+00:01:09.189 --> 00:01:10.555
+Include the negatives.
+
+12
+00:01:10.835 --> 00:01:14.931
+Documents with no action items need an empty list as their answer.
+
+13
+00:01:15.211 --> 00:01:19.925
+Leave them out and the model learns that every document has items, and invents some.
+
+14
+00:01:20.205 --> 00:01:22.040
+One canonical serialization.
+
+15
+00:01:22.320 --> 00:01:28.869
+Write labels with sorted keys so identical labels produce identical text; you’ll see why in a moment.

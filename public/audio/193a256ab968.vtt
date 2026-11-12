@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.728
+Three graders for one task.
+
+2
+00:00:02.008 --> 00:00:07.896
+For most agent tasks, use three kinds of grader together, because each misses something the others catch.
+
+3
+00:00:08.176 --> 00:00:10.395
+End-state checks (code) read the outcome.
+
+4
+00:00:10.675 --> 00:00:13.469
+Did exactly one post land in #proj-status?
+
+5
+00:00:13.749 --> 00:00:18.464
+Does it mention every issue that changed state this week, and no closed issue as open?
+
+6
+00:00:18.744 --> 00:00:20.301
+Were no other effects produced?
+
+7
+00:00:20.581 --> 00:00:24.699
+These are cheap, deterministic, and closest to what users care about.
+
+8
+00:00:24.979 --> 00:00:31.379
+Trajectory assertions (code over the transcript) check rules about the path that matter regardless of outcome.
+
+9
+00:00:31.659 --> 00:00:39.765
+tau-bench’s authors note that a correct final database can hide a policy violation, such as acting without the user’s confirmation.
+
+10
+00:00:40.045 --> 00:00:55.448
+For your agent: no write tool executed without an approval record; no outbound call after private data entered the context unless approved; at most N tool calls; no tool called with arguments that failed validation more than twice.
+
+11
+00:00:55.728 --> 00:00:59.184
+Studio 3’s exercise built this kind of check; reuse it.
+
+12
+00:00:59.464 --> 00:01:09.875
+Output quality (a model-based grader, or a person) judges what code cannot: is the status report accurate, clear, appropriately prioritized for a stakeholder?
+
+13
+00:01:10.155 --> 00:01:20.523
+Use a rubric with binary criteria, and calibrate the judge against your own labels exactly as in Studio 3, lessons 5 and 6, before you trust its numbers.
+
+14
+00:01:20.803 --> 00:01:22.573
+Then decide how to combine them.
+
+15
+00:01:22.853 --> 00:01:28.272
+Anthropic’s guide lists weighted scores, binary (every grader must pass), or a hybrid.
+
+16
+00:01:28.552 --> 00:01:39.027
+For agents, a hybrid works well: safety and policy assertions are hard requirements, end-state checks define success, and quality scores are reported alongside.
+
+17
+00:01:39.307 --> 00:01:41.013
+Finally, grade the grader.
+
+18
+00:01:41.293 --> 00:02:01.155
+Zhu and colleagues’ 2025 paper on rigorous agentic benchmarks found task-setup and reward-design flaws in well-known benchmarks, including one that counted empty responses as successful, and estimated that such issues can misstate performance by up to 100% in relative terms.
+
+19
+00:02:01.435 --> 00:02:03.227
+Your eval can have the same bugs.
+
+20
+00:02:03.507 --> 00:02:09.480
+Include a scenario where doing nothing must fail, and one where a deliberately wrong report must fail.

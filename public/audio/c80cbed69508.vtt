@@ -1,0 +1,97 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.475
+Model choice per stage, with cost math.
+
+2
+00:00:02.755 --> 00:00:09.389
+Each stage has a different job, so each gets its own model decision, made with evidence and checked against cost.
+
+3
+00:00:09.669 --> 00:00:14.640
+Embeddings are a one-time cost per corpus version plus a tiny per-query cost.
+
+4
+00:00:14.920 --> 00:00:18.824
+At the Voyage AI prices listed on the review date ($0.
+
+5
+00:00:19.104 --> 00:00:22.795
+06 per million tokens for voyage-4, $0.
+
+6
+00:00:23.075 --> 00:00:29.389
+02 for voyage-4-lite ), embedding a 3-million-token corpus costs about 18 cents.
+
+7
+00:00:29.669 --> 00:00:31.973
+Choose on retrieval quality, not price.
+
+8
+00:00:32.253 --> 00:00:41.981
+Routing is a narrow classification on a short input: the natural place for the cheapest tier ( claude-haiku-5-5 ), measured on labeled queries.
+
+9
+00:00:42.261 --> 00:00:45.760
+Reranking processes the question against every candidate.
+
+10
+00:00:46.040 --> 00:00:47.171
+At $0.
+
+11
+00:00:47.451 --> 00:00:50.245
+05 per million tokens for rerank-2.
+
+12
+00:00:50.525 --> 00:00:58.717
+5, 50 candidates of 400 tokens (20,000 tokens) is about a tenth of a cent per question.
+
+13
+00:00:58.997 --> 00:01:00.491
+Generation dominates.
+
+14
+00:01:00.771 --> 00:01:13.187
+With 10 passages of about 400 tokens plus instructions (about 5,000 input tokens) and about 300 output tokens, one question costs roughly 1.
+
+15
+00:01:13.467 --> 00:01:19.077
+3 cents on claude-sonnet-5-5 ($2 in, $10 out per million), 2.
+
+16
+00:01:19.357 --> 00:01:29.235
+6 cents on claude-opus-5-5 ($4 and $20), and well under a tenth of a cent on claude-haiku-5-5 ($0.
+
+17
+00:01:29.515 --> 00:01:30.944
+10 and $0.
+
+18
+00:01:31.224 --> 00:01:32.035
+50).
+
+19
+00:01:32.315 --> 00:01:41.979
+Thinking tokens are billed as output, and current models can think on their own, so measure real output tokens from the usage field rather than assuming 300.
+
+20
+00:01:42.259 --> 00:01:50.365
+At 500 questions a day, that’s the difference between roughly $25, $210, and $400 a month.
+
+21
+00:01:50.645 --> 00:01:53.419
+Those numbers matter, but they are not the decision.
+
+22
+00:01:53.699 --> 00:02:00.227
+The decision is the cheapest configuration that meets your accuracy and abstention bars on the eval set.
+
+23
+00:02:00.507 --> 00:02:11.557
+Two cheaper levers to try before dropping a tier: send fewer, better passages (a better reranker can pay for itself in generation tokens), and cache the stable system prompt.
+
+24
+00:02:11.837 --> 00:02:19.880
+Judges for support checks run offline in Studio 3 on samples, so their cost scales with how much you evaluate, not with traffic.

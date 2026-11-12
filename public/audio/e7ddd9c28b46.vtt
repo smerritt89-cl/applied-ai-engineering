@@ -1,0 +1,69 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.771
+Cross-entropy, done properly.
+
+2
+00:00:02.051 --> 00:00:11.971
+The lecture first writes the loss out (exponentiate logits, normalize, pick the correct probability, take minus the log, average) and then replaces it with F.
+
+3
+00:00:12.251 --> 00:00:13.275
+cross_entropy.
+
+4
+00:00:13.555 --> 00:00:16.776
+The fused version is better in three ways the video names.
+
+5
+00:00:17.056 --> 00:00:22.219
+It doesn’t materialize the intermediate tensors, so it’s faster and uses less memory.
+
+6
+00:00:22.499 --> 00:00:31.224
+Its backward pass is the simple closed form you derived last lesson, softmax minus one-hot, instead of a chain through every intermediate.
+
+7
+00:00:31.504 --> 00:00:33.083
+And it’s numerically stable.
+
+8
+00:00:33.363 --> 00:00:35.987
+Stability comes from the log-sum-exp identity.
+
+9
+00:00:36.267 --> 00:00:41.536
+The loss for one example is log(sum over k of exp(z_k)) minus z_y.
+
+10
+00:00:41.816 --> 00:00:43.651
+Let m be the maximum logit.
+
+11
+00:00:43.931 --> 00:00:50.459
+Then log-sum-exp(z) = m + log(sum over k of exp(z_k minus m)), exactly.
+
+12
+00:00:50.739 --> 00:01:00.040
+Every exponent is now at most 0, so nothing overflows, and the largest term is exactly 1, so the sum is at least 1 and the log is safe.
+
+13
+00:01:00.320 --> 00:01:08.981
+A naive implementation overflows as soon as one logit passes about 709, the point where exp exceeds the largest double.
+
+14
+00:01:09.261 --> 00:01:14.317
+In real training, large logits happen, especially early or after a bad step.
+
+15
+00:01:14.597 --> 00:01:19.696
+A useful sanity property: a confidently wrong answer costs about the logit gap.
+
+16
+00:01:19.976 --> 00:01:26.397
+If the correct class has logit 0 and another has logit 1000, the loss is about 1000.
+
+17
+00:01:26.677 --> 00:01:32.800
+The loss is unbounded, which is exactly why one confidently wrong prediction can dominate a batch.

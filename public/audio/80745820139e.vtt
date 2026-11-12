@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.197
+The cost and latency of every guard.
+
+2
+00:00:02.477 --> 00:00:12.291
+Put each guard on a ledger with four columns: what it catches, its measured error rates, the latency it adds to the critical path, and the money it costs per request.
+
+3
+00:00:12.571 --> 00:00:18.587
+Deterministic checks sit at the top of the ledger: microseconds and free, so run them on everything.
+
+4
+00:00:18.867 --> 00:00:33.139
+A small-model classifier adds a round trip and a per-call cost; Anthropic’s moderation guide works through an example of a billion short posts a month and shows that model choice changes the bill by a factor of about fifty,
+
+5
+00:00:33.419 --> 00:00:40.992
+so the classifier is usually your cheapest capable model, chosen by measuring it, not by assuming the cheapest is good enough.
+
+6
+00:00:41.272 --> 00:00:48.120
+An LLM judge on the output adds a full call and, worse, needs the complete answer, which defeats streaming.
+
+7
+00:00:48.400 --> 00:00:57.424
+OpenAI’s docs make the same point about their moderation endpoint: with streaming, results arrive only after the full output is generated.
+
+8
+00:00:57.704 --> 00:01:00.925
+You have four ways to reconcile output checks with streaming.
+
+9
+00:01:01.205 --> 00:01:04.661
+Buffer the whole answer on high-risk routes and accept the wait.
+
+10
+00:01:04.941 --> 00:01:11.619
+Check incrementally, running cheap pattern checks on each sentence as it streams and stopping the stream if one fires.
+
+11
+00:01:11.899 --> 00:01:22.608
+Stream and retract, showing text immediately and replacing it if a later check fails (acceptable for low-stakes chat, not for anything a user might act on immediately).
+
+12
+00:01:22.888 --> 00:01:33.832
+Or move the expensive check off the critical path: run it asynchronously on all traffic or a sample, as monitoring that feeds alerts and your regression set rather than as a gate.
+
+13
+00:01:34.112 --> 00:01:42.539
+The general rule: gate on cheap, certain checks; gate on expensive model checks only where the risk is high; monitor with everything else.

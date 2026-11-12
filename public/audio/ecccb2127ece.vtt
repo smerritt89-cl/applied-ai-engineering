@@ -1,0 +1,57 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.155
+Keeping test cases out of your prompts.
+
+2
+00:00:02.435 --> 00:00:06.787
+The quietest way to ruin a test set is to let it leak into the thing it tests.
+
+3
+00:00:07.067 --> 00:00:16.923
+If a graded case, or its answer, appears in the system prompt or as a few-shot example, the score partly measures whether the model can repeat what it was just shown.
+
+4
+00:00:17.203 --> 00:00:28.637
+It is the same problem as benchmark contamination, which Deng and colleagues (2023) found evidence of in public benchmarks, except that here you caused it yourself.
+
+5
+00:00:28.917 --> 00:00:30.347
+Leaks happen innocently.
+
+6
+00:00:30.627 --> 00:00:35.213
+Someone fixing a failure pastes the failing case into the prompt as an example.
+
+7
+00:00:35.493 --> 00:00:40.229
+A prompt-optimization loop is tuned against the test set until it memorizes it.
+
+8
+00:00:40.509 --> 00:00:46.739
+A judge prompt (next week) is given a few labeled examples from the same pool it is later scored on.
+
+9
+00:00:47.019 --> 00:00:50.539
+The fix is the discipline from machine learning: separate pools.
+
+10
+00:00:50.819 --> 00:01:04.536
+The evals FAQ describes it for LLM judges: a small training split whose examples may go into the judge’s prompt, a development split you iterate against, and a test split you leave untouched as a final check.
+
+11
+00:01:04.816 --> 00:01:11.024
+Repeatedly tuning against the development split slowly overfits to it, which is why the test split exists.
+
+12
+00:01:11.304 --> 00:01:19.368
+Apply the same rule to your system prompt: few-shot examples come from a development pool, never from the golden or regression sets.
+
+13
+00:01:19.648 --> 00:01:22.976
+Then check mechanically, because good intentions don’t scale.
+
+14
+00:01:23.256 --> 00:01:28.461
+The exercise below flags any test input that shares a long run of words with the prompt.

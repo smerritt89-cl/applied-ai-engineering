@@ -1,0 +1,81 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.133
+The ten risks, applied (part 2).
+
+2
+00:00:02.413 --> 00:00:04.888
+LLM06 Excessive agency.
+
+3
+00:00:05.168 --> 00:00:12.592
+Giving the model more functionality, permissions, or autonomy than the task needs, so a manipulated model can do damage.
+
+4
+00:00:12.872 --> 00:00:21.491
+Here, the MCP ticketing server may expose delete and reassign tools the assistant never needs, under a token with broad scope.
+
+5
+00:00:21.771 --> 00:00:34.507
+Controls: expose only the tools the task requires, use narrowly scoped credentials, and require a person to approve irreversible actions (Studio 1, lesson 11, and Studio 4).
+
+6
+00:00:34.787 --> 00:00:37.624
+LLM07 System prompt leakage.
+
+7
+00:00:37.904 --> 00:00:43.664
+OWASP’s point is subtle: the prompt being read isn’t the real risk, because you should assume it can be.
+
+8
+00:00:43.944 --> 00:00:53.800
+The risk is what teams put in prompts (credentials, internal thresholds such as refund limits, role structures) and what they rely on prompts for (authorization).
+
+9
+00:00:54.080 --> 00:00:58.176
+Controls: nothing secret in the prompt, and enforce limits in code.
+
+10
+00:00:58.456 --> 00:01:01.656
+LLM08 Vector and embedding weaknesses.
+
+11
+00:01:01.936 --> 00:01:13.008
+Retrieval-specific risks: one tenant’s documents retrieved for another, poisoned or hidden content in indexed documents, and inversion attacks that recover text from embeddings.
+
+12
+00:01:13.288 --> 00:01:21.523
+Here, if the index ever holds customer-specific content, filter by tenant in the query itself (Studio 2), not in the prompt.
+
+13
+00:01:21.803 --> 00:01:24.149
+LLM09 Misinformation.
+
+14
+00:01:24.429 --> 00:01:31.021
+Confident, plausible, wrong output that users rely on, including invented policies or citations.
+
+15
+00:01:31.301 --> 00:01:37.275
+Here, a hallucinated refund policy is a business and legal risk, not just a quality bug.
+
+16
+00:01:37.555 --> 00:01:44.765
+Controls: grounding with verified citations, abstention, evals, and interfaces that make uncertainty visible.
+
+17
+00:01:45.045 --> 00:01:47.413
+LLM10 Unbounded consumption.
+
+18
+00:01:47.693 --> 00:01:55.608
+Uncontrolled resource use: denial of service, runaway cost (“denial of wallet”), and model extraction through mass querying.
+
+19
+00:01:55.888 --> 00:02:01.413
+Here, an unauthenticated chat endpoint with no rate limits is an open invitation.
+
+20
+00:02:01.693 --> 00:02:10.227
+Controls: input size caps, per-user rate limits and quotas, timeouts, spending alerts, and caps on agent loops (weeks 1 and 2).

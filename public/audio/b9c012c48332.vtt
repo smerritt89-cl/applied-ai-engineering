@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.877
+Two rules that do most of the work.
+
+2
+00:00:02.157 --> 00:00:03.160
+The shape rule.
+
+3
+00:00:03.440 --> 00:00:08.048
+The gradient of the loss with respect to a tensor has exactly that tensor’s shape.
+
+4
+00:00:08.328 --> 00:00:11.635
+If W is 30 by 200, so is dW.
+
+5
+00:00:11.915 --> 00:00:23.669
+This sounds trivial, and it’s the most useful debugging tool in the lecture: when you’re unsure whether a product needs a transpose or which axis to sum, the shapes usually leave only one option.
+
+6
+00:00:23.949 --> 00:00:25.656
+Broadcast and sum are duals.
+
+7
+00:00:25.936 --> 00:00:42.832
+If the forward pass replicates a value (adding a bias of shape (H) to every row of an (N, H) matrix, or subtracting a per-feature mean from every example), each copy is a separate use, and the backward pass must sum the gradients over the replicated axis.
+
+8
+00:00:43.112 --> 00:00:53.053
+Conversely, if the forward pass sums over an axis (a row sum to normalize probabilities), the backward pass broadcasts the incoming gradient back along it.
+
+9
+00:00:53.333 --> 00:00:57.429
+This is the tensor form of lesson 1’s “the chain rule sums over paths.
+
+10
+00:00:57.709 --> 00:00:58.007
+”.
+
+11
+00:00:58.287 --> 00:01:03.364
+With those two rules plus each operation’s local derivative, the rest is bookkeeping.

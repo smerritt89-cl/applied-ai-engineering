@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.771
+Closing the loop into the test set.
+
+2
+00:00:02.051 --> 00:00:06.467
+Review only pays off if what you learn changes the system and stays learned.
+
+3
+00:00:06.747 --> 00:00:08.176
+The loop has four steps.
+
+4
+00:00:08.456 --> 00:00:11.592
+A reviewer marks a trace as failed and writes a critique.
+
+5
+00:00:11.872 --> 00:00:20.000
+Someone tags it with a failure category from your error analysis (or adds a new category, which is criteria drift doing its job).
+
+6
+00:00:20.280 --> 00:00:33.059
+The trace, its label, and the critique go into the eval set: the evals FAQ recommends feeding new production failures back into the CI dataset so the same regression can’t return unnoticed.
+
+7
+00:00:33.339 --> 00:00:38.117
+Then the fix is made and verified against the whole set, not just the failing case.
+
+8
+00:00:38.397 --> 00:00:40.211
+A few habits keep this healthy.
+
+9
+00:00:40.491 --> 00:00:48.171
+Store the reviewed version of each case: the input, what the system did, what it should have done (or the rule it broke), and who decided.
+
+10
+00:00:48.451 --> 00:00:58.968
+Add neighbors: if the assistant invented a refund policy, add a few paraphrases and a question about a different policy, so the fix generalizes rather than memorizes.
+
+11
+00:00:59.248 --> 00:01:05.456
+Mark where each case came from (production, synthetic, red team), so you can report results by source.
+
+12
+00:01:05.736 --> 00:01:13.373
+And keep a held-out slice that you don’t look at while iterating, because a test set you tune against stops measuring generalization.
+
+13
+00:01:13.653 --> 00:01:15.637
+Lesson 12 returns to that risk.
+
+14
+00:01:15.917 --> 00:01:17.517
+Finally, recalibrate.
+
+15
+00:01:17.797 --> 00:01:23.749
+Each review batch is also fresh human labels, so rerun your judge on them and recompute agreement.
+
+16
+00:01:24.029 --> 00:01:35.101
+If the judge’s true negative rate is slipping, that is judge drift (a new model version, a changed prompt, or a shifted mix of questions), and you want to find it before your dashboard does.
