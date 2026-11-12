@@ -1,0 +1,32 @@
+---
+import Base from '../layouts/Base.astro';
+import Dashboard from '../components/dashboard/Dashboard';
+import { getProgram, studioLabel } from '../lib/program';
+import { url } from '../lib/paths';
+
+const program = await getProgram();
+const studios = program.map((b) => ({
+  ...b.structure,
+  href: url(`/studios/${b.studio.data.id}/`),
+  label: studioLabel(b.studio.data),
+  tagline: b.studio.data.tagline,
+  estWeeks: b.studio.data.estWeeks,
+}));
+const lessons = program.flatMap((b) =>
+  b.lessons.map((l) => ({ id: l.data.id, title: l.data.title, href: url(`/lessons/${l.data.id}/`), studio: b.studio.data.id })),
+);
+const totalWeeks = program.filter((b) => b.studio.data.kind !== 'elective').reduce((a, b) => a + b.studio.data.estWeeks, 0);
+---
+
+<Base title="Applied AI Engineering">
+  <section class="hero">
+    <div class="eyebrow">A build-first program · about {totalWeeks} weeks at 8 to 10 hours a week</div>
+    <h1>Applied AI Engineering</h1>
+    <p>
+      Six studios and a capstone that take you from your first API call to a production system with retrieval, agents, and evaluations.
+      Every studio ends with a portfolio project you build in its own repo. Along the way you learn which models are good at what, and how
+      to put checks around them so you can trust the output.
+    </p>
+  </section>
+  <Dashboard client:load studios={studios} lessons={lessons} />
+</Base>

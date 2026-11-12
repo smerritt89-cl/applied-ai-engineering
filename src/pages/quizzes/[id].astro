@@ -1,0 +1,39 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import TestRunner from '../../components/assess/TestRunner';
+import { prepareQuestions } from '../../lib/questions';
+import { getProgram, studioLabel } from '../../lib/program';
+import { url } from '../../lib/paths';
+
+export async function getStaticPaths() {
+  const quizzes = await getCollection('quizzes');
+  return quizzes.map((q) => ({ params: { id: q.data.id }, props: { quiz: q } }));
+}
+const { quiz } = Astro.props;
+const questions = await prepareQuestions(quiz.data.questions);
+const b = (await getProgram()).find((x) => x.studio.data.id === quiz.data.studio)!;
+const week = b.weeks.find((w) => w.week === quiz.data.week);
+const nextWeek = b.weeks.find((w) => w.week === quiz.data.week + 1);
+---
+
+<Base title={quiz.data.title}>
+  <div class="prose" style="max-width:820px">
+    <div class="eyebrow"><a href={url(`/studios/${b.studio.data.id}/`)}>{studioLabel(b.studio.data)}</a> · Week {quiz.data.week} quiz · graded</div>
+    <h1>{quiz.data.title}</h1>
+    {week && (
+      <p class="muted">
+        Covers: {week.lessons.map((l, i) => <>{i > 0 && ', '}<a href={url(`/lessons/${l.data.id}/`)}>{l.data.title}</a></>)}.
+        Counts toward the 30% quiz share of your studio grade.
+      </p>
+    )}
+    <TestRunner client:load kind="quizzes" id={quiz.data.id} title={quiz.data.title} questions={questions} />
+    <p style="margin-top:24px">
+      {nextWeek?.lessons[0] ? (
+        <a href={url(`/lessons/${nextWeek.lessons[0].data.id}/`)}>On to week {nextWeek.week}: {nextWeek.title} →</a>
+      ) : b.exam ? (
+        <a href={url(`/exams/${b.exam.data.id}/`)}>On to the studio exam →</a>
+      ) : null}
+    </p>
+  </div>
+</Base>

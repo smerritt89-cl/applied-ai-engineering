@@ -1,0 +1,41 @@
+---
+/**
+ * <LabLink path="labs/studio-1/01-first-call" title="Your first API call"
+ *          needs={["Anthropic API key"]} minutes={30} />
+ *
+ * Points to a hands-on exercise that can't run in the browser (it needs an
+ * API key, network access, a GPU, or real files). Labs live in this repo's
+ * labs/ folder; notebooks (.ipynb) also get an "Open in Colab" link.
+ */
+import { SITE } from '../../site.config';
+
+interface Props {
+  path: string;
+  title: string;
+  needs?: string[];
+  minutes?: number;
+  /** Notebook file inside the lab folder, if any, for Colab. */
+  notebook?: string;
+}
+const { path, title, needs = [], minutes, notebook } = Astro.props;
+const gh = `${SITE.REPO_URL}/tree/${SITE.BRANCH}/${path}`;
+const repoPath = SITE.REPO_URL.replace('https://github.com/', '');
+const colab = notebook ? `https://colab.research.google.com/github/${repoPath}/blob/${SITE.BRANCH}/${path}/${notebook}` : null;
+---
+
+<div class="activity lab">
+  <div class="activity-label">Local lab{minutes ? ` · about ${minutes} min` : ''}</div>
+  <h3>{title}</h3>
+  <slot />
+  <p class="small">
+    Folder: <code>{path}/</code>. Open its <code>README.md</code> for steps.
+    {needs.length > 0 && <> Needs: {needs.join(', ')}.</>}
+  </p>
+  <pre><code>{`cd labs                          # one-time setup: see labs/README.md
+source .venv/bin/activate
+pytest ${path.replace(/^labs\//, '')} -q   # watch the checks fail, then make them pass`}</code></pre>
+  <div class="row small">
+    <a href={gh} target="_blank" rel="noopener">View on GitHub</a>
+    {colab && <a href={colab} target="_blank" rel="noopener">Open in Colab</a>}
+  </div>
+</div>

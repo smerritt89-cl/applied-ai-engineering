@@ -1,0 +1,131 @@
+---
+/**
+ * Base page shell: <head>, header navigation, footer, theme handling.
+ * Every page uses this layout (lesson pages wrap it with Lesson.astro).
+ */
+import '../styles/global.css';
+import { url } from '../lib/paths';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description = 'A self-paced, project-driven program in applied AI engineering.' } = Astro.props;
+
+const nav = [
+  { href: '/', label: 'Dashboard' },
+  { href: '/studios/', label: 'Studios' },
+  { href: '/transcript/', label: 'Transcript' },
+  { href: '/hours/', label: 'Hours' },
+  { href: '/syllabus/', label: 'Syllabus' },
+  { href: '/settings/', label: 'Settings' },
+];
+const here = Astro.url.pathname.replace(/\/$/, '');
+const isCurrent = (href: string) => {
+  const full = url(href).replace(/\/$/, '');
+  return href === '/' ? here === full : here.startsWith(full);
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <title>{title === 'Applied AI Engineering' ? title : `${title} · Applied AI Engineering`}</title>
+    <link rel="icon" href={url('/favicon.svg')} type="image/svg+xml" />
+    <script is:inline>
+      // Apply the saved theme before first paint to avoid a flash.
+      try {
+        var s = JSON.parse(localStorage.getItem('aae:v1') || '{}').settings;
+        if (s && (s.theme === 'light' || s.theme === 'dark')) document.documentElement.dataset.theme = s.theme;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href={url('/')}><span class="brand-mark" aria-hidden="true">AI</span>Applied AI Engineering</a>
+        <button class="btn btn-small menu-toggle" aria-expanded="false" aria-controls="site-nav">Menu</button>
+        <nav class="nav" id="site-nav" aria-label="Main">
+          {nav.map((n) => (
+            <a href={url(n.href)} aria-current={isCurrent(n.href) ? 'page' : undefined}>{n.label}</a>
+          ))}
+          <button class="btn btn-small btn-ghost" id="theme-toggle" type="button" aria-label="Toggle color theme">
+            <span aria-hidden="true">◐</span><span class="theme-label">Theme</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <div class="wrap">
+        <slot />
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          Course content © its authors, licensed <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>.
+          Code MIT. Adapted material is credited on each lesson and in <a href={url('/credits/')}>Credits</a>.
+          Videos are embedded from their official channels and remain their owners' property.
+        </p>
+        <p>Progress is stored only in this browser. Back it up from <a href={url('/settings/')}>Settings</a>.</p>
+      </div>
+    </footer>
+
+    <script>
+      import { load, update } from '../lib/progress';
+
+      // Mobile menu
+      const toggle = document.querySelector<HTMLButtonElement>('.menu-toggle');
+      const nav = document.getElementById('site-nav');
+      toggle?.addEventListener('click', () => {
+        const open = nav!.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', String(open));
+      });
+
+      // Theme toggle cycles system -> light -> dark.
+      const order = ['system', 'light', 'dark'] as const;
+      const label = document.querySelector('.theme-label');
+      const applyTheme = (t: (typeof order)[number]) => {
+        if (t === 'system') delete document.documentElement.dataset.theme;
+        else document.documentElement.dataset.theme = t;
+        if (label) label.textContent = t === 'system' ? 'Auto' : t === 'light' ? 'Light' : 'Dark';
+        window.dispatchEvent(new CustomEvent('aae:theme'));
+      };
+      applyTheme(load().settings.theme);
+      document.getElementById('theme-toggle')?.addEventListener('click', () => {
+        const next = order[(order.indexOf(load().settings.theme) + 1) % order.length];
+        update((s) => (s.settings.theme = next));
+        applyTheme(next);
+      });
+
+      // Copy buttons on every code block.
+      document.querySelectorAll('main pre').forEach((pre) => {
+        if (pre.closest('.no-copy') || pre.classList.contains('mermaid-src')) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'code-wrap';
+        pre.parentNode!.insertBefore(wrap, pre);
+        wrap.appendChild(pre);
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-small copy-btn';
+        btn.type = 'button';
+        btn.textContent = 'Copy';
+        btn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(pre.textContent ?? '');
+            btn.textContent = 'Copied';
+          } catch {
+            btn.textContent = 'Press Ctrl+C';
+          }
+          setTimeout(() => (btn.textContent = 'Copy'), 1500);
+        });
+        wrap.appendChild(btn);
+      });
+    </script>
+  </body>
+</html>

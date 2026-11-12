@@ -1,0 +1,71 @@
+---
+import Base from '../../layouts/Base.astro';
+import StudioProgress from '../../components/dashboard/StudioProgress';
+import { getProgram, studioLabel } from '../../lib/program';
+import { url } from '../../lib/paths';
+
+export async function getStaticPaths() {
+  const program = await getProgram();
+  return program.map((b) => ({ params: { id: b.studio.data.id }, props: { id: b.studio.data.id } }));
+}
+const program = await getProgram();
+const b = program.find((x) => x.studio.data.id === Astro.props.id)!;
+const s = b.studio.data;
+---
+
+<Base title={s.title} description={s.summary}>
+  <div class="prose" style="max-width:860px">
+    <div class="eyebrow">{studioLabel(s)} · ~{s.estWeeks} weeks · ~{s.estHours} hours</div>
+    <h1>{s.title}</h1>
+    <p class="muted" style="font-size:1.08rem">{s.summary}</p>
+
+    {b.lessons.length > 0 && <StudioProgress client:load studio={b.structure} />}
+
+    <h2>What you will be able to do</h2>
+    <ul>{s.outcomes.map((o) => <li>{o}</li>)}</ul>
+
+    <h2>Schedule</h2>
+    {b.weeks.map((w) => (
+      <section class="card" style="margin-bottom:14px">
+        <div class="eyebrow">Week {w.week}</div>
+        <h3 style="margin-top:2px">{w.title}</h3>
+        {w.summary && <p class="small muted" style="margin-top:0">{w.summary}</p>}
+        {w.lessons.length > 0 ? (
+          <ol>
+            {w.lessons.map((l) => (
+              <li>
+                <a href={url(`/lessons/${l.data.id}/`)}>{l.data.title}</a> <span class="small muted">· {l.data.estMinutes} min</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p class="small muted">Lessons for this week are being written.</p>
+        )}
+        {w.quiz && <p style="margin-bottom:0"><a class="btn btn-small" href={url(`/quizzes/${w.quiz.data.id}/`)}>Week {w.week} quiz · {w.quiz.data.questions.length} questions</a></p>}
+      </section>
+    ))}
+
+    {(b.exam || b.project) && <h2>Assessment</h2>}
+    <div class="grid">
+      {b.exam && (
+        <div class="card">
+          <div class="eyebrow">Studio exam</div>
+          <h3 style="margin-top:2px">{b.exam.data.title}</h3>
+          <p class="small">{b.exam.data.draw} questions from a pool of {b.exam.data.questions.length}, optional {b.exam.data.timeLimitMinutes}-minute timer, pass at {Math.round(b.exam.data.passing * 100)}%.</p>
+          <a class="btn" href={url(`/exams/${b.exam.data.id}/`)}>Go to exam</a>
+        </div>
+      )}
+      {b.project && (
+        <div class="card">
+          <div class="eyebrow">Studio project · ~{b.project.data.estHours} hours</div>
+          <h3 style="margin-top:2px">{b.project.data.title}</h3>
+          <p class="small">{b.project.data.summary}</p>
+          <a class="btn" href={url(`/projects/${b.project.data.id}/`)}>Read the brief</a>
+        </div>
+      )}
+    </div>
+    {b.lessons.length > 0 && (
+      <p style="margin-top:24px"><a class="btn btn-primary" href={url(`/lessons/${b.lessons[0].data.id}/`)}>Start with lesson 1 →</a></p>
+    )}
+  </div>
+</Base>

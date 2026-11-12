@@ -1,0 +1,31 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getProgram, studioLabel } from '../../lib/program';
+import { url } from '../../lib/paths';
+
+const program = await getProgram();
+---
+
+<Base title="Studios">
+  <h1>Studios</h1>
+  <p class="muted prose">
+    Each studio is a few weeks of lessons, one quiz per week, an exam, and a build project. Take them in order: each project builds on the last.
+    Electives can be taken any time after Studio 1.
+  </p>
+  <ol class="stack" style="list-style:none;padding:0">
+    {program.map((b) => {
+      const s = b.studio.data;
+      return (
+        <li class="card studio-card" style={`--accent-color:${s.accent}`}>
+          <div class="row" style="justify-content:space-between">
+            <span class="eyebrow">{studioLabel(s)} · ~{s.estWeeks} weeks · ~{s.estHours} hours</span>
+            {s.status === 'available' ? <span class="pill pill-success">Available</span> : <span class="pill">Coming soon</span>}
+          </div>
+          <h3><a href={url(`/studios/${s.id}/`)}>{s.title}</a></h3>
+          <p class="muted" style="margin:0">{s.summary}</p>
+          {b.project && <p class="small" style="margin:0"><strong>Project:</strong> {b.project.data.title}</p>}
+        </li>
+      );
+    })}
+  </ol>
+</Base>

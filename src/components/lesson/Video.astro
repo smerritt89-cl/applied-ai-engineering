@@ -1,0 +1,74 @@
+---
+/**
+ * <Video> embeds an official YouTube video, without downloading or rehosting it.
+ *
+ *   <Video id="zjkBMFhNj_g" title="Intro to Large Language Models"
+ *          channel="Andrej Karpathy" start={0} minutes={60}
+ *          source="https://karpathy.ai/">What to watch for...</Video>
+ *
+ * - Click-to-load facade: nothing loads from YouTube (no cookies, no player
+ *   JavaScript) until you press play. Uses the privacy-enhanced domain.
+ * - Captions are requested on by default (cc_load_policy=1); YouTube serves
+ *   the creator's or auto-generated captions.
+ * - Every ID is checked by `npm run check:videos` (YouTube oEmbed).
+ */
+interface Props {
+  id: string;
+  title: string;
+  channel: string;
+  /** Start offset in seconds (optional). */
+  start?: number;
+  /** End offset in seconds (optional) for "watch just this segment". */
+  end?: number;
+  /** Approximate length of the segment to watch, for planning. */
+  minutes?: number;
+  /** Official page for the video or course (defaults to the YouTube watch page). */
+  source?: string;
+}
+const { id, title, channel, start = 0, end, minutes, source } = Astro.props;
+const watchUrl = `https://www.youtube.com/watch?v=${id}${start ? `&t=${start}s` : ''}`;
+const params = new URLSearchParams({ autoplay: '1', cc_load_policy: '1', rel: '0', modestbranding: '1' });
+if (start) params.set('start', String(start));
+if (end) params.set('end', String(end));
+const embed = `https://www.youtube-nocookie.com/embed/${id}?${params}`;
+const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+const hasSlot = Astro.slots.has('default');
+---
+
+<figure class="video">
+  <div class="video-frame" data-embed={embed} data-title={title}>
+    <button type="button" class="video-load" aria-label={`Play video: ${title} (${channel}). Loads the YouTube player.`}>
+      <img src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`} alt="" loading="lazy" width="480" height="360" />
+      <span class="play"><span>▶ Play{minutes ? ` · ${minutes} min` : ''}</span></span>
+    </button>
+  </div>
+  <figcaption class="video-meta">
+    <strong>{title}</strong>, {channel}.
+    {start ? <> Starts at {fmt(start)}{end ? <>, ends {fmt(end)}</> : null}.</> : null}
+    {' '}<a href={watchUrl} target="_blank" rel="noopener">Watch on YouTube</a>
+    {source && <> · <a href={source} target="_blank" rel="noopener">Source page</a></>}
+    . Embedded from the official channel; not rehosted.
+  </figcaption>
+  {hasSlot && (
+    <div class="callout note">
+      <div class="callout-title">What to watch for</div>
+      <slot />
+    </div>
+  )}
+</figure>
+
+<script>
+  document.querySelectorAll<HTMLElement>('.video-frame').forEach((frame) => {
+    frame.querySelector('.video-load')?.addEventListener('click', () => {
+      const iframe = document.createElement('iframe');
+      iframe.src = frame.dataset.embed!;
+      iframe.title = frame.dataset.title ?? 'Video';
+      iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+      iframe.allowFullscreen = true;
+      iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+      iframe.dataset.playing = 'true'; // lets the time tracker count watching as activity
+      frame.replaceChildren(iframe);
+      iframe.focus();
+    });
+  });
+</script>

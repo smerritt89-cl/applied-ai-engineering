@@ -1,0 +1,81 @@
+---
+import Base from '../layouts/Base.astro';
+import { getProgram, studioLabel } from '../lib/program';
+import { WEIGHTS, RUBRIC_PERCENT, EXAM_PASSING } from '../lib/grading';
+import { url } from '../lib/paths';
+
+const program = await getProgram();
+let week = 1;
+const schedule = program
+  .filter((b) => b.studio.data.kind !== 'elective')
+  .map((b) => {
+    const start = week;
+    week += b.studio.data.estWeeks;
+    return { b, start, end: week - 1 };
+  });
+const electives = program.filter((b) => b.studio.data.kind === 'elective');
+---
+
+<Base title="Syllabus">
+  <div class="prose" style="max-width:860px">
+    <h1>Syllabus</h1>
+    <p>
+      Applied AI Engineering is a self-paced program modeled on a professional master's, with one difference: you are graded on what you build.
+      It assumes some Python and comfort with math, and no prior machine learning. At 8 to 10 hours a week it takes about {week - 1} weeks.
+    </p>
+
+    <h2>Program goals</h2>
+    <ul>
+      <li>Build LLM applications end to end: prompts, structured outputs, tools, retrieval, agents, and deployment.</li>
+      <li>Know which models and techniques fit which jobs (Claude, GPT, Gemini, Grok, and open-weight models), and decide with evidence rather than reputation.</li>
+      <li>Build checks and balances into every system: validation, evaluations, human review, guardrails, and observability.</li>
+      <li>Leave with a portfolio: six studio projects and a capstone, each in its own repo with a write-up.</li>
+    </ul>
+
+    <h2>Schedule</h2>
+    <table>
+      <thead><tr><th>Weeks</th><th>Course</th><th>Project</th></tr></thead>
+      <tbody>
+        {schedule.map(({ b, start, end }) => (
+          <tr>
+            <td>{start}–{end}</td>
+            <td><a href={url(`/studios/${b.studio.data.id}/`)}>{studioLabel(b.studio.data)}: {b.studio.data.title}</a></td>
+            <td>{b.project?.data.title ?? b.studio.data.tagline}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <p>Electives, any time after Studio 1: {electives.map((b, i) => <>{i > 0 && ', '}<a href={url(`/studios/${b.studio.data.id}/`)}>{b.studio.data.title}</a></>)}.</p>
+
+    <h2>How a lesson works</h2>
+    <p>
+      Every lesson follows the same rhythm, so no lesson is a wall of text: a short read (each section has a <strong>Listen</strong> button for
+      narration), a video or audio segment, a hands-on exercise (Python that runs in your browser, or a local lab for anything that needs an API key),
+      and an ungraded knowledge check with explanations. Mark the lesson complete when you are done.
+    </p>
+
+    <h2 id="grading">Grading</h2>
+    <ul>
+      <li><strong>Knowledge checks</strong> (end of each lesson): ungraded practice.</li>
+      <li><strong>Weekly quizzes</strong>: {WEIGHTS.quizzes * 100}% of the studio grade. Mean of your best attempt on each quiz. Retake as often as you like.</li>
+      <li><strong>Studio exam</strong>: {WEIGHTS.exam * 100}% of the studio grade. About 20 questions drawn from a larger pool, optional timer. You need {EXAM_PASSING * 100}% to complete the studio.</li>
+      <li><strong>Studio project</strong>: {WEIGHTS.project * 100}% of the studio grade, from your self-assessment against the rubric. Levels map to {RUBRIC_PERCENT[1] * 100}%, {RUBRIC_PERCENT[2] * 100}%, {RUBRIC_PERCENT[3] * 100}%, and {RUBRIC_PERCENT[4] * 100}%.</li>
+      <li>Multi-select questions earn partial credit: (correct picks minus wrong picks) divided by the number of correct options, floored at zero.</li>
+      <li>Letter grades: A 93+, A- 90+, B+ 87+, B 83+, B- 80+, C+ 77+, C 73+, C- 70+, D 60+, F below.</li>
+      <li>A studio is <strong>complete</strong> when all lessons and quizzes are done, the exam is passed, and the project is submitted with its required checklist ticked and rubric scored.</li>
+    </ul>
+
+    <h2>Integrity</h2>
+    <p>
+      This is a static site, so the answers ship with the page. Nothing stops you from looking, and nothing would be gained. Take quizzes and exams closed-book.
+      Score your projects honestly, ideally a day after finishing. Use AI assistants freely when building projects (that is the job), and say in each write-up how you used them.
+    </p>
+
+    <h2>Sources and licensing</h2>
+    <p>
+      Lessons are built from open courses (Microsoft, Hugging Face, Anthropic, MIT OpenCourseWare, Maxime Labonne), official documentation, and peer-reviewed or primary sources.
+      Copyrighted books and blogs are linked and summarized, never copied. Every lesson lists its sources, and each lesson shows the date its facts were last checked,
+      because this field moves fast. Full list: <a href={url('/credits/')}>Credits</a>.
+    </p>
+  </div>
+</Base>

@@ -1,0 +1,71 @@
+---
+/**
+ * "Predict the output" challenge. Commit to a guess, then reveal.
+ *
+ *   <Predict code={`print(len("hello"))`} options={["4", "5", "Error"]} answer={1}>
+ *   Explanation in Markdown (shown after the reveal).
+ *   </Predict>
+ *
+ * Rendered at build time (code is highlighted with Shiki); a few lines of
+ * script handle the reveal. Ungraded: it exists to make you think first.
+ */
+import { highlight } from '../../lib/questions';
+
+interface Props {
+  code: string;
+  options: string[];
+  /** Index into options of the correct answer. */
+  answer: number;
+  language?: string;
+  title?: string;
+}
+const { code, options, answer, language = 'python', title = 'Predict the output' } = Astro.props;
+const codeHtml = await highlight(code.trim(), language);
+const name = `predict-${Math.random().toString(36).slice(2, 8)}`;
+---
+
+<div class="activity predict" data-answer={answer}>
+  <div class="activity-label">Predict</div>
+  <h3>{title}</h3>
+  <Fragment set:html={codeHtml} />
+  <fieldset style="border:0;padding:0;margin:0">
+    <legend class="q-prompt">What does this produce? Commit before you reveal.</legend>
+    <ul class="q-options">
+      {options.map((o, i) => (
+        <li class="q-option">
+          <label><input type="radio" name={name} value={i} /> <code>{o}</code></label>
+        </li>
+      ))}
+    </ul>
+  </fieldset>
+  <div class="row" style="margin-top:12px">
+    <button type="button" class="btn btn-primary predict-reveal" disabled>Reveal</button>
+  </div>
+  <div class="q-feedback predict-explain" hidden aria-live="polite">
+    <p class="predict-verdict"></p>
+    <slot />
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>('.predict').forEach((el) => {
+    const btn = el.querySelector<HTMLButtonElement>('.predict-reveal')!;
+    const radios = el.querySelectorAll<HTMLInputElement>('input[type=radio]');
+    const answer = Number(el.dataset.answer);
+    radios.forEach((r) => r.addEventListener('change', () => (btn.disabled = false)));
+    btn.addEventListener('click', () => {
+      const picked = Array.from(radios).findIndex((r) => r.checked);
+      radios.forEach((r, i) => {
+        const li = r.closest('.q-option')!;
+        li.classList.toggle('correct', i === answer);
+        li.classList.toggle('incorrect', i === picked && i !== answer);
+        r.disabled = true;
+      });
+      const box = el.querySelector<HTMLElement>('.predict-explain')!;
+      box.hidden = false;
+      box.classList.add(picked === answer ? 'right' : 'wrong');
+      el.querySelector('.predict-verdict')!.textContent = picked === answer ? 'Correct.' : 'Not quite. Here is why:';
+      btn.disabled = true;
+    });
+  });
+</script>

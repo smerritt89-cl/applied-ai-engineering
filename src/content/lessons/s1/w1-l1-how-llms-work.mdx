@@ -1,0 +1,247 @@
+---
+id: s1-w1-l1
+studio: s1
+week: 1
+order: 1
+title: How LLMs work, for people who build with them
+summary: Next-token prediction, tokens, sampling, context windows, and training stages, and what each one means for the code you write.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Describe text generation as repeated next-token prediction and explain why outputs vary between runs
+  - Explain how temperature reshapes a probability distribution, and compute it by hand
+  - Explain what a context window contains and why long context has costs
+  - Connect the stages of model training to behaviors you will see in production (knowledge cutoffs, confident errors)
+sources:
+  - { id: yt-karpathy-intro-llms, use: embedded, where: "Part 1, LLMs" }
+  - { id: yt-3b1b-gpt, use: embedded }
+  - { id: ms-genai-beginners, use: adapted, where: "Lesson 1, Introduction to Generative AI and LLMs" }
+  - { id: hf-llm-course, use: summarized, where: "Chapter 1, Transformer models" }
+  - { id: openai-tokenizer-guide, use: summarized }
+  - { id: holtzman-2019, use: summarized }
+  - { id: liu-2023-lost-middle, use: summarized }
+  - { id: ouyang-2022, use: summarized }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 2, Understanding Foundation Models" }
+  - { id: claude-docs, use: summarized, where: "API versioning and request parameters" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: You send the exact same prompt to a model twice and get two different answers. What is the most accurate explanation?
+    options:
+      - id: a
+        text: The model learned from your first request and changed its answer.
+        rationale: The API is stateless. Nothing from one request updates the model's weights.
+      - id: b
+        text: Each token is sampled from a probability distribution, so different runs can take different paths.
+        correct: true
+        rationale: Yes. Small differences early in a response compound into different text.
+      - id: c
+        text: The provider randomly routes you to a different model each time.
+        rationale: Routing can vary by provider, but sampling explains variation even on one model.
+    explanation: >-
+      Generation is a loop of "predict a distribution over the next token, pick one, append it." Unless sampling is
+      fully greedy (and even then, serving infrastructure can introduce tiny numeric differences), two runs can diverge.
+      Design for variation: validate outputs, and test prompts against many inputs, not one.
+  - id: kc2
+    type: predict-output
+    prompt: What does this print? (Recall that dividing logits by a temperature below 1 sharpens the distribution.)
+    code: |
+      import math
+      def p_first(logits, t):
+          exps = [math.exp(x / t) for x in logits]
+          return exps[0] / sum(exps)
+      print(p_first([3.0, 3.0], 0.2))
+    options:
+      - id: a
+        text: "`0.5`"
+        correct: true
+        rationale: Equal logits stay equal at any temperature, so each gets half.
+      - id: b
+        text: "`1.0`"
+        rationale: Lower temperature sharpens differences, but there is no difference here to sharpen.
+      - id: c
+        text: "`0.2`"
+        rationale: Temperature divides the logits; it is not itself a probability.
+    explanation: >-
+      Temperature scales every logit by the same factor, so it changes the *gaps* between options. When two options
+      are tied, they stay tied: the result is exactly 0.5 for any temperature.
+  - id: kc3
+    type: multi
+    prompt: Which of these count against a model's context window in a single API request? Select all that apply.
+    options:
+      - id: a
+        text: The system prompt
+        correct: true
+      - id: b
+        text: Earlier turns of the conversation that you resend
+        correct: true
+      - id: c
+        text: Tool definitions you include
+        correct: true
+      - id: d
+        text: Conversations other users had with the same model
+        rationale: Requests are isolated. Other users' traffic never enters your context.
+    explanation: >-
+      The context window is everything the model reads for this request plus what it writes: system prompt, every message
+      you send (including history you resend), tool definitions and results, and the output tokens. Because the API is
+      stateless, "memory" is just history you choose to send again, and you pay for it every time.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The one idea everything else rests on
+
+A large language model does one thing: given some text, it predicts what comes next. More precisely, it reads a sequence of **tokens** and outputs a probability for every token in its vocabulary being the next one. The application picks one token from that distribution, appends it, and asks again. A paragraph of output is this loop run a few hundred times.
+
+That framing sounds too simple to explain what these models can do, and it is worth holding two things at once. The mechanism really is next-token prediction. And predicting the next token well, across trillions of words of human writing, requires the model to pick up grammar, facts, styles, and some ability to follow reasoning. Most of what you will build in this program sits on top of that loop, so understanding it pays off every time an output surprises you.
+</Listen>
+
+<Video id="zjkBMFhNj_g" title="[1hr Talk] Intro to Large Language Models" channel="Andrej Karpathy" minutes={20} source="https://karpathy.ai/">
+Watch the first part, on what an LLM is and how it is trained (roughly the first third of the talk). Notice three ideas you'll use all week: the model is a file of parameters plus a small program that runs it; pretraining compresses a large slice of the internet into those parameters; and a separate fine-tuning stage turns a document-completer into an assistant.
+</Video>
+
+<Listen>
+## Tokens: the unit you pay for
+
+Models don't read characters or words. They read **tokens**: chunks of text from a fixed vocabulary, typically tens of thousands to a few hundred thousand entries, learned from data. Common words are usually one token. Rare words, names, code identifiers, and non-English text get split into several pieces. OpenAI's rule of thumb for English is about four characters, or three quarters of a word, per token; treat that as a rough estimate, because every model family uses its own tokenizer and the counts differ.
+
+Tokens matter to you as a builder for three reasons. First, you are billed per token, separately for input and output, and output tokens usually cost several times more. Second, limits are expressed in tokens: the context window, and the maximum length of a response. Third, some odd failures come from tokenization. A model that sees "strawberry" as two or three chunks has no direct view of the individual letters, which is why letter-counting questions were a famous weak spot.
+</Listen>
+
+<Callout type="tip" title="Count, don't guess">
+When cost or limits matter, measure. Providers expose token counts in every response (for example, the usage field in the Claude Messages API) and most offer a token-counting endpoint, so you can count before sending. You'll build a cost calculator in lesson 3.
+</Callout>
+
+<Listen>
+## Sampling: why the same prompt gives different answers
+
+At each step the model produces a score, called a **logit**, for every token in the vocabulary. The softmax function turns those scores into probabilities. Then something has to pick a token.
+
+Always taking the most likely token (greedy decoding) sounds safe, but it tends to produce repetitive, flat text. Sampling from the distribution produces more natural text, at the cost of run-to-run variation. Two classic controls shape that sampling. **Temperature** divides every logit by a number before the softmax: below 1 sharpens the distribution toward the top choices, above 1 flattens it. **Top-p** (nucleus sampling, introduced by Holtzman and colleagues in 2019) samples only from the smallest set of tokens whose probabilities add up to p, which cuts off the long tail of unlikely tokens.
+
+If you have a math background, temperature is a familiar object: it is the same parameter as in the Boltzmann distribution. Probability of token i is proportional to e raised to the logit over T. As T approaches zero you recover the argmax; as T grows you approach uniform.
+</Listen>
+
+<Predict
+  title="Temperature, by hand"
+  code={`import math
+
+def softmax(logits, t=1.0):
+    exps = [math.exp(x / t) for x in logits]
+    total = sum(exps)
+    return [e / total for e in exps]
+
+low = softmax([2.0, 1.0], t=0.5)[0]
+high = softmax([2.0, 1.0], t=1.0)[0]
+print(round(low, 2), round(high, 2))`}
+  options={["0.88 0.73", "0.73 0.88", "0.67 0.67", "0.5 0.5"]}
+  answer={0}
+>
+With T = 0.5 the logits become 4 and 2, so the first probability is 1 / (1 + e^-2), about 0.88. With T = 1 it is 1 / (1 + e^-1), about 0.73. A lower temperature widened the gap, so the favorite became more likely.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s1-temperature"
+  title="Implement temperature sampling"
+  starter={`import math
+import random
+
+def apply_temperature(logits, t):
+    """Return softmax(logits / t) as a list of probabilities.
+    Subtract the max logit before exponentiating, for numerical stability."""
+    # TODO: implement
+    pass
+
+def sample(logits, t, rng=random):
+    """Pick an index using the probabilities from apply_temperature."""
+    probs = apply_temperature(logits, t)
+    return rng.choices(range(len(probs)), weights=probs, k=1)[0]
+
+logits = [2.0, 1.0, 0.1]
+for t in (0.2, 1.0, 2.0):
+    print(t, [round(p, 3) for p in apply_temperature(logits, t)])
+`}
+  tests={`probs = apply_temperature([2.0, 1.0, 0.1], 1.0)
+assert probs is not None, "apply_temperature returned None"
+assert abs(sum(probs) - 1) < 1e-9, "probabilities must sum to 1"
+assert probs[0] > probs[1] > probs[2], "higher logits must get higher probability"
+cold = apply_temperature([2.0, 1.0, 0.1], 0.1)
+assert cold[0] > 0.99, "a very low temperature should put almost all mass on the top logit"
+hot = apply_temperature([2.0, 1.0, 0.1], 100)
+assert max(hot) - min(hot) < 0.02, "a very high temperature should be close to uniform"
+big = apply_temperature([1000.0, 999.0], 1.0)
+assert abs(big[0] - 0.7310585786) < 1e-6, "subtract the max logit to avoid overflow"`}
+  solution={`def apply_temperature(logits, t):
+    scaled = [x / t for x in logits]
+    m = max(scaled)
+    exps = [math.exp(x - m) for x in scaled]
+    total = sum(exps)
+    return [e / total for e in exps]`}
+>
+Write `apply_temperature`, then press **Check my answer**. The last check uses huge logits: without subtracting the maximum first, `math.exp(1000)` overflows. This is the same trick every production softmax uses.
+</PyRunner>
+
+<Callout type="note" title="Sampling controls are moving out of your hands">
+Newer reasoning models increasingly manage sampling themselves. On the current Claude API version, requests that set temperature, top_p, or top_k are rejected, and you steer behavior through instructions and an effort setting instead. Other providers' reasoning models often restrict these parameters too. The concept still matters, because it explains run-to-run variation, but check each provider's docs before reaching for a temperature knob.
+</Callout>
+
+<Listen>
+## The context window: everything the model can see
+
+For each request, the model sees a single sequence of tokens: your system prompt, the conversation so far, any tool definitions and tool results, and the tokens it is generating. That sequence is the **context**, and its maximum length is the **context window**. Current frontier models offer windows from a few hundred thousand tokens up to a million or more.
+
+Two consequences shape real applications. First, the API is stateless. The model doesn't remember your last request; chat applications create the feeling of memory by resending the history every time, and you pay for those tokens on every turn. Second, a big window is not free attention. Longer inputs cost more and take longer, and research such as "Lost in the Middle" (Liu and colleagues, 2023) found that models used information at the start and end of long inputs more reliably than information buried in the middle. Newer models have improved, but the engineering lesson holds: put the most important instructions and evidence where they are easy to find, and send only what the task needs.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of the generation loop: the context (system prompt, messages, tool definitions) goes into the model, which outputs a probability distribution; one token is sampled and appended to the output; if it is not a stop token or the length limit, the loop repeats with the new token added to the context."
+  caption="The generation loop. Every output token passes through it, which is why output length drives latency."
+  chart={`flowchart LR
+  C["Context: system prompt + messages + tool definitions"] --> M["Model forward pass"]
+  M --> P["Probability for every token in the vocabulary"]
+  P --> S["Sample one token (temperature, top-p)"]
+  S --> A["Append to output"]
+  A --> D{"Stop token or max_tokens?"}
+  D -- "no" --> C
+  D -- "yes" --> R["Return response + token usage"]`}
+/>
+
+<DragOrder
+  client:visible
+  prompt="Put the steps of producing one response in order"
+  items={[
+    "Your app sends the system prompt and messages",
+    "The text is converted into tokens",
+    "The model computes a probability for every possible next token",
+    "One token is sampled and appended to the output",
+    "Steps repeat until a stop token or the token limit",
+    "The app receives the text and the token usage",
+  ]}
+  explanation="Tokenize, predict, sample, append, repeat. Output tokens are produced one at a time, which is why long answers are slow and why streaming exists."
+/>
+
+<Listen>
+## How models are trained, and why you should care
+
+Modern assistants are built in stages. **Pretraining** teaches a model to predict the next token across a huge corpus of text and code; the result is a powerful document-completer with a **knowledge cutoff**, the date its training data ends. **Post-training** then shapes it into an assistant: supervised fine-tuning on example conversations, followed by reinforcement learning from human feedback and related methods. The 2022 InstructGPT paper by Ouyang and colleagues showed how much this stage matters: people preferred outputs from a much smaller instruction-tuned model over those from a far larger base model. Recent models add reinforcement learning on tasks with checkable answers, such as math and code, which is a large part of why they reason better than models from a couple of years ago.
+
+Three practical consequences follow. One: the model doesn't know anything after its cutoff unless you give it that information, which is the whole motivation for retrieval in Studio 2. Two: post-training rewards answers that look helpful, so a model may produce a fluent, confident answer when it should say it doesn't know. Fluency is not evidence of correctness. Three: behavior varies between model families and versions, because their post-training differs. A prompt tuned on one model is a hypothesis on the next, which is why this program treats evaluation as a core skill rather than an afterthought.
+</Listen>
+
+<Callout type="pitfall" title="Treating the model like a database or a pure function">
+Two habits cause most early bugs. Asking the model for facts it may not have, and trusting the answer because it sounds sure. And assuming that the same input always gives the same output, so one good test run feels like proof. The fixes come later in this studio: give the model the facts (context and retrieval), constrain the output (structured outputs), and check the result (validation now, evals in Studio 3).
+</Callout>
+
+<GoDeeper title="What is actually inside the model?">
+The network that produces those probabilities is a **transformer**, introduced in "Attention Is All You Need" (Vaswani and colleagues, 2017). Each token becomes a vector; layers of **attention** let every position gather information from earlier positions; and a final layer maps the last vector to a score for every vocabulary entry. You don't need these internals to build applications, but they explain a lot: why cost grows with context length, and why the model "sees" only tokens. If you want the intuition with beautiful visuals, watch 3Blue1Brown's chapter below. If you want to build one, take the "Let's Build GPT" elective.
+
+<Video id="wjZofJX0v4M" title="Transformers, the tech behind LLMs" channel="3Blue1Brown" minutes={27} />
+</GoDeeper>
+
+<Listen>
+## What this means for the code you write
+
+Hold on to five working rules as you start building. Budget in tokens, because tokens are cost, latency, and limits. Expect variation, so validate every output your code depends on. Treat context as something you design: what goes in, in what order, and what stays out. Know your model's cutoff, and supply current facts yourself. And evaluate on many examples, because one good answer proves very little. The next lesson puts these rules to work in your first API calls.
+</Listen>

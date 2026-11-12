@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro';
+import HoursLog from '../components/dashboard/HoursLog';
+import { getProgram, studioLabel } from '../lib/program';
+
+const program = await getProgram();
+const studios = program.map((b) => ({ id: b.studio.data.id, label: studioLabel(b.studio.data), title: b.studio.data.title, lessonIds: b.structure.lessonIds }));
+---
+
+<Base title="Hours">
+  <h1>Hours</h1>
+  <p class="muted prose">Time on lesson pages is counted automatically. Log project, lab, and reading time here so your total reflects the real work.</p>
+  <HoursLog client:load studios={studios} />
+</Base>

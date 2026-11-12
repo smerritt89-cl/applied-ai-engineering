@@ -1,0 +1,81 @@
+---
+/**
+ * Project page: the brief (MDX body) followed by the interactive tracker:
+ * requirements checklist, milestones (capstone), rubric, defense checklist
+ * (capstone), and repo links. You build the project in its own repo.
+ */
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import Callout from '../../components/lesson/Callout.astro';
+import GoDeeper from '../../components/lesson/GoDeeper.astro';
+import Mermaid from '../../components/lesson/Mermaid.astro';
+import ProjectTracker from '../../components/assess/ProjectTracker';
+import { getProgram, studioLabel } from '../../lib/program';
+import { SITE } from '../../site.config';
+import { url } from '../../lib/paths';
+
+export async function getStaticPaths() {
+  const projects = await getCollection('projects');
+  return projects.map((p) => ({ params: { id: p.data.id }, props: { project: p } }));
+}
+const { project } = Astro.props;
+const { Content } = await render(project);
+const d = project.data;
+const b = (await getProgram()).find((x) => x.studio.data.id === d.studio)!;
+const allSources = await getCollection('sources');
+const common = {
+  id: d.id,
+  repoName: d.repoName,
+  githubUser: SITE.GITHUB_USER,
+  requirements: d.requirements,
+  rubric: d.rubric.map((r) => ({ ...r, levels: { '1': r.levels[1], '2': r.levels[2], '3': r.levels[3], '4': r.levels[4] } })),
+  milestones: d.milestones,
+  defense: d.defense,
+};
+---
+
+<Base title={d.title} description={d.summary}>
+  <div class="prose" style="max-width:900px">
+    <div class="eyebrow"><a href={url(`/studios/${b.studio.data.id}/`)}>{studioLabel(b.studio.data)}</a> · Project · about {d.estHours} hours</div>
+    <h1>{d.title}</h1>
+    <p class="muted" style="font-size:1.08rem">{d.summary}</p>
+    <p class="small">Build this in its own repo, suggested name <code>{d.repoName}</code>. This page tracks your progress against the brief.</p>
+
+    <Content components={{ Callout, GoDeeper, Mermaid }} />
+
+    <h2 id="checklist">Requirements checklist</h2>
+    <ProjectTracker client:load section="checklist" {...common} />
+
+    {d.milestones.length > 0 && (
+      <>
+        <h2 id="milestones">Milestones</h2>
+        <ProjectTracker client:load section="milestones" {...common} />
+      </>
+    )}
+
+    <h2 id="rubric">Self-assessment rubric</h2>
+    <ProjectTracker client:load section="rubric" {...common} />
+
+    {d.defense.length > 0 && (
+      <>
+        <h2 id="defense">Defense checklist</h2>
+        <ProjectTracker client:load section="defense" {...common} />
+      </>
+    )}
+
+    <h2 id="submit">Links and submission</h2>
+    <ProjectTracker client:load section="submit" {...common} />
+
+    {d.sources.length > 0 && (
+      <section class="sources">
+        <h2 style="font-size:1.05rem">Sources</h2>
+        <ul>
+          {d.sources.map((ref) => {
+            const s = allSources.find((x) => x.data.id === ref.id);
+            return s ? <li><a href={s.data.url}>{s.data.title}</a>, {s.data.author}{ref.where && `, ${ref.where}`} <span class="muted">({s.data.license})</span></li> : null;
+          })}
+        </ul>
+      </section>
+    )}
+  </div>
+</Base>

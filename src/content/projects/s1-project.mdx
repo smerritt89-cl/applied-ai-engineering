@@ -1,0 +1,158 @@
+---
+id: s1-project
+studio: s1
+title: "Meeting transcript to action items"
+summary: >-
+  A command-line tool that reads a meeting transcript and produces verified, structured action items (owner, task,
+  due date, and the exact quote that proves each one), measured against a hand-labeled gold set.
+estHours: 14
+repoName: transcript-action-items
+requirements:
+  - { id: r1, text: "Accepts a transcript file (.txt; .vtt or .srt is a bonus) plus a meeting date, and writes action items as JSON and as readable Markdown" }
+  - { id: r2, text: "Defines the action-item schema once (Pydantic), with owner, description, due date (ISO date or null), and an evidence quote" }
+  - { id: r3, text: "Uses the API's structured outputs (or a strict tool schema) so every response is schema-valid; invalid output is retried once with the error fed back" }
+  - { id: r4, text: "Verifies every evidence quote appears verbatim in the transcript (after whitespace normalization); unsupported items are dropped or flagged, never silently kept" }
+  - { id: r5, text: "Resolves owners against team.json through a tool call or lookup; unknown or ambiguous names are flagged rather than guessed" }
+  - { id: r6, text: "Resolves relative dates (\"Friday\", \"end of next week\") against the meeting date in deterministic code, not by trusting the model's arithmetic" }
+  - { id: r7, text: "Handles transcripts longer than one comfortable request by chunking, then deduplicates items across chunks" }
+  - { id: r8, text: "Handles failures: retries with backoff on rate limits and server errors, detects max_tokens truncation, and handles refusals" }
+  - { id: r9, text: "Logs every run to JSONL: model, prompt version, input and output tokens, cost, latency, and item counts" }
+  - { id: r10, text: "Includes an evaluation script that scores output against gold.json (and at least two transcripts you add) with precision and recall on action items" }
+  - { id: r11, text: "README covers setup, an architecture diagram, key design decisions, cost per transcript, and known limitations" }
+  - { id: r12, text: "Write-up completed using the template on this page, including how you used AI assistants" }
+  - { id: s1, text: "Interactive review step: approve, edit, or reject each item in the terminal before export", required: false }
+  - { id: s2, text: "Export approved items to a real tracker (GitHub Issues, Linear, or ClickUp) behind an explicit confirmation", required: false }
+  - { id: s3, text: "Compare two models (for example claude-haiku-5-5 and claude-opus-5-5) on the gold set and report quality, cost, and latency", required: false }
+rubric:
+  - id: quality
+    criterion: Extraction quality
+    levels:
+      1: "Misses many commitments or includes discussion as action items; no measurement."
+      2: "Reasonable on the samples, but precision and recall aren't measured or are below 0.7."
+      3: "Precision and recall of at least 0.8 on the gold set, with errors analyzed by type."
+      4: "At least 0.9 on both, measured on an expanded set, with a clear account of what remains hard."
+  - id: verification
+    criterion: Checks and balances
+    levels:
+      1: "Model output is trusted as-is."
+      2: "Schema validation only."
+      3: "Schema validation, verbatim evidence check, and deterministic owner and date resolution."
+      4: "All of level 3, plus flags for ambiguity, a review path for low-confidence items, and tests for each check."
+  - id: robustness
+    criterion: Robustness
+    levels:
+      1: "Crashes on errors or long inputs."
+      2: "Handles the happy path and some errors."
+      3: "Retries, truncation detection, refusal handling, and chunking with deduplication all work."
+      4: "Level 3, plus tests that simulate each failure with a fake client."
+  - id: engineering
+    criterion: Code quality
+    levels:
+      1: "One long script; prompts and keys hard-coded."
+      2: "Some structure; prompts mixed with logic; few tests."
+      3: "Clear modules, versioned prompts, config outside code, and meaningful offline tests."
+      4: "Level 3, plus typed interfaces, a fake client for tests, and CI running the offline suite."
+  - id: economics
+    criterion: Cost and latency awareness
+    levels:
+      1: "Unknown cost per transcript."
+      2: "Cost is logged but not analyzed."
+      3: "Reports cost and latency per transcript, and justifies the model choice."
+      4: "Level 3, plus a measured comparison of at least two configurations, with a recommendation."
+  - id: communication
+    criterion: Write-up and README
+    levels:
+      1: "Missing or minimal."
+      2: "Describes what was built, but not why."
+      3: "Explains design decisions, results, and limitations clearly to a technical reader."
+      4: "Level 3, and a hiring manager could understand the problem, the approach, and the evidence in five minutes."
+sources:
+  - { id: anthropic-courses, use: adapted, where: "Tool use and real-world prompting modules (exercise ideas)" }
+  - { id: claude-docs, use: summarized, where: "Structured outputs, tool use, errors" }
+  - { id: hamel-evals, use: linked }
+---
+
+## The brief
+
+Every team loses action items in meetings. Someone says "I'll get that to you by Friday," and it lives only in a transcript nobody rereads. You will build a tool that reads a transcript and returns the commitments people made, in a form a project tracker can use.
+
+The trap in this problem is that a model will happily produce a plausible list. Some items will be real, some will be paraphrased discussion, some will have the wrong owner, and a few dates will be confidently miscalculated. The job is not to get a list. The job is to get a list **you can trust**, and to prove how trustworthy it is. That's why this project is graded on verification and measurement as much as on extraction.
+
+## What you get
+
+Sample data, all fictional:
+
+- [meeting-01-sprint-planning.txt](../../project-data/s1/meeting-01-sprint-planning.txt), [meeting-02-customer-escalation.txt](../../project-data/s1/meeting-02-customer-escalation.txt), [meeting-03-retro.txt](../../project-data/s1/meeting-03-retro.txt): three short transcripts with a meeting date in the header.
+- [team.json](../../project-data/s1/team.json): a team directory with names and aliases.
+- [gold.json](../../project-data/s1/gold.json): hand-labeled action items for each transcript, with the labeling rules at the top. Read the rules: deciding what counts as an action item is half the problem.
+
+The samples contain deliberate traps: an alias that collides with a common abbreviation, a task that gets reassigned mid-conversation, ideas that are explicitly declined, and a commitment whose owner is the speaker but whose evidence is someone else's line. Your evaluation should catch them.
+
+## Suggested architecture
+
+<Mermaid
+  alt="Pipeline: transcript and meeting date go to a chunker; each chunk goes to an extraction call with a strict schema; candidate items go through an evidence verifier, then owner resolution against team.json, then deterministic date resolution, then deduplication, then optional human review, then export as JSON and Markdown. Every step writes to a run log, and an eval script compares output to gold.json."
+  caption="One reasonable design. You may choose differently; explain why in your write-up."
+  chart={`flowchart TD
+  T["Transcript + meeting date"] --> C["Chunk"]
+  C --> X["Extract (structured output)"]
+  X --> V["Verify evidence quotes"]
+  V --> O["Resolve owners (team.json tool)"]
+  O --> D["Resolve dates (code)"]
+  D --> U["Deduplicate"]
+  U --> H["Human review (stretch)"]
+  H --> E["Export JSON + Markdown"]
+  X -.-> L[("Run log JSONL")]
+  E -.-> L
+  E --> S["Eval vs gold.json"]`}
+/>
+
+Week 4's lesson "Assembling an LLM feature" walks through these stages. Labs 04 (structured extraction) and 05 (tool loop) give you most of the parts.
+
+<Callout type="tip" title="Start with the eval, not the prompt">
+Write the scoring script first. Decide how you will match a predicted item to a gold item (same owner and an evidence quote that overlaps?), compute precision and recall, and run it on an empty prediction file. Then every prompt change you make has a number attached. This habit is the whole of Studio 3 in miniature.
+</Callout>
+
+<Callout type="pitfall" title="Letting the model do arithmetic on dates">
+"End of next week" from a Monday meeting is a calendar calculation, and models get these wrong often enough to matter. Have the model extract the phrase as said, and resolve it in code against the meeting date. Same idea for owners: extract the name as said, then look it up.
+</Callout>
+
+## Constraints
+
+- Use the official Anthropic SDK (or another provider's official SDK if you prefer, but justify it). Keep keys in environment variables.
+- A full run over the gold set should cost under 25 cents. Log it and prove it.
+- The offline test suite must run without an API key, using a fake client.
+
+## Write-up template
+
+Put this in `WRITEUP.md` in your project repo and fill it in. Aim for one to two pages.
+
+```markdown
+# Transcript to action items: write-up
+
+## Problem
+Who has this problem, and what does "good" look like? (2 to 3 sentences)
+
+## Approach
+- Architecture (diagram or bullets)
+- Model(s) and why; prompt version; schema
+- Checks: what each verification step catches
+
+## Results
+| Configuration | Precision | Recall | Cost / transcript | Latency / transcript |
+|---|---|---|---|---|
+| ... | | | | |
+
+Error analysis: the most common failure types, with one example each.
+
+## Decisions and trade-offs
+Two or three decisions you would defend in a design review, and what you gave up.
+
+## Limitations and next steps
+What would break in production? What would you build next?
+
+## How I used AI assistants
+Which tools, for what, and what you had to correct.
+```
+
+When you finish, score yourself with the rubric below (ideally a day later), paste your repo link, and mark the project submitted.

@@ -1,0 +1,22 @@
+---
+/**
+ * <Callout type="pitfall|tip|note|claim" title="...">  Markdown body  </Callout>
+ *
+ * - pitfall: a common mistake and how to avoid it
+ * - tip:     a practical shortcut
+ * - note:    context or a definition
+ * - claim:   a public claim by an industry figure; always paired with evidence
+ */
+interface Props {
+  type?: 'pitfall' | 'tip' | 'note' | 'claim';
+  title?: string;
+}
+const { type = 'note', title } = Astro.props;
+const defaults = { pitfall: 'Common pitfall', tip: 'Tip', note: 'Note', claim: 'Claim check' };
+const icons = { pitfall: '⚠', tip: '✓', note: 'ℹ', claim: '?' };
+---
+
+<aside class={`callout ${type}`} role="note" aria-label={title ?? defaults[type]}>
+  <div class="callout-title"><span aria-hidden="true">{icons[type]}</span>{title ?? defaults[type]}</div>
+  <slot />
+</aside>

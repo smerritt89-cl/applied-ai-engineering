@@ -1,0 +1,20 @@
+---
+import Base from '../layouts/Base.astro';
+import Transcript from '../components/dashboard/Transcript';
+import { getProgram, studioLabel } from '../lib/program';
+import { url } from '../lib/paths';
+
+const program = await getProgram();
+const rows = program.map((b) => ({
+  ...b.structure,
+  label: studioLabel(b.studio.data),
+  projectTitle: b.project?.data.title,
+  projectHref: b.project ? url(`/projects/${b.project.data.id}/`) : undefined,
+}));
+---
+
+<Base title="Transcript">
+  <h1>Transcript</h1>
+  <p class="muted prose">Grades by studio, computed from your best quiz and exam attempts and your project rubric. See the <a href={url('/syllabus/#grading')}>grading policy</a>.</p>
+  <Transcript client:load studios={rows} />
+</Base>

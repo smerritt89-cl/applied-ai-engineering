@@ -1,0 +1,49 @@
+---
+/**
+ * <Mermaid chart={`flowchart LR\n  A --> B`} caption="..." />
+ *
+ * Mermaid is loaded only on pages that contain a diagram, and re-renders
+ * when the color theme changes. The source text stays in the page (hidden)
+ * and a text alternative is provided through `caption` + `alt`.
+ */
+interface Props {
+  chart: string;
+  caption?: string;
+  /** Text description of the diagram for screen readers. Required for accessibility. */
+  alt: string;
+}
+const { chart, caption, alt } = Astro.props;
+---
+
+<figure class="mermaid-wrap" role="group" aria-label={alt}>
+  <pre class="mermaid-src" aria-hidden="true">{chart.trim()}</pre>
+  <div class="mermaid-out" aria-hidden="true"></div>
+  <p class="visually-hidden">{alt}</p>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<script>
+  let counter = 0;
+  async function renderAll() {
+    const figures = document.querySelectorAll<HTMLElement>('.mermaid-wrap');
+    if (!figures.length) return;
+    const { default: mermaid } = await import('mermaid');
+    const dark =
+      document.documentElement.dataset.theme === 'dark' ||
+      (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'neutral', securityLevel: 'strict', fontFamily: 'inherit' });
+    for (const fig of figures) {
+      const src = fig.querySelector('.mermaid-src')!.textContent ?? '';
+      const out = fig.querySelector('.mermaid-out')!;
+      try {
+        const { svg } = await mermaid.render(`mmd-${counter++}`, src);
+        out.innerHTML = svg;
+      } catch (e) {
+        out.textContent = 'Diagram failed to render. Source: ' + src;
+      }
+    }
+  }
+  renderAll();
+  window.addEventListener('aae:theme', renderAll);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+</script>

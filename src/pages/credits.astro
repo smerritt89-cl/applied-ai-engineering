@@ -1,0 +1,50 @@
+---
+/** Credits page, generated from sources.yaml plus each lesson's citations (same data as CREDITS.md). */
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/paths';
+
+const sources = (await getCollection('sources')).sort((a, b) => a.data.title.localeCompare(b.data.title));
+const lessons = await getCollection('lessons');
+const projects = await getCollection('projects');
+const usedIn = (id: string) => [
+  ...lessons.filter((l) => l.data.sources.some((s) => s.id === id)).map((l) => ({ href: url(`/lessons/${l.data.id}/`), title: l.data.title })),
+  ...projects.filter((p) => p.data.sources.some((s) => s.id === id)).map((p) => ({ href: url(`/projects/${p.data.id}/`), title: p.data.title })),
+];
+const policyLabel = { adapt: 'Adapted with attribution', summarize: 'Linked and summarized in our own words only', embed: 'Embedded via the official player' };
+const groups = (['adapt', 'summarize', 'embed'] as const).map((policy) => ({ policy, items: sources.filter((s) => s.data.policy === policy) }));
+---
+
+<Base title="Credits">
+  <div class="prose" style="max-width:900px">
+    <h1>Credits and licenses</h1>
+    <p>
+      This program is built from open educational resources and primary sources. Original text is licensed
+      <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> because some adapted material (MIT OpenCourseWare) requires
+      ShareAlike, and some (Anthropic's courses) is NonCommercial. This site is non-commercial. Platform code is MIT licensed.
+    </p>
+    <p>
+      Copyrighted books, blog posts, and papers are never copied: lessons link to them and summarize ideas in original words. Videos are embedded
+      from official channels and never downloaded or rehosted.
+    </p>
+    {groups.map((g) => (
+      <>
+        <h2>{policyLabel[g.policy]}</h2>
+        <ul>
+          {g.items.map((s) => {
+            const used = usedIn(s.data.id);
+            return (
+              <li style="margin-bottom:10px">
+                <a href={s.data.url}>{s.data.title}</a>, {s.data.author}. <span class="pill">{s.data.license}</span>
+                {s.data.notes && <span class="small muted"> {s.data.notes}</span>}
+                {used.length > 0 && (
+                  <div class="small muted">Used in: {used.map((u, i) => <>{i > 0 && ' · '}<a href={u.href}>{u.title}</a></>)}</div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </>
+    ))}
+  </div>
+</Base>

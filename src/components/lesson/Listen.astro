@@ -1,0 +1,211 @@
+---
+/**
+ * <Listen> wraps a section of lesson prose and adds a narration player.
+ *
+ *   <Listen>
+ *   ## Why tokens matter
+ *   Prose here...
+ *   </Listen>
+ *
+ * - If `npm run audio` has generated an MP3 for this exact text, it plays
+ *   that (Kokoro TTS) with synchronized captions from the matching .vtt.
+ * - Otherwise it falls back to the browser's built-in voice (Web Speech API).
+ * - Keep interactive components (quizzes, code runners) outside <Listen>.
+ */
+import { narrationText, narrationHash, audioFor } from '../../lib/narration';
+import { url } from '../../lib/paths';
+
+const html = await Astro.slots.render('default');
+const text = narrationText(html);
+const hash = narrationHash(text);
+const audio = audioFor(hash);
+const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+---
+
+<section
+  class="listen-section"
+  data-listen
+  data-hash={hash}
+  data-narration={text}
+  data-audio={audio ? url(`/audio/${hash}.mp3`) : undefined}
+  data-vtt={audio ? url(`/audio/${hash}.vtt`) : undefined}
+>
+  <div class="listen-bar no-print" role="group" aria-label="Narration">
+    <button type="button" class="btn btn-small listen-play" aria-pressed="false">
+      <span aria-hidden="true" class="icon">▶</span>
+      <span class="label">Listen{audio ? ` · ${fmt(audio.duration)}` : ''}</span>
+    </button>
+    <progress class="listen-progress" max="1" value="0" aria-label="Narration progress" hidden></progress>
+    <span class="time small" hidden></span>
+    <label class="small">
+      <span class="visually-hidden">Speed</span>
+      <select class="listen-rate" aria-label="Narration speed">
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="1.75">1.75×</option>
+        <option value="2">2×</option>
+      </select>
+    </label>
+    <button type="button" class="btn btn-small btn-ghost listen-cc" aria-pressed="true" title="Show captions">CC</button>
+    {!audio && <span class="small muted">browser voice</span>}
+  </div>
+  <div class="listen-caption" aria-hidden="true" hidden></div>
+  <Fragment set:html={html} />
+</section>
+
+<script>
+  import { load, update } from '../../lib/progress';
+
+  interface Cue { start: number; end: number; text: string }
+
+  /** Minimal WebVTT parser: enough for the cues our TTS script writes. */
+  function parseVtt(src: string): Cue[] {
+    const toSec = (t: string) => {
+      const [h, m, s] = t.split(':').length === 3 ? t.split(':') : ['0', ...t.split(':')];
+      return Number(h) * 3600 + Number(m) * 60 + Number(s);
+    };
+    return src
+      .split(/\n\s*\n/)
+      .map((block) => {
+        const lines = block.trim().split('\n');
+        const timing = lines.findIndex((l) => l.includes('-->'));
+        if (timing < 0) return null;
+        const [a, b] = lines[timing].split('-->').map((x) => x.trim().split(' ')[0]);
+        return { start: toSec(a), end: toSec(b), text: lines.slice(timing + 1).join(' ') };
+      })
+      .filter((c): c is Cue => c !== null);
+  }
+
+  const sentences = (t: string) => t.match(/[^.!?]+[.!?]+["')\]]*|\S[^.!?]*$/g)?.map((s) => s.trim()).filter(Boolean) ?? [t];
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  const STOP_ALL = 'aae:listen-stop';
+
+  document.querySelectorAll<HTMLElement>('[data-listen]').forEach((section) => {
+    const btn = section.querySelector<HTMLButtonElement>('.listen-play')!;
+    const icon = btn.querySelector('.icon')!;
+    const progress = section.querySelector<HTMLProgressElement>('.listen-progress')!;
+    const time = section.querySelector<HTMLElement>('.time')!;
+    const rateSel = section.querySelector<HTMLSelectElement>('.listen-rate')!;
+    const ccBtn = section.querySelector<HTMLButtonElement>('.listen-cc')!;
+    const caption = section.querySelector<HTMLElement>('.listen-caption')!;
+    const audioSrc = section.dataset.audio;
+    const text = section.dataset.narration ?? '';
+    let showCaptions = true;
+    let playing = false;
+
+    rateSel.value = String(load().settings.narrationRate ?? 1);
+    if (!rateSel.value) rateSel.value = '1';
+
+    const setPlaying = (on: boolean) => {
+      playing = on;
+      btn.setAttribute('aria-pressed', String(on));
+      icon.textContent = on ? '❚❚' : '▶';
+      section.classList.toggle('speaking', on);
+      caption.hidden = !(on && showCaptions);
+    };
+    const showCue = (t: string) => {
+      caption.textContent = t;
+    };
+
+    ccBtn.addEventListener('click', () => {
+      showCaptions = !showCaptions;
+      ccBtn.setAttribute('aria-pressed', String(showCaptions));
+      caption.hidden = !(playing && showCaptions);
+    });
+
+    // Stop this player when another one starts.
+    window.addEventListener(STOP_ALL, (e) => {
+      if ((e as CustomEvent).detail !== section) stop();
+    });
+    const announce = () => window.dispatchEvent(new CustomEvent(STOP_ALL, { detail: section }));
+
+    let stop = () => {};
+
+    if (audioSrc) {
+      /* ---------- Pre-generated MP3 + VTT captions ---------- */
+      let audio: HTMLAudioElement | null = null;
+      let cues: Cue[] = [];
+      const ensure = async () => {
+        if (audio) return audio;
+        audio = new Audio(audioSrc);
+        audio.preload = 'auto';
+        audio.playbackRate = Number(rateSel.value);
+        progress.hidden = false;
+        time.hidden = false;
+        try {
+          cues = parseVtt(await (await fetch(section.dataset.vtt!)).text());
+        } catch { cues = []; }
+        audio.addEventListener('timeupdate', () => {
+          const a = audio!;
+          if (a.duration) progress.value = a.currentTime / a.duration;
+          time.textContent = `${fmt(a.currentTime)} / ${fmt(a.duration || 0)}`;
+          const cue = cues.find((c) => a.currentTime >= c.start && a.currentTime < c.end);
+          if (cue) showCue(cue.text);
+        });
+        audio.addEventListener('ended', () => setPlaying(false));
+        audio.addEventListener('pause', () => setPlaying(false));
+        audio.addEventListener('play', () => setPlaying(true));
+        return audio;
+      };
+      // Click the progress bar to seek.
+      progress.addEventListener('click', (e) => {
+        if (!audio?.duration) return;
+        const r = progress.getBoundingClientRect();
+        audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+      });
+      stop = () => audio?.pause();
+      btn.addEventListener('click', async () => {
+        const a = await ensure();
+        if (a.paused) { announce(); a.play(); } else a.pause();
+      });
+      rateSel.addEventListener('change', () => {
+        if (audio) audio.playbackRate = Number(rateSel.value);
+        update((s) => (s.settings.narrationRate = Number(rateSel.value)));
+      });
+    } else if ('speechSynthesis' in window) {
+      /* ---------- Fallback: browser speech synthesis ---------- */
+      // Speak sentence by sentence: long utterances get cut off in some
+      // browsers, and per-sentence utterances double as captions.
+      const parts = sentences(text);
+      let index = 0;
+      let cancelled = false;
+      const pickVoice = () => {
+        const voices = speechSynthesis.getVoices();
+        const wanted = load().settings.speechVoice;
+        return voices.find((v) => v.name === wanted) ?? voices.find((v) => v.lang.startsWith('en') && /natural|neural|premium|enhanced/i.test(v.name)) ?? voices.find((v) => v.lang.startsWith('en'));
+      };
+      const speakFrom = (i: number) => {
+        if (cancelled || i >= parts.length) { setPlaying(false); index = 0; progress.value = 0; return; }
+        index = i;
+        const u = new SpeechSynthesisUtterance(parts[i]);
+        const v = pickVoice();
+        if (v) u.voice = v;
+        u.rate = Number(rateSel.value);
+        u.onstart = () => { showCue(parts[i]); progress.value = i / parts.length; time.textContent = `${i + 1} / ${parts.length}`; };
+        u.onend = () => speakFrom(i + 1);
+        speechSynthesis.speak(u);
+      };
+      stop = () => {
+        if (!playing) return;
+        cancelled = true;
+        speechSynthesis.cancel();
+        setPlaying(false);
+      };
+      btn.addEventListener('click', () => {
+        if (playing) { stop(); return; }
+        announce();
+        speechSynthesis.cancel();
+        cancelled = false;
+        progress.hidden = false;
+        time.hidden = false;
+        setPlaying(true);
+        speakFrom(index);
+      });
+      rateSel.addEventListener('change', () => update((s) => (s.settings.narrationRate = Number(rateSel.value))));
+    } else {
+      section.querySelector('.listen-bar')?.remove();
+    }
+  });
+</script>

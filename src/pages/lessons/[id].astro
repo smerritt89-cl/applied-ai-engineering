@@ -1,0 +1,158 @@
+---
+/**
+ * Lesson page. Renders the MDX body with the lesson components available
+ * without imports (Listen, Video, Callout, GoDeeper, Mermaid, Predict,
+ * LabLink). Interactive Preact islands (PyRunner, DragOrder) are imported in
+ * the MDX file itself, because Astro needs that to hydrate them.
+ */
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import Listen from '../../components/lesson/Listen.astro';
+import Video from '../../components/lesson/Video.astro';
+import Callout from '../../components/lesson/Callout.astro';
+import GoDeeper from '../../components/lesson/GoDeeper.astro';
+import Mermaid from '../../components/lesson/Mermaid.astro';
+import Predict from '../../components/lesson/Predict.astro';
+import LabLink from '../../components/lesson/LabLink.astro';
+import KnowledgeCheck from '../../components/assess/KnowledgeCheck';
+import { getProgram, studioLabel } from '../../lib/program';
+import { prepareQuestions } from '../../lib/questions';
+import { url } from '../../lib/paths';
+
+export async function getStaticPaths() {
+  const lessons = await getCollection('lessons');
+  return lessons.map((lesson) => ({ params: { id: lesson.data.id }, props: { lesson } }));
+}
+
+const { lesson } = Astro.props;
+const { Content } = await render(lesson);
+const program = await getProgram();
+const bundle = program.find((b) => b.studio.data.id === lesson.data.studio)!;
+const flat = program.flatMap((b) => b.lessons);
+const idx = flat.findIndex((l) => l.data.id === lesson.data.id);
+const prev = flat[idx - 1];
+const next = flat[idx + 1];
+const posInStudio = bundle.lessons.findIndex((l) => l.data.id === lesson.data.id) + 1;
+const weekQuiz = bundle.weeks.find((w) => w.week === lesson.data.week)?.quiz;
+const isLastInWeek = bundle.weeks.find((w) => w.week === lesson.data.week)?.lessons.at(-1)?.data.id === lesson.data.id;
+
+const allSources = await getCollection('sources');
+const cited = lesson.data.sources.map((ref) => ({ ref, src: allSources.find((s) => s.data.id === ref.id) }));
+const missing = cited.filter((c) => !c.src).map((c) => c.ref.id);
+if (missing.length) throw new Error(`Lesson ${lesson.data.id} cites unknown source id(s): ${missing.join(', ')}. Add them to sources.yaml.`);
+
+const checks = await prepareQuestions(lesson.data.knowledgeCheck);
+const useLabel = { adapted: 'Adapted from', summarized: 'Summarized from', linked: 'Further reading', embedded: 'Embedded video' };
+---
+
+<Base title={lesson.data.title} description={lesson.data.summary}>
+  <div class="lesson-layout">
+    <nav class="lesson-nav" aria-label={`${studioLabel(bundle.studio.data)} lessons`}>
+      <div class="lesson-nav-inner">
+        <a class="eyebrow" href={url(`/studios/${bundle.studio.data.id}/`)}>{studioLabel(bundle.studio.data)}</a>
+        <p style="margin:2px 0 8px;font-weight:700">{bundle.studio.data.title}</p>
+        {bundle.weeks.map((w) => (
+          <>
+            <div class="eyebrow week-label">Week {w.week} · {w.title}</div>
+            <ol>
+              {w.lessons.map((l) => (
+                <li>
+                  <a href={url(`/lessons/${l.data.id}/`)} aria-current={l.data.id === lesson.data.id ? 'page' : undefined} data-nav-lesson={l.data.id}>
+                    <span class="tick" aria-hidden="true"></span>
+                    <span>{l.data.title}</span>
+                  </a>
+                </li>
+              ))}
+              {w.quiz && (
+                <li><a href={url(`/quizzes/${w.quiz.data.id}/`)}><span class="tick" aria-hidden="true">✎</span><span>Week {w.week} quiz</span></a></li>
+              )}
+            </ol>
+          </>
+        ))}
+      </div>
+    </nav>
+
+    <article data-lesson-id={lesson.data.id}>
+      <div class="prose">
+        <div class="eyebrow">
+          {studioLabel(bundle.studio.data)} · Week {lesson.data.week} · Lesson {posInStudio} of {bundle.lessons.length}
+        </div>
+        <h1>{lesson.data.title}</h1>
+        <p class="muted" style="font-size:1.08rem;margin-top:0">{lesson.data.summary}</p>
+        <div class="lesson-meta">
+          <span>⏱ About {lesson.data.estMinutes} minutes</span>
+          <span>Facts last checked {lesson.data.reviewed}</span>
+          <span class="lesson-status"></span>
+        </div>
+        <section class="objectives" aria-labelledby="obj">
+          <h2 id="obj">By the end of this lesson you can</h2>
+          <ul>{lesson.data.objectives.map((o) => <li>{o}</li>)}</ul>
+        </section>
+
+        <Content components={{ Listen, Video, Callout, GoDeeper, Mermaid, Predict, LabLink }} />
+
+        <KnowledgeCheck client:visible lessonId={lesson.data.id} questions={checks} />
+
+        <div class="card row no-print" style="justify-content:space-between;margin-top:24px">
+          <label class="row" style="font-weight:600">
+            <input type="checkbox" id="mark-complete" style="width:20px;height:20px;accent-color:var(--success)" />
+            Mark this lesson complete
+          </label>
+          <div class="row">
+            {isLastInWeek && weekQuiz && <a class="btn" href={url(`/quizzes/${weekQuiz.data.id}/`)}>Take the week {lesson.data.week} quiz</a>}
+            {next && <a class="btn btn-primary" href={url(`/lessons/${next.data.id}/`)} rel="next">Next: {next.data.title} →</a>}
+          </div>
+        </div>
+
+        <section class="sources" aria-labelledby="src-h">
+          <h2 id="src-h" style="font-size:1.05rem">Sources and attribution</h2>
+          <ul>
+            {cited.map(({ ref, src }) => (
+              <li>
+                <span class="muted">{useLabel[ref.use]}:</span>{' '}
+                <a href={src!.data.url} target="_blank" rel="noopener">{src!.data.title}</a>, {src!.data.author}
+                {ref.where && <>, {ref.where}</>}. <span class="muted">({src!.data.license})</span>
+              </li>
+            ))}
+          </ul>
+          <p class="small muted">
+            Text in this lesson is original unless marked as adapted. Adapted material is used under its license with changes. See <a href={url('/credits/')}>Credits</a>.
+          </p>
+        </section>
+
+        <nav class="row no-print" aria-label="Lesson navigation" style="justify-content:space-between;margin-top:24px">
+          {prev ? <a href={url(`/lessons/${prev.data.id}/`)} rel="prev">← {prev.data.title}</a> : <span />}
+          {next ? <a href={url(`/lessons/${next.data.id}/`)} rel="next">{next.data.title} →</a> : <span />}
+        </nav>
+      </div>
+    </article>
+  </div>
+</Base>
+
+<script>
+  import { load, setLessonComplete, subscribe } from '../../lib/progress';
+  import { startLessonTimer } from '../../lib/timer';
+
+  const article = document.querySelector<HTMLElement>('[data-lesson-id]')!;
+  const id = article.dataset.lessonId!;
+  const box = document.getElementById('mark-complete') as HTMLInputElement;
+  const status = document.querySelector('.lesson-status')!;
+
+  const render = () => {
+    const p = load();
+    const l = p.lessons[id];
+    box.checked = Boolean(l?.completedAt);
+    const mins = Math.round((l?.secondsActive ?? 0) / 60);
+    status.textContent = l?.completedAt ? `✓ Completed${mins ? ` · ${mins} min spent` : ''}` : mins ? `${mins} min spent so far` : '';
+    document.querySelectorAll<HTMLElement>('[data-nav-lesson]').forEach((a) => {
+      const done = p.lessons[a.dataset.navLesson!]?.completedAt;
+      const tick = a.querySelector('.tick')!;
+      tick.textContent = done ? '✓' : '○';
+      a.setAttribute('aria-label', `${a.querySelector('span:last-child')?.textContent?.trim()}${done ? ' (completed)' : ''}`);
+    });
+  };
+  render();
+  subscribe(render);
+  box.addEventListener('change', () => setLessonComplete(id, box.checked));
+  startLessonTimer(id);
+</script>
