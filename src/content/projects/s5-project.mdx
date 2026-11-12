@@ -1,0 +1,219 @@
+---
+id: s5-project
+studio: s5
+title: "Fine-tune a small model for extraction and benchmark it"
+summary: >-
+  Fine-tune a small open model with LoRA for an extraction task (Studio 1 action items by default), then benchmark it
+  against a frontier model and against the untuned base model on quality, cost, and latency, on one frozen test set
+  with paired intervals, and publish a model card for your adapter that respects the base model's license.
+estHours: 20
+repoName: small-model-extraction
+requirements:
+  - { id: r1, text: "A committed PLAN.md, dated before the first benchmark run, stating the decision question, the systems compared, the decision rule (metric, margin, cost and latency conditions), the field normalization rules, and the cost assumptions (volume, GPU price, utilization)" }
+  - { id: r2, text: "A base model of roughly 1 to 8 billion parameters chosen with a written rationale (size, serving cost, fit), and its license name, link, and obligations recorded; the base model's license must allow what you do with the adapter" }
+  - { id: r3, text: "A frozen test set of at least 100 cases, split from the training data by source document (whole meetings), labeled with gold values for every field, committed to the repo with a fingerprint (hash of ids, inputs, and labels) and never edited during the project" }
+  - { id: r4, text: "A separate dev split for prompt and training choices, and a training set built only from the remaining documents; every synthetic or distilled example checked with your Studio 1 verifier, and a human spot-check of at least 50 training examples with the error rate reported" }
+  - { id: r5, text: "A contamination check between training inputs and test inputs (n-gram or embedding similarity) with the method, threshold, and result reported" }
+  - { id: r6, text: "A LoRA or QLoRA training script with every hyperparameter in a config file, a fixed seed, the training and dev loss logged, and the base model revision and library versions pinned" }
+  - { id: r7, text: "Three systems benchmarked on the same frozen test set with the same scoring code: the untuned base model and the fine-tuned model served the same way, and a frontier model through its API with its best reasonable prompt tuned on dev only; every prompt version recorded with its run" }
+  - { id: r8, text: "Scoring with per-field accuracy, exact match, and parse rate; unparseable, invalid, refused, or timed-out outputs count as wrong; runs refuse to score if the test-set fingerprint or the case ids don't match" }
+  - { id: r9, text: "Statistics: a 95% bootstrap interval for each system's exact match, and paired bootstrap intervals for fine-tuned minus frontier and fine-tuned minus base, with the decision rule from PLAN.md applied as written" }
+  - { id: r10, text: "Cost per 1,000 tasks for every system (API from recorded token counts and dated list prices; self-hosted from GPU hourly price, measured throughput at stated concurrency, and stated utilization) and the break-even monthly volume against the frontier model, or a statement that none exists" }
+  - { id: r11, text: "Latency at p50 and p95 for every system, measured after warm-up at a stated concurrency, with the hardware, engine version, precision, and batch settings recorded" }
+  - { id: r12, text: "A model card (README.md in the adapter repo, published on the Hugging Face Hub or kept private if the license or data forbids publishing) with base_model and license metadata, intended use, training data summary, benchmark results with intervals, known failure modes, and out-of-scope uses; plus WRITEUP.md following the template on this page" }
+  - { id: s1, text: "A fourth system: the cheapest API model you expect could pass, benchmarked the same way, with the break-even analysis repeated against it", required: false }
+  - { id: s2, text: "A quantized variant of the fine-tuned model (for example 4-bit) benchmarked as its own system, with the paired difference against the 16-bit version and the memory, throughput, and cost change", required: false }
+  - { id: s3, text: "Full-transcript extraction (many items per input) with an item-matching step before field scoring, and precision and recall reported alongside per-field accuracy", required: false }
+rubric:
+  - id: dataset
+    criterion: Dataset quality
+    levels:
+      1: "Training and test examples come from the same documents or were generated together; labels unchecked; no clear split."
+      2: "A test set exists but is small, was assembled after training data, or was edited during the project; synthetic examples not verified."
+      3: "A frozen, fingerprinted test set of at least 100 cases split by document; training data verified with code and a human spot-check; a contamination check reported."
+      4: "Level 3, plus label quality measured (a second labeler or a re-label sample with agreement), the dataset's composition by source reported, and label errors found during the project logged for a versioned rerun rather than silently fixed."
+  - id: training
+    criterion: Training rigor
+    levels:
+      1: "A notebook run once with defaults; no record of settings, seed, or versions."
+      2: "Settings recorded, but choices made by looking at test results, or no dev-set check of the trained model."
+      3: "Config-driven LoRA or QLoRA run with a fixed seed, pinned base model revision and library versions, logged training and dev loss, and every choice made on dev data."
+      4: "Level 3, plus at least one controlled ablation on dev (for example rank, data size, or synthetic versus real data) with its effect reported, and a second seed showing how much the result varies."
+  - id: validity
+    criterion: Benchmark validity
+    levels:
+      1: "Systems compared on different inputs, prompts tuned on the test set, or failed outputs dropped; point estimates only."
+      2: "Same test set for all systems, but missing the base-model control, or unpaired comparisons, or scoring rules chosen after seeing results."
+      3: "Base, fine-tuned, and frontier systems on the same frozen cases with fingerprint checks; failures in the denominator; paired bootstrap intervals; the pre-registered decision rule applied as written."
+      4: "Level 3, plus a failure analysis with error categories by system, clustered intervals if cases share documents, and an honest statement of what the benchmark does not cover."
+  - id: cost
+    criterion: Cost and latency analysis
+    levels:
+      1: "Cost asserted (for example, self-hosting is free) or latency from a single request."
+      2: "Cost per 1,000 tasks computed for some systems, but throughput not measured, utilization ignored, or prices undated."
+      3: "Cost per 1,000 tasks for every system from recorded tokens, dated prices, measured throughput, and stated utilization; break-even volume computed; p50 and p95 latency at a stated concurrency."
+      4: "Level 3, plus sensitivity to utilization and volume shown, a comparison against the cheapest adequate API model, and the non-token costs (operations, retraining) named in the recommendation."
+  - id: reproducibility
+    criterion: Reproducibility
+    levels:
+      1: "Results cannot be regenerated; key files or versions missing."
+      2: "Code and data present, but rerunning needs undocumented steps or gives different numbers."
+      3: "One documented command regenerates the benchmark report from recorded runs; training and serving configs, versions, and seeds are pinned; an offline test suite covers the scoring and statistics."
+      4: "Level 3, plus a clean-clone check documented in the write-up, recorded runs stored with their fingerprints, and the adapter loadable from the published card's instructions."
+  - id: communication
+    criterion: Communication
+    levels:
+      1: "A list of scores with no decision or caveats."
+      2: "Results and a recommendation, but the claim outruns the intervals, or the model card omits limitations or license terms."
+      3: "A decision-first summary that states only what the intervals support, a complete model card with license and base model, and a write-up a reviewer could check against PLAN.md."
+      4: "Level 3, and a non-engineer could explain from the summary which system to use, at what volume the answer changes, and the main risk; the model card warns clearly about out-of-scope uses."
+sources:
+  - { id: zhao-2024-lora-land, use: linked }
+  - { id: gudibande-2023-imitation, use: linked }
+  - { id: hf-model-cards, use: summarized }
+  - { id: mitchell-2019-model-cards, use: linked }
+  - { id: vllm-docs, use: linked }
+  - { id: vllm-lora-docs, use: linked }
+  - { id: vllm-structured-outputs, use: linked }
+  - { id: hf-inference-endpoints-pricing, use: linked }
+  - { id: claude-pricing-docs, use: linked }
+  - { id: miller-2024-error-bars, use: linked }
+  - { id: deng-2023-contamination, use: linked }
+  - { id: ami-meeting-corpus, use: linked }
+  - { id: anthropic-commercial-terms, use: linked, where: "Section D.4" }
+  - { id: hf-llm-course, use: linked, where: "Fine-tuning chapters" }
+---
+
+## The brief
+
+Your team calls a frontier model to extract action items from meeting transcripts, and someone asks the question every AI team hears eventually: could a small model we fine-tune and host ourselves do this as well, for less? You are going to answer it with evidence.
+
+You will fine-tune a small open model with LoRA (or QLoRA) on an extraction task, serve it, and benchmark it against two reference points: a frontier model through its API, and the same small model without your adapter. You will compare them on quality, cost per 1,000 tasks, and latency, on one frozen test set, with intervals. Then you will publish a model card for your adapter that tells the truth about what it does, how it was evaluated, and what the base model's license requires.
+
+The deliverable is a **decision you can defend**, not a winning model. If the fine-tuned model matches the frontier model within your pre-registered margin at a third of the cost, say so. If it loses by 6 points, or if a cheap API model beats self-hosting at your volume, say that. Both are successful projects. What fails this project is a comparison that can't be trusted: a test set the model saw in training, systems scored on different inputs, failed outputs quietly dropped, or a margin chosen after the results came in.
+
+Build it in its own repository (`small-model-extraction`), with the adapter in a separate model repository on the Hugging Face Hub if you publish it.
+
+## What you get
+
+- **The task, by default:** the Studio 1 action-item extraction (owner, due date phrase or resolved date, priority or another field you define, and an evidence quote), with your Studio 1 schema and verifier. Your Studio 1 samples are too few for training, so you need more transcripts: write and label your own, use meetings you have the right to use, or start from the AMI Meeting Corpus (CC BY 4.0, with attribution), whose transcripts are mostly scripted design-team meetings. Synthetic transcripts generated with a frontier model are fine for training, if you verify them and check that provider's terms (lesson 12).
+- **Your own task instead,** if you prefer: any extraction with a fixed schema and fields you can score exactly, and data you are allowed to use.
+- **Lab 04 (week 4)** gives you the benchmark scorer: fingerprint checks, per-field accuracy, exact match, bootstrap and paired intervals, cost per 1,000, latency percentiles, and a Markdown report. Reuse it.
+- **Week 3's labs** give you the LoRA training loop; **lesson 11** gives you serving with vLLM, adapters, structured outputs, and the break-even calculator; **lesson 13** walks through the plan you write on day one.
+
+## Suggested architecture
+
+<Mermaid
+  alt="Project architecture. Source documents are split by meeting into a test split, a dev split, and a training pool. The test split is labeled, frozen, and fingerprinted first. The training pool, plus verified synthetic examples, becomes the training set, which passes a contamination check against the test inputs. A LoRA training run on the base model produces an adapter. A serving engine hosts the base model with and without the adapter, with schema-constrained output; the frontier model is called through its API. All three systems run on the frozen test set, recording outputs, tokens, latency, and the fingerprint. The benchmark scorer computes per-field accuracy, exact match, paired intervals, cost per 1,000, and latency, and applies the decision rule from PLAN.md. Results feed the report, the model card, and the write-up."
+  caption="One reasonable design. Change it if you have a reason, and explain the reason."
+  chart={`flowchart TD
+  SRC[("Source meetings")] --> SPLIT{"Split by meeting"}
+  SPLIT --> TEST[("Test split: label, freeze, fingerprint")]
+  SPLIT --> DEV[("Dev split")]
+  SPLIT --> POOL["Training pool"]
+  POOL --> SYN["+ verified synthetic examples"]
+  SYN --> TRAIN[("Training set")]
+  TRAIN --> CONT{"Contamination check vs test inputs"}
+  CONT --> LORA["LoRA / QLoRA training (config, seed, pinned versions)"]
+  LORA --> AD["Adapter"]
+  AD --> SERVE["Serving engine: base and base + adapter, constrained JSON"]
+  API["Frontier model (API)"] --> RUNS
+  SERVE --> RUNS["Recorded runs on the frozen test set"]
+  TEST --> RUNS
+  PLAN["PLAN.md: decision rule, margin, scoring, cost assumptions"] --> BENCH
+  RUNS --> BENCH["Benchmark: per-field, exact match, paired CIs, cost / 1,000, p50 / p95"]
+  BENCH --> REP["Report + WRITEUP.md"]
+  BENCH --> CARD["Model card"]
+  DEV -.-> LORA
+  DEV -.-> API`}
+/>
+
+<Callout type="tip" title="Freeze the test set on day one">
+Before you generate a single training example, select the test meetings, label them, compute the fingerprint, and commit. Then write PLAN.md and commit that too. Every later step (training data, prompts, the adapter) can only be built from material that cannot leak into the test, and every result is judged by rules you set before you saw it.
+</Callout>
+
+## Pitfalls
+
+<Callout type="pitfall" title="Test contamination">
+The most common way this project goes wrong is a test set the fine-tuned model has effectively seen: test snippets from the same meetings as training snippets, synthetic examples seeded from test transcripts, or near-duplicates created by templated generation. The symptom is a fine-tuned model that beats the frontier model by a surprising margin. Split by meeting, build the test set first, keep its source documents out of every generation step, and run and report a similarity check anyway.
+</Callout>
+
+<Callout type="pitfall" title="Comparing systems on different prompts or inputs">
+Each system may use its own best prompt (the adapter expects its training format; the frontier model does best with instructions and examples), but every system must see the same input text, produce the same schema, and be scored by the same code. Comparisons break when the frontier model gets extra context the small model doesn't, when one system's prompt is tuned on the test set, or when the base model is run with a different prompt or decoding constraint from the fine-tuned model, which makes the base-versus-tuned gap partly a prompt effect. Record every prompt version with its run, and serve base and fine-tuned models with identical settings.
+</Callout>
+
+<Callout type="pitfall" title="Dropping the failures">
+Small models produce invalid JSON, truncated output, or empty replies more often than frontier models. If you score only the outputs that parsed, the weakest system looks best. Count every failure as wrong on every field, report the parse rate as its own column, and fix parse failures with constrained decoding (lesson 11), not by filtering them out.
+</Callout>
+
+<Callout type="pitfall" title="Cost numbers that assume a busy GPU">
+A rented GPU bills by the hour whether or not requests arrive. Cost per 1,000 tasks computed from peak throughput assumes 100 percent utilization, which your traffic almost certainly won't deliver. State the utilization you expect, show how the cost changes across a range, and compare against the cheapest API model that passes, not only the frontier model.
+</Callout>
+
+## Constraints
+
+- Use official SDKs for API calls, with keys in environment variables. Set a spending cap: the full frontier-model benchmark on a few hundred cases should cost a few dollars at most at current list prices. Log it and prove it.
+- Rented GPU time should stay within a budget you state in PLAN.md. Shut instances down between sessions.
+- The offline test suite (scoring, fingerprint checks, statistics, cost math, report rendering) must run without an API key or GPU, using recorded runs.
+- Respect licenses: the base model's license for the adapter and its name, the dataset's license for anything you publish, and the API provider's terms for any outputs you train on.
+
+## Write-up template
+
+Put this in `WRITEUP.md` and fill it in. Aim for two pages plus the appendix.
+
+```markdown
+# Small model vs frontier model for extraction: write-up
+
+## Decision summary (read this first)
+One paragraph for a non-engineer: which system you recommend for which workload, how the fine-tuned model
+compared in plain language ("about N in 100 records fully right, versus M"), how sure you are (the interval, in
+words), cost per 1,000 tasks at the expected volume, the volume at which the answer changes, and the biggest risk.
+
+## The task and the plan
+What is extracted, for whom, and at what volume. Link PLAN.md and quote the decision rule and margin as committed,
+with the commit date.
+
+## Data
+- Sources and licenses; how documents were split (test / dev / train) and why
+- Test set: size, labeling process, fingerprint, agreement check if any
+- Training set: real vs synthetic counts, verification steps, human spot-check error rate
+- Contamination check: method, threshold, result
+
+## Training
+Base model (id, revision, license), LoRA or QLoRA settings, data size, seed, hardware, training time, and the
+training and dev loss. Any ablations, with their dev results. What you tried that didn't help.
+
+## Benchmark
+| System | n | Parsed | Exact match [95% CI] | Field 1 | Field 2 | Field 3 | Field 4 | Cost / 1,000 | p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|
+| Base model | | | | | | | | | |
+| Fine-tuned | | | | | | | | | |
+| Frontier | | | | | | | | | |
+
+Paired differences (fine-tuned minus frontier, fine-tuned minus base) with intervals, and the decision rule applied.
+Serving setup for each system: engine and version, hardware, precision, concurrency, prompt version.
+
+## Cost and latency
+Prices with their dates and sources, measured throughput, assumed utilization, cost per 1,000 at that utilization
+and across a range, and the break-even monthly volume (or why none exists). What the latency numbers mean for this
+workload.
+
+## Failure analysis
+Error categories by system (a small table), with two or three representative examples each, and what they suggest
+(more data, different labels, constrained decoding, or a task that suits the larger model).
+
+## Model card and license
+Link to the card. The base model's license and what it required of you; what you chose not to publish and why.
+
+## Limitations and next steps
+What the benchmark doesn't cover (traffic unlike the test set, drift, adversarial inputs), and what you would
+measure next.
+
+## How I used AI assistants
+Which tools, for what (data generation, labeling help, code), and what you checked or corrected.
+
+## Appendix
+How to reproduce the report with one command, the recorded runs and their fingerprints, and the full configs.
+```
+
+When you finish, score yourself with the rubric below (ideally a day later), paste your repo link, and mark the project submitted.

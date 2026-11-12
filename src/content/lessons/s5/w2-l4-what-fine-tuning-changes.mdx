@@ -1,0 +1,322 @@
+---
+id: s5-w2-l4
+studio: s5
+week: 2
+order: 4
+title: What fine-tuning changes, and what it doesn't
+summary: Fine-tuning reshapes behavior, format, style, and narrow-task accuracy; it is a poor way to add facts. The research on new knowledge, the cost and latency case for a small fine-tuned model, the state of hosted fine-tuning (including Claude), and a decision flow for prompt, retrieve, train, or combine.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain what supervised fine-tuning changes in a model and how that differs from prompting and retrieval
+  - Summarize the evidence that fine-tuning is a weak way to inject new factual knowledge, including Gekhman et al. (2024) and Ovadia et al. (2023)
+  - Compute when a small fine-tuned model pays for itself against a large prompted model, including the costs teams forget
+  - Describe which providers offer hosted fine-tuning at the time of writing, including the status of Claude fine-tuning
+  - Choose between prompting, retrieval, fine-tuning, and a combination with a written decision flow and evidence
+sources:
+  - { id: gekhman-2024-new-knowledge, use: summarized }
+  - { id: ovadia-2023-ft-vs-rag, use: summarized, where: "Sections 4 to 6, current-events results and paraphrase augmentation" }
+  - { id: zhou-2023-lima, use: summarized }
+  - { id: zhao-2024-lora-land, use: summarized }
+  - { id: openai-model-optimization, use: summarized }
+  - { id: openai-sft-guide, use: summarized, where: "When to fine-tune; distillation" }
+  - { id: openai-deprecations, use: summarized, where: "Update to OpenAI's self-serve fine-tuning" }
+  - { id: gcp-gemini-supervised-tuning, use: summarized, where: "Supported models; use cases" }
+  - { id: gemini-tuning-status, use: summarized }
+  - { id: bedrock-fine-tuning-models, use: summarized }
+  - { id: bedrock-model-lifecycle-legacy, use: summarized, where: "Claude 3 Haiku; customized models and lifecycle behavior" }
+  - { id: claude-model-deprecations, use: summarized }
+  - { id: mistral-fine-tuning, use: summarized }
+  - { id: hamel-fine-tuning-valuable, use: summarized }
+  - { id: yt-openai-maximizing-llm-performance, use: embedded }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 7, Finetuning" }
+  - { id: lewis-2020-rag, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      The HR team wants the internal assistant to answer questions about the company's 300-page policy handbook,
+      which changes every quarter. A teammate proposes fine-tuning a model on the handbook text. What do you
+      recommend?
+    options:
+      - id: a
+        text: Fine-tune on the handbook, and fine-tune again each quarter when it changes.
+        rationale: >-
+          This is the knowledge-injection case where the evidence is weakest. Ovadia et al. found retrieval beat
+          fine-tuning on raw text, and Gekhman et al. found that learning new facts through fine-tuning increased
+          hallucination. Retraining quarterly multiplies the cost.
+      - id: b
+        text: Retrieve the relevant handbook sections at question time and ground the answer in them, then fine-tune only if a behavior problem remains.
+        correct: true
+        rationale: >-
+          Yes. Facts that change belong in retrieval, where you can update the index, cite the source, and verify the
+          answer against it. Fine-tuning is the tool for a persistent behavior or format problem, not for the facts.
+      - id: c
+        text: Put the entire handbook in every prompt.
+        rationale: >-
+          It might fit in a long context window, but you pay for 300 pages on every question and long inputs are used
+          less reliably. Retrieval sends only what the question needs.
+    explanation: >-
+      Ask what is missing. If the model lacks facts, give it the facts at inference time (Studio 2). If it has the
+      facts but behaves wrongly in a way prompting can't fix, consider fine-tuning. Quarterly-changing knowledge is
+      the clearest case for retrieval.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      In Gekhman et al. (2024), what happened as the model fitted more fine-tuning examples whose answers it did not
+      already know?
+    options:
+      - id: a
+        text: It learned them quickly and its overall accuracy improved.
+        rationale: The opposite. Unknown examples were fitted much more slowly than known ones.
+      - id: b
+        text: It learned them slowly, and once it fitted them, its tendency to hallucinate increased.
+        correct: true
+        rationale: Yes. The authors report a roughly linear increase in hallucination as unknown examples are fitted.
+      - id: c
+        text: It refused to learn them, so they had no effect.
+        rationale: The model did eventually fit them (training to convergence fits 100 percent of the training data). That is when the harm showed up.
+    explanation: >-
+      The study (PaLM 2-S, closed-book question answering) suggests fine-tuning mostly teaches a model to use
+      knowledge it already has. Early stopping limited the damage, and filtering out unknown examples reduced
+      overfitting without hurting accuracy. It is one model and one task, so treat it as strong evidence for a
+      default, not a law.
+  - id: kc3
+    type: predict-output
+    prompt: >-
+      A prompted large model costs $0.012 per request. A fine-tuned small model costs $0.002 per request plus $500 a
+      month to host and monitor. Above what monthly volume does the small model become cheaper? (The code computes it.)
+    code: |
+      large, small, fixed = 0.012, 0.002, 500
+      print(round(fixed / (large - small)))
+    options:
+      - id: a
+        text: "`50000`"
+        correct: true
+        rationale: $500 divided by a saving of $0.010 per request is 50,000 requests a month.
+      - id: b
+        text: "`41667`"
+        rationale: That divides by the large model's cost alone, ignoring that the small model still costs something per request.
+      - id: c
+        text: "`250000`"
+        rationale: That divides by the small model's per-request cost, which is not the saving.
+    explanation: >-
+      The break-even volume is fixed cost divided by the per-request saving. Below it, the "cheaper" model costs more.
+      Real comparisons also amortize one-time costs (building the dataset, training, evaluation) and include the
+      cost of redoing that work when the base model is retired.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Three ways to change what a model does
+
+Every team that ships an LLM feature eventually asks: should we fine-tune? To answer well, be precise about what each option changes.
+
+**Prompting** changes the input. You write instructions and examples; the model's weights stay the same. **Retrieval** (Studio 2) also changes the input, by fetching relevant documents at question time and putting them in the context. **Fine-tuning** changes the model itself. In supervised fine-tuning (SFT), you show the model many input and ideal-output pairs and continue training, nudging its weights so that it produces outputs like yours.
+
+You have seen SFT before. In Studio 1, lesson 1, it was the first stage of post-training: the step that turns a document-completer into an assistant by training on example conversations. When you fine-tune, you run a small version of that same step on your own examples. That framing explains most of what follows. Post-training doesn't teach a model the world's facts (pretraining did that); it teaches it how to behave. Your fine-tuning run is the same kind of tool, aimed at a narrower behavior.
+
+This week asks the question in the order a careful engineer would: what fine-tuning changes (this lesson), how to build the dataset it needs (lesson 5), and how to keep that data honest (lesson 6). Next week you run the training itself with LoRA.
+</Listen>
+
+<Listen>
+## What fine-tuning is good at
+
+Providers' own documentation converges on a short list. OpenAI's model optimization guide recommends supervised fine-tuning for classification, nuanced translation, producing content in a specific format, and correcting failures to follow instructions. Google's supervised tuning page for Gemini lists classification, summarization, extractive question answering, and chat, and suggests tuning when prompts don't produce consistent results, when a task is too complex to describe in a prompt, or when you want to drop long few-shot examples from every request.
+
+Group those into four things fine-tuning changes:
+
+- **Behavior.** When to answer, when to abstain, when to escalate, which fields to leave null.
+- **Format.** Always this JSON shape, this house template, this query language.
+- **Style.** Tone, length, vocabulary, the voice of your support team.
+- **Narrow-task accuracy.** A small model trained on thousands of examples of one task can match or beat a large general model on that task.
+
+The research is consistent with this. LIMA (Zhou and colleagues, 2023) fine-tuned a 65-billion-parameter model on only 1,000 carefully curated examples and in a human study its responses were rated equivalent to or better than GPT-4's in 43 percent of comparisons; the authors argue that almost all knowledge is learned in pretraining and a small amount of tuning teaches the output style. LoRA Land (Zhao and colleagues, 2024) fine-tuned 310 models across 10 base models and 31 narrow tasks and reports that the fine-tuned models beat GPT-4 by 10 points on average on those tasks. That second result comes from a vendor's technical report and compares against a 2024 model, so read it as evidence that narrow fine-tuning can beat a general model on a narrow task, not as a ranking of today's models.
+
+Notice what is not on the list: teaching the model facts it doesn't know.
+</Listen>
+
+<Listen>
+## What it doesn't do well: new knowledge
+
+The intuition "fine-tune on our documents and the model will know them" is common and mostly wrong. Two studies are worth knowing by name.
+
+**Gekhman and colleagues (2024)**, "Does Fine-Tuning LLMs on New Knowledge Encourage Hallucinations?", ran a controlled experiment with closed-book question answering. Before training, they sorted each example by whether the base model already knew the answer, then varied the share of unknown answers in the fine-tuning set. Two findings matter for you. First, examples with new facts were learned much more slowly than examples consistent with what the model already knew. Second, once the model did fit those new facts, its tendency to hallucinate on held-out test questions grew roughly linearly. The authors conclude that models acquire facts mostly in pretraining and that fine-tuning mostly teaches them to use what they already have. Their own caveat: one model (PaLM 2-S) and one task format.
+
+**Ovadia and colleagues (2023)**, "Fine-Tuning or Retrieval?", compared continued training on raw text with retrieval for three 7-billion-parameter open models, on subsets of the MMLU benchmark and on a set of questions about events after the models' training cutoff. Retrieval consistently beat fine-tuning, both for knowledge the models had seen and for new knowledge. On the current-events questions, for example, Mistral 7B scored about 0.48 with no help, about 0.50 after fine-tuning on the relevant text, and about 0.88 with retrieval. Training on ten paraphrases of each fact helped fine-tuning noticeably, which hints at why one pass over a document teaches so little. In their setup, adding fine-tuning on top of retrieval didn't beat retrieval alone.
+
+The practical rule follows: **facts go in the context, behavior goes in the weights.** Retrieval also gives you what fine-tuning can't: you can update a fact by editing the index, cite where an answer came from, and verify the answer against the retrieved text.
+</Listen>
+
+<Callout type="pitfall" title='"Fine-tune it on the wiki so it knows our policies"'>
+This is the most common fine-tuning mistake, and the research above predicts how it fails: the model picks up the vocabulary and tone of your wiki, sounds more confident about your policies, and is not reliably more correct about them. A fluent, on-brand wrong answer is harder to catch than a generic one. If the goal is "answer from our documents," build retrieval with citations and evaluate it (Studios 2 and 3). Fine-tune afterwards only if a behavior problem remains that prompting can't fix.
+</Callout>
+
+<Listen>
+## The cost and latency case: a small model that replaces a big one
+
+The strongest business reason to fine-tune is often not quality but cost and speed. Suppose your extraction feature works well with a large frontier model and a long prompt full of instructions and examples. Every request pays for those prompt tokens, and a large model is slower per token. A small model fine-tuned on a few thousand examples of the same task may need no examples in the prompt and can run on modest hardware. OpenAI's optimization guide names both effects: shorter prompts save tokens and reduce latency, and a smaller model trained for a specific task can be cheaper and faster. Its fine-tuning guide describes **distillation**: tune a prompt on a large model, use its outputs (checked) as training data, and fine-tune a smaller model to do the same task.
+
+The savings are real only above some volume, and teams routinely leave costs out of the comparison:
+
+- **Building the dataset**: collecting, labeling, reviewing, deduplicating (lessons 5 and 6). This is usually the largest cost.
+- **Training and evaluation runs**, including the failed ones.
+- **Serving**: if you host the model, you pay for GPUs whether or not traffic arrives.
+- **Maintenance**: when the base model is retired, your fine-tuned model goes with it, and you redo the work on a new base.
+
+That last point is not hypothetical. Amazon Bedrock offered fine-tuning for Claude 3 Haiku. Bedrock's lifecycle page shows that model entering Legacy status on March 10, 2026, after which no new fine-tuning jobs can be created, and reaching end of life on September 10, 2026 in the Region where fine-tuning ran. OpenAI's docs likewise say fine-tuned models stay available for inference until their base model is deprecated. A fine-tuned model is a depreciating asset with a known maximum life. Price that in.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s5-w2-break-even"
+  title="When does the small fine-tuned model pay for itself?"
+  starter={`def cost_per_request(in_tokens, out_tokens, price_in, price_out):
+    """Dollars for one request. Prices are dollars per million tokens."""
+    # TODO
+    pass
+
+def monthly_cost(volume, per_request, fixed_monthly=0.0, one_time=0.0, months=12):
+    """Total monthly cost: volume * per_request + fixed_monthly + one_time amortized over months."""
+    # TODO
+    pass
+
+def break_even_volume(large_per_request, small_per_request, fixed_monthly, one_time, months=12):
+    """Monthly request volume above which the small model is cheaper.
+    Return None if the small model never wins (it is not cheaper per request).
+    Round up to a whole number of requests (math.ceil)."""
+    # TODO
+    pass
+
+# Illustrative, made-up numbers: check real prices before deciding anything.
+# Large prompted model: 3,000 input tokens (instructions + examples), 300 output.
+large = cost_per_request(3000, 300, price_in=4.00, price_out=20.00)
+# Small fine-tuned model: no examples needed, 600 input tokens, 300 output, cheap hosted rates.
+small = cost_per_request(600, 300, price_in=0.20, price_out=0.80)
+print("per request:", round(large, 5), round(small, 5))
+
+# One-time: dataset + training + evals ($24,000). Monthly: monitoring and re-evaluation ($1,500).
+v = break_even_volume(large, small, fixed_monthly=1500, one_time=24000, months=12)
+print("break-even requests per month:", v)
+for volume in (50_000, 500_000):
+    print(volume, round(monthly_cost(volume, large)), round(monthly_cost(volume, small, 1500, 24000, 12)))
+`}
+  tests={`import math
+assert cost_per_request(1_000_000, 0, 4.0, 20.0) == 4.0, "a million input tokens at $4 per million costs $4"
+assert abs(cost_per_request(3000, 300, 4.0, 20.0) - 0.018) < 1e-12
+assert abs(monthly_cost(100, 0.01) - 1.0) < 1e-9, "100 requests at a cent each"
+assert abs(monthly_cost(0, 0.01, fixed_monthly=100, one_time=1200, months=12) - 200) < 1e-9, "fixed plus amortized one-time cost"
+assert break_even_volume(0.002, 0.003, 100, 0) is None, "a model that costs more per request never breaks even"
+assert break_even_volume(0.002, 0.002, 100, 0) is None, "equal per-request cost never breaks even"
+assert break_even_volume(0.012, 0.002, 500, 0) == 50000
+large = cost_per_request(3000, 300, 4.0, 20.0)
+small = cost_per_request(600, 300, 0.2, 0.8)
+v = break_even_volume(large, small, 1500, 24000, 12)
+assert v == math.ceil(3500 / (large - small)), "fixed cost per month divided by the per-request saving, rounded up"
+assert monthly_cost(v, large) >= monthly_cost(v, small, 1500, 24000, 12), "at the break-even volume the small model is no more expensive"
+assert monthly_cost(v - 1000, large) < monthly_cost(v - 1000, small, 1500, 24000, 12), "below it the small model costs more"`}
+  solution={`import math
+
+def cost_per_request(in_tokens, out_tokens, price_in, price_out):
+    return (in_tokens * price_in + out_tokens * price_out) / 1_000_000
+
+def monthly_cost(volume, per_request, fixed_monthly=0.0, one_time=0.0, months=12):
+    return volume * per_request + fixed_monthly + one_time / months
+
+def break_even_volume(large_per_request, small_per_request, fixed_monthly, one_time, months=12):
+    saving = large_per_request - small_per_request
+    if saving <= 0:
+        return None
+    return math.ceil((fixed_monthly + one_time / months) / saving)`}
+>
+Write the three functions, then press **Check my answer**. With these made-up numbers the small model saves almost two cents per request, and it still needs roughly 200,000 requests a month to pay for itself. Change the one-time cost to $60,000 (a realistic figure once you count people's time for labeling and review) and watch the break-even volume move. Then shorten `months` to 6, which is closer to the life of a base model in a fast-moving market.
+</PyRunner>
+
+<Listen>
+## Where you can fine-tune today
+
+Hosted fine-tuning has changed quickly, so treat this as a snapshot checked on the review date, and check each provider's current docs before you plan around it.
+
+- **OpenAI.** Supervised fine-tuning (and preference tuning) on GPT-4.1 snapshots is documented, but OpenAI is winding the self-serve platform down. Its deprecations page says that from May 2026 organizations that had never fine-tuned can't start, that active existing customers can create jobs until January 6, 2027, and that fine-tuned models keep serving until their base model is deprecated.
+- **Google.** The Gemini API and AI Studio currently have no model that supports fine-tuning, according to Google's own page. Supervised tuning for several Gemini models (including Gemini 2.5 and 3.x Flash variants) is offered on Google Cloud, in the platform documented under the Vertex AI docs path and now titled Gemini Enterprise Agent Platform.
+- **Amazon Bedrock.** Fine-tuning is offered for Amazon's Nova models and several Meta Llama models.
+- **Claude.** We found no fine-tuning option for current Claude models in Anthropic's API documentation. Anthropic's own fine-tuning material covers one model: Claude 3 Haiku on Amazon Bedrock, in one US Region. That model is now retired (on the Claude API since April 2026 and in that Bedrock Region since September 2026), and Bedrock accepts no new fine-tuning jobs on a model once it is Legacy. Bedrock's supported-models table still lists the Claude 3 Haiku row, which is a good reminder to check the lifecycle page as well. In practice: you can't fine-tune a current Claude model, so with Claude you steer behavior with prompts, examples, structured outputs, and retrieval.
+- **Mistral.** Its fine-tuning page marks the feature as deprecated and no longer actively supported.
+
+The pattern matters more than any single row. Hosted fine-tuning of closed models is shrinking, while open-weight models (week 1) can be fine-tuned by anyone with a GPU and a library such as Hugging Face TRL, and the result is yours to keep. That is why this studio trains open models with LoRA next week. It is also a model-selection lesson: a feature that depends on a hosted fine-tune depends on that provider's roadmap.
+</Listen>
+
+<Video id="ahnGLM-RC1Y" title="A Survey of Techniques for Maximizing LLM Performance" channel="OpenAI" minutes={45} source="https://www.youtube.com/@OpenAI">
+A DevDay talk from November 2023. Product details are dated (OpenAI's fine-tuning platform is now winding down), but the framework has aged well. Watch for how the speakers separate problems of context (what the model needs to know, which retrieval addresses) from problems of behavior (how the model needs to act, which fine-tuning addresses), and how they insist on evaluating each step before moving to the next.
+</Video>
+
+<Listen>
+## A decision flow you can defend
+
+Start from the evidence you have, not from the technique you want to try. The flow below is the order most practitioners recommend, and every arrow is a measurement, not an opinion.
+
+1. **Write evals first.** OpenAI's fine-tuning guide says to invest in fine-tuning only after setting up evals, and you can't tell whether any option helped without them (Studio 3).
+2. **Prompt well.** Clear instructions, examples, structured outputs, a better model. Many problems end here.
+3. **Diagnose the remaining failures.** Read them (error analysis, Studio 3). Are they missing or stale facts? Or wrong behavior despite having the facts?
+4. **Missing facts: add retrieval.** Measure again.
+5. **Behavior that prompting can't fix, or a cost and latency target the prompted model can't meet: consider fine-tuning.** Usually that means a small open model trained on your task, compared against your prompted baseline on the same frozen test set.
+6. **Both: combine.** A fine-tuned model can learn to use retrieved context in your format. Retrieval supplies the facts; fine-tuning supplies the behavior.
+
+Two exits matter as much as the arrows. If fine-tuning doesn't beat the prompted baseline on your test set, you stop and ship the prompt. And if the gain is real but smaller than the maintenance cost, you also stop.
+</Listen>
+
+<Mermaid
+  alt="Decision flowchart. Start: define success and build evals. Then prompt well and measure. If the bar is met, ship the prompt. If not, diagnose failures. If failures are missing or changing facts, add retrieval and measure again. If failures are behavior, format, or style that prompting cannot fix, or the prompted model misses a cost or latency target at your volume, fine-tune a model and compare it with the prompted baseline on the frozen test set. If it does not beat the baseline, ship the prompted version. If it does, check whether the saving or gain outweighs dataset, training, and maintenance costs; if yes, ship the fine-tuned model, combined with retrieval when both kinds of failure exist; if no, ship the prompted version."
+  caption="Facts go in the context; behavior goes in the weights. Every arrow is a measurement on the same test set."
+  chart={`flowchart TD
+  A["Define success and build evals"] --> B["Prompt well and measure"]
+  B --> C{"Meets the bar?"}
+  C -- "yes" --> SHIP1["Ship the prompt"]
+  C -- "no" --> D{"What is failing?"}
+  D -- "missing or changing facts" --> R["Add retrieval, measure again"]
+  R --> C
+  D -- "behavior, format, or style prompting can't fix" --> F["Fine-tune a model"]
+  D -- "cost or latency at your volume" --> F
+  F --> G{"Beats the prompted baseline on the frozen test set?"}
+  G -- "no" --> SHIP1
+  G -- "yes" --> H{"Gain outweighs data, training, and maintenance cost?"}
+  H -- "no" --> SHIP1
+  H -- "yes" --> SHIP2["Ship the fine-tuned model, with retrieval if facts are also needed"]`}
+/>
+
+<DragOrder
+  client:visible
+  prompt="Your extraction feature misses its quality bar. Put the steps in the order you'd take them."
+  items={[
+    "Build an eval set and measure the current prompt",
+    "Improve the prompt (instructions, examples, structured outputs) and measure again",
+    "Read the remaining failures and classify them as missing facts or wrong behavior",
+    "Add retrieval for the missing-facts failures and measure again",
+    "Fine-tune for the behavior failures that remain",
+    "Compare the fine-tuned model with the prompted baseline on the same frozen test set",
+  ]}
+  explanation="Cheap, reversible changes come first, and every step ends in a measurement on the same test set. Fine-tuning is late in the order because it is the most expensive change to make and to maintain, not because it is bad."
+/>
+
+<Callout type="claim" title="Practitioner view: fine-tuning is still valuable, for the right job">
+**Hamel Husain**, "Is Fine-Tuning Still Valuable?" (March 27, 2024, [hamel.dev](https://hamel.dev/blog/posts/fine_tuning_valuable.html)), argues that fine-tuning remains very useful for teaching a model syntax, style, and rules (his examples include a niche query language and a strict response format), while retrieval is the tool for context and up-to-date facts. He also argues that you can't fine-tune effectively without a domain-specific eval system.
+
+**Evidence for:** it matches the providers' own use-case lists and the research above on behavior versus knowledge. **Evidence against, or at least caution:** it predates the 2025 and 2026 shrinking of hosted fine-tuning for closed models, and stronger base models keep moving the line of what prompting alone can do. Treat it as a well-grounded opinion and test it on your task.
+</Callout>
+
+<GoDeeper title="Inside the new-knowledge result">
+Gekhman and colleagues sorted each training example by how often the base model already answered it correctly under few-shot prompting: always (HighlyKnown), sometimes (MaybeKnown), only when sampling (WeaklyKnown), or never (Unknown). Three details are useful if you ever do fine-tune on question-answer data.
+
+First, the harm from Unknown examples showed up mostly late in training. Stopping when validation accuracy peaked (after a handful of epochs in their runs) avoided most of it, which is one more reason lesson 6 insists on a validation split. Second, filtering out the Unknown examples reduced overfitting without hurting accuracy, and the most useful examples were the MaybeKnown ones: facts the model half-knew, which fine-tuning taught it to retrieve reliably. Third, relabeling Unknown examples with "I don't know" kept accuracy on answered questions stable while the model answered fewer questions, an early version of teaching abstention through data.
+
+Ovadia and colleagues' paraphrase result points the same way from the other side: a fact seen once in one wording is barely learned, while ten varied phrasings help. Pretraining sees common facts many times in many wordings; your fine-tuning set doesn't.
+</GoDeeper>
+
+<Listen>
+## What a working engineer would do
+
+Write the decision down before you spend the money. A one-page note is enough: the eval set and the current score; the failures, classified as missing facts or wrong behavior; what you tried with prompting and retrieval and what each moved; the cost model at your expected volume, including dataset, training, serving, and the base model's expected life; and the exit criteria, meaning the score a fine-tuned model must beat on the frozen test set, and by how much.
+
+That note does two jobs. It keeps the team from fine-tuning because it sounds like progress, and it gives you a baseline to beat when you do. The rest of this studio builds the pieces: this week the dataset, next week the training, and in week 4 an honest benchmark of your fine-tuned model against a frontier model on cost, latency, and accuracy.
+</Listen>

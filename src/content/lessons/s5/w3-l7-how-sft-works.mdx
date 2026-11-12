@@ -1,0 +1,293 @@
+---
+id: s5-w3-l7
+studio: s5
+week: 3
+order: 7
+title: How supervised fine-tuning works
+summary: The objective behind every SFT run. Next-token cross-entropy and what it estimates, masking the prompt so the loss falls on the response, the knobs that matter (learning rate, epochs, batch size), overfitting and catastrophic forgetting, and how to read a loss curve without fooling yourself.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Write the SFT objective as a masked average of next-token negative log-likelihoods, and relate it to cross-entropy, KL divergence, and perplexity
+  - Explain how a trainer builds labels from a chat example (the one-token shift and the ignore index) and why the prompt is usually masked
+  - Compute the loss by hand for a toy example with and without masking, and explain why the two numbers are not comparable
+  - Choose starting values for learning rate, epochs, and effective batch size, and say what evidence would make you change them
+  - Read train and validation loss curves, recognize overfitting and the epoch-boundary drop, and explain catastrophic forgetting and how to detect it
+sources:
+  - { id: trl-sft-trainer, use: summarized, where: "Computing the loss; label shifting and masking; train on completion only; logged metrics; SFTConfig defaults" }
+  - { id: hf-llm-course, use: adapted, where: "Chapter 11, Supervised Fine-Tuning (chat templates and SFT sections)" }
+  - { id: mlabonne-llm-course, use: adapted, where: "The LLM Scientist roadmap, Supervised Fine-Tuning section (training parameters)" }
+  - { id: yt-karpathy-deep-dive, use: embedded, where: "Pretraining to post-training; post-training data (conversations)" }
+  - { id: ouyang-2022, use: summarized, where: "Supervised fine-tuning as the first stage of InstructGPT" }
+  - { id: pytorch-cross-entropy, use: summarized, where: "ignore_index and the mean reduction" }
+  - { id: shi-2024-loss-over-instructions, use: summarized }
+  - { id: thinking-machines-lora, use: summarized, where: "Learning rate ratio between LoRA and full fine-tuning" }
+  - { id: fastai-learning-jumps, use: summarized }
+  - { id: kirkpatrick-2017-ewc, use: summarized }
+  - { id: luo-2023-forgetting, use: summarized }
+  - { id: biderman-2024-lora-forgets, use: summarized, where: "Forgetting results" }
+  - { id: unsloth-docs, use: summarized, where: "Epoch and learning-rate defaults; reading training loss" }
+  - { id: hf-chat-templates, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      A training example has 400 prompt tokens and 20 response tokens. With the prompt masked, which tokens contribute
+      to the loss and to the gradient?
+    options:
+      - id: a
+        text: All 420 tokens, but the prompt tokens are down-weighted.
+        rationale: Masking is not down-weighting. Masked positions get the ignore label and contribute exactly zero.
+      - id: b
+        text: Only the positions whose target is a response token (about 20), and the prompt still shapes those predictions as context.
+        correct: true
+        rationale: Yes. The prompt is still read by the model, so it conditions every response prediction, but no loss is computed on predicting the prompt itself.
+      - id: c
+        text: Only the 400 prompt tokens, since the model must understand the question first.
+        rationale: Reversed. The usual goal is to learn to produce responses, not prompts.
+    explanation: >-
+      Masking changes which positions are scored, not what the model sees. Every response token is predicted from the
+      full prompt plus the response so far. With masking, a long prompt can't dominate the loss, which matters when
+      prompts are long and responses short, as in extraction.
+  - id: kc2
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      import math
+      IGNORE = -100
+      p_target = [0.5, 0.5, 0.8, 0.8]     # model probability of each target token
+      labels = [IGNORE, IGNORE, 11, 12]   # the first two targets are prompt tokens
+      kept = [p for p, y in zip(p_target, labels) if y != IGNORE]
+      print(round(-sum(math.log(p) for p in kept) / len(kept), 3))
+    options:
+      - id: a
+        text: "`0.223`"
+        correct: true
+        rationale: Two kept positions, each contributing -ln 0.8, about 0.223; the mean is 0.223.
+      - id: b
+        text: "`0.458`"
+        rationale: That is the unmasked mean over all four positions.
+      - id: c
+        text: "`0.112`"
+        rationale: That divides the kept sum by all four positions. The mean is over non-ignored positions only.
+    explanation: >-
+      PyTorch's cross-entropy with the default ignore index (-100) drops ignored positions from both the sum and the
+      count. Dividing by all positions would silently shrink the loss as prompts get longer.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      After two epochs, training loss is 0.02 and still falling, validation loss fell to 0.31 at step 120 and is 0.45 at
+      step 300, and exact-match accuracy on the validation set is about the same at both steps. What do you conclude
+      and do?
+    options:
+      - id: a
+        text: The model is still improving because training loss is falling. Train for more epochs.
+        rationale: Training loss falling while validation loss rises is the classic overfitting signature.
+      - id: b
+        text: The model has started to memorize. Prefer the earlier checkpoint or fewer steps, and decide using the task metric on held-out data, not the loss alone.
+        correct: true
+        rationale: Yes. Rising validation loss with flat accuracy can mean overconfidence rather than worse answers, so the task metric breaks the tie; the earlier, cheaper checkpoint is at least as good.
+      - id: c
+        text: The validation set must be broken, because the two losses disagree.
+        rationale: Disagreement between train and validation loss is exactly what a validation set is for.
+    explanation: >-
+      Loss is a proxy. Validation loss can rise because the model grows overconfident on a few tokens even while its
+      answers stay right, which fast.ai's Jeremy Howard and Jonathan Whitaker reported in 2023. Use loss curves to spot
+      trends and pick candidate checkpoints, and use the task metric to decide.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## From a dataset to a gradient
+
+In week 2 you built a dataset of example conversations. Supervised fine-tuning (SFT) is the procedure that turns those examples into weight updates, and it is less exotic than it sounds: it is the same next-token prediction objective the model was pretrained with, applied to your data, usually with the loss restricted to the part you want the model to produce.
+
+This is also, in miniature, how assistants are made. In the InstructGPT paper (Ouyang and colleagues, 2022), the first stage of turning a pretrained model into an assistant was supervised fine-tuning on demonstrations written by labelers, before any reinforcement learning. Your runs this week are the same kind of step on a much smaller scale: a few hundred or thousand examples that teach one behavior, such as returning a fixed JSON format.
+
+This lesson builds the objective precisely, because almost every surprise in a fine-tuning run (a loss that won't move, a loss that hits zero, a model that won't stop generating) traces back to which tokens are scored and how. Lesson 8 then changes *which parameters* are trained (LoRA), and lesson 9 runs the whole thing with Hugging Face's PEFT and TRL libraries, or MLX-LM on a Mac.
+</Listen>
+
+<Video id="7xTGNNLPyMI" title="Deep Dive into LLMs like ChatGPT" channel="Andrej Karpathy" minutes={21} start={3563} end={4832} source="https://karpathy.ai/">
+Watch the chapters "pretraining to post-training" and "post-training data (conversations)". Notice two points you'll use today: a conversation becomes a single token sequence through special tokens that mark each turn, and post-training is the same training algorithm as pretraining, run on a different, much smaller dataset.
+</Video>
+
+<Listen>
+## The objective, precisely
+
+Take one training example and render it with the model's chat template into a token sequence x of length T. A causal language model with parameters theta gives, at each position t, a distribution over the vocabulary for the next token, conditioned on everything before it. The per-token loss at position t is the negative log-probability the model assigned to the token that actually comes next.
+
+Now let M be the set of positions whose next token you want to learn (the "trained" positions). The SFT loss for the example is the average of those per-token losses over M. For a batch, trainers average over all trained positions in the batch, so every scored token counts equally. TRL's documentation describes the loss as token-level cross-entropy and notes the one-position shift: the model at position t is scored on token t + 1.
+
+Two equivalent views are worth having. Statistically, minimizing this loss is maximum likelihood estimation of theta on your data. Information-theoretically, the expected per-token loss is the cross-entropy between the data's next-token distribution and the model's, which equals the data's own entropy plus the KL divergence from data to model. The entropy term is fixed by your data, so training reduces the KL term, and the loss can't go below the entropy of the data. That floor is why a loss of exactly zero on real text is a warning sign, not an achievement (for templated, deterministic targets like JSON labels, the floor really is near zero).
+
+The loss is in nats per token when natural logs are used. Its exponential is **perplexity**, the effective number of equally likely choices per token. A loss of 0.7 means a perplexity of about 2.
+</Listen>
+
+<Listen>
+## Labels, the ignore index, and masking the prompt
+
+Trainers implement "average over M" with a label array. The input is the token sequence; the labels are a copy in which every position you don't want scored is replaced by a sentinel. PyTorch's cross-entropy uses -100 by default, documents that ignored targets contribute nothing to the gradient, and averages over the non-ignored targets only. TRL uses the same ignore index for padding.
+
+Which positions should be ignored? Padding, always. The prompt, usually. If you score the prompt, the model spends part of its learning on predicting your system prompt and the user's message, which it will never have to generate at inference time. With long prompts and short answers (an extraction task: a 400-token ticket and a 20-token JSON), the prompt tokens would make up about 95 percent of the scored positions.
+
+TRL's SFTTrainer handles this from the dataset's shape. For a **prompt-completion** dataset it computes loss on the completion only by default (`completion_only_loss`). For a conversational **messages** dataset you can set `assistant_only_loss=True`, which requires the chat template to mark assistant turns with generation tags; TRL patches the template for some known model families and asks you to check others. MLX-LM has a `--mask-prompt` flag for the same purpose.
+
+One end-of-turn detail matters more than it looks: the token that closes the assistant's turn must be inside the scored span. That is how the model learns to stop. If it is masked or missing, a tuned model can run on past its answer.
+
+The research on masking is less settled than the defaults suggest. Shi and colleagues (2024) found that computing loss over instructions as well as outputs often helped, most when instructions were long relative to outputs and when training data was small, and attributed the gain to less overfitting. Treat masking as the sensible default, and treat the alternative as a hypothesis you can test on your own validation set.
+</Listen>
+
+<Mermaid
+  alt="Flowchart of one supervised fine-tuning step: an example with prompt and completion is rendered with the chat template, tokenized, and labels are built by copying the input ids and setting prompt and padding positions to -100; the model computes next-token logits; cross-entropy is averaged over positions whose label is not -100; the gradient updates the trainable parameters."
+  caption="One SFT step. Masking changes which positions are scored, never what the model reads."
+  chart={`flowchart LR
+  E["Example: prompt + completion"] --> R["Render with chat template"]
+  R --> T["Tokenize: input_ids"]
+  T --> L["Labels: copy, set prompt and padding to -100"]
+  T --> F["Forward pass: next-token logits"]
+  F --> X["Cross-entropy averaged over labels != -100"]
+  L --> X
+  X --> G["Backward pass: update trainable parameters"]`}
+/>
+
+<Predict
+  title="Masking changes the number, not just the gradient"
+  code={`import math
+p_target = [0.1, 0.1, 0.9, 0.9]   # probability the model gave each target token
+prompt = [True, True, False, False]
+
+full = -sum(math.log(p) for p in p_target) / 4
+kept = [p for p, is_prompt in zip(p_target, prompt) if not is_prompt]
+masked = -sum(math.log(p) for p in kept) / len(kept)
+print(round(full, 2), round(masked, 2))`}
+  options={["1.2 0.11", "0.11 1.2", "1.2 1.2", "0.6 0.05"]}
+  answer={0}
+>
+Unmasked, the two badly predicted prompt tokens (-ln 0.1 is about 2.30 each) dominate: (2 x 2.30 + 2 x 0.105) / 4 is about 1.20. Masked, only the response counts: -ln 0.9 is about 0.105. Same model, same predictions, a tenfold difference in the reported loss. Never compare loss values across runs that mask differently.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s5-w3-masked-cross-entropy"
+  title="Compute masked next-token cross-entropy"
+  starter={`import math
+
+IGNORE = -100
+
+def next_token_targets(tokens, prompt_len):
+    """Targets for a causal LM. Position i predicts tokens[i + 1], so there are len(tokens) - 1 targets.
+    Return a list where entry i is tokens[i + 1], or IGNORE if that target is a prompt token
+    (that is, if i + 1 < prompt_len). prompt_len = 0 means nothing is masked."""
+    # TODO
+    pass
+
+def cross_entropy(preds, targets):
+    """preds[i] is the model's probability distribution (a list) for target i.
+    Return the mean of -ln(preds[i][targets[i]]) over targets that are not IGNORE.
+    Raise ValueError if every target is IGNORE (a silent NaN in a real trainer)."""
+    # TODO
+    pass
+
+# A toy vocabulary and one rendered example: the prompt ends with the <ans> marker.
+VOCAB = ["<sys>", "Where", "is", "my", "order", "?", "<ans>", "Shipped", "today", "<end>"]
+tokens = list(range(10))
+PROMPT_LEN = 7   # <sys> ... <ans> belong to the prompt
+
+def dist(target, p):
+    """A distribution that puts probability p on target and spreads the rest evenly."""
+    row = [(1 - p) / 9] * 10
+    row[target] = p
+    return row
+
+# The model is unsure about the user's words, and fairly sure about the answer.
+preds = [dist(1, 0.05), dist(2, 0.2), dist(3, 0.3), dist(4, 0.1), dist(5, 0.5),
+         dist(6, 0.9), dist(7, 0.6), dist(8, 0.7), dist(9, 0.95)]
+
+full = cross_entropy(preds, next_token_targets(tokens, 0))
+masked = cross_entropy(preds, next_token_targets(tokens, PROMPT_LEN))
+print("targets, masked:", next_token_targets(tokens, PROMPT_LEN))
+print("full loss:", full, " masked loss:", masked)
+`}
+  tests={`t = next_token_targets(tokens, PROMPT_LEN)
+assert t is not None, "next_token_targets returned None"
+assert len(t) == len(tokens) - 1, "one target per position except the last token"
+assert t == [IGNORE] * 6 + [7, 8, 9], "only the answer tokens and <end> are targets"
+assert next_token_targets(tokens, 0) == list(range(1, 10)), "prompt_len 0 masks nothing"
+full = cross_entropy(preds, next_token_targets(tokens, 0))
+masked = cross_entropy(preds, next_token_targets(tokens, PROMPT_LEN))
+assert full is not None and masked is not None, "cross_entropy returned None"
+assert abs(full - 1.0921144) < 1e-6, "full loss averages all 9 positions"
+assert abs(masked - 0.3062646) < 1e-6, "masked loss averages the 3 answer positions only (divide by 3, not 9)"
+assert abs(cross_entropy([dist(3, 1.0)], [3])) < 1e-12, "a certain, correct prediction costs zero"
+try:
+    cross_entropy(preds, [IGNORE] * 9)
+    raise AssertionError("an all-masked example must raise ValueError")
+except ValueError:
+    pass
+assert abs(math.exp(masked) - 1.3583) < 1e-3, "perplexity is exp(loss)"`}
+  solution={`def next_token_targets(tokens, prompt_len):
+    return [tokens[i + 1] if i + 1 >= prompt_len else IGNORE for i in range(len(tokens) - 1)]
+
+def cross_entropy(preds, targets):
+    terms = [-math.log(row[y]) for row, y in zip(preds, targets) if y != IGNORE]
+    if not terms:
+        raise ValueError("every target is masked")
+    return sum(terms) / len(terms)`}
+>
+Write both functions, then press **Check my answer**. Notice that the `<end>` token is a target: that is the one that teaches the model to stop. Then change `PROMPT_LEN` to 10 and see the error case. In a real trainer, an example whose answer was truncated away (prompt longer than `max_length`) has no scored tokens, and depending on the code path you get a NaN or a silently skipped example. Lesson 9's lab checks for it.
+</PyRunner>
+
+<Listen>
+## The knobs that matter, and where to start
+
+Most SFT runs come down to a few choices. The values below are starting points from documentation, not laws; each one is a hypothesis your validation metric tests.
+
+**Learning rate.** The single most consequential setting. TRL's SFTConfig defaults to 2e-5, a typical value for updating all weights. For adapters, TRL's docs suggest a higher rate, around 1e-4, because only the new parameters are learning. Thinking Machines (Schulman and colleagues, 2025) measured the optimal LoRA learning rate at roughly 10 times the optimal full fine-tuning rate across their experiments, and said they lack a full theory for why. Too high shows up as a loss that spikes or goes to NaN; too low as a curve that barely moves.
+
+**Schedule and warmup.** A short warmup (a few percent of steps) followed by linear or cosine decay is standard and is what the Hugging Face Trainer provides. Warmup avoids large early updates while the optimizer's moment estimates are still noisy.
+
+**Epochs.** One pass over the data is an epoch. TRL's default is 3. Unsloth's guide (vendor documentation) suggests 1 to 3 to avoid overfitting. Small, repetitive datasets overfit in fewer passes than you would guess.
+
+**Batch size.** The effective batch size is the per-device batch times gradient accumulation steps times the number of devices. Gradient accumulation lets you reach a larger effective batch on a small GPU by summing gradients over several micro-batches before one optimizer step. Thinking Machines found LoRA less tolerant of large batches than full fine-tuning, so don't push the effective batch up just because you can.
+
+**Sequence length.** TRL truncates to `max_length` (1024 tokens by default). Check your token-length distribution first: truncation that cuts off the answer removes exactly the tokens you wanted to train on.
+
+Maxime Labonne's LLM course lists the same set of knobs (learning rate with a scheduler, batch size with gradient accumulation, epochs, optimizer, weight decay, warmup). When you change one, change only that one, and compare on the same held-out set.
+</Listen>
+
+<Callout type="pitfall" title="Comparing loss numbers that don't measure the same thing">
+A loss of 0.3 in one run and 0.9 in another tells you nothing unless both runs use the same tokenizer, the same chat template, the same masking, and the same validation set. Masking the prompt can change the reported number tenfold with no change in the model (see the Predict above). Different model families tokenize differently, so per-token losses aren't comparable across them at all. To compare runs or models, use a task metric on a frozen test set: exact match, field accuracy, or a graded rubric from Studio 3.
+</Callout>
+
+<Listen>
+## Reading loss curves
+
+Log the training loss every few steps and evaluate on a held-out validation set at regular intervals. TRL logs the mean loss over scored tokens, plus the mean token accuracy (how often the model's top prediction is the target token) and the entropy of its predictions, which helps tell confident from uncertain models. Then read the two curves together.
+
+- **Both falling, then flattening.** Normal. The gap between them is the generalization gap; a small, stable gap is what you want.
+- **Training keeps falling, validation turns upward.** Overfitting: the model is fitting training examples in ways that don't transfer. Prefer an earlier checkpoint, fewer epochs, a lower learning rate, or more varied data.
+- **A staircase in the training loss at each epoch boundary.** Howard and Whitaker at fast.ai (2023) reported sharp drops at the start of each new epoch when fine-tuning LLMs, which they read as the model memorizing examples after a single exposure. In their experiments, validation loss rose while validation accuracy kept improving, which they attributed to overconfidence. They framed this as early work, but the practical lesson holds: a rising validation loss is a prompt to check the task metric, not a verdict.
+- **A flat line.** Learning rate too low, the wrong parameters frozen, or (common) almost every label masked. Decode one batch's labels and look.
+- **Spikes or NaN.** Learning rate too high, mixed-precision overflow, or an example with nothing to score.
+- **Training loss near zero within a few dozen steps.** Either the task is trivially templated (your lab's synthetic data is), or the answers leak into the prompts. Check for duplicates between splits before celebrating.
+</Listen>
+
+<Listen>
+## Catastrophic forgetting
+
+Fine-tuning moves weights toward your task, and nothing in the objective protects abilities your data doesn't exercise. **Catastrophic forgetting**, the loss of earlier abilities after training on something new, is a long-studied problem in neural networks; Kirkpatrick and colleagues (2017) is the standard reference and proposed one mitigation, elastic weight consolidation. For language models, Luo and colleagues (2023) observed forgetting across 1B to 7B models during continual instruction tuning, more severe at larger sizes within that range, and found that prior general instruction tuning reduced it.
+
+Parameter-efficient methods help but don't remove the risk. Biderman and colleagues (2024) found that LoRA learned less than full fine-tuning on code and math, and also forgot less of the base model's other abilities. That trade is often the right one for a narrow product task, which is part of why lesson 8's methods are the default.
+
+The engineering response is to measure. Keep a small regression set of general tasks the model must still handle (instructions without your system prompt, a few reasoning questions, refusals that should still happen) and score the base and tuned models on it. Mixing some general examples into training, training for fewer steps, and lowering the learning rate are the usual levers if it moves.
+</Listen>
+
+<GoDeeper title="Why the token average, and what it weights">
+Averaging over all scored tokens in a batch weights each example by its number of scored tokens, so long answers count more than short ones. Averaging per example first and then across examples would weight examples equally. Neither is wrong; they optimize different objectives. For extraction, where answers are short and similar in length, the difference is small. For mixed datasets (short labels and long explanations), the token average lets the long examples dominate, which is one reason to balance or stratify your data. With gradient accumulation and multiple devices, normalizing consistently is subtle: TRL's config has an `average_tokens_across_devices` option for exactly this. A second subtlety: the cross-entropy floor is the entropy of the targets given the inputs. For deterministic labels it is zero, so a near-zero loss is possible without memorization; for free text it is well above zero, so a near-zero loss on free text almost always means memorization.
+</GoDeeper>
+
+<Listen>
+## What a working engineer does with this
+
+Before the first run: render a few examples with the real chat template and print the exact span that will be scored, check that the end-of-turn token is inside it, and check that no example is truncated to nothing. During the run: log train and validation loss on a fixed schedule, and save checkpoints you might want to pick. After the run: score the base and tuned models on the same frozen test set with your task metric, read the failures, and score a small general-ability regression set. Record the configuration (model id and revision, data version, learning rate, epochs, effective batch size, masking, seed) next to the results, so a colleague can reproduce or challenge them. On model selection: the same discipline lets you compare a fine-tuned small model with a prompted frontier model fairly, because both are scored by the same metric on the same frozen cases, never by their losses. Lesson 8 adds the one decision this lesson took for granted: which parameters to train.
+</Listen>

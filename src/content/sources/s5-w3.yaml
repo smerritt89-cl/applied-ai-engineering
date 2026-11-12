@@ -1,0 +1,216 @@
+# Studio 5, week 3: parameter-efficient fine-tuning (LoRA, QLoRA, PEFT, TRL, MLX-LM).
+# Reused from other files: hf-llm-course, mlabonne-llm-course, yt-karpathy-deep-dive, hf-chat-templates,
+# ouyang-2022, trl-sft-trainer, trl-dataset-formats, mlx-lm-repo, hf-mlx-community, yt-wwdc25-mlx-llms.
+# All URLs checked 2026-11-11.
+
+# ---------- Papers (summarize) ----------
+- id: hu-2021-lora
+  title: "LoRA: Low-Rank Adaptation of Large Language Models (Hu et al., 2021)"
+  author: Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen
+  url: https://arxiv.org/abs/2106.09685
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    h = W0 x + BAx, A Gaussian and B zero at init, update scaled by alpha/r (alpha set to the first r tried, not tuned).
+    Adapted only attention weights; GPT-3 175B checkpoint 350GB to 35MB with r=4 on Wq and Wv; training VRAM 1.2TB to
+    350GB; r=1 sufficed for Wq and Wv on their datasets; Delta W amplifies directions not emphasized in W (factor about
+    21.5 at r=4); merge W0 + BA for no inference latency.
+
+- id: aghajanyan-2020-intrinsic
+  title: Intrinsic Dimensionality Explains the Effectiveness of Language Model Fine-Tuning (Aghajanyan et al., 2020)
+  author: Armen Aghajanyan, Luke Zettlemoyer, Sonal Gupta
+  url: https://arxiv.org/abs/2012.13255
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    200 trainable parameters randomly projected into the full space reach 90 percent of full fine-tuning performance
+    for RoBERTa on MRPC; pretraining lowers intrinsic dimension; larger models tend to have lower intrinsic dimension.
+
+- id: li-2018-intrinsic-dimension
+  title: Measuring the Intrinsic Dimension of Objective Landscapes (Li et al., 2018)
+  author: Chunyuan Li, Heerad Farkhoor, Rosanne Liu, Jason Yosinski
+  url: https://arxiv.org/abs/1804.08838
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Defines intrinsic dimension by training in a random low-dimensional subspace; the method Aghajanyan et al. build on.
+
+- id: dettmers-2023-qlora
+  title: "QLoRA: Efficient Finetuning of Quantized LLMs (Dettmers et al., 2023)"
+  author: Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, Luke Zettlemoyer
+  url: https://arxiv.org/abs/2305.14314
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    4-bit NormalFloat (quantile quantization of N(0,1), blocksize 64), double quantization (0.5 to 0.127 bits per
+    parameter for constants, about 3 GB on a 65B model), paged optimizers via NVIDIA unified memory, BF16 compute.
+    65B finetuning from more than 780GB to under 48GB. LoRA on all linear layers needed to match 16-bit full
+    finetuning. Guanaco 99.3 percent of ChatGPT on the Vicuna benchmark as judged by GPT-4.
+
+- id: biderman-2024-lora-forgets
+  title: LoRA Learns Less and Forgets Less (Biderman et al., 2024)
+  author: Dan Biderman, Jacob Portes, Jose Javier Gonzalez Ortiz, and colleagues (Columbia, Databricks Mosaic AI)
+  url: https://arxiv.org/abs/2405.09673
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    TMLR 2024. Code and math, instruction finetuning (about 100K pairs) and continued pretraining (20B tokens): LoRA
+    substantially underperforms full finetuning but better preserves out-of-domain abilities; full finetuning learns
+    perturbations of rank 10 to 100 times typical LoRA ranks.
+
+- id: kirkpatrick-2017-ewc
+  title: Overcoming catastrophic forgetting in neural networks (Kirkpatrick et al., 2017)
+  author: James Kirkpatrick, Razvan Pascanu, and colleagues (DeepMind)
+  url: https://arxiv.org/abs/1612.00796
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: Published in PNAS 2017. Elastic weight consolidation; a standard reference for catastrophic forgetting.
+
+- id: luo-2023-forgetting
+  title: An Empirical Study of Catastrophic Forgetting in Large Language Models During Continual Fine-tuning (Luo et al., 2023)
+  author: Yun Luo, Zhen Yang, and colleagues
+  url: https://arxiv.org/abs/2308.08747
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    1B to 7B models (BLOOMZ, mT0): forgetting observed across the range during continual instruction tuning, more
+    severe with scale in that range; general instruction tuning beforehand reduced it.
+
+- id: shi-2024-loss-over-instructions
+  title: Instruction Tuning With Loss Over Instructions (Shi et al., 2024)
+  author: Zhengyan Shi, Adam X. Yang, Bin Wu, Laurence Aitchison, Emine Yilmaz, Aldo Lipani
+  url: https://arxiv.org/abs/2405.14394
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+  notes: >-
+    NeurIPS 2024. Computing loss on instructions as well as outputs often helped, most when instructions are long
+    relative to outputs and when training data is small; attributed to less overfitting.
+
+# ---------- Practitioner and lab writing (summarize) ----------
+- id: thinking-machines-lora
+  title: LoRA Without Regret
+  author: John Schulman and colleagues (Thinking Machines Lab)
+  url: https://thinkingmachines.ai/blog/lora/
+  license: Copyright Thinking Machines Lab
+  policy: summarize
+  kind: blog
+  notes: >-
+    September 29, 2025. LoRA matched full fine-tuning on small-to-medium SFT datasets and in RL; underperformed when the
+    dataset exceeded adapter capacity; all layers (especially MLP) beat attention-only; optimal LoRA learning rate about
+    10x full fine-tuning; less tolerant of large batches.
+
+- id: fastai-learning-jumps
+  title: Can LLMs learn from a single example?
+  author: Jeremy Howard and Jonathan Whitaker (fast.ai)
+  url: https://www.fast.ai/posts/2023-09-04-learning-jumps/
+  license: Copyright fast.ai
+  policy: summarize
+  kind: blog
+  notes: >-
+    September 2023. Training loss drops sharply at each epoch boundary when fine-tuning LLMs; validation loss rose
+    from overconfidence while validation accuracy still improved. Framed by the authors as early work.
+
+# ---------- Official documentation (summarize) ----------
+- id: hf-peft-lora-docs
+  title: LoRA developer guide (Hugging Face PEFT docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/peft/main/en/developer_guides/lora
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/peft/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11 (PEFT 0.21.2 on PyPI). LoraConfig r, lora_alpha (scale alpha/r), lora_dropout, target_modules
+    including "all-linear", use_rslora (alpha/sqrt(r)), use_dora, init_lora_weights options; merge_and_unload.
+
+- id: hf-transformers-bnb
+  title: Bitsandbytes quantization (Hugging Face Transformers docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/transformers/main/en/quantization/bitsandbytes
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/transformers/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+  notes: >-
+    BitsAndBytesConfig load_in_4bit, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant, bnb_4bit_compute_dtype.
+    Supported on NVIDIA CUDA, Intel XPU and Gaudi, and CPU; Apple Silicon not listed.
+
+- id: mlx-lm-lora-docs
+  title: Fine-tuning with LoRA or QLoRA (mlx-lm LORA.md)
+  author: Apple machine learning research (ml-explore)
+  url: https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/LORA.md
+  license: MIT
+  licenseUrl: https://github.com/ml-explore/mlx-lm/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11 (mlx-lm 0.32.2). mlx_lm.lora --train --data; QLoRA automatic for a quantized model; chat,
+    tools, completions, and text formats; --mask-prompt; train/valid/test.jsonl; mlx_lm.fuse. Defaults read from
+    source: rank 8, scale 20.0, last 16 layers, learning rate 1e-5.
+
+- id: unsloth-docs
+  title: Unsloth documentation (fine-tuning guide)
+  author: Unsloth AI
+  url: https://unsloth.ai/docs/get-started/fine-tuning-llms-guide
+  license: Copyright Unsloth AI (library is open source)
+  policy: summarize
+  kind: docs
+  notes: >-
+    Vendor docs. Claims 2x faster training with 70 percent less VRAM; local install requires Windows or Linux;
+    suggests 1 to 3 epochs and learning rate 2e-4 as defaults.
+
+- id: pytorch-cross-entropy
+  title: torch.nn.CrossEntropyLoss (PyTorch docs)
+  author: PyTorch
+  url: https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+  license: BSD-style (PyTorch)
+  policy: summarize
+  kind: docs
+  notes: ignore_index defaults to -100; ignored targets are excluded from the mean's denominator.
+
+- id: colab-faq
+  title: Google Colab FAQ
+  author: Google
+  url: https://research.google.com/colaboratory/faq.html
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+  notes: GPU types vary over time; free-tier GPU access is restricted; resources are not guaranteed.
+
+- id: hf-qwen25-05b-instruct
+  title: Qwen2.5-0.5B-Instruct model card
+  author: Qwen team, Alibaba Cloud
+  url: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+  notes: >-
+    Checked 2026-11-11: apache-2.0, not gated; 494,032,768 parameters; hidden 896, 24 layers, 14 query heads, 2 KV
+    heads, intermediate 4864, tied embeddings; ChatML-style chat template.
+
+# ---------- Video (embed) ----------
+- id: yt-edward-hu-lora
+  title: What is Low-Rank Adaptation (LoRA) | explained by the inventor
+  author: Edward Hu (YouTube)
+  url: https://www.youtube.com/watch?v=DhRoTONcyZE
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: The LoRA paper's first author on his own channel. About 7.5 minutes.
+
+- id: mlx-quantize-docs
+  title: mlx.core.quantize (MLX docs)
+  author: Apple machine learning research (ml-explore)
+  url: https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.quantize.html
+  license: MIT
+  licenseUrl: https://github.com/ml-explore/mlx/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+  notes: Modes affine (default; group size 64, 4 bits, per-group scale and bias), mxfp4, mxfp8, nvfp4. NF4 is not one of them.

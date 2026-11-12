@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.389
+Small-to-big: retrieve small, read big.
+
+2
+00:00:02.669 --> 00:00:09.325
+The precision-versus-context tension has a structural fix: use different sizes for matching and for reading.
+
+3
+00:00:09.605 --> 00:00:30.043
+In parent and child retrieval (also called small-to-big), you split each document into large parent chunks (a full section, say 1,000 tokens), split each parent into small child chunks (100 to 300 tokens), embed only the children, and keep a pointer from each child to its parent.
+
+4
+00:00:30.323 --> 00:00:39.411
+At query time you match against the sharp, small children, then hand the model the parents they point to, deduplicated, so the model reads full context.
+
+5
+00:00:39.691 --> 00:00:44.171
+LlamaIndex documents this as recursive retrieval with node references.
+
+6
+00:00:44.451 --> 00:00:59.704
+Its example splits a paper into 1,024-token parents with children of 128, 256, and 512 tokens, and on its own generated question set reports hit rate rising from 0.
+
+7
+00:00:59.984 --> 00:01:01.925
+778 to 0.
+
+8
+00:01:02.205 --> 00:01:05.085
+897 and MRR from 0.
+
+9
+00:01:05.365 --> 00:01:07.328
+563 to 0.
+
+10
+00:01:07.608 --> 00:01:10.467
+691 over the plain baseline.
+
+11
+00:01:10.747 --> 00:01:16.912
+That is one document and one question set, so read it as “worth trying,” not as a general result.
+
+12
+00:01:17.192 --> 00:01:24.509
+A variant attaches a generated summary and generated questions to each parent and matches against those instead.
+
+13
+00:01:24.789 --> 00:01:26.219
+Two costs to plan for.
+
+14
+00:01:26.499 --> 00:01:33.325
+Parents are longer, so each retrieved hit spends more of the prompt budget; retrieve fewer parents than you would children.
+
+15
+00:01:33.605 --> 00:01:41.584
+And you now maintain two levels, so re-ingesting a document must update parents and children together (lesson 6 covers deletes).
+
+16
+00:01:41.864 --> 00:01:51.037
+A cheaper relative is to retrieve a chunk plus its immediate neighbors by chunk index, which the offsets and chunk indexes in your metadata make easy.

@@ -1,0 +1,376 @@
+{
+  "id": "s5-w2",
+  "studio": "s5",
+  "week": 2,
+  "title": "Week 2 quiz: Prompt, retrieve, or train?",
+  "questions": [
+    {
+      "id": "s5w2-q1",
+      "type": "mcq",
+      "prompt": "Ovadia et al. (2023) compared continued training on raw text with retrieval for adding knowledge to 7B open models. Which summary matches their results?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Fine-tuning beat retrieval on new knowledge, and retrieval beat fine-tuning on knowledge the model had already seen.",
+          "rationale": "They found retrieval better in both cases."
+        },
+        {
+          "id": "b",
+          "text": "Retrieval consistently beat fine-tuning, and training on many paraphrases of each fact narrowed the gap somewhat.",
+          "correct": true,
+          "rationale": "Yes. On their current-events set, retrieval scored far higher, and paraphrase augmentation helped the fine-tuned models."
+        },
+        {
+          "id": "c",
+          "text": "The two were statistically indistinguishable on every task.",
+          "rationale": "The gaps were large, for example roughly 0.88 with retrieval versus roughly 0.50 after fine-tuning for Mistral 7B on current events."
+        },
+        {
+          "id": "d",
+          "text": "Combining retrieval and fine-tuning was always best.",
+          "rationale": "In their setup, adding fine-tuning to retrieval did not beat retrieval alone."
+        }
+      ],
+      "explanation": "Facts belong in the context, where you can update and cite them. A single pass over a document teaches a model little; even ten paraphrases left fine-tuning well behind retrieval in this study.",
+      "week": 2,
+      "tags": [
+        "fine-tuning",
+        "rag",
+        "research"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5w2-q2",
+      "type": "scenario",
+      "prompt": "Your prompted extraction feature costs about $0.018 per request on a large model and handles 30,000 requests a month. A small fine-tuned model would cost about $0.0004 per request, but the dataset, training, and evals would cost about $24,000 up front, plus $1,500 a month to monitor and re-evaluate. Amortizing over 12 months, break-even is about 200,000 requests a month. Leadership asks whether to fine-tune now. What do you recommend?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Fine-tune now: the per-request cost is 45 times lower.",
+          "rationale": "The per-request ratio ignores fixed costs. At 30,000 requests the prompted model costs about $540 a month; the fine-tuned path costs about $3,500."
+        },
+        {
+          "id": "b",
+          "text": "Keep the prompted model, record the break-even analysis, and revisit if volume approaches the break-even point or a latency target forces the issue.",
+          "correct": true,
+          "rationale": "Yes. The analysis says fine-tuning loses money at current volume. Writing it down makes the trigger for revisiting explicit."
+        },
+        {
+          "id": "c",
+          "text": "Fine-tune now because the base model of the small model will last forever once trained.",
+          "rationale": "Fine-tuned models go away with their base model. The amortization period should reflect the base model's expected life, which argues for a shorter horizon, not a longer one."
+        },
+        {
+          "id": "d",
+          "text": "Switch to the cheapest large model without measuring, since cost is the only issue.",
+          "rationale": "Changing models is a reasonable option, but only with an eval run showing quality holds."
+        }
+      ],
+      "explanation": "Cost motives for fine-tuning are real above a volume threshold and imaginary below it. Include one-time and recurring costs, and the base model's lifetime, in the comparison.",
+      "week": 2,
+      "tags": [
+        "fine-tuning",
+        "cost",
+        "decision"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w2-q3",
+      "type": "mcq",
+      "prompt": "As of the lesson's review date, which statement about fine-tuning Claude is accurate?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Any current Claude model can be fine-tuned through the Claude API.",
+          "rationale": "The lesson found no fine-tuning option for current Claude models in Anthropic's API documentation."
+        },
+        {
+          "id": "b",
+          "text": "The only hosted Claude fine-tuning was Claude 3 Haiku on Amazon Bedrock, and that model has since been retired, so current Claude models are steered with prompts, structured outputs, and retrieval instead.",
+          "correct": true,
+          "rationale": "Yes. Bedrock's lifecycle page shows Claude 3 Haiku entering Legacy (no new fine-tuning jobs) in March 2026 and reaching end of life in September 2026 in the Region where fine-tuning ran."
+        },
+        {
+          "id": "c",
+          "text": "Claude fine-tuning is available on Google Cloud but not on Bedrock.",
+          "rationale": "The lesson's sources describe Claude fine-tuning only on Bedrock, for Claude 3 Haiku."
+        },
+        {
+          "id": "d",
+          "text": "Claude models can be fine-tuned locally because their weights are open.",
+          "rationale": "Claude's weights are not published. Open-weight models are the ones you can fine-tune yourself."
+        }
+      ],
+      "explanation": "Hosted fine-tuning of closed models has been shrinking (OpenAI is winding its platform down, Mistral's is deprecated, the Gemini API has no tunable model). A product that depends on a hosted fine-tune depends on that provider's roadmap; open-weight models trained with LoRA are the durable path this studio teaches.",
+      "week": 2,
+      "tags": [
+        "providers",
+        "claude",
+        "fine-tuning"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5w2-q4",
+      "type": "multi",
+      "prompt": "Which of these problems are good candidates for fine-tuning rather than retrieval? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "A model that keeps adding a friendly preamble before the JSON your parser expects, despite clear instructions",
+          "correct": true,
+          "rationale": "Format and behavior: fine-tuning's home ground (though structured outputs may solve it more cheaply)."
+        },
+        {
+          "id": "b",
+          "text": "Answering questions about this quarter's pricing changes",
+          "rationale": "That's knowledge that changes. Retrieve it."
+        },
+        {
+          "id": "c",
+          "text": "Writing support replies in your team's house style and length",
+          "correct": true,
+          "rationale": "Style is something fine-tuning learns well from examples."
+        },
+        {
+          "id": "d",
+          "text": "A small model that must match a large model's accuracy on one narrow classification task at a fraction of the cost",
+          "correct": true,
+          "rationale": "Narrow-task accuracy and cost are standard reasons to fine-tune, often by distilling from the larger model."
+        },
+        {
+          "id": "e",
+          "text": "Knowing the details of a customer contract signed last week",
+          "rationale": "New, specific facts belong in the context. Fine-tuning on them invites confident errors."
+        }
+      ],
+      "explanation": "Ask what is missing. Missing or changing facts call for retrieval; persistent behavior, format, style, or a cost target on a narrow task can call for fine-tuning. Try prompting and structured outputs first, since they are cheaper to change.",
+      "week": 2,
+      "tags": [
+        "fine-tuning",
+        "decision"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5w2-q5",
+      "type": "code-reading",
+      "prompt": "This check is meant to flag training examples where the gold answer was pasted into the prompt. What is wrong with it?",
+      "code": "def leaked(example):\n    msgs = example[\"messages\"]\n    answer = msgs[-1][\"content\"].strip()\n    return any(answer in m[\"content\"] for m in msgs)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; it flags exactly the leaked examples.",
+          "rationale": "Look at which messages the loop compares against."
+        },
+        {
+          "id": "b",
+          "text": "It compares the answer against every message, including the assistant message itself, so every example is flagged.",
+          "correct": true,
+          "rationale": "Yes. The answer is always a substring of itself. Compare only against the messages before the last one (system and user turns)."
+        },
+        {
+          "id": "c",
+          "text": "It should use == instead of in, because a leak means the whole prompt equals the answer.",
+          "rationale": "A leak is the answer appearing inside a longer prompt, so a substring check is right; it just needs the right messages."
+        },
+        {
+          "id": "d",
+          "text": "strip() makes the check miss every leak.",
+          "rationale": "Stripping whitespace from the answer only makes the substring check more robust."
+        }
+      ],
+      "explanation": "Write a test with a known-good example before trusting any validator. A check that flags everything is as useless as one that flags nothing, and it trains people to ignore it.",
+      "week": 2,
+      "tags": [
+        "datasets",
+        "validation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w2-q6",
+      "type": "predict-output",
+      "prompt": "A stratified split puts round(n * 0.15) records from each stratum into the test set. Three document kinds have 11, 7, and 3 records. What does this print?",
+      "code": "print([round(n * 0.15) for n in (11, 7, 3)])",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`[2, 1, 0]`",
+          "correct": true,
+          "rationale": "1.65 rounds to 2, 1.05 to 1, and 0.45 to 0. The smallest kind gets no test examples at all."
+        },
+        {
+          "id": "b",
+          "text": "`[2, 1, 1]`",
+          "rationale": "0.45 rounds down to 0, not up to 1."
+        },
+        {
+          "id": "c",
+          "text": "`[1, 1, 0]`",
+          "rationale": "1.65 rounds to 2."
+        },
+        {
+          "id": "d",
+          "text": "`[1.65, 1.05, 0.45]`",
+          "rationale": "round() with one argument returns an int."
+        }
+      ],
+      "explanation": "Small strata can vanish from the test set entirely, which means you'd report a score with no evidence about that kind of document. Set a minimum per stratum (or label more of the rare kind) and report per-stratum results separately.",
+      "week": 2,
+      "tags": [
+        "splits",
+        "stratification"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w2-q7",
+      "type": "scenario",
+      "prompt": "Your team wants to label 2,000 internal IT tickets with a GPT model through your company's OpenAI API account, then train an internal ticket-routing classifier that will never be distributed outside the company. A colleague says OpenAI's terms forbid any use of outputs for training. Based on the public OpenAI Services Agreement described in lesson 5, what is the best response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The colleague is right: any training on outputs is forbidden.",
+          "rationale": "The public agreement restricts developing models that compete with OpenAI, and defines a Permitted Exception for internal classifiers that aren't distributed."
+        },
+        {
+          "id": "b",
+          "text": "The plan resembles the agreement's Permitted Exception for internal, non-distributed classifiers, but confirm with legal against the agreement that governs your account, record provenance, and review the labels.",
+          "correct": true,
+          "rationale": "Yes. The text supports the plan, but your account may be under a different agreement, and labels drafted by any model still need verification."
+        },
+        {
+          "id": "c",
+          "text": "Terms don't apply to internal tools, so no review is needed.",
+          "rationale": "Terms apply to all use of the service; internal use is one of the factors in this specific exception."
+        },
+        {
+          "id": "d",
+          "text": "Switch providers, because every provider forbids this.",
+          "rationale": "The providers' restrictions are worded differently, and this one has an explicit exception that may cover the plan."
+        }
+      ],
+      "explanation": "Read the actual clause, notice its exceptions, and still involve legal for the agreement you're under. Separately, treat model-drafted labels as drafts until people review them.",
+      "week": 2,
+      "tags": [
+        "terms",
+        "distillation",
+        "datasets"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5w2-q8",
+      "type": "mcq",
+      "prompt": "Why do you need a validation split separate from the test split?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Because trainers require exactly three files.",
+          "rationale": "Many trainers accept only a training file. The reason is statistical, not technical."
+        },
+        {
+          "id": "b",
+          "text": "Because choosing checkpoints, epochs, or data changes on a split biases that split's score upward, so you need an untouched split to report.",
+          "correct": true,
+          "rationale": "Yes. Selecting the best of several noisy measurements overestimates the winner. The validation split absorbs that bias."
+        },
+        {
+          "id": "c",
+          "text": "Because the validation split should contain harder examples than the test split.",
+          "rationale": "Both should be drawn from the same distribution as production."
+        },
+        {
+          "id": "d",
+          "text": "Because test sets are only used to compute loss, not accuracy.",
+          "rationale": "Test sets are for the reported metrics."
+        }
+      ],
+      "explanation": "Iterate on validation, report on test. Early stopping (which limited harm in the new-knowledge study) is itself a choice made on validation data.",
+      "week": 2,
+      "tags": [
+        "splits",
+        "evaluation"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5w2-q9",
+      "type": "code-reading",
+      "prompt": "This function assigns each record to a split. Each record has an id and a thread (several records can share a thread). What problem will the resulting splits have?",
+      "code": "import hashlib\n\ndef split_of(record):\n    h = int(hashlib.sha256(record[\"id\"].encode()).hexdigest(), 16) % 100\n    return \"test\" if h < 15 else \"val\" if h < 30 else \"train\"",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "None; hashing makes the assignment random and reproducible, which is all a split needs.",
+          "rationale": "Reproducible, yes. But related records are assigned independently."
+        },
+        {
+          "id": "b",
+          "text": "Records from the same thread can land in different splits, so the model can see part of a test thread during training.",
+          "correct": true,
+          "rationale": "Yes. Hash the thread (the group), not the record id, so whole threads move together."
+        },
+        {
+          "id": "c",
+          "text": "The split is not deterministic between runs.",
+          "rationale": "sha256 of the id is deterministic."
+        },
+        {
+          "id": "d",
+          "text": "Every record lands in train.",
+          "rationale": "The modulo spreads records across all three splits."
+        }
+      ],
+      "explanation": "Group-aware splitting means the unit of assignment is the group. Ask what production looks like (new threads, new customers, new documents) and group by that.",
+      "week": 2,
+      "tags": [
+        "splits",
+        "leakage"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w2-q10",
+      "type": "multi",
+      "prompt": "You are preparing support tickets as fine-tuning data. Which statements about PII and consent are accurate? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Fine-tuned models can memorize and reproduce training text, so PII in examples can reach anyone who queries the model.",
+          "correct": true,
+          "rationale": "Carlini et al. extracted verbatim training data, including PII, from GPT-2, and fine-tuning repeats your examples over several epochs."
+        },
+        {
+          "id": "b",
+          "text": "If a customer asks for deletion, removing their row from the JSONL file removes their data from the trained model.",
+          "rationale": "Weights don't forget on request. The practical answer is to retrain from corrected data, so keep the build reproducible."
+        },
+        {
+          "id": "c",
+          "text": "Data collected to resolve tickets is not automatically licensed for training; contracts, privacy notices, and law decide, with your privacy and legal teams.",
+          "correct": true,
+          "rationale": "Yes. Purpose and consent are part of the dataset's documentation."
+        },
+        {
+          "id": "d",
+          "text": "Masking tools such as Presidio make manual checking unnecessary.",
+          "rationale": "They help, but measure what they miss on your data before relying on them."
+        }
+      ],
+      "explanation": "Minimize what goes in, document why you may use it, store the training file like production data, and keep the pipeline reproducible so you can rebuild without someone's data.",
+      "week": 2,
+      "tags": [
+        "privacy",
+        "datasets"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

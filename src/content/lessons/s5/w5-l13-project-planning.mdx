@@ -1,0 +1,175 @@
+---
+id: s5-w5-l13
+studio: s5
+week: 5
+order: 13
+title: "Project week: planning the fine-tuning project"
+summary: Turn the studio project into a plan you can execute in a week. Pick the task and the decision it informs, choose a base model whose license allows what you intend, freeze the test set before any training data exists, write the success margins in advance, budget compute, and plan the model card you will publish.
+estMinutes: 45
+reviewed: 2026-11-11
+objectives:
+  - Write the decision question, the three systems, and the success margins for the project before running anything
+  - Choose a base model by size, serving cost, and license, and record the license obligations for the adapter you will publish
+  - Plan a data pipeline in which the test set is frozen and fingerprinted before any training data is generated or labeled
+  - Budget training and benchmarking compute, and plan the model card and write-up from the start
+sources:
+  - { id: hf-model-cards, use: summarized, where: "Card contents; license and base_model metadata" }
+  - { id: mitchell-2019-model-cards, use: summarized }
+  - { id: hf-qwen3-4b-instruct-2507, use: summarized, where: "License field" }
+  - { id: hf-qwen25-3b-instruct, use: summarized, where: "License field" }
+  - { id: hf-meta-llama, use: linked }
+  - { id: deng-2023-contamination, use: linked }
+  - { id: anthropic-commercial-terms, use: linked, where: "Section D.4" }
+  - { id: hf-inference-endpoints-pricing, use: linked }
+  - { id: zhao-2024-lora-land, use: linked }
+  - { id: hf-llm-course, use: linked, where: "Fine-tuning chapters" }
+  - { id: mlabonne-llm-course, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You plan to generate 2,000 synthetic training examples with a frontier model from your company's meeting
+      transcripts, and to label a test set from the same transcripts afterwards. What should change in the plan?
+    options:
+      - id: a
+        text: Nothing. As long as the examples are not identical, the test set is fair.
+        rationale: Near-duplicates and shared phrasing from the same meetings inflate the fine-tuned model's score without being identical.
+      - id: b
+        text: Select, label, and fingerprint the test set first, from meetings that are then excluded from every data-generation step.
+        correct: true
+        rationale: Yes. Freezing the test set first, and splitting by meeting, makes contamination structurally impossible rather than something you check for later.
+      - id: c
+        text: Generate the training data first, then pick test cases that look different by eye.
+        rationale: Eyeballing doesn't catch near-duplicates, and choosing test cases after training data exists invites unconscious selection.
+    explanation: >-
+      Order matters. The test set is the instrument; build it before anything that could leak into it exists. Split by
+      source document (meeting), not by row, and still run a similarity check between splits as a backstop.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      You want to publish your LoRA adapter on the Hugging Face Hub. Which base model choice creates the fewest license
+      questions for a public adapter, based on the license fields at this lesson's review date?
+    options:
+      - id: a
+        text: Qwen2.5-3B-Instruct
+        rationale: Its model card lists the Qwen Research License, which restricts use; read it before building on it.
+      - id: b
+        text: Qwen3-4B-Instruct-2507
+        correct: true
+        rationale: Its model card lists Apache 2.0, a permissive license. You still credit the base model and include its license terms.
+      - id: c
+        text: Any model, since an adapter contains none of the base model's weights.
+        rationale: An adapter is only usable with the base weights and is derived from them. Licenses such as Llama's community licenses set conditions on derivatives and their names.
+    explanation: >-
+      Check the license on the exact model card you build on, not the model family: within the same family, sizes can
+      carry different licenses. Record the license, any attribution or naming conditions, and any acceptable-use
+      policy in your model card.
+  - id: kc3
+    type: multi
+    prompt: Which of these should be written down before you run the first benchmark? Select all that apply.
+    options:
+      - id: a
+        text: The margin within which the fine-tuned model counts as "no worse" than the frontier model
+        correct: true
+      - id: b
+        text: The normalization rules for scoring each field
+        correct: true
+      - id: c
+        text: The GPU utilization you will assume for cost per 1,000 tasks, and why
+        correct: true
+      - id: d
+        text: The headline number you expect to report
+        rationale: A prediction is fine to note privately, but the plan fixes the method and the decision rule, not the result.
+    explanation: >-
+      Everything that could be tuned after seeing results (the margin, the scoring rules, the cost assumptions) goes
+      in the plan first. That is what makes the benchmark a test rather than a story.
+---
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## What the project asks, and what it doesn't
+
+The studio project is to fine-tune a small open model with LoRA for an extraction task, then benchmark it honestly against a frontier model and against the untuned base model, on quality, cost, and latency, and publish a model card for your adapter. The full brief, requirements, and rubric are on the project page. This lesson is about the plan: the decisions you make in the first day that determine whether the rest of the week produces evidence or just numbers.
+
+The default task is the one you built in Studio 1: action items from meeting transcripts, with owner, due date, and evidence. You already have a schema, a verifier, and some labeled examples, which saves days. You may substitute your own extraction task if you have the data and the right to use it, for example fields from support tickets or contract clauses. Choose a task with a fixed output schema and fields you can score exactly; free-text summaries make the benchmark much harder to trust.
+
+Notice what the project doesn't require. It doesn't require the fine-tuned model to win. A benchmark that shows the small model is 5 points worse, or that a cheap API model beats self-hosting at your volume, is a complete and successful project if the evidence is sound. The rubric rewards the rigor of the comparison, not the direction of the result.
+</Listen>
+
+<Listen>
+## Start with the decision, then the margins
+
+Write one paragraph that states the decision your benchmark informs. For example: "Should our weekly meeting-notes pipeline (about 40,000 snippets a month) move from a frontier API model to a self-hosted fine-tuned model?" Everything else follows from that sentence: the volume sets the cost math, the pipeline sets the latency requirement (batch, so p95 matters little), and the users set which fields matter most.
+
+Then name the three systems precisely: the frontier model and its prompt, the base model you will fine-tune, and the fine-tuned model (base plus your adapter, served the same way as the base). Name a fourth if the cost math calls for it: the cheapest API model you expect could pass, so the comparison isn't only against the most expensive option.
+
+Next, write the **decision rule** before any run: the metric (exact match on the frozen test set, with per-field accuracy reported alongside), the margin ("the fine-tuned model is acceptable if the lower bound of the paired 95 percent interval against the frontier model is above minus 3 points"), and the cost and latency conditions. Also write the scoring rules: what normalization each field gets, and that unparseable outputs count as wrong. These are the choices that are tempting to adjust after seeing results, which is exactly why they go in the plan first. Studio 3 called this deciding before you run; it is even more important here, because you built the candidate and you want it to win.
+</Listen>
+
+<Callout type="pitfall" title="Choosing the margin after seeing the result">
+If you look at the paired interval and then decide that "within 5 points" is good enough, you have turned a test into a description. The fix is mechanical: commit the plan file, with the margin and scoring rules, to the repository before the first benchmark run, and have the report quote it. If you later think the margin was wrong, say so in the write-up and show the result under both, rather than quietly replacing it.
+</Callout>
+
+<Listen>
+## Choosing the base model: size, cost, and license
+
+Three constraints narrow the choice quickly. **Size:** small enough to fine-tune with LoRA or QLoRA on the GPU you can get (week 3) and to serve cheaply (lesson 11). For an extraction task, models in the roughly 1 to 8 billion parameter range are the usual starting point. **Fit:** an instruction-tuned variant with a chat template, a context length that covers your longest input, and support in the serving engine you plan to use. **License:** the terms that govern what you can do with an adapter built on it, and whether you can publish it.
+
+Check the license on the exact model card, because sizes within one family can differ. At this lesson's review date, the Hugging Face card for Qwen3-4B-Instruct-2507 lists Apache 2.0, while the card for Qwen2.5-3B-Instruct lists the Qwen Research License, a more restrictive license, even though the neighboring 1.5B model in that family is Apache 2.0. Meta's Llama models are gated and distributed under Llama community licenses, which set conditions on derivative models; read the specific license before you publish anything derived from one.
+
+An adapter is not independent of its base model. It is useless without the base weights and is derived from them, so the base model's license governs what you may do with it. Record in your plan the license name, a link, any attribution or naming requirements, and any acceptable-use policy, because they all go into your model card. If you also use a frontier model to generate or label training data, read that provider's terms on using outputs for training (lesson 12), and note your conclusion in the plan.
+</Listen>
+
+<Listen>
+## The data plan: test set first
+
+Order your data work so contamination can't happen, rather than checking for it afterwards.
+
+1. **Pick and freeze the test set first.** Select source documents (whole meetings) for the test split, label them carefully, and compute the fingerprint. Aim for at least 100 to 150 cases; fewer and your intervals will be too wide to support most decisions. Commit the file and never edit it during the project. If you find a label error, record it and fix it in a version 2 used for a clearly labeled rerun.
+2. **Set aside a dev split**, also from separate meetings, for tuning prompts (including the frontier model's) and training choices.
+3. **Build the training set** only from the remaining meetings: real labeled examples, plus synthetic or distilled examples if you need volume, each checked with your Studio 1 verifier and a human spot-check.
+4. **Run a similarity check** between training inputs and test inputs as a backstop, and report it.
+
+Then plan the labeling effort honestly. Labeling 150 test cases with four fields and evidence takes hours, not minutes, and it is the most valuable time you will spend. If someone else can label or check a sample, measure your agreement; the agreement rate is a ceiling on how precisely any system can be measured.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Put the first steps of the project in a contamination-safe, decision-first order"
+  items={[
+    "Write the decision question, the systems, the margin, and the scoring rules in a plan file",
+    "Choose the base model and record its license obligations",
+    "Select and label the test set from held-out meetings, and fingerprint it",
+    "Select the dev split from other held-out meetings",
+    "Build and verify the training set from the remaining meetings",
+    "Train the adapter, tuning only against the dev split",
+    "Run the frozen benchmark once on all systems and write the report",
+  ]}
+  explanation="Decide first, freeze the instrument second, and only then create anything (training data, prompts, adapters) that could leak into it or be tuned against it. The benchmark runs last, once, against the plan you committed."
+/>
+
+<Listen>
+## Compute and time budget
+
+Make a rough budget now, so the week doesn't stall on infrastructure. Training a LoRA adapter on a few thousand short extraction examples on a 1 to 8 billion parameter model typically fits on a single rented or free-tier GPU within hours, especially with QLoRA (week 3); confirm on a small run before committing to the full one. Benchmarking needs the base and fine-tuned models served the same way, plus API calls for the frontier model: a few hundred test cases is cheap on any current API, but write the estimate down and set a spending cap. Rented GPUs bill while running, so shut them down between sessions.
+
+A five-day shape that works: day 1, plan, license check, and test set frozen; day 2, training data built and verified, first small training run; day 3, full training run, dev-set checks, serving setup; day 4, the frozen benchmark for all systems, cost and latency measurement, failure analysis; day 5, the model card, the write-up, and a reproducibility check from a clean clone. Keep the lab 04 report format (lesson 10) from day 1, so results drop straight into it.
+</Listen>
+
+<Listen>
+## Plan the model card from the start
+
+You will publish a model card with your adapter, so collect its contents as you go instead of reconstructing them at the end. Hugging Face's model card guidance asks for a description of the model, intended uses and limitations (including biases), training parameters, training data, and evaluation results, and its metadata supports fields for the license and for `base_model`, which links an adapter or fine-tune to the model it was built on. The idea comes from Mitchell and colleagues (2019), who proposed model cards so that anyone using a model could see how it was evaluated and where it shouldn't be used.
+
+For this project the card should state: the base model and its license, with any attribution it requires; what the adapter does and the input format it expects; the training data in outline (sources, size, how it was labeled or generated, and what was excluded); the benchmark results with intervals, against the base and frontier models, with the test-set description; known failure modes from your failure analysis; and uses it is not suitable for. If your training data can't be published, say so and describe it instead. If you can't publish the adapter at all because of the base license or your data, write the card anyway and keep the adapter private; the requirement is the card's honesty, not the upload.
+</Listen>
+
+<GoDeeper title="Why plan files beat good intentions">
+Everything this lesson asks you to write down in advance (the decision rule, the margin, the scoring rules, the cost assumptions) is a pre-registration, the same idea experimental scientists use to separate confirmatory results from exploratory ones. It doesn't stop you from exploring: you can still try ten things on the dev split. It separates what you tested from what you found along the way, so a reader can tell which numbers are evidence. The cheapest implementation in a software project is a `PLAN.md` committed before the first benchmark run, and a report that quotes it.
+</GoDeeper>
+
+<Listen>
+## Your checklist for today
+
+By the end of today you should have, committed to your project repository: a plan file with the decision question, the systems, the margin, the scoring rules, and the cost assumptions; the base model choice with its license obligations recorded; a frozen, fingerprinted test set of at least 100 cases from held-out meetings, plus a dev split; and a budget for compute and API spending. Nothing has been trained yet. That is the point: from tomorrow on, every number you produce lands in a structure you decided on before you knew what it would say.
+</Listen>

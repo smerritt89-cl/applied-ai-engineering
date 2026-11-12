@@ -1,0 +1,244 @@
+---
+id: s5-w4-l12
+studio: s5
+week: 4
+order: 12
+title: Preference tuning and beyond, briefly
+summary: A conceptual tour of what comes after supervised fine-tuning. RLHF in three steps, Direct Preference Optimization and its loss, when preference tuning is worth the trouble for a product team, AI feedback, and distillation from a larger model, including the licensing and evaluation traps.
+estMinutes: 45
+reviewed: 2026-11-11
+objectives:
+  - Describe the three stages of RLHF (demonstrations, a reward model trained on comparisons, reinforcement learning with a KL penalty) and what each needs
+  - State the key idea of DPO and read its loss, explaining the roles of the reference model and beta
+  - Decide whether a task calls for supervised fine-tuning, preference tuning, or neither, using the kind of feedback you can collect
+  - Explain distillation from a larger model, and the evaluation and terms-of-service checks it requires
+sources:
+  - { id: ouyang-2022, use: summarized, where: "Method overview; human evaluation results" }
+  - { id: christiano-2017-rlhf, use: summarized }
+  - { id: yt-karpathy-deep-dive, use: embedded, where: "Chapter on reinforcement learning from human feedback (RLHF)" }
+  - { id: rafailov-2023-dpo, use: summarized, where: "Abstract; derivation of the DPO objective" }
+  - { id: trl-dpo-trainer, use: summarized, where: "Dataset format, loss, beta, reference model, PEFT" }
+  - { id: bai-2022-constitutional, use: summarized }
+  - { id: hinton-2015-distillation, use: summarized }
+  - { id: hsieh-2023-distilling-step, use: summarized }
+  - { id: gudibande-2023-imitation, use: summarized }
+  - { id: anthropic-commercial-terms, use: summarized, where: "Section D.4, use restrictions" }
+  - { id: mlabonne-llm-course, use: linked, where: "Preference alignment section" }
+  - { id: hf-llm-course, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: In the DPO loss, what does increasing beta do?
+    options:
+      - id: a
+        text: It keeps the trained model closer to the reference model, so preferences move it less far.
+        correct: true
+        rationale: Yes. TRL's docs describe beta as controlling deviation from the reference model, with higher beta meaning less deviation.
+      - id: b
+        text: It raises the learning rate.
+        rationale: The learning rate is a separate optimizer setting. Beta scales the implicit reward inside the loss.
+      - id: c
+        text: It sets how many rejected answers are sampled per prompt.
+        rationale: DPO trains on fixed pairs from your dataset and samples nothing during training.
+    explanation: >-
+      Beta comes from the KL penalty in the RLHF objective that DPO solves. It sets how strongly the trained policy is
+      tied to the reference model. Too low and the model can drift into degenerate text that games the preference
+      signal; too high and the preferences barely change anything. TRL's default is 0.1.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your support team wants replies that match the company's tone. Reviewers can easily say which of two drafts is
+      better, but they struggle to write a perfect reply from scratch, and there are many acceptable replies. You
+      already have a supervised fine-tune that writes on-topic drafts. What is the most reasonable next step?
+    options:
+      - id: a
+        text: Collect pairs of drafts with a reviewer's choice, and try DPO on top of the supervised model, measured on a held-out set of pairwise judgments.
+        correct: true
+        rationale: Yes. Comparisons are the feedback you can get cheaply and reliably here, and DPO uses exactly that, starting from the SFT model.
+      - id: b
+        text: Ask reviewers to write 5,000 ideal replies and run supervised fine-tuning again.
+        rationale: That is the expensive kind of feedback for this team, and with many acceptable replies, demonstrations underspecify what "better" means.
+      - id: c
+        text: Skip measurement; tone is subjective, so any preference tuning will help.
+        rationale: Preference tuning can also make outputs longer, blander, or worse on other criteria. Measure win rate against the SFT model on held-out pairs, and check other metrics for regressions.
+    explanation: >-
+      The kind of feedback you can collect drives the method. Demonstrations fit supervised fine-tuning; comparisons
+      fit preference tuning. Extraction with gold labels, like the studio project, needs neither DPO nor RLHF,
+      because "correct" is already defined by the labels.
+  - id: kc3
+    type: predict-output
+    prompt: What does this print? (The implicit reward margin is beta times the difference of the two log-ratios.)
+    code: |
+      import math
+      beta = 0.1
+      chosen_logratio = 2.0     # log pi(y+|x) - log pi_ref(y+|x)
+      rejected_logratio = -3.0  # log pi(y-|x) - log pi_ref(y-|x)
+      margin = beta * (chosen_logratio - rejected_logratio)
+      loss = -math.log(1 / (1 + math.exp(-margin)))
+      print(round(margin, 2), round(loss, 3))
+    options:
+      - id: a
+        text: "`0.5 0.474`"
+        correct: true
+        rationale: The margin is 0.1 times 5, which is 0.5, and minus log sigmoid(0.5) is about 0.474.
+      - id: b
+        text: "`5.0 0.007`"
+        rationale: That forgets to multiply by beta.
+      - id: c
+        text: "`-0.1 0.744`"
+        rationale: The log-ratios are subtracted (2.0 minus negative 3.0 is 5.0), not added.
+    explanation: >-
+      The loss falls as the margin grows: the model is rewarded for raising the chosen answer's probability relative
+      to the reference, and lowering the rejected one's, by more. At margin zero the loss is log 2, about 0.693.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Where preference tuning fits
+
+Everything you trained in week 3 was supervised fine-tuning: show the model inputs and the exact outputs you want, and minimize the loss on those outputs. That works when you can write down the right answer, as you can for extraction. For many behaviors you can't. There are a hundred acceptable ways to write a helpful support reply, and the difference between a good one and a great one is easier to recognize than to produce. People are much better at comparing two answers than at writing the ideal one.
+
+**Preference tuning** turns comparisons into training signal: for a prompt, here are two responses, and this one is better. It is the stage that turned instruction-following base models into the assistants you use every day. This lesson is conceptual. You won't run preference tuning in this studio's project, because your extraction task has gold labels and doesn't need it. But you should know what it is, how its main methods work, and how to recognize a team problem that calls for it.
+
+Two other ideas round out the lesson. **AI feedback** replaces some human comparisons with a model's judgments. **Distillation** trains a small model to imitate a large one, which is often the cheapest way to build the fine-tuning dataset you used in weeks 2 and 3, and comes with traps worth knowing.
+</Listen>
+
+<Listen>
+## RLHF in three steps
+
+Reinforcement learning from human feedback was developed by Christiano and colleagues (2017), who trained agents from human comparisons of short behavior clips instead of a hand-written reward. The 2022 InstructGPT paper by Ouyang and colleagues applied it to language models in three steps.
+
+**Step one, supervised fine-tuning.** Labelers write demonstrations of good responses to prompts, and the pretrained model is fine-tuned on them. This is week 3's technique.
+
+**Step two, a reward model.** The supervised model generates several responses per prompt, labelers rank them, and a separate model is trained to predict a scalar score such that preferred responses score higher. The standard statistical model behind this is Bradley-Terry: the probability that response A beats response B is the sigmoid of the difference in their scores.
+
+**Step three, reinforcement learning.** The language model is optimized, with the PPO algorithm, to produce responses the reward model scores highly, with a penalty on the KL divergence from the supervised model. The penalty matters: without it the model drifts toward text that exploits quirks of the reward model rather than text people actually prefer.
+
+The result that made this famous: labelers preferred outputs from a 1.3-billion-parameter InstructGPT model over those from the 175-billion-parameter GPT-3. The cost is complexity. RLHF needs a reward model, samples from the policy during training, several models in memory at once, and careful tuning to stay stable. Anthropic's Constitutional AI work (Bai and colleagues, 2022) showed one way to reduce the human labeling: generate the comparisons with a model guided by a written set of principles, an approach usually called RL from AI feedback.
+</Listen>
+
+<Video id="7xTGNNLPyMI" title="Deep Dive into LLMs like ChatGPT" channel="Andrej Karpathy" minutes={21} start={10106} end={11379} source="https://karpathy.ai/">
+Watch the chapter on reinforcement learning from human feedback. Notice Karpathy's two points: a reward model lets you apply reinforcement learning in domains where answers can't be checked automatically, and the policy will eventually find inputs that fool the reward model, which is why RLHF is run for a limited number of steps rather than to convergence.
+</Video>
+
+<Listen>
+## DPO: preference tuning without a reward model or reinforcement learning
+
+Rafailov and colleagues (2023) noticed that the RLHF objective (maximize reward, minus beta times the KL divergence from a reference model) has a known closed-form optimum. The optimal policy is the reference model's distribution reweighted by the exponential of the reward divided by beta. Turn that around and the reward can be written in terms of the policy itself: the reward of a response is beta times the log of how much more likely the policy makes it than the reference does, plus a term that depends only on the prompt. Substitute that into the Bradley-Terry model of preferences, and the prompt-only term cancels, because both responses share the prompt.
+
+What is left is a loss you can minimize directly on preference pairs, with ordinary gradient descent: **Direct Preference Optimization**. No separate reward model, no sampling from the model during training, no PPO. The paper describes the result as a simple classification loss and reports it matching or beating PPO-based RLHF on the tasks it tested (sentiment control, summarization, single-turn dialogue). The title states the idea compactly: your language model is secretly a reward model.
+
+In the loss below, x is the prompt, y-plus the preferred response, y-minus the rejected one, pi-theta the model you are training, pi-ref the frozen reference (usually your supervised model), sigma the sigmoid, and beta the strength of the tie to the reference.
+</Listen>
+
+```text
+L_DPO(θ) = − E_(x, y+, y−) [ log σ( β · [ log πθ(y+|x) − log πref(y+|x) ]
+                                     − β · [ log πθ(y−|x) − log πref(y−|x) ] ) ]
+
+implicit reward of a response:  r̂(x, y) = β · [ log πθ(y|x) − log πref(y|x) ]
+```
+
+<Listen>
+## Reading the loss
+
+Each bracket is a **log-ratio**: how much more (or less) likely the trained model makes a response than the reference model does. The loss pushes the chosen response's log-ratio up and the rejected response's down, and it is a logistic loss on the gap between them, exactly as if you were training a classifier to tell chosen from rejected. When the gap is already large, the sigmoid saturates and that pair contributes little gradient; the effort goes to pairs the model still gets wrong.
+
+**Beta** controls how far the model may move from the reference. TRL's documentation describes higher beta as less deviation, and its default is 0.1. The **reference model** is what keeps DPO from simply making the chosen text as likely as possible: the model is rewarded for preferring the chosen response more than the reference did, not for any particular absolute probability.
+
+Two practical notes from the TRL docs. A DPO dataset has three fields per example: `prompt`, `chosen`, and `rejected` (or the conversational equivalent). And DPO works with PEFT, so you can train a LoRA adapter on preference pairs on top of your supervised adapter's model, with the same tooling as week 3. TRL also documents a long list of DPO variants with different loss shapes (IPO, a length-normalized loss, and many more), which tells you that the original loss has known weaknesses, such as a tendency to reward longer responses.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s5-w4-dpo-loss"
+  title="Compute the DPO loss for a batch"
+  starter={`import math
+
+def log_sigmoid(z):
+    """Numerically stable log(sigmoid(z))."""
+    if z >= 0:
+        return -math.log1p(math.exp(-z))
+    return z - math.log1p(math.exp(z))
+
+def dpo_loss(batch, beta=0.1):
+    """batch: list of dicts with summed log-probabilities of each full response:
+         policy_chosen, policy_rejected, ref_chosen, ref_rejected
+    Return (mean_loss, reward_accuracy) where
+      margin_i = beta * ((policy_chosen - ref_chosen) - (policy_rejected - ref_rejected))
+      loss_i = -log_sigmoid(margin_i)
+      reward_accuracy = share of pairs with margin_i > 0
+    """
+    # TODO
+    pass
+
+batch = [
+    {"policy_chosen": -12.0, "policy_rejected": -15.0, "ref_chosen": -13.0, "ref_rejected": -13.0},
+    {"policy_chosen": -20.0, "policy_rejected": -18.0, "ref_chosen": -19.0, "ref_rejected": -19.0},
+    {"policy_chosen": -8.0,  "policy_rejected": -9.0,  "ref_chosen": -8.0,  "ref_rejected": -9.0},
+]
+print(dpo_loss(batch))
+`}
+  tests={`import math
+r = dpo_loss(batch)
+assert r is not None, "dpo_loss returned None"
+loss, acc = r
+m = [0.1 * ((-12 + 13) - (-15 + 13)), 0.1 * ((-20 + 19) - (-18 + 19)), 0.0]
+expected = sum(-log_sigmoid(x) for x in m) / 3
+assert abs(loss - expected) < 1e-9, f"mean loss should be {expected:.6f}"
+assert abs(acc - 1 / 3) < 1e-9, "only the first pair has a positive margin (the third is a tie)"
+same = [{"policy_chosen": -5.0, "policy_rejected": -7.0, "ref_chosen": -5.0, "ref_rejected": -7.0}]
+assert abs(dpo_loss(same)[0] - math.log(2)) < 1e-9, "a model identical to the reference has margin 0 and loss log 2"
+lo_beta = dpo_loss(batch[:1], beta=0.1)[0]
+hi_beta = dpo_loss(batch[:1], beta=1.0)[0]
+assert hi_beta < lo_beta, "for a correctly ordered pair, a larger beta scales up the margin and lowers the loss"
+big = [{"policy_chosen": 0.0, "policy_rejected": -5000.0, "ref_chosen": 0.0, "ref_rejected": 0.0}]
+assert dpo_loss(big, beta=1.0)[0] < 1e-9, "use log_sigmoid so huge margins don't overflow"`}
+  solution={`def dpo_loss(batch, beta=0.1):
+    margins = [
+        beta * ((ex["policy_chosen"] - ex["ref_chosen"]) - (ex["policy_rejected"] - ex["ref_rejected"]))
+        for ex in batch
+    ]
+    loss = sum(-log_sigmoid(m) for m in margins) / len(margins)
+    acc = sum(1 for m in margins if m > 0) / len(margins)
+    return loss, acc`}
+>
+Write `dpo_loss`, then press **Check my answer**. The inputs are what a real trainer computes: the summed log-probability of each full response under the model being trained and under the frozen reference. Notice the third pair: the policy hasn't moved from the reference, so its margin is zero and its loss is log 2, whatever the raw probabilities are. TRL logs the reward accuracy you computed here as `rewards/accuracies`.
+</PyRunner>
+
+<Listen>
+## When preference tuning is worth it
+
+For a product team, the decision comes down to the feedback you can collect and the problem you actually have.
+
+**Use supervised fine-tuning, not preference tuning,** when correct outputs can be written down: extraction, classification, format conversion, the studio project. Gold labels define "better" more precisely than comparisons would, and SFT is simpler to run and to evaluate.
+
+**Consider preference tuning** when there are many acceptable outputs, reviewers can reliably pick the better of two, and the supervised model is already on-task but not yet good enough: tone and style, helpfulness of explanations, how cautious or concise to be. Start from a supervised model (DPO's reference), collect pairs that reflect real disagreements (two drafts from your current model, one picked by a reviewer), and hold some pairs out.
+
+**Consider neither** when a better prompt, a better retrieval step, or a different base model would fix the problem. As week 2 argued, training is the last resort, and preference tuning is the most demanding kind of training to evaluate.
+
+Evaluate preference tuning the way you evaluate anything: held-out pairwise win rate against the supervised model, judged by people or by a judge model you calibrated against people (Studio 3), plus your existing metrics, to catch regressions. Watch for responses getting longer: length is a well-known way for a preference-tuned model to look better to raters without being better. And keep Gudibande's warning from lesson 10 in mind: a model can learn to sound preferred faster than it learns to be right.
+</Listen>
+
+<Callout type="pitfall" title="Preferences from a judge that shares your blind spots">
+Generating "chosen" and "rejected" labels with a model is cheap, and it is the AI-feedback idea in miniature. But a model judge brings its own biases (position, verbosity, preference for its own style; Studio 3, lesson 5), and preference tuning will faithfully teach those biases to your model. If you use model-generated preferences, calibrate the judge against a set of human comparisons first, and evaluate the tuned model with people or with a different judge than the one that produced the training labels. Otherwise you are grading the model with the same instrument you trained it to please.
+</Callout>
+
+<Listen>
+## Distillation: learning from a bigger model
+
+**Distillation** trains a small student model to reproduce a larger teacher's behavior. Hinton, Vinyals, and Dean (2015) framed the classic version: train the student to match the teacher's output probabilities, which carry more information than hard labels (a teacher that gives a wrong answer some probability tells the student which mistakes are reasonable). For language models today, the common version is simpler: run the teacher on many inputs, keep its outputs (after checking them), and fine-tune the student on those input-output pairs. If you generated synthetic training data with a frontier model in week 2, you did sequence-level distillation.
+
+Done carefully, it works well on narrow tasks. Hsieh and colleagues (2023) trained small models on both the teacher's labels and its rationales, and a 770-million-parameter model outperformed few-shot PaLM 540B on one benchmark using 80 percent of the training data. Done carelessly, it produces the imitation failure Gudibande and colleagues measured: a student that copies the teacher's style without its knowledge.
+
+Three checks keep distillation honest. First, **verify the teacher's outputs** before training on them, with the same checks you would apply in production (evidence quotes, cross-field rules, and a human-labeled sample), because the student will learn the teacher's errors as faithfully as its successes. Second, **evaluate the student on human-labeled test data**, not on agreement with the teacher; agreement with the teacher measures imitation, not correctness. Third, **read the teacher's terms of service.** Providers restrict how their outputs may be used to build models. Anthropic's commercial terms, for example, prohibit using its services to build a competing product, including training competing AI models. A narrow internal extraction model is a different thing from a competing general model, but this is a question for your legal team, decided before you build the dataset, not after.
+</Listen>
+
+<GoDeeper title="The DPO derivation in four lines">
+Start from the KL-regularized objective: maximize the expected reward r(x, y) minus beta times the KL divergence between the policy and the reference. For a fixed prompt, the maximizer is the reference distribution reweighted: the optimal policy is proportional to the reference probability times the exponential of r divided by beta, normalized by a partition function Z(x). Solve for the reward: r equals beta times the log of the optimal policy over the reference, plus beta log Z(x). Plug that into Bradley-Terry, where the probability that y-plus beats y-minus is the sigmoid of the reward difference: the beta log Z(x) terms cancel because both responses share x. Maximizing the likelihood of the observed preferences under this parameterization is exactly the DPO loss. The derivation assumes the Bradley-Terry model of preferences and that the optimum is reachable, which is why later work proposes other losses when those assumptions strain. Read the paper's derivation section; it is two pages of calculus a mathematician will find comfortable.
+</GoDeeper>
+
+<Listen>
+## What to take into the project
+
+Your project is supervised fine-tuning with gold labels, so none of this lesson's methods are required. What carries over is the reasoning. Choose the training signal that matches the feedback you can collect. Treat any model-generated training data, whether preferences or distilled outputs, as model output that needs checking before it becomes ground truth. Evaluate the trained model against human labels, never against the model that produced its data. And check the terms of every model whose outputs you train on, and the license of every model whose weights you build on, before you publish anything.
+</Listen>

@@ -1,0 +1,583 @@
+# Studio 5, week 1 sources (lessons s5-w1-l1 to l3, quiz s5-w1, lab studio-5/01-local-inference).
+# All URLs checked 2026-11-11. Model releases and license terms change often; they were read that day.
+# Reused from other files (not redefined here): hf-llm-course, hf-chat-templates, hf-meta-llama, qwen-github,
+# mistral-docs, deepseek-api-docs, openai-gpt-oss, huyen-ai-engineering, hf-model-cards, mitchell-2019-model-cards,
+# kwon-2023-pagedattention, frantar-2022-gptq, llamacpp-server, ollama-structured-outputs, ollama-openai-compat.
+
+# ---------- Definitions and licenses ----------
+- id: osi-osaid
+  title: The Open Source AI Definition 1.0
+  author: Open Source Initiative
+  url: https://opensource.org/ai/open-source-ai-definition
+  license: CC BY 4.0
+  licenseUrl: https://creativecommons.org/licenses/by/4.0/
+  policy: summarize
+  kind: report
+  notes: Version 1.0, announced 2024-10-28.
+
+- id: osi-osaid-announcement
+  title: The Open Source Initiative announces the release of the industry's first Open Source AI Definition
+  author: Open Source Initiative
+  url: https://opensource.org/blog/the-open-source-initiative-announces-the-release-of-the-industrys-first-open-source-ai-definition
+  license: CC BY 4.0
+  policy: summarize
+  kind: blog
+
+- id: osi-llama-still-not-open
+  title: Meta's LLaMa license is still not Open Source
+  author: Jordan Maris, Open Source Initiative
+  url: https://opensource.org/blog/metas-llama-license-is-still-not-open-source
+  license: CC BY 4.0
+  policy: summarize
+  kind: blog
+  notes: Published 2025-02-18.
+
+- id: apache-2-license
+  title: Apache License, Version 2.0
+  author: The Apache Software Foundation
+  url: https://www.apache.org/licenses/LICENSE-2.0
+  license: Apache License text (verbatim copying permitted)
+  policy: summarize
+  kind: docs
+
+- id: osi-mit-license
+  title: The MIT License
+  author: Open Source Initiative
+  url: https://opensource.org/license/mit
+  license: License text (public)
+  policy: summarize
+  kind: docs
+
+- id: llama4-license
+  title: Llama 4 Community License Agreement
+  author: Meta
+  url: https://www.llama.com/llama4/license/
+  license: Copyright Meta
+  policy: summarize
+  kind: docs
+  notes: Effective 2025-04-05. Read 2026-11-11.
+
+- id: llama4-use-policy
+  title: Llama 4 Acceptable Use Policy
+  author: Meta
+  url: https://www.llama.com/llama4/use-policy/
+  license: Copyright Meta
+  policy: summarize
+  kind: docs
+
+- id: gemma-terms
+  title: Gemma Terms of Use
+  author: Google
+  url: https://ai.google.dev/gemma/terms
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+  notes: Last modified 2026-04-01; covers Gemma releases before Gemma 4.
+
+- id: gemma-prohibited-use
+  title: Gemma Prohibited Use Policy
+  author: Google
+  url: https://ai.google.dev/gemma/prohibited_use_policy
+  license: Copyright Google
+  policy: summarize
+  kind: docs
+
+- id: gemma4-license
+  title: Gemma 4 license (Apache 2.0)
+  author: Google
+  url: https://ai.google.dev/gemma/docs/gemma_4_license
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+
+- id: gemma4-apache-blog
+  title: "Gemma 4: expanding the Gemmaverse with Apache 2.0"
+  author: Google Open Source Blog
+  url: https://opensource.googleblog.com/2026/03/gemma-4-expanding-the-gemmaverse-with-apache-20.html
+  license: Copyright Google
+  policy: summarize
+  kind: blog
+
+- id: qwen38-max-license
+  title: Qwen3.8-Max License (LICENSE file, Qwen3.8-2.4T-A95B)
+  author: Qwen team, Alibaba Cloud
+  url: https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B/blob/main/LICENSE
+  license: Copyright Alibaba Cloud
+  policy: summarize
+  kind: docs
+
+- id: mistral-large4-license
+  title: Mistral Ecosystem Open-Weight License (LICENSE file, Mistral Large 4)
+  author: Mistral AI
+  url: https://huggingface.co/mistralai/Mistral-Large-4-1T-A52B/blob/main/LICENSE
+  license: Copyright Mistral AI
+  policy: summarize
+  kind: docs
+
+- id: openmdw-license
+  title: OpenMDW License 1.1
+  author: OpenMDW
+  url: https://openmdw.ai/license/1-1/
+  license: License text (public)
+  policy: summarize
+  kind: docs
+  notes: Used by NVIDIA Nemotron 3.5 models.
+
+- id: minimax-m3-card
+  title: MiniMax-M3 model card and MiniMax Community License
+  author: MiniMax
+  url: https://huggingface.co/MiniMaxAI/MiniMax-M3
+  license: Copyright MiniMax
+  policy: summarize
+  kind: docs
+
+# ---------- Model families on the Hugging Face Hub (read 2026-11-11) ----------
+- id: hf-meta-models
+  title: Meta models on Hugging Face (Muse Spark Open, Muse Glimmer)
+  author: Meta
+  url: https://huggingface.co/meta-models
+  license: Per model
+  policy: summarize
+  kind: docs
+
+- id: meta-muse-spark-open-blog
+  title: Muse Spark Open
+  author: Meta
+  url: https://research.meta.ai/blog/muse-spark-open
+  license: Copyright Meta
+  policy: summarize
+  kind: blog
+
+- id: hf-gemma4-31b
+  title: google/gemma-4-31B-it model card
+  author: Google
+  url: https://huggingface.co/google/gemma-4-31B-it
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+
+- id: hf-qwen38-27b
+  title: Qwen/Qwen3.8-27B model card
+  author: Qwen team, Alibaba Cloud
+  url: https://huggingface.co/Qwen/Qwen3.8-27B
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+
+- id: hf-deepseek-v41-flash
+  title: deepseek-ai/DeepSeek-V4.1-Flash-1017 model card
+  author: DeepSeek
+  url: https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017
+  license: MIT
+  policy: summarize
+  kind: docs
+
+- id: hf-gpt-oss-120b
+  title: openai/gpt-oss-120b model card
+  author: OpenAI
+  url: https://huggingface.co/openai/gpt-oss-120b
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+
+- id: hf-phi4-reasoning-vision
+  title: microsoft/Phi-4-reasoning-vision-15B model card
+  author: Microsoft
+  url: https://huggingface.co/microsoft/Phi-4-reasoning-vision-15B
+  license: MIT
+  policy: summarize
+  kind: docs
+
+- id: hf-nemotron35-super
+  title: NVIDIA Nemotron 3.5 Super VL 120B-A12B model card
+  author: NVIDIA
+  url: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16
+  license: OpenMDW-1.1
+  policy: summarize
+  kind: docs
+
+- id: hf-olmo31-32b
+  title: allenai/Olmo-3.1-32B-Instruct model card
+  author: Allen Institute for AI (Ai2)
+  url: https://huggingface.co/allenai/Olmo-3.1-32B-Instruct
+  license: Apache 2.0
+  policy: summarize
+  kind: docs
+
+- id: hf-dolma3
+  title: Dolma 3 pretraining mix (dataset card)
+  author: Allen Institute for AI (Ai2)
+  url: https://huggingface.co/datasets/allenai/dolma3_mix-6T
+  license: Per dataset card
+  policy: summarize
+  kind: docs
+
+- id: hf-kimi-k31-pro
+  title: moonshotai/Kimi-K3.1-Pro model card
+  author: Moonshot AI
+  url: https://huggingface.co/moonshotai/Kimi-K3.1-Pro
+  license: Kimi K3.1-Pro License (custom)
+  policy: summarize
+  kind: docs
+
+- id: hf-glm53
+  title: zai-org/GLM-5.3 model card
+  author: Z.ai (Zhipu)
+  url: https://huggingface.co/zai-org/GLM-5.3
+  license: GLM-5.3 License (custom)
+  policy: summarize
+  kind: docs
+
+# ---------- Hugging Face Hub, transformers, formats ----------
+- id: hf-hub-gated-models
+  title: Gated models (Hugging Face Hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/hub/models-gated
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/hub-docs/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-hub-licenses
+  title: Licenses (Hugging Face Hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/hub/repositories-licenses
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/hub-docs/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-model-card-annotated
+  title: Annotated Model Card (Hugging Face Hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/hub/model-card-annotated
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/hub-docs/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-hub-pickle-security
+  title: Pickle scanning (Hugging Face Hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/hub/security-pickle
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/hub-docs/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-safetensors-docs
+  title: Safetensors documentation
+  author: Hugging Face
+  url: https://huggingface.co/docs/safetensors/index
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/safetensors/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-safetensors-repo
+  title: safetensors (repository README, file format section)
+  author: Hugging Face
+  url: https://github.com/huggingface/safetensors
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/safetensors/blob/main/LICENSE
+  policy: summarize
+  kind: repo
+
+- id: hf-safetensors-audit
+  title: Audit shows that safetensors is safe and ready to become the default
+  author: Hugging Face, EleutherAI, Stability AI
+  url: https://huggingface.co/blog/safetensors-security-audit
+  license: Copyright Hugging Face
+  policy: summarize
+  kind: blog
+
+- id: hf-datasets-docs
+  title: Datasets library documentation
+  author: Hugging Face
+  url: https://huggingface.co/docs/datasets/index
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/datasets/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-dataset-cards
+  title: Dataset cards (Hugging Face Hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/hub/datasets-cards
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/hub-docs/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: gebru-2018-datasheets
+  title: Datasheets for Datasets (Gebru et al., 2018)
+  author: Gebru et al.
+  url: https://arxiv.org/abs/1803.09010
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: hf-pipeline-tutorial
+  title: Pipeline (Transformers docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/transformers/main/en/pipeline_tutorial
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/transformers/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-chat-basics
+  title: Chat basics (Transformers docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/transformers/main/en/conversations
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/transformers/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+  notes: Includes the note that token generation is bound by memory bandwidth.
+
+- id: hf-loading-models
+  title: Loading models (Transformers docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/transformers/main/en/models
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/transformers/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+  notes: Custom models, trust_remote_code, and pinning a revision.
+
+- id: hf-fast-tokenizers
+  title: Tokenizers (Transformers docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/transformers/main/en/fast_tokenizers
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/transformers/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-hub-download-guide
+  title: Download files from the Hub (huggingface_hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/huggingface_hub/guides/download
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/huggingface_hub/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: yt-hf-navigating-hub
+  title: Navigating the Model Hub
+  author: Hugging Face (YouTube)
+  url: https://www.youtube.com/watch?v=XvSGPZFEjDY
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+- id: yt-hf-pipeline-function
+  title: The pipeline function
+  author: Hugging Face (YouTube)
+  url: https://www.youtube.com/watch?v=tiZFewofSLM
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+
+# ---------- Local inference ----------
+- id: ollama-api-reference
+  title: Ollama API reference (docs/api.md)
+  author: Ollama
+  url: https://github.com/ollama/ollama/blob/main/docs/api.md
+  license: MIT
+  licenseUrl: https://github.com/ollama/ollama/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+  notes: Gives the tokens-per-second formula from eval_count and eval_duration (nanoseconds).
+
+- id: ollama-docs-api
+  title: Ollama API documentation
+  author: Ollama
+  url: https://docs.ollama.com/api
+  license: Copyright Ollama
+  policy: summarize
+  kind: docs
+
+- id: ollama-context-length
+  title: Context length (Ollama docs)
+  author: Ollama
+  url: https://docs.ollama.com/context-length
+  license: Copyright Ollama
+  policy: summarize
+  kind: docs
+  notes: Default context depends on available VRAM; read 2026-11-11.
+
+- id: ollama-faq
+  title: Ollama FAQ
+  author: Ollama
+  url: https://docs.ollama.com/faq
+  license: Copyright Ollama
+  policy: summarize
+  kind: docs
+
+- id: ollama-library-llama32
+  title: llama3.2 (Ollama model library)
+  author: Ollama
+  url: https://ollama.com/library/llama3.2
+  license: Model license per model (Llama 3.2 Community License)
+  policy: summarize
+  kind: docs
+  notes: Returns 405 to HEAD requests and 200 to GET.
+
+- id: llamacpp-repo
+  title: llama.cpp
+  author: ggml-org
+  url: https://github.com/ggml-org/llama.cpp
+  license: MIT
+  licenseUrl: https://github.com/ggml-org/llama.cpp/blob/master/LICENSE
+  policy: summarize
+  kind: repo
+
+- id: gguf-spec
+  title: GGUF file format specification
+  author: ggml-org
+  url: https://github.com/ggml-org/ggml/blob/master/docs/gguf.md
+  license: MIT
+  licenseUrl: https://github.com/ggml-org/ggml/blob/master/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: llamacpp-quantize
+  title: llama-quantize README (bits per weight table)
+  author: ggml-org
+  url: https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md
+  license: MIT
+  licenseUrl: https://github.com/ggml-org/llama.cpp/blob/master/LICENSE
+  policy: summarize
+  kind: docs
+  notes: Bits per weight measured on Llama 3.1 8B; read 2026-11-11.
+
+- id: hf-hub-gguf
+  title: GGUF (Hugging Face Hub docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/hub/gguf
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/hub-docs/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: lmstudio-docs
+  title: LM Studio documentation
+  author: LM Studio
+  url: https://lmstudio.ai/docs/app
+  license: Copyright Element Labs
+  policy: summarize
+  kind: docs
+
+- id: lmstudio-openai-compat
+  title: OpenAI compatibility endpoints (LM Studio docs)
+  author: LM Studio
+  url: https://lmstudio.ai/docs/developer/openai-compat
+  license: Copyright Element Labs
+  policy: summarize
+  kind: docs
+
+- id: mlx-repo
+  title: "MLX: an array framework for Apple silicon"
+  author: Apple machine learning research (ml-explore)
+  url: https://github.com/ml-explore/mlx
+  license: MIT
+  licenseUrl: https://github.com/ml-explore/mlx/blob/main/LICENSE
+  policy: summarize
+  kind: repo
+
+- id: mlx-lm-repo
+  title: mlx-lm (LLM inference and fine-tuning with MLX)
+  author: Apple machine learning research (ml-explore)
+  url: https://github.com/ml-explore/mlx-lm
+  license: MIT
+  licenseUrl: https://github.com/ml-explore/mlx-lm/blob/main/LICENSE
+  policy: summarize
+  kind: repo
+
+- id: mlx-lm-server
+  title: mlx-lm HTTP server (SERVER.md)
+  author: Apple machine learning research (ml-explore)
+  url: https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/SERVER.md
+  license: MIT
+  licenseUrl: https://github.com/ml-explore/mlx-lm/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-mlx-community
+  title: mlx-community (Hugging Face organization)
+  author: MLX community
+  url: https://huggingface.co/mlx-community
+  license: Per model
+  policy: summarize
+  kind: docs
+
+- id: yt-wwdc25-mlx-llms
+  title: "WWDC25: Explore large language models on Apple silicon with MLX"
+  author: Apple Developer (YouTube)
+  url: https://www.youtube.com/watch?v=tn2Hvw7eCsw
+  license: Standard YouTube license
+  policy: embed
+  kind: video
+  notes: Also at https://developer.apple.com/videos/play/wwdc2025/298/
+
+# ---------- Memory and quantization ----------
+- id: hf-kv-cache-explanation
+  title: Caching (Transformers docs)
+  author: Hugging Face
+  url: https://huggingface.co/docs/transformers/en/cache_explanation
+  license: Apache 2.0
+  licenseUrl: https://github.com/huggingface/transformers/blob/main/LICENSE
+  policy: summarize
+  kind: docs
+
+- id: hf-llama31-blog
+  title: "Llama 3.1: 405B, 70B and 8B with multilinguality and long context"
+  author: Hugging Face
+  url: https://huggingface.co/blog/llama31
+  license: Copyright Hugging Face
+  policy: summarize
+  kind: blog
+  notes: Source of the FP16 KV cache sizes per context length.
+
+- id: ainslie-2023-gqa
+  title: "GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints (Ainslie et al., 2023)"
+  author: Ainslie et al.
+  url: https://arxiv.org/abs/2305.13245
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: dettmers-2022-llm-int8
+  title: "LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale (Dettmers et al., 2022)"
+  author: Dettmers et al.
+  url: https://arxiv.org/abs/2208.07339
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: dettmers-2022-kbit-scaling
+  title: "The case for 4-bit precision: k-bit Inference Scaling Laws (Dettmers and Zettlemoyer, 2022)"
+  author: Tim Dettmers and Luke Zettlemoyer
+  url: https://arxiv.org/abs/2212.09720
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: huang-2024-llama3-quant
+  title: "An empirical study of LLaMA3 quantization: from LLMs to MLLMs (Huang et al., 2024)"
+  author: Huang et al.
+  url: https://arxiv.org/abs/2404.14047
+  license: arXiv non-exclusive license
+  policy: summarize
+  kind: paper
+
+- id: apple-macbook-pro-specs
+  title: MacBook Pro technical specifications
+  author: Apple
+  url: https://www.apple.com/macbook-pro/specs/
+  license: Copyright Apple
+  policy: summarize
+  kind: docs
+  notes: Read 2026-11-11 for M5 Max unified memory sizes and memory bandwidth.

@@ -1,0 +1,228 @@
+{
+ "id": "s5-w5",
+ "studio": "s5",
+ "week": 5,
+ "title": "Week 5 quiz: Project week",
+ "questions": [
+  {
+   "id": "s5w5-q1",
+   "type": "scenario",
+   "prompt": "On day one of the project you have transcripts from 60 meetings. Which first step makes contamination structurally impossible rather than something you hope to catch later?",
+   "options": [
+    {
+     "id": "a",
+     "text": "Generate synthetic training data from all 60 meetings, then hold out 20 percent of the generated rows as the test set.",
+     "rationale": "Rows from the same meeting end up on both sides, and synthetic rows can paraphrase test material."
+    },
+    {
+     "id": "b",
+     "text": "Choose whole meetings for the test split, label and fingerprint them, commit, and exclude those meetings from every later data-generation step.",
+     "rationale": "Yes. Building the instrument first, by document, means nothing created later can leak into it.",
+     "correct": true
+    },
+    {
+     "id": "c",
+     "text": "Train first, then pick test meetings where the model seems to struggle, to make the test hard.",
+     "rationale": "Choosing test cases after seeing model behavior biases the benchmark."
+    },
+    {
+     "id": "d",
+     "text": "Use the Studio 1 sample transcripts as the test set, since they're already labeled.",
+     "rationale": "Three short transcripts are far too few for intervals that can support a decision."
+    }
+   ],
+   "explanation": "Freeze the test set first, split by source document, and record a fingerprint. Then a similarity check between training and test inputs is a backstop, not the only defense.",
+   "week": 5,
+   "tags": [
+    "project",
+    "contamination"
+   ],
+   "difficulty": 1
+  },
+  {
+   "id": "s5w5-q2",
+   "type": "multi",
+   "prompt": "Which items belong in PLAN.md, committed before the first benchmark run? Select all that apply.",
+   "options": [
+    {
+     "id": "a",
+     "text": "The decision question and the systems compared",
+     "rationale": "Yes. The question determines the cost math and which fields matter.",
+     "correct": true
+    },
+    {
+     "id": "b",
+     "text": "The margin and decision rule for the paired interval",
+     "rationale": "Yes. A margin chosen after the results is a description, not a test.",
+     "correct": true
+    },
+    {
+     "id": "c",
+     "text": "Field normalization rules and how failures are scored",
+     "rationale": "Yes. Scoring choices are easy to tune toward the result you want.",
+     "correct": true
+    },
+    {
+     "id": "d",
+     "text": "The final exact-match numbers",
+     "rationale": "Those come from the run. The plan fixes the method, not the result."
+    },
+    {
+     "id": "e",
+     "text": "Cost assumptions: volume, GPU price and its date, utilization",
+     "rationale": "Yes. Utilization in particular can swing self-hosted cost several-fold.",
+     "correct": true
+    }
+   ],
+   "explanation": "Anything you could adjust after seeing results goes in the plan first. It's a pre-registration: you can still explore on dev, but the benchmark's decision rule is fixed.",
+   "week": 5,
+   "tags": [
+    "project",
+    "planning"
+   ],
+   "difficulty": 1
+  },
+  {
+   "id": "s5w5-q3",
+   "type": "mcq",
+   "prompt": "You will publish a LoRA adapter on the Hugging Face Hub. Which statement about the base model's license is correct?",
+   "options": [
+    {
+     "id": "a",
+     "text": "An adapter contains none of the base weights, so the base license doesn't apply.",
+     "rationale": "The adapter is derived from and only usable with the base weights. The base license governs it."
+    },
+    {
+     "id": "b",
+     "text": "All sizes in a model family share one license, so checking the family page is enough.",
+     "rationale": "Not always. At the review date, Qwen2.5-3B-Instruct carried the Qwen Research License while Qwen2.5-1.5B-Instruct was Apache 2.0."
+    },
+    {
+     "id": "c",
+     "text": "Check the license on the exact model card you build on, record its obligations, and set license and base_model in your card's metadata.",
+     "rationale": "Yes. That's what the Hub's model card guidance supports, and what the project requires.",
+     "correct": true
+    },
+    {
+     "id": "d",
+     "text": "If the base model is gated, you can't fine-tune it at all.",
+     "rationale": "Gating controls access to the weights. Whether and how you may publish derivatives is in the license text."
+    }
+   ],
+   "explanation": "Licenses differ even within a family. The model card's metadata has fields for the license and the base model, which also links your adapter to its base on the Hub.",
+   "week": 5,
+   "tags": [
+    "licenses",
+    "model-card"
+   ],
+   "difficulty": 2
+  },
+  {
+   "id": "s5w5-q4",
+   "type": "code-reading",
+   "prompt": "A teammate's benchmark script runs the base model and the fine-tuned model like this. What makes the base-versus-tuned comparison unfair?",
+   "code": "base_out = serve(\"open-4b\", prompt=LONG_INSTRUCTIONS + snippet, constrained=False)\ntuned_out = serve(\"open-4b+action-items\", prompt=snippet, constrained=True)",
+   "options": [
+    {
+     "id": "a",
+     "text": "The tuned model gets schema-constrained decoding and the base model doesn't, so part of the gap is a parse-rate effect of serving, not of the adapter.",
+     "rationale": "Yes. Serve both with identical engine settings and constraints so the gap isolates the adapter.",
+     "correct": true
+    },
+    {
+     "id": "b",
+     "text": "The base model should get the short prompt too, because prompts must be identical.",
+     "rationale": "Each system may use its reasonable best prompt, recorded. The serving settings are what must match here."
+    },
+    {
+     "id": "c",
+     "text": "Nothing; the systems are different models, so different settings are expected.",
+     "rationale": "The point of the base-model control is that only the adapter differs."
+    },
+    {
+     "id": "d",
+     "text": "The tuned model name is wrong; adapters can't be selected by name.",
+     "rationale": "vLLM selects adapters by the name registered with --lora-modules."
+    }
+   ],
+   "explanation": "The base model is a control. Holding the engine, precision, and decoding constraint fixed means the measured gap is the adapter's effect. Without constraints, small models fail to parse more often, which inflates the apparent benefit of fine-tuning.",
+   "week": 5,
+   "tags": [
+    "benchmarking",
+    "project"
+   ],
+   "difficulty": 2
+  },
+  {
+   "id": "s5w5-q5",
+   "type": "predict-output",
+   "prompt": "The plan's decision rule: adopt the fine-tuned model if the paired 95 percent lower bound against the frontier model is above minus 0.03. What does this print?",
+   "code": "rule_margin = 0.03\nresults = {\"diff\": 0.021, \"lower\": -0.041, \"upper\": 0.083}\nadopt = results[\"lower\"] > -rule_margin\nprint(adopt, round(results[\"diff\"] * 100, 1))",
+   "options": [
+    {
+     "id": "a",
+     "text": "`True 2.1`",
+     "rationale": "The point estimate is positive, but the rule is about the lower bound, which is below minus 0.03."
+    },
+    {
+     "id": "b",
+     "text": "`False 2.1`",
+     "rationale": "Yes. The lower bound (minus 4.1 points) is outside the margin, so the rule says don't adopt yet, despite a positive point estimate.",
+     "correct": true
+    },
+    {
+     "id": "c",
+     "text": "`False -4.1`",
+     "rationale": "The second value printed is the point estimate times 100, which is 2.1."
+    },
+    {
+     "id": "d",
+     "text": "`True -4.1`",
+     "rationale": "Check both the comparison and which field is printed."
+    }
+   ],
+   "explanation": "Applying the rule as written can disappoint you, and that's the point. The honest options are to report the result, collect more test cases to narrow the interval, or argue openly in the write-up that the margin was wrong, showing results under both.",
+   "week": 5,
+   "tags": [
+    "decision-rule",
+    "statistics"
+   ],
+   "difficulty": 2
+  },
+  {
+   "id": "s5w5-q6",
+   "type": "scenario",
+   "prompt": "Your benchmark shows the fine-tuned model within the margin of the frontier model, but a small, cheap API model also passes, and at your volume of 40,000 tasks a month it costs less than an always-on GPU. What should the write-up recommend?",
+   "options": [
+    {
+     "id": "a",
+     "text": "Self-host the fine-tuned model anyway, since that was the project's goal.",
+     "rationale": "The project's goal is a defensible decision, not a predetermined answer."
+    },
+    {
+     "id": "b",
+     "text": "Use the cheap API model for this workload, state the volume at which self-hosting would break even (or that it never does), and name any non-cost reasons that could change the answer.",
+     "rationale": "Yes. That is a successful benchmark: the evidence picked the system.",
+     "correct": true
+    },
+    {
+     "id": "c",
+     "text": "Use the frontier model, because it is the most capable.",
+     "rationale": "It costs more and the cheaper systems are within the margin on this task."
+    },
+    {
+     "id": "d",
+     "text": "Report only the quality results and leave cost to the finance team.",
+     "rationale": "Cost per 1,000 tasks and break-even volume are required parts of the analysis."
+    }
+   ],
+   "explanation": "Compare against the cheapest adequate option, not only the most capable one. A recommendation that self-hosting doesn't pay at current volume, with the break-even point stated, is exactly the kind of result the rubric rewards.",
+   "week": 5,
+   "tags": [
+    "model-selection",
+    "cost"
+   ],
+   "difficulty": 2
+  }
+ ]
+}

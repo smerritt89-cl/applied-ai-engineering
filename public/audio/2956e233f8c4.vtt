@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.472
+Structure-aware chunking.
+
+2
+00:00:01.752 --> 00:00:12.184
+Many business documents already tell you where their pieces are: headings in Markdown and wikis, sections and clauses in contracts, slides in decks, rows in tables.
+
+3
+00:00:12.464 --> 00:00:19.056
+Structure-aware chunking uses that structure as the primary boundary and the size limit as a secondary one.
+
+4
+00:00:19.336 --> 00:00:28.253
+Split at headings first; if a section fits under the limit, it is one chunk; if not, split it recursively inside the section, never across a heading.
+
+5
+00:00:28.533 --> 00:00:32.480
+Two extra benefits make this the default for structured corpora.
+
+6
+00:00:32.760 --> 00:00:48.952
+Each chunk inherits a heading path (“Employee Handbook > Time off > Sick days”), which you store as metadata, show in citations, and can prepend to the text before embedding so that a chunk saying “three consecutive days” carries the context that it is about sick leave.
+
+7
+00:00:49.232 --> 00:00:54.459
+And section boundaries are where topics change, so chunks are more likely to be about one thing.
+
+8
+00:00:54.739 --> 00:01:08.861
+LangChain ships a Markdown header splitter that does the first step and records the headers as metadata, and layout-aware parsers like Docling include chunkers that work on their structured document output, so you rarely start from nothing.
+
+9
+00:01:09.141 --> 00:01:14.965
+You will write one yourself below anyway, because knowing exactly what the chunker does is how you debug it.
+
+10
+00:01:15.245 --> 00:01:31.971
+Watch for three edge cases: a heading with no body (skip it; its title lives on in its children’s paths), very short sections (consider merging them with a neighbor so you don’t get a chunk that says only “See the travel policy”), and lines that look like headings but aren’t,
+
+11
+00:01:32.251 --> 00:01:36.219
+such as a comment line starting with “#” inside a fenced code block.

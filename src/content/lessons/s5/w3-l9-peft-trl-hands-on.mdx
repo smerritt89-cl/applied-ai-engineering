@@ -1,0 +1,350 @@
+---
+id: s5-w3-l9
+studio: s5
+week: 3
+order: 9
+title: Hands-on with PEFT and TRL
+summary: A complete LoRA run on a small open model, the way a careful engineer does it. Formatting data for SFTTrainer, LoraConfig and SFTConfig settings and the defaults that bite, saving, loading, and merging adapters, the QLoRA switch, MLX-LM on Apple Silicon as an alternative, what Unsloth claims, and the checks that make the result believable.
+estMinutes: 70
+reviewed: 2026-11-11
+objectives:
+  - Format a dataset as conversational prompt-completion examples and verify the rendering against the tokenizer's chat template
+  - Configure LoraConfig and SFTConfig for a small model, explain each non-default setting, and know which defaults to override (precision, learning rate, logging)
+  - Save an adapter, reload it on its base model, and merge it, and explain when to keep adapters separate
+  - Run the same experiment with MLX-LM on Apple Silicon, translating its settings (scale, layers, masking) to PEFT's
+  - Evaluate a fine-tuned model against its own baseline with a strict scorer and output checks, and record the run so someone else can reproduce it
+sources:
+  - { id: trl-sft-trainer, use: adapted, where: "Quick start; train on completion only; train adapters with PEFT; SFTConfig and SFTTrainer reference; instruction tuning EOS warning" }
+  - { id: trl-dataset-formats, use: summarized, where: "Conversational prompt-completion" }
+  - { id: hf-peft-lora-docs, use: summarized, where: "LoraConfig; merge_and_unload; initialization options" }
+  - { id: hf-llm-course, use: adapted, where: "Chapter 11, sections 3 and 4 (SFT and LoRA workflow, merging adapters)" }
+  - { id: mlabonne-llm-course, use: adapted, where: "Fine-tuning notebooks (Fine-tune Llama 3.1 with Unsloth; Fine-tune Mistral-7b with QLoRA)" }
+  - { id: hf-transformers-bnb, use: summarized, where: "BitsAndBytesConfig for NF4" }
+  - { id: mlx-lm-lora-docs, use: summarized }
+  - { id: mlx-lm-repo, use: linked }
+  - { id: yt-wwdc25-mlx-llms, use: embedded, where: "Fine-tuning chapter" }
+  - { id: unsloth-docs, use: summarized, where: "Claims, platform requirements, default hyperparameters" }
+  - { id: hf-qwen25-05b-instruct, use: summarized, where: "License, size, chat template" }
+  - { id: colab-faq, use: summarized, where: "GPU availability" }
+  - { id: hf-chat-templates, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: code-reading
+    prompt: >-
+      This config is for LoRA training on a Colab GPU that does not support bfloat16. What is the most likely problem
+      with it?
+    code: |
+      from trl import SFTConfig
+      args = SFTConfig(
+          output_dir="run",
+          learning_rate=2e-5,
+          num_train_epochs=2,
+          per_device_train_batch_size=8,
+          report_to="none",
+      )
+    options:
+      - id: a
+        text: The learning rate is TRL's full fine-tuning default, which is low for adapters, and bf16 is left at its default, which SFTConfig turns on when fp16 isn't set.
+        correct: true
+        rationale: Yes. TRL's docs suggest around 1e-4 for adapters, and on a GPU without bf16 you should set bf16=False and fp16=True explicitly.
+      - id: b
+        text: report_to="none" disables the loss logs, so you can't see the curve.
+        rationale: It only disables external trackers. trainer.state.log_history still records the losses.
+      - id: c
+        text: num_train_epochs must be an integer of at least 3.
+        rationale: Two epochs is fine; TRL's default of 3 is a default, not a minimum.
+    explanation: >-
+      SFTConfig's defaults differ from TrainingArguments': bf16 defaults to on when fp16 isn't set, gradient checkpointing
+      defaults to on, logging_steps to 10, and learning_rate to 2e-5. Read the defaults table for the version you
+      pinned, and set precision and learning rate explicitly.
+  - id: kc2
+    type: mcq
+    prompt: >-
+      You pass `model="Qwen/Qwen2.5-0.5B-Instruct"` as a string to SFTTrainer and a prompt-completion dataset whose prompt
+      and completion are message lists. Which statement is true by default in TRL 1.17?
+    options:
+      - id: a
+        text: The trainer computes loss over the whole sequence unless you set assistant_only_loss=True.
+        rationale: That's the behavior for a messages (language-modeling) dataset. Prompt-completion data is masked by default.
+      - id: b
+        text: The trainer applies the chat template and computes loss on the completion only.
+        correct: true
+        rationale: Yes. Conversational data gets the chat template, and completion_only_loss defaults to completion-only for prompt-completion data.
+      - id: c
+        text: You must apply the chat template yourself and pass plain strings.
+        rationale: You can, but TRL applies the template automatically for conversational datasets.
+    explanation: >-
+      The dataset's shape drives the masking. Prompt-completion: completion only by default. Messages: whole sequence
+      unless assistant_only_loss is set, which also requires generation tags in the chat template. Verify either way by
+      decoding one example's labels.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      Your tuned model scores 88 percent field accuracy on held-out tickets, up from 57 percent for the base model. A
+      teammate wants to ship it as the triage step today. What is the most important thing to do first?
+    options:
+      - id: a
+        text: Nothing more; a 31-point gain on held-out data is conclusive.
+        rationale: The gain is real evidence, but you haven't looked at how the remaining errors fail or how the model behaves outside the test distribution.
+      - id: b
+        text: Read the failures, add deterministic output checks (enum values, and order ids that must appear verbatim in the ticket), and compare against a well-prompted frontier model and a regression set before deciding.
+        correct: true
+        rationale: Yes. Failure reading finds error classes the metric hides (such as invented order ids), checks catch them at runtime, and the comparison tells you whether fine-tuning was the right tool at all.
+      - id: c
+        text: Train for more epochs until field accuracy reaches 100 percent on the test set.
+        rationale: Tuning on the test set turns it into a training signal and invalidates it as a measurement.
+    explanation: >-
+      A fine-tuned model is another model output to verify. Keep the test set frozen, read failures, guard outputs with
+      checks you can enforce in code, and benchmark the alternatives (week 4) before a production decision.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## The run you'll do this week
+
+The lab for this lesson fine-tunes a small open model to triage support tickets: given a customer message, return a JSON object with a category, a priority, a product, and an order id, with nulls where the ticket gives none. It's a stand-in for the studio project's extraction task, small enough to train in minutes.
+
+The workflow has the same shape whether you use Hugging Face's libraries on an NVIDIA GPU or MLX-LM on a Mac, and it follows the order in Hugging Face's LLM course (chat templates, then SFT, then LoRA, then evaluation) and in Maxime Labonne's fine-tuning notebooks:
+
+1. Pick a base model and confirm its license allows what you plan.
+2. Format the data with the model's chat template, and check the rendering.
+3. Score the base model on a frozen test set. That's your baseline.
+4. Configure the adapter and the trainer; predict the trainable parameter count.
+5. Train, logging train and validation loss.
+6. Score the tuned model on the same test set, with the same decoding and scorer, and read the failures.
+7. Save the adapter and record the run.
+
+Steps 3 and 6 are what make the result an engineering result rather than a demo. Everything else is plumbing, and this lesson shows the plumbing as the current docs describe it (TRL 1.17.1 and PEFT 0.21.2 at the time of writing).
+</Listen>
+
+<Listen>
+## Choosing the base model
+
+The lab uses **Qwen/Qwen2.5-0.5B-Instruct**. On the review date its model card listed the Apache 2.0 license (permissive, commercial use allowed, attribution required) and the model was not gated. It has about 494 million parameters, so its 16-bit weights are about 1 GB and a LoRA run fits easily on a free Colab GPU or a Mac. TRL's own documentation uses it in examples, so the template handling is well trodden.
+
+For your project you'll choose with more care (week 5 walks through it), but the same three checks apply: a license that permits your use and any adapter you publish, an instruct variant with a chat template, and a size that fits both training and serving. Start with an instruct model rather than a base model for a narrow task: the instruct model already knows the turn structure and when to stop, and your adapter only has to teach the task. TRL's docs warn that when you start from a base model whose tokenizer has a chat template, you may need to align the end-of-sequence token with the template so generations terminate.
+
+Then the honest question: would a well-prompted frontier model do this task well enough? Fine-tuning pays off when you need low cost per call, low latency, local or private deployment, or a behavior prompting can't pin down. Week 2 made that decision; week 4 measures it.
+</Listen>
+
+<Listen>
+## Formatting: prompt-completion, and a check you should always run
+
+TRL's SFTTrainer accepts plain text, prompt-completion pairs, or message lists, each in a standard (string) or conversational (messages) form, and applies the chat template to conversational data automatically. For a task with a fixed instruction and a fixed answer format, the **conversational prompt-completion** form is the cleanest: the prompt is the system and user messages, the completion is the assistant message, and the trainer computes loss on the completion only by default.
+
+Before training, render a few examples yourself and compare them with the tokenizer's `apply_chat_template` output. In the lab you write `render_chatml`, a few lines that reproduce Qwen2.5's template for plain messages, and the notebook asserts that your rendering matches the tokenizer's. It seems pedantic. It catches real bugs: a template that injects a default system prompt you didn't know about (Qwen2.5's does, when you omit one), a missing end-of-turn token, or a trailing newline that differs between training and serving. Print the split between the prompt text and the completion text, too. The completion should be the JSON answer plus the end-of-turn marker, and nothing else.
+</Listen>
+
+```python
+from datasets import Dataset
+
+SYSTEM = "You triage customer support tickets. Reply with only a JSON object ..."
+
+def to_prompt_completion(record):
+    return {
+        "prompt": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": record["ticket"]},
+        ],
+        "completion": [{"role": "assistant", "content": json.dumps(record["label"])}],
+    }
+
+train_ds = Dataset.from_list([to_prompt_completion(r) for r in train_rows])
+```
+
+<Listen>
+## Configuring LoRA and the trainer
+
+Two configuration objects do most of the work. `LoraConfig` from PEFT describes the adapter: rank, alpha, dropout, and which modules to wrap. `SFTConfig` from TRL extends Transformers' training arguments with SFT-specific options such as `max_length`, packing, and the loss masks. Pass the LoRA config to the trainer as `peft_config` and it wraps the model for you.
+
+The values in the snippet below are this lesson's starting point, with reasons. Rank 16 and alpha 32 (scale 2) on all linear layers, per lesson 8. A learning rate of 2e-4, higher than TRL's 2e-5 default for full fine-tuning, because adapters want a higher rate (TRL's docs suggest around 1e-4; Unsloth's guide uses 2e-4 as its default). Two epochs with evaluation every 10 steps, so you can see the validation curve turn. Precision set explicitly.
+
+Know which defaults you're accepting. In TRL 1.17, SFTConfig turns bf16 on when fp16 isn't set, turns gradient checkpointing on (less memory, slower steps), logs every 10 steps, truncates to 1,024 tokens, and doesn't pack examples. When the model is passed as a string, SFTTrainer loads it in float32 unless you set a dtype in `model_init_kwargs`. Colab's free-tier GPU type varies and isn't guaranteed; older GPUs don't support bf16, so detect it and fall back to fp16 mixed precision. `report_to="none"` keeps the run off external trackers; losses are still in `trainer.state.log_history`.
+</Listen>
+
+```python
+import torch
+from peft import LoraConfig
+from trl import SFTConfig, SFTTrainer
+
+bf16_ok = torch.cuda.is_bf16_supported()
+
+peft_config = LoraConfig(r=16, lora_alpha=32, lora_dropout=0.05,
+                         target_modules="all-linear", task_type="CAUSAL_LM")
+
+args = SFTConfig(
+    output_dir="qwen25-triage-lora",
+    num_train_epochs=2,
+    per_device_train_batch_size=8,
+    gradient_accumulation_steps=2,        # effective batch 16
+    learning_rate=2e-4,
+    lr_scheduler_type="cosine",
+    warmup_steps=5,
+    logging_steps=5,
+    eval_strategy="steps",
+    eval_steps=10,
+    max_length=512,
+    bf16=bf16_ok,
+    fp16=not bf16_ok,
+    report_to="none",
+    seed=42,
+)
+
+trainer = SFTTrainer(model="Qwen/Qwen2.5-0.5B-Instruct", args=args,
+                     train_dataset=train_ds, eval_dataset=valid_ds,
+                     peft_config=peft_config)
+print(trainer.model.get_nb_trainable_parameters())   # compare with your own count
+trainer.train()
+```
+
+<Listen>
+## Saving, loading, and merging
+
+`trainer.save_model(path)` on a PEFT-wrapped model saves the adapter: a config file and a small weights file, megabytes rather than the gigabyte of the base. To use it later, load the base model and attach the adapter with PEFT's `PeftModel.from_pretrained`, or load both in one call with `AutoPeftModelForCausalLM`. To produce a standalone model, call `merge_and_unload()`, which folds B times A into the base weights and returns a plain model. PEFT's docs note that it isn't in place (assign the result) and that merging into a quantized base re-quantizes the weights, so merge into the 16-bit base.
+
+Keep adapters separate when you'll serve several tasks or customers on one base, or when you want to roll back by swapping a file. Merge when you want the simplest deployment and the lowest latency, or when your serving stack doesn't support adapters. Either way, run the evaluation on the artifact you'll actually ship, since a merged model in a different precision is a slightly different function.
+</Listen>
+
+```python
+from peft import AutoPeftModelForCausalLM
+
+trainer.save_model("qwen25-triage-lora/adapter")          # adapter only
+
+model = AutoPeftModelForCausalLM.from_pretrained("qwen25-triage-lora/adapter")
+merged = model.merge_and_unload()                         # standalone model, no adapter overhead
+merged.save_pretrained("qwen25-triage-merged")
+```
+
+<Listen>
+## The QLoRA switch
+
+For a larger model, train against a 4-bit NF4 copy of the base. In TRL that is one more argument: build a `BitsAndBytesConfig` with `load_in_4bit=True`, `bnb_4bit_quant_type="nf4"`, `bnb_4bit_use_double_quant=True`, and a 16-bit `bnb_4bit_compute_dtype`, and pass it to SFTTrainer as `quantization_config` along with your `peft_config`. TRL's reference describes exactly that combination as QLoRA training. It requires bitsandbytes, which runs on NVIDIA CUDA GPUs and a few other backends, not on Apple Silicon.
+
+What changes in the results? Memory falls sharply for big models; step time may rise, since weights are dequantized on the fly; quality should be close to 16-bit LoRA, which the QLoRA paper reported for its setups. "Should be" is a hypothesis: if you switch, re-run the same evaluation and compare. The notebook's last optional cell does exactly that: it builds the same trainer with a 4-bit NF4 base and scores it on the same test set, so you can put LoRA and QLoRA side by side for one model. For a 0.5B model the memory saving is small; the habit of checking whether a memory optimization changed quality is the point.
+</Listen>
+
+<Video id="tn2Hvw7eCsw" title="WWDC25: Explore large language models on Apple silicon with MLX" channel="Apple Developer" minutes={5} start={699} end={1022} source="https://developer.apple.com/videos/play/wwdc2025/298/">
+Watch the fine-tuning chapter (from 11:39 to about 17:00). Notice the three commands (train with `mlx_lm.lora`, generate with the adapter, fuse with `mlx_lm.fuse`) and that the example fine-tunes an already-quantized model, which makes it a QLoRA-style run.
+</Video>
+
+<Listen>
+## The Apple Silicon path: MLX-LM
+
+On a Mac with Apple Silicon, MLX-LM does the same job natively, using the machine's unified memory. Install it with its training extra, put your data in a folder as `train.jsonl`, `valid.jsonl` (optional, for validation loss), and `test.jsonl` (for `--test`), and run `mlx_lm.lora --model ... --train --data ...`. It accepts chat data (a `messages` list, where the last message is the completion), tool-calling data, prompt-completion pairs, and plain text. `--mask-prompt` restricts the loss to the completion. If the model you point at is quantized, the run is QLoRA automatically. `mlx_lm.generate` takes `--adapter-path` to test the adapter, and `mlx_lm.fuse` merges it into the model.
+
+Its defaults differ from PEFT's in ways that matter when you compare runs. Reading the 0.32.2 source on the review date: rank 8, a direct `scale` of 20.0 (not alpha over r), adapters on the linear layers of the last 16 blocks, learning rate 1e-5, batch size 4, and 1,000 iterations. LoRA settings such as rank and scale go in a YAML config file passed with `-c`. The docs' memory tips: use a quantized model, lower the batch size with gradient accumulation, adapt fewer layers, and turn on gradient checkpointing.
+
+The lab's `mlx_finetune.py` mirrors the notebook's settings (rank 16, scale 2.0, all 24 blocks, learning rate 2e-4) so the two runs are comparable, and writes every train and validation loss to a JSONL file your parser reads. During authoring, a 150-iteration run of it on an Apple Silicon Mac took about a minute and a half.
+</Listen>
+
+<Listen>
+## Unsloth, and how to read speed claims
+
+Unsloth is an open-source fine-tuning library that TRL's docs list as an integration, and Maxime Labonne's course includes a Colab notebook that fine-tunes Llama 3.1 with it. Its documentation claims about 2 times faster training with 70 percent less VRAM. Its fine-tuning guide says local installation requires Windows or Linux, so on a Mac, MLX-LM is the native choice.
+
+Treat speed and memory numbers from any vendor or library as claims about their benchmark, not your run. The check is cheap: run the same data, model, rank, and sequence length in both stacks, and record tokens per second, peak memory, and your task metric. If the faster stack also changes the result, find out why before trusting either. The same applies to every claim in this lesson about defaults: they were read from the docs and source on the review date, and fine-tuning libraries change quickly. Pin the versions you used, and when you upgrade, re-run a short reference training job and compare its scores with the last known good run before trusting the new setup.
+</Listen>
+
+<Callout type="pitfall" title="Training on one template and serving with another">
+The adapter learns the exact token pattern it was trained on: role markers, the system prompt, the end-of-turn token. If production builds prompts differently (a different system prompt, a missing default system message, a serving stack with its own template), accuracy can fall in ways no training metric predicted. The symptoms are a model that ignores the format, or one that never stops. Serve with the same chat template and system prompt you trained with, and make your evaluation call the model through the same code path production uses.
+</Callout>
+
+<PyRunner
+  client:visible
+  id="s5-w3-validate-triage"
+  title="Guard the fine-tuned model's output"
+  starter={`import json
+
+CATEGORIES = {"billing", "bug", "account", "shipping", "feature_request"}
+PRIORITIES = {"low", "medium", "high"}
+PRODUCTS = {"mobile app", "web dashboard", "API", "invoice portal", None}
+KEYS = {"category", "priority", "product", "order_id"}
+
+def validate_triage(text, ticket):
+    """Return a list of problems with a model's triage output (empty list = passes).
+    Check, in this order, and stop after the first two if they fail:
+      "invalid json"         text.strip() doesn't parse
+      "not an object"        it parses but isn't a dict
+    Then collect every problem that applies:
+      "wrong keys"           the set of keys isn't exactly KEYS
+      "bad category"         category not in CATEGORIES
+      "bad priority"         priority not in PRIORITIES
+      "bad product"          product not in PRODUCTS
+      "order_id not in ticket"   order_id is not None and doesn't appear verbatim in ticket
+    Use .get() for fields so a missing key reports "wrong keys" plus any field problem, without crashing."""
+    # TODO
+    pass
+
+# Outputs like these came back from the lab's tuned adapter during authoring.
+TICKET_A = "Every request to the invoice portal returns a 500 error since this morning. Whenever you get a chance."
+OUT_A = '{"category": "bug", "priority": "low", "product": "invoice portal", "order_id": "chango.500"}'
+TICKET_B = "Part of order ORD-62097 is missing from the package. We need this fixed today."
+OUT_B = '{"category": "bug", "priority": "high", "product": null, "order_id": "ORD-62097"}'
+print(validate_triage(OUT_A, TICKET_A))
+print(validate_triage(OUT_B, TICKET_B))
+`}
+  tests={`assert validate_triage(OUT_A, TICKET_A) == ["order_id not in ticket"], "an invented order id must be caught"
+assert validate_triage(OUT_B, TICKET_B) == [], "OUT_B passes every check (the category is wrong, but no rule can see that)"
+assert validate_triage("Sure! Here you go.", TICKET_A) == ["invalid json"]
+assert validate_triage('["bug"]', TICKET_A) == ["not an object"]
+missing = validate_triage('{"category": "bug", "priority": "urgent"}', TICKET_A)
+assert missing == ["wrong keys", "bad priority"], "missing keys plus an out-of-set priority; product None is allowed"
+extra = '{"category": "bug", "priority": "low", "product": "API", "order_id": null, "note": "x"}'
+assert validate_triage(extra, TICKET_A) == ["wrong keys"]
+assert validate_triage('{"category": "refund", "priority": "low", "product": "desktop", "order_id": null}', TICKET_A) == ["bad category", "bad product"]
+assert validate_triage('  {"category": "shipping", "priority": "high", "product": null, "order_id": "ORD-62097"}\\n', TICKET_B) == []`}
+  solution={`def validate_triage(text, ticket):
+    try:
+        out = json.loads(text.strip())
+    except json.JSONDecodeError:
+        return ["invalid json"]
+    if not isinstance(out, dict):
+        return ["not an object"]
+    problems = []
+    if set(out) != KEYS:
+        problems.append("wrong keys")
+    if out.get("category") not in CATEGORIES:
+        problems.append("bad category")
+    if out.get("priority") not in PRIORITIES:
+        problems.append("bad priority")
+    if out.get("product") not in PRODUCTS:
+        problems.append("bad product")
+    order = out.get("order_id")
+    if order is not None and order not in ticket:
+        problems.append("order_id not in ticket")
+    return problems`}
+>
+Write `validate_triage`, then press **Check my answer**. Both outputs are real failure types from the authoring run: the adapter invented an order id out of "500 error", and it labeled a shipping problem as a bug. Your validator catches the first with certainty. The second passes every rule, which is exactly why the lab also measures field accuracy on a labeled test set: rules catch impossible outputs, only labels catch wrong ones.
+</PyRunner>
+
+<DragOrder
+  client:visible
+  prompt="Put the steps of a careful fine-tuning run in order"
+  items={[
+    "Check the base model's license and pick the instruct variant",
+    "Format examples with the chat template and compare against apply_chat_template",
+    "Score the base model on the frozen test set",
+    "Predict the trainable parameter count, then build the adapter and confirm it",
+    "Train while logging train and validation loss",
+    "Score the tuned model on the same test set and read the failures",
+    "Save the adapter and record the configuration and results",
+  ]}
+  explanation="The baseline comes before training, so you know what the adapter bought. The parameter check comes before the long run, so a wrong target list fails in seconds. Reading failures comes before recording results, because the failure types often change what you ship."
+/>
+
+<LabLink path="labs/studio-5/03-lora-finetune" notebook="finetune.ipynb" title="LoRA fine-tuning, measured" needs={["A Google account for Colab (GPU runtime), or an Apple Silicon Mac for the MLX script"]} minutes={90}>
+Write the pure-Python helpers first (formatting, parameter counts, log parsing, strict scoring) and pass the offline tests; no GPU or torch needed. Then run the training: open the notebook in Colab with a GPU runtime for the PEFT and TRL version, or run `mlx_finetune.py` on a Mac. Both score the base model, train a rank-16 adapter on Qwen2.5-0.5B-Instruct, diagnose the loss curves with your code, and score the tuned model on tickets written from sentence templates the model never saw.
+</LabLink>
+
+<GoDeeper title="Other knobs PEFT exposes, and when to try them">
+PEFT's LoRA guide documents several variants, each worth a controlled comparison rather than a leap of faith. `use_rslora=True` scales by alpha over the square root of r, which the docs describe as making higher ranks more effective; try it if a rank sweep shows gains flattening oddly at high r. `use_dora=True` (weight-decomposed LoRA) splits the update into magnitude and direction; the docs note more overhead than LoRA and recommend merging for inference. `init_lora_weights` offers alternatives to the zero-B start, including `"pissa"` (initialize from principal singular vectors, described as converging faster and reducing quantization error compared with QLoRA) and `"loftq"` (designed to reduce quantization error when training quantized models, which quantizes the model itself). Packing (`packing=True` in SFTConfig) concatenates short examples into full-length sequences for throughput; with very short, uniform examples like the lab's, measure whether it changes results before keeping it. For each, keep everything else fixed and compare on the same held-out set.
+</GoDeeper>
+
+<Listen>
+## Recording the run like a team would
+
+A fine-tuning result that only lives in a notebook's output cells won't survive a review. Write down, next to the adapter: the base model id and revision, the dataset version (a hash of the JSONL files is enough), the library versions, every non-default LoRA and training setting, the seed, the hardware, wall-clock time, and both score tables, base and tuned, on the same frozen test set. Add the three most common failure types with an example of each, and the output checks you added in response. That is also the skeleton of the model card you'll publish in week 5, and it's what lets a colleague reproduce your number or show that it doesn't hold.
+
+Then hand the result to week 4's question: on the same test set, with paired comparisons, does this adapter beat a well-prompted frontier model on quality per dollar and per millisecond? If it doesn't, the most valuable thing this week produced is the evaluation harness, and that's still a good outcome.
+</Listen>

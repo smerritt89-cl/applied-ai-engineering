@@ -1,0 +1,351 @@
+---
+id: s5-w1-l2
+studio: s5
+week: 1
+order: 2
+title: The Hugging Face Hub and transformers
+summary: How to read a model card (intended use, training data, evals, license, gating), find and load datasets, run a model with the transformers pipeline, and why chat templates, tokenizers, and safetensors matter for correctness and security.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Read a model card for intended use, training data, evaluation evidence, license, and gating, and treat its claims as claims
+  - Parse model card metadata programmatically and flag license or access problems before anyone downloads weights
+  - Run an open model with the transformers pipeline, and explain what the tokenizer and chat template do on the way in
+  - Explain why safetensors replaced pickle for weights, and pin repo revisions so the model you tested is the model you run
+sources:
+  - { id: hf-llm-course, use: adapted, where: "Chapter 1 (pipeline), Chapter 2 (behind the pipeline, tokenizers), Chapter 4 (the Hub, model cards), Chapter 5 (datasets)" }
+  - { id: hf-model-cards, use: summarized, where: "What are model cards; model card metadata" }
+  - { id: hf-model-card-annotated, use: summarized }
+  - { id: mitchell-2019-model-cards, use: summarized }
+  - { id: hf-hub-licenses, use: summarized }
+  - { id: hf-hub-gated-models, use: summarized }
+  - { id: hf-datasets-docs, use: summarized }
+  - { id: hf-dataset-cards, use: summarized }
+  - { id: gebru-2018-datasheets, use: summarized }
+  - { id: hf-pipeline-tutorial, use: summarized }
+  - { id: hf-chat-basics, use: summarized }
+  - { id: hf-chat-templates, use: summarized, where: "Using apply_chat_template; add_generation_prompt" }
+  - { id: hf-fast-tokenizers, use: summarized }
+  - { id: hf-loading-models, use: summarized, where: "Custom models" }
+  - { id: hf-hub-download-guide, use: summarized }
+  - { id: hf-hub-pickle-security, use: summarized }
+  - { id: hf-safetensors-docs, use: summarized }
+  - { id: hf-safetensors-repo, use: summarized, where: "Format" }
+  - { id: hf-safetensors-audit, use: linked }
+  - { id: yt-hf-navigating-hub, use: embedded }
+  - { id: yt-hf-pipeline-function, use: embedded }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      A model card reports that a 7B model beats a well-known frontier model on three benchmarks. Your team wants to
+      replace an API call with it for ticket triage. What do you do with that table?
+    options:
+      - id: a
+        text: Accept it; benchmark numbers on the official card are verified by Hugging Face.
+        rationale: The Hub renders what the uploader writes. Nobody verifies the numbers for you.
+      - id: b
+        text: Treat it as the publisher's claim, note the benchmarks and settings, and run both models on a labeled sample of your own tickets.
+        correct: true
+        rationale: Yes. Cards are evidence to start from; your task-specific eval decides.
+      - id: c
+        text: Ignore it; benchmarks never correlate with real tasks.
+        rationale: Too strong. Benchmarks are informative about general ability, just not about your task and prompts.
+    explanation: >-
+      Model cards are documentation written by the publisher (the practice comes from Mitchell and colleagues' 2019 paper
+      on model reporting). Evaluation sections are useful for shortlisting, but settings, prompts, and contamination vary,
+      and your task is not on the list. Use the card to choose candidates and your own eval to choose the model.
+  - id: kc2
+    type: mcq
+    prompt: Why do the transformers docs warn about loading a model with `trust_remote_code=True`?
+    options:
+      - id: a
+        text: It downloads Python code from the model repo and runs it on your machine.
+        correct: true
+        rationale: Right. Custom architectures ship their own modeling code, which executes when you load the model.
+      - id: b
+        text: It disables the safetensors format.
+        rationale: The weight format is a separate question from the modeling code.
+      - id: c
+        text: It sends your prompts to the repo owner's server.
+        rationale: Nothing in the flag sends data anywhere; the risk is code execution.
+    explanation: >-
+      For architectures not built into transformers, the repo includes its own `modeling.py`, and loading it means running
+      that code. The docs recommend loading such models from a specific commit hash with `revision=`, so code you reviewed
+      cannot change underneath you. The same habit (pin the revision) is good practice for every model you deploy.
+  - id: kc3
+    type: predict-output
+    prompt: A safetensors file starts with these 8 bytes. What do they tell the loader?
+    code: |
+      import struct
+      first8 = bytes([0x40, 0x01, 0, 0, 0, 0, 0, 0])
+      print(struct.unpack("<Q", first8)[0])
+    options:
+      - id: a
+        text: "`320`: the JSON header that follows is 320 bytes long"
+        correct: true
+        rationale: The format starts with an unsigned little-endian 64-bit integer giving the header size; 0x0140 is 320.
+      - id: b
+        text: "`320`: the file contains 320 tensors"
+        rationale: The count of tensors is in the JSON header, not in the first 8 bytes.
+      - id: c
+        text: "`16385`: the header length in big-endian"
+        rationale: The format is little-endian, and the `<` in the format string reads it that way.
+    explanation: >-
+      A safetensors file is 8 bytes of header length, a JSON header mapping tensor names to dtype, shape, and byte
+      offsets, then raw tensor bytes. There is no code in it, which is the whole security argument, and a loader can read
+      the header alone to learn shapes and parameter counts without touching the weights.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The Hub is git for models
+
+The Hugging Face Hub hosts three kinds of repositories: **models**, **datasets**, and **Spaces** (small hosted apps). Each repo is a git repository with large-file storage, owned by a user or an organization, so every file has a history and every version has a commit hash. That one fact shapes good practice: a model name like `Qwen/Qwen3.8-27B` points at whatever is on the main branch today, while a commit hash points at exactly the files you tested.
+
+A model repo usually contains the weights (one or more `.safetensors` files), `config.json` (architecture, layer counts, context length), tokenizer files including the chat template, and a `README.md` that the Hub renders as the **model card**. Many popular models also have derivative repos uploaded by others: fine-tunes, quantized versions in GGUF or MLX format, and adapters. The Hub links them to their source through the `base_model` field, and you can browse a model's quantizations and fine-tunes from its page.
+
+The Hugging Face LLM Course, which this lesson adapts, covers the Hub in its chapter 4. The short video below from that chapter shows the model page layout, the filters, and where the files and card live.
+</Listen>
+
+<Video id="XvSGPZFEjDY" title="Navigating the Model Hub" channel="Hugging Face" minutes={5} source="https://huggingface.co/learn/llm-course/chapter4/1">
+Watch for the task and license filters on the left of the models page, and the tabs on a model page: the card, the files, and the community discussions. The interface has changed since the video was recorded, but the layout is recognizable.
+</Video>
+
+<Listen>
+## Reading a model card
+
+Hugging Face's docs say a model card should describe the model, its intended uses and limitations (including biases and ethical considerations), the training parameters, the datasets used, and the evaluation results. The idea comes from "Model Cards for Model Reporting" by Mitchell and colleagues (2019), which proposed short documents that travel with a model and report how it performs for different groups and conditions. In practice, cards range from thorough to empty. Read five things, in this order.
+
+**Intended use and out-of-scope use.** This tells you what the publisher designed and tested for. A model "intended for research" or "not for medical use" is a warning you need to carry into your own risk review.
+
+**Training data.** Look for languages, the knowledge cutoff, and whether the data is named or only described. If the card says nothing, you can't rule out that your test set was in the training data.
+
+**Evaluations.** Note which benchmarks, which settings (few-shot or zero-shot, with or without reasoning), and who ran them. These are the publisher's claims. They help you shortlist; they don't tell you how the model does on your task.
+
+**License.** Read the metadata field, then the license text itself, as in lesson 1.
+
+**Usage details.** The recommended generation settings, the chat template, the context length, and any special prompt format. Ignoring these is a common cause of "this model is worse than its benchmarks."
+</Listen>
+
+<Listen>
+## Metadata, licenses, and gated access
+
+The card's top section is YAML metadata between two `---` lines. The fields you will use most are `license` (an identifier such as `apache-2.0` or `mit`), `base_model` (for fine-tunes, adapters, quantizations, and merges), `datasets`, `pipeline_tag` (the task, such as `text-generation`), `library_name`, and `tags`. When the license is not on the Hub's list, the card says `license: other`, puts the text in a LICENSE file, and gives the license a name in `license_name` (and often a link in `license_link`). Because the metadata is machine-readable, you can audit a shortlist of models in code before anyone downloads gigabytes.
+
+Some repos are **gated**. You must be logged in and request access, often by accepting the license and filling in fields such as your name, affiliation, and intended use. The publisher configures approval as automatic or manual; manual approval can take days. The card metadata can customize the gate with `extra_gated_prompt` and `extra_gated_fields`, and a gated repo can set `extra_gated_eu_disallowed: true` to refuse requests from the EU. Meta's Llama and Muse repos and some others are gated; Apache-licensed releases often are not.
+
+Datasets work the same way. The `datasets` library loads a dataset by its Hub name (`load_dataset("org/name")`), can stream large datasets instead of downloading them, and caches what it downloads. A **dataset card** plays the role of a model card; the practice echoes "Datasheets for Datasets" by Gebru and colleagues (2018), which argued every dataset should document its motivation, composition, collection process, and recommended uses. Read a dataset's license and its collection description before you train on it, which you will do in week 2.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s5-w1-card-audit"
+  title="Audit model cards before anyone downloads"
+  packages={["pyyaml"]}
+  starter={`import yaml
+
+def split_card(readme):
+    """Split a model card README into (metadata dict, body text).
+    The metadata is YAML between a first line '---' and the next line '---'.
+    If there is no metadata block, return ({}, readme)."""
+    # TODO
+    pass
+
+def audit(readme, allowed=("apache-2.0", "mit")):
+    """Return a list of flags (strings), in this order:
+      "no license"                          metadata has no license field
+      "custom license: <license_name>"      license is "other" (use "unnamed" if license_name is missing)
+      "license not allowed: <license>"      license is set, not "other", and not in allowed
+      "gated: request access first"         metadata has a truthy "gated" or any key starting with "extra_gated_"
+      "derivative without base_model"       tags include "gguf", "mlx", or "quantized" and there is no base_model
+      "no evaluation section"               no markdown heading line (starting with '#') containing "evaluation" (any case)
+      "no intended use section"             no heading line containing "intended use" or "uses" (any case)
+    """
+    # TODO
+    pass
+
+CARDS = {
+    "acme/support-7b": """---
+license: apache-2.0
+base_model: acme/base-7b
+pipeline_tag: text-generation
+---
+# Support 7B
+## Intended uses and limitations
+Customer support triage in English.
+## Evaluation
+Exact match on our ticket set.
+""",
+    "someone/support-7b-GGUF": """---
+license: apache-2.0
+tags: [gguf, quantized]
+---
+# Support 7B, GGUF quantizations
+Q4_K_M and Q8_0 files.
+""",
+    "bigco/frontier-open": """---
+license: other
+license_name: bigco-community-license
+gated: true
+extra_gated_prompt: You agree to the BigCo acceptable use policy.
+---
+# BigCo Frontier Open
+## Uses
+General assistant.
+## Evaluation results
+See the technical report.
+""",
+}
+
+for repo, card in CARDS.items():
+    print(repo, audit(card))
+`}
+  tests={`meta, body = split_card(CARDS["acme/support-7b"])
+assert meta is not None, "split_card returned None"
+assert meta["license"] == "apache-2.0" and body.lstrip().startswith("# Support 7B"), "metadata parsed, body is the rest"
+assert split_card("# No metadata here\\n") == ({}, "# No metadata here\\n"), "no front matter: empty metadata, whole text as body"
+assert audit(CARDS["acme/support-7b"]) == [], "the first card is clean"
+assert audit(CARDS["someone/support-7b-GGUF"]) == ["derivative without base_model", "no evaluation section", "no intended use section"], audit(CARDS["someone/support-7b-GGUF"])
+assert audit(CARDS["bigco/frontier-open"]) == ["custom license: bigco-community-license", "gated: request access first"], audit(CARDS["bigco/frontier-open"])
+assert audit("---\\nlicense: cc-by-nc-4.0\\n---\\n# M\\n## Uses\\n## Evaluation\\n") == ["license not allowed: cc-by-nc-4.0"], "a non-commercial license is not on the allow list"
+assert audit("---\\nlicense: other\\n---\\n# M\\n## Uses\\n## Evaluation\\n") == ["custom license: unnamed"], "other without a name"
+assert audit("# M\\n## Uses\\n## Evaluation\\n") == ["no license"], "missing metadata means missing license"
+assert audit("---\\nlicense: mit\\nextra_gated_fields:\\n  Company: text\\n---\\n# M\\n## Uses\\n## Evaluation\\n") == ["gated: request access first"], "extra_gated_* keys imply a gate"
+assert "no evaluation section" in audit("---\\nlicense: mit\\n---\\n# M\\n## Uses\\nWe did no evaluation.\\n"), "the word in prose is not a section"`}
+  solution={`def split_card(readme):
+    lines = readme.split("\\n")
+    if not lines or lines[0].strip() != "---":
+        return {}, readme
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            meta = yaml.safe_load("\\n".join(lines[1:i])) or {}
+            return meta, "\\n".join(lines[i + 1:])
+    return {}, readme
+
+def audit(readme, allowed=("apache-2.0", "mit")):
+    meta, body = split_card(readme)
+    flags = []
+    lic = meta.get("license")
+    if lic is None:
+        flags.append("no license")
+    elif lic == "other":
+        flags.append("custom license: " + str(meta.get("license_name") or "unnamed"))
+    elif lic not in allowed:
+        flags.append("license not allowed: " + str(lic))
+    if meta.get("gated") or any(k.startswith("extra_gated_") for k in meta):
+        flags.append("gated: request access first")
+    tags = set(meta.get("tags") or [])
+    if tags & {"gguf", "mlx", "quantized"} and not meta.get("base_model"):
+        flags.append("derivative without base_model")
+    headings = [l.lower() for l in body.split("\\n") if l.lstrip().startswith("#")]
+    if not any("evaluation" in h for h in headings):
+        flags.append("no evaluation section")
+    if not any("intended use" in h or "uses" in h for h in headings):
+        flags.append("no intended use section")
+    return flags`}
+>
+Write `split_card` and `audit`, then press **Check my answer**. Use `yaml.safe_load`, never `yaml.load`, for text you did not write. On a real shortlist you would fetch each card with `huggingface_hub` (its `ModelCard` class parses the metadata for you), but the rules are the point: a quantized copy with no `base_model` hides whose license actually applies, and a gate means a human has to request access before your pipeline can download anything.
+</PyRunner>
+
+<Listen>
+## The pipeline, and what it hides
+
+The quickest way to run a Hub model in Python is the transformers `pipeline`. You name a task and a model; it downloads the files, builds the tokenizer and model, and handles pre- and post-processing. For chat models you pass a list of messages with `role` and `content`, the same shape you use with provider APIs, and the pipeline formats them with the model's chat template. The docs recommend `device_map="auto"` so the library places weights on the fastest device available, which on an Apple Silicon Mac is the `mps` backend.
+
+The LLM Course's chapter 2 opens the pipeline up into three steps, and knowing them is what lets you debug. **Tokenize:** the tokenizer turns text into token ids using the model's own vocabulary. **Model:** a forward pass produces logits, one score per vocabulary entry, and generation repeats that loop token by token (Studio 1, lesson 1). **Post-process:** the ids are decoded back into text. Every model family has its own tokenizer, so the same sentence becomes a different number of tokens for different models, which matters for context limits and for any per-token cost comparison.
+</Listen>
+
+```python
+# Runs locally; first call downloads several GB. Pin the revision you tested.
+from transformers import pipeline
+
+chat = [
+    {"role": "system", "content": "Classify the ticket as billing, bug, or how-to. Answer with one word."},
+    {"role": "user", "content": "I was charged twice for my October invoice."},
+]
+pipe = pipeline(
+    task="text-generation",
+    model="HuggingFaceTB/SmolLM2-1.7B-Instruct",
+    revision="main",          # replace with the commit hash you evaluated
+    dtype="auto",
+    device_map="auto",
+)
+out = pipe(chat, max_new_tokens=8)
+print(out[0]["generated_text"][-1]["content"])
+```
+
+<Listen>
+## Chat templates: the format the model was trained on
+
+A chat model was fine-tuned on conversations rendered in one specific text format, with special tokens marking where each role's turn starts and ends. The **chat template**, stored with the tokenizer, is a small program (written in Jinja) that renders your list of messages into exactly that format. The Transformers docs show two models fine-tuned from the same Mistral base that expect different templates, which is why you never hand-write the format and never reuse one model's template for another.
+
+`tokenizer.apply_chat_template(messages, add_generation_prompt=True)` renders the conversation and appends the tokens that open an assistant turn, so the model writes a reply instead of continuing the user's message. Two details cause most silent bugs. If you render with `tokenize=False` and tokenize the string yourself later, set `add_special_tokens=False`, because the template already contains the beginning-of-sequence token and adding another degrades output; the docs call `tokenize=True` the safer option for this reason. And don't combine `add_generation_prompt` with `continue_final_message`, which do opposite things.
+
+This is the same idea as the system, user, and assistant roles you used with Claude and other APIs in Studio 1. The difference is that a provider applies the format server-side, while with open weights it is your code's job, and getting it wrong does not raise an error. It just makes the model worse.
+</Listen>
+
+```python
+from transformers import AutoTokenizer
+
+tok = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolLM2-1.7B-Instruct")
+text = tok.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+print(text)  # inspect the exact string the model will see
+ids = tok.apply_chat_template(chat, add_generation_prompt=True)  # tokenize=True is the default
+print(len(ids), "tokens")
+```
+
+<Callout type="pitfall" title="A model that seems dumb is often a formatting bug">
+Before concluding that an open model can't do your task, print the rendered prompt and check it: the right chat template, one beginning-of-sequence token rather than two, a generation prompt at the end, and the generation settings the model card recommends. Then compare against the publisher's hosted demo or an Ollama build of the same model on two or three examples. If they disagree sharply on identical inputs, the problem is in your pipeline, not the weights. Fix it before you spend a week on fine-tuning.
+</Callout>
+
+<Listen>
+## Safetensors, pickle, and running someone else's code
+
+For years, PyTorch weights were saved with Python's **pickle** format. Hugging Face's security docs explain the problem plainly: unpickling can execute arbitrary code, so loading a malicious `.bin` file can run whatever its author wanted on your machine. The Hub scans pickles and shows their imports, but the real fix was a new format.
+
+**Safetensors** stores tensors and nothing else. The format, documented in the project README, is simple enough to read with the standard library: the first 8 bytes are an unsigned little-endian 64-bit integer giving the length of a JSON header; the header maps each tensor name to its dtype, shape, and byte offsets in the buffer that follows; an optional `__metadata__` entry holds string-to-string metadata. There is no code to execute, files can be memory-mapped, and a loader can read just the header to learn the model's shapes, or load one tensor without the rest. In 2023 Hugging Face, EleutherAI, and Stability AI commissioned an external security audit of the library (performed by Trail of Bits) and said its results let them move toward making safetensors the default format for saved models; today it is the format you will find in nearly every major model repo.
+
+Code execution can still come in through the front door. Models with custom architectures ship their own Python modeling files, and loading them requires `trust_remote_code=True`, which runs that code. The transformers docs advise extra caution and recommend loading such models from a specific commit hash with `revision=`, so the code you reviewed can't change. Make that a general rule: pin revisions in anything you deploy, prefer safetensors files, and treat `trust_remote_code` as a code review request.
+</Listen>
+
+<Predict
+  title="Count parameters from a safetensors header"
+  code={`import json, struct
+
+header = {
+    "embed.weight":   {"dtype": "BF16", "shape": [32000, 2048], "data_offsets": [0, 131072000]},
+    "lm_head.weight": {"dtype": "BF16", "shape": [32000, 2048], "data_offsets": [131072000, 262144000]},
+    "__metadata__":   {"format": "pt"},
+}
+raw = json.dumps(header).encode()
+blob = struct.pack("<Q", len(raw)) + raw          # what the start of a file looks like
+
+n = struct.unpack("<Q", blob[:8])[0]
+parsed = json.loads(blob[8:8 + n])
+params = 0
+for name, t in parsed.items():
+    if name == "__metadata__":
+        continue
+    count = 1
+    for d in t["shape"]:
+        count *= d
+    params += count
+print(params, params * 2 / 1e6)`}
+  options={["131072000 262.144", "65536000 131.072", "262144000 524.288", "It raises a KeyError on __metadata__"]}
+  answer={0}
+>
+Each tensor is 32,000 × 2,048 = 65,536,000 parameters, and there are two, so 131,072,000. In BF16 each parameter takes 2 bytes, so the tensors occupy 262,144,000 bytes, about 262 MB, which matches the last data offset. The loop skips `__metadata__`, so there is no KeyError. This is how the Hub can show a parameter count on a model page without loading anything, and it is the first number you need for lesson 3's memory estimate.
+</Predict>
+
+<GoDeeper title="Inside the pipeline, step by step">
+The LLM Course's first chapter introduces the pipeline function in this short video; chapter 2 then rebuilds it by hand from `AutoTokenizer` and `AutoModelForCausalLM`, which is worth doing once so the abstraction stops being magic. Two details pay off later in this studio. Tokenizers come in "fast" versions backed by the Rust `tokenizers` library, which also return offset mappings from tokens back to characters, useful when you need to map model output to spans of the input. And `config.json` carries the numbers you need for memory math in lesson 3: number of layers, attention heads, key-value heads, head dimension, and the maximum context length.
+
+<Video id="tiZFewofSLM" title="The pipeline function" channel="Hugging Face" minutes={5} source="https://huggingface.co/learn/llm-course/chapter1/3" />
+</GoDeeper>
+
+<Listen>
+## The checklist before a model enters your stack
+
+On a team, put these in a pull request template for any new model. Repo and **commit hash**. License identifier and, for `other`, the license file reviewed. Base model, if it is a derivative, and the base model's license. Gate status and who holds the access. Weight format (safetensors, or GGUF and MLX for local runtimes) and whether `trust_remote_code` is needed. The card's intended use and any out-of-scope uses that touch your product. And the result of your own eval on a labeled sample, next to a frontier API on the same sample, because the card's benchmark table is the publisher's claim and your eval is your evidence. Lesson 3 adds the last line: whether it fits on the hardware you have.
+</Listen>

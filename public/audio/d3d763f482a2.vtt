@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.237
+Choose by measuring.
+
+2
+00:00:01.517 --> 00:00:04.099
+Every claim in this lesson came with “on their data.
+
+3
+00:00:04.379 --> 00:00:13.061
+” The way to choose for yours is a small retrieval evaluation, and it is the same tool you will use for every retrieval change in this studio.
+
+4
+00:00:13.341 --> 00:00:22.387
+Build a set of 50 to 100 questions that real users would ask, each labeled with the passage (document plus location) that answers it.
+
+5
+00:00:22.667 --> 00:00:41.120
+Start from real queries if you have logs; otherwise write them with a domain expert, or have a model draft questions from sampled passages and have a person keep only the realistic ones (the Chroma report’s machine-generated questions are a reminder that generated sets carry the generator’s style).
+
+6
+00:00:41.400 --> 00:00:49.699
+Then hold everything else fixed (embedding model, k, the query side) and vary one thing at a time: strategy, chunk size, overlap.
+
+7
+00:00:49.979 --> 00:01:02.395
+Score each configuration by whether the gold passage appears in the top k, using recall@k and MRR from week 1, and record the index size and indexing cost beside the scores.
+
+8
+00:01:02.675 --> 00:01:04.680
+Two refinements matter in practice.
+
+9
+00:01:04.960 --> 00:01:16.757
+Define a hit by overlap with the gold location, not by chunk id, because different strategies produce different chunk ids for the same text; your character offsets make this easy.
+
+10
+00:01:17.037 --> 00:01:26.765
+And look at the failures, not just the averages: a strategy that wins on average but loses every table question may be the wrong choice for a finance team.
+
+11
+00:01:27.045 --> 00:01:31.120
+Finally, choose the simplest configuration within noise of the best.
+
+12
+00:01:31.400 --> 00:01:42.771
+If structure-aware chunking at 400 characters scores the same as semantic chunking at three times the indexing cost, ship the cheaper one and keep the eval set for the next change.

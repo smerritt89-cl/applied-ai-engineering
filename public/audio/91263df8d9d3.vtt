@@ -1,0 +1,53 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.603
+Semantic chunking, and what the evidence says.
+
+2
+00:00:02.883 --> 00:00:13.891
+Semantic chunking tries to find topic boundaries from meaning rather than formatting: embed each sentence, compare each sentence with the next, and cut where similarity drops sharply.
+
+3
+00:00:14.171 --> 00:00:18.096
+Variants cluster sentences, or ask a model where the boundaries are.
+
+4
+00:00:18.376 --> 00:00:24.477
+The appeal is obvious for documents with no useful structure, such as transcripts or long emails.
+
+5
+00:00:24.757 --> 00:00:27.317
+The evidence is less exciting than the idea.
+
+6
+00:00:27.597 --> 00:00:45.389
+Qu, Tu, and Bao (2024) compared semantic and fixed-size chunking across document retrieval, evidence retrieval, and answer generation tasks, and concluded that the computational cost of semantic chunking was not justified by consistent performance gains.
+
+7
+00:00:45.669 --> 00:01:04.933
+In Chroma’s report, one of the authors’ own embedding-based cluster chunkers did score best on precision, and an LLM-based chunker had the highest recall, but the margins over a well-configured recursive splitter were modest relative to the variance, and the LLM chunker was by far the slowest.
+
+8
+00:01:05.213 --> 00:01:18.163
+A fair reading: semantic chunking can help on some corpora, especially unstructured ones, but it costs an embedding call per sentence at indexing time and adds a tuning knob (the similarity threshold).
+
+9
+00:01:18.443 --> 00:01:23.989
+Try it after you have a measurement in place and a structure-aware or recursive baseline to beat.
+
+10
+00:01:24.269 --> 00:01:26.531
+Overlap deserves the same skepticism.
+
+11
+00:01:26.811 --> 00:01:37.264
+It protects against bad boundaries, but it stores and embeds text twice, and it creates near-duplicate chunks that can fill several of your top-k slots with the same passage.
+
+12
+00:01:37.544 --> 00:01:43.304
+Chroma’s report found that reducing overlap generally improved its precision-oriented scores.
+
+13
+00:01:43.584 --> 00:01:51.669
+A small overlap (10 to 15 percent) on top of boundary-aware cutting is a reasonable default; measure before going larger.

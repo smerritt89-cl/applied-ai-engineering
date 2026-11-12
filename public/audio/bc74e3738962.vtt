@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.152
+Why chunk at all.
+
+2
+00:00:01.432 --> 00:00:03.971
+After ingestion you have clean documents.
+
+3
+00:00:04.251 --> 00:00:13.680
+You could embed each whole document as one vector, but three things push you to cut them into chunks, pieces of a few hundred to a couple of thousand tokens each.
+
+4
+00:00:13.960 --> 00:00:17.480
+First, a vector summarizes everything it was computed from.
+
+5
+00:00:17.760 --> 00:00:29.643
+One vector for a 30-page handbook averages vacation rules, safety rules, and expense rules into a single point, and a question about sick days is only weakly similar to that average.
+
+6
+00:00:29.923 --> 00:00:32.931
+A vector for the sick-days paragraph is strongly similar.
+
+7
+00:00:33.211 --> 00:00:35.280
+Smaller chunks give sharper matches.
+
+8
+00:00:35.560 --> 00:00:41.576
+Second, embedding models have input limits; anything past the limit is truncated or rejected.
+
+9
+00:00:41.856 --> 00:00:45.803
+Third, what you retrieve goes into a prompt, and the prompt has a budget.
+
+10
+00:00:46.083 --> 00:01:04.152
+Retrieving five 300-token chunks costs 1,500 tokens; retrieving five whole documents might cost 100,000, and long, padded contexts make it harder for a model to use what matters (recall the “Lost in the Middle” findings from Studio 1).
+
+11
+00:01:04.432 --> 00:01:06.331
+The opposing force is context.
+
+12
+00:01:06.611 --> 00:01:17.043
+Cut too small and a chunk loses the information that made it answerable: “It must be approved by a director” is useless if “it” was defined two paragraphs earlier.
+
+13
+00:01:17.323 --> 00:01:27.136
+Every strategy in this lesson is a different answer to the same question: how do you make pieces small enough to match precisely and large enough to mean something on their own?
+
+14
+00:01:27.416 --> 00:01:33.944
+A practical unit note: chunk sizes are quoted in tokens, characters, or words, depending on the tool.
+
+15
+00:01:34.224 --> 00:01:38.491
+LangChain’s recursive splitter measures characters by default, for example.
+
+16
+00:01:38.771 --> 00:01:47.496
+Roughly four characters per English token is a fine conversion for planning, but measure with your embedding model’s tokenizer when the limit matters.

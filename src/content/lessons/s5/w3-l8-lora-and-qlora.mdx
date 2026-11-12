@@ -1,0 +1,305 @@
+---
+id: s5-w3-l8
+studio: s5
+week: 3
+order: 8
+title: LoRA and QLoRA
+summary: Train a few million parameters instead of a few billion. The low-rank update and its alpha over r scaling, parameter counts worked for a real model, the evidence for why it works (intrinsic dimension and intrinsic rank) and where it falls short, QLoRA's 4-bit NormalFloat, double quantization, and paged optimizers, which modules to target, and how to choose a rank with evidence.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Write the LoRA forward pass, explain the zero initialization of B and the alpha over r scaling, and show that a trained adapter can be merged with no inference cost
+  - Count LoRA's trainable parameters for any decoder block, including grouped-query attention, and estimate training memory for full fine-tuning, LoRA, and QLoRA
+  - Summarize the evidence for low intrinsic dimension and low intrinsic rank, and the evidence that LoRA learns less than full fine-tuning on harder, larger tasks
+  - Explain NF4 quantization, double quantization, and paged optimizers, and what each saves
+  - Choose target modules and a starting rank, and design a small sweep that decides them with evidence
+sources:
+  - { id: hu-2021-lora, use: summarized, where: "Sections 4 (method), 4.2 (practical benefits), 7 (understanding the low-rank updates)" }
+  - { id: yt-edward-hu-lora, use: embedded }
+  - { id: aghajanyan-2020-intrinsic, use: summarized }
+  - { id: li-2018-intrinsic-dimension, use: linked }
+  - { id: dettmers-2023-qlora, use: summarized, where: "Sections 3 (NF4, double quantization, paged optimizers) and 4 (all-linear adapters)" }
+  - { id: biderman-2024-lora-forgets, use: summarized }
+  - { id: thinking-machines-lora, use: summarized }
+  - { id: hf-peft-lora-docs, use: summarized, where: "LoraConfig, use_rslora, targeting modules, merging" }
+  - { id: hf-llm-course, use: adapted, where: "Chapter 11, section 4, LoRA" }
+  - { id: mlabonne-llm-course, use: adapted, where: "The LLM Scientist roadmap, Supervised Fine-Tuning (LoRA and QLoRA parameters)" }
+  - { id: hf-transformers-bnb, use: summarized, where: "QLoRA section; hardware compatibility" }
+  - { id: mlx-quantize-docs, use: summarized }
+  - { id: hf-qwen25-05b-instruct, use: summarized, where: "config.json and parameter count" }
+  - { id: zheng-2023-llm-judge, use: summarized, where: "Judge biases" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: >-
+      LoRA initializes A with random values and B with zeros. What is the consequence at the first training step?
+    options:
+      - id: a
+        text: The adapted model computes exactly the same function as the pretrained model, and the first gradient step changes B but not A.
+        correct: true
+        rationale: Yes. BA is zero, so the output is unchanged. The gradient for A passes through B, which is zero, so only B moves on step one.
+      - id: b
+        text: The adapter adds random noise to every layer, which the first steps must undo.
+        rationale: That would happen if both were random. Zero B makes the starting update exactly zero.
+      - id: c
+        text: Training can't start, because a zero matrix has zero gradient.
+        rationale: B's gradient depends on A times the input, which is nonzero because A is random.
+    explanation: >-
+      With h = W0 x + s B A x, the gradient with respect to B is s times the output gradient times (A x) transposed,
+      which is nonzero; the gradient with respect to A is s times B transposed times the output gradient times x
+      transposed, which is zero while B is zero. Training starts from the pretrained model and moves away smoothly.
+  - id: kc2
+    type: predict-output
+    prompt: >-
+      A layer maps 896 inputs to 128 outputs (a key projection with grouped-query attention). How many trainable
+      parameters does a rank-16 LoRA adapter add to it?
+    code: |
+      d_in, d_out, r = 896, 128, 16
+      print(r * (d_in + d_out))
+    options:
+      - id: a
+        text: "`28672`"
+        rationale: That assumes a square 896 by 896 layer. With grouped-query attention, k and v are much narrower than q.
+      - id: b
+        text: "`114688`"
+        rationale: That is the full weight, 896 times 128. LoRA adds r times (in plus out), not in times out.
+      - id: c
+        text: "`16384`"
+        correct: true
+        rationale: A is 16 by 896 and B is 128 by 16, so 16 times 1,024.
+    explanation: >-
+      The cost of an adapter is linear in r and in the layer's two dimensions, while the dense update it replaces is
+      their product. Getting the shapes right matters for grouped-query attention models, where k_proj and v_proj
+      output num_key_value_heads times head_dim, not hidden_size.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      You fine-tune a 7B model with LoRA at r=8 on q_proj and v_proj only. It improves on format, but lags a full
+      fine-tune your colleague ran on the same 50,000 examples of domain reasoning. Which next experiment is best supported
+      by the evidence in this lesson?
+    options:
+      - id: a
+        text: Keep q_proj and v_proj, and raise lora_alpha until the results match.
+        rationale: With Adam, raising alpha mostly acts like raising the learning rate. It doesn't add capacity where it's missing.
+      - id: b
+        text: Target all linear layers (including the MLP), sweep a few ranks such as 16, 64, and 256 with the learning rate retuned, and compare on the same held-out set.
+        correct: true
+        rationale: Yes. QLoRA and the Thinking Machines study both found all-layer adapters, especially on the MLP, mattered; and larger, harder datasets can exceed low-rank capacity.
+      - id: c
+        text: Switch to QLoRA, since 4-bit training usually improves accuracy.
+        rationale: QLoRA saves memory. Its paper's claim is that it matches 16-bit results, not that it beats them.
+    explanation: >-
+      Attention-only, low-rank adapters are the original paper's setup and are cheap, but later work found that
+      covering the MLP layers matters and that LoRA falls behind full fine-tuning when the dataset carries more
+      information than the adapter can hold (Biderman and colleagues, 2024; Thinking Machines, 2025). Change one
+      thing at a time and measure.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## Why not just train everything?
+
+Full fine-tuning updates every weight, and the optimizer has to keep state for every weight. A back-of-envelope count shows the problem. With mixed-precision training and the Adam optimizer, a common layout stores, per parameter, 16-bit weights and 16-bit gradients (2 bytes each), a 32-bit master copy of the weights (4 bytes), and two 32-bit Adam moment estimates (8 bytes): about 16 bytes per parameter before activations. For a 7B model that is roughly 112 GB, which is more than any single consumer GPU. Your setup may differ (8-bit optimizers, no master copy), but the order of magnitude is the point.
+
+The papers you'll read today report the same pressure at scale. Hu and colleagues (2021) cut training memory for GPT-3 175B from 1.2 TB to 350 GB with LoRA. Dettmers and colleagues (2023) report that full 16-bit fine-tuning of a 65B model needs more than 780 GB of GPU memory, and that QLoRA brings it under 48 GB.
+
+There is also a storage and operations problem. A full fine-tune produces a full copy of the model per task. With LoRA, the GPT-3 checkpoint for a task shrank from 350 GB to about 35 MB in the paper's setup, so you keep one base model and many small adapters, and swap them per request or per customer. Lesson 11 shows servers that do exactly that.
+</Listen>
+
+<Listen>
+## The low-rank update
+
+LoRA freezes each pretrained weight matrix W0, of shape d by k, and learns an additive update constrained to low rank: W0 + delta W, with delta W = B A, where B is d by r, A is r by k, and the rank r is much smaller than d and k. The forward pass for an input x becomes h = W0 x + s B A x, where the scale s is alpha divided by r.
+
+Four details carry most of the practical weight.
+
+**Initialization.** A starts random (Gaussian in the paper; PEFT's default uses a Kaiming-uniform initialization) and B starts at zero, so B A is zero and training begins exactly at the pretrained model.
+
+**Parameter count.** The adapter has r times (d plus k) parameters instead of d times k. For a 4096 by 4096 matrix at r = 8 that is 65,536 instead of about 16.8 million, under 0.4 percent.
+
+**The alpha over r scaling.** The paper sets alpha to the first rank it tries and doesn't tune it, and explains why: with Adam, tuning alpha is roughly the same as tuning the learning rate, and dividing by r reduces how much you must retune when you change r. PEFT implements alpha over r by default and offers `use_rslora`, which divides by the square root of r instead and is described as making higher ranks more effective. Frameworks differ: MLX-LM takes a direct `scale` (default 20.0) rather than alpha. Convert before comparing configurations.
+
+**No inference cost.** After training you can compute W0 + s B A once and store it. The merged layer is an ordinary dense layer, so a merged model is exactly as fast as the base model. Or keep adapters separate and swap them, at a small runtime cost.
+</Listen>
+
+<Video id="DhRoTONcyZE" title="What is Low-Rank Adaptation (LoRA) | explained by the inventor" channel="Edward Hu" minutes={8} source="https://arxiv.org/abs/2106.09685">
+The first author of the LoRA paper, on his own channel. Watch for why the team wanted many cheap task-specific models from one base, his advice on choosing r, and his point that LoRA applies to any model with dense layers, not only transformers.
+</Video>
+
+<Predict
+  title="What fraction of one layer does LoRA train?"
+  code={`d, k, r = 4096, 4096, 8
+lora = r * (d + k)
+dense = d * k
+print(lora, round(100 * lora / dense, 2))`}
+  options={["65536 0.39", "32768 0.2", "16777216 100.0", "65536 3.9"]}
+  answer={0}
+>
+A is 8 by 4096 and B is 4096 by 8: 8 times 8192 is 65,536 parameters, against 16,777,216 for the dense update. That is 0.39 percent of the layer. The ratio is 2r divided by d for a square layer, so it halves every time the layer width doubles at fixed rank.
+</Predict>
+
+<Listen>
+## A worked count on a real model
+
+Take Qwen2.5-0.5B-Instruct, the model in this week's lab. Its config lists a hidden size of 896, 24 decoder blocks, 14 query heads and 2 key-value heads with head dimension 64 (896 divided by 14), and an MLP intermediate size of 4,864. The model page reports 494,032,768 parameters.
+
+Grouped-query attention makes the shapes unequal, which is the first thing people get wrong. Per block, as (inputs, outputs):
+
+- q_proj: (896, 896), and o_proj: (896, 896)
+- k_proj and v_proj: (896, 128), because 2 key-value heads times 64
+- gate_proj and up_proj: (896, 4864), and down_proj: (4864, 896)
+
+At r = 16 on all seven, one block adds 16 times (2 times 1,792 plus 2 times 1,024 plus 3 times 5,760), which is 366,592 parameters. Over 24 blocks: **8,798,208**, about 1.8 percent of the base model. Adapting only q_proj and v_proj at r = 8, the paper's original style, gives 540,672.
+
+Treat this arithmetic as a check you run every time. Before training, predict the count; after building the model, compare with what the library reports (PEFT's `print_trainable_parameters` or `get_nb_trainable_parameters`, or MLX-LM's printout). When the authoring run of this week's lab built the adapter with MLX-LM, it reported 8.798M trainable parameters, matching the hand count. A mismatch means the wrong modules were targeted, which silently changes the experiment.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s5-w3-lora-forward"
+  title="LoRA in pure Python: count, forward, merge"
+  starter={`def matvec(M, v):
+    """M is a list of rows; return M @ v as a list."""
+    return [sum(a * b for a, b in zip(row, v)) for row in M]
+
+def lora_params(shapes, r):
+    """shapes: dict name -> (d_in, d_out). Total LoRA parameters at rank r over all layers."""
+    # TODO
+    pass
+
+def lora_forward(x, W, A, B, alpha, r):
+    """h = W x + (alpha / r) * B (A x). W is d_out x d_in, A is r x d_in, B is d_out x r.
+    Compute A x first (a short vector), never the full B A matrix."""
+    # TODO
+    pass
+
+def merge(W, A, B, alpha, r):
+    """Return W + (alpha / r) * B A as a new matrix (lists of lists)."""
+    # TODO
+    pass
+
+W = [[1, 0, 2, 0], [0, 1, 0, 1], [1, 1, 1, 1]]          # 3 x 4, frozen
+A = [[0.1, 0.2, 0, 0.1], [0, 0.3, 0.1, 0]]              # 2 x 4
+B = [[1, 0], [0, 2], [1, 1]]                            # 3 x 2
+x = [1, 2, 3, 4]
+print("base:   ", matvec(W, x))
+print("adapted:", lora_forward(x, W, A, B, alpha=4, r=2))
+
+QWEN_BLOCK = {"q_proj": (896, 896), "k_proj": (896, 128), "v_proj": (896, 128), "o_proj": (896, 896),
+              "gate_proj": (896, 4864), "up_proj": (896, 4864), "down_proj": (4864, 896)}
+print("per block at r=16:", lora_params(QWEN_BLOCK, 16))
+`}
+  tests={`h = lora_forward(x, W, A, B, alpha=4, r=2)
+assert h is not None, "lora_forward returned None"
+assert all(abs(a - b) < 1e-9 for a, b in zip(h, [8.8, 9.6, 13.6])), "h = Wx + 2 * B(Ax) = [7, 6, 10] + 2 * [0.9, 1.8, 1.8]"
+zero_B = [[0, 0], [0, 0], [0, 0]]
+assert lora_forward(x, W, A, zero_B, alpha=4, r=2) == matvec(W, x), "with B = 0 the adapter must be a no-op (that's LoRA's initialization)"
+M = merge(W, A, B, alpha=4, r=2)
+assert M is not None, "merge returned None"
+assert len(M) == 3 and len(M[0]) == 4, "the merged matrix has W's shape"
+assert all(abs(a - b) < 1e-9 for a, b in zip(matvec(M, x), h)), "merged weights must give the same output as the adapter"
+assert W[0] == [1, 0, 2, 0], "merge must not modify W in place"
+h2 = lora_forward(x, W, A, B, alpha=8, r=2)
+assert all(abs((b - w) - 2 * (a - w)) < 1e-9 for a, b, w in zip(h, h2, matvec(W, x))), "doubling alpha doubles the update"
+assert lora_params(QWEN_BLOCK, 16) == 366592, "per block: 16 * (2*1792 + 2*1024 + 3*5760)"
+assert lora_params(QWEN_BLOCK, 16) * 24 == 8798208, "24 blocks"
+assert lora_params({"layer": (4096, 4096)}, 8) == 65536`}
+  solution={`def lora_params(shapes, r):
+    return sum(r * (d_in + d_out) for d_in, d_out in shapes.values())
+
+def lora_forward(x, W, A, B, alpha, r):
+    s = alpha / r
+    base = matvec(W, x)
+    update = matvec(B, matvec(A, x))
+    return [b + s * u for b, u in zip(base, update)]
+
+def merge(W, A, B, alpha, r):
+    s = alpha / r
+    rows, cols, rank = len(W), len(W[0]), len(A)
+    return [[W[i][j] + s * sum(B[i][k] * A[k][j] for k in range(rank)) for j in range(cols)]
+            for i in range(rows)]`}
+>
+Implement the three functions, then press **Check my answer**. Computing B times (A x) costs about r times (d_in plus d_out) multiplications per input, which is why unmerged adapters are cheap during training. The merge test is the property that makes LoRA free at inference: one dense matrix gives the same outputs.
+</PyRunner>
+
+<Listen>
+## Why a low-rank update is enough (when it is)
+
+The motivating evidence came first from Aghajanyan, Zettlemoyer, and Gupta (2020), building on a method by Li and colleagues (2018): train a model only inside a random low-dimensional subspace of its parameter space, and find the smallest dimension that reaches 90 percent of full fine-tuning performance. That smallest dimension is the task's **intrinsic dimension**. Their headline result: optimizing only 200 parameters, randomly projected into the full space, let RoBERTa reach 90 percent of full-parameter performance on the MRPC paraphrase task. They also found that pretraining lowers intrinsic dimension and that, after a fixed amount of pretraining, larger models tend to have lower intrinsic dimension.
+
+Hu and colleagues turned that into a hypothesis about the weight update: the change a task needs has low **intrinsic rank**. On GPT-3 they found ranks as small as 1 or 2 sufficed when adapting the query and value projections on their benchmarks. Their analysis section adds a mechanism. The learned update correlates with the pretrained weights more than a random matrix does, but it emphasizes directions the pretrained weights do *not* emphasize, and amplifies them by a large factor (about 21.5 at r = 4 in one layer they studied). In their words, the adaptation amplifies features that were already learned but not emphasized.
+
+Now the counterweight, because the early results were on modest tasks. Biderman and colleagues (2024) compared LoRA and full fine-tuning on code and math, with around 100,000 instruction pairs and with 20 billion tokens of continued pretraining. LoRA substantially underperformed full fine-tuning in their standard low-rank settings; full fine-tuning learned weight changes with rank 10 to 100 times higher than typical LoRA ranks. It also forgot less. Thinking Machines (2025) reached a reconciling picture: LoRA matched full fine-tuning on small-to-medium instruction and reasoning datasets, and fell behind when the dataset exceeded the adapter's capacity.
+
+The working rule: a narrow behavior learned from thousands of examples (a format, a labeling scheme, a style) is well within LoRA's comfort zone. Teaching a model a large new domain from billions of tokens is not, and needs higher ranks or full fine-tuning.
+</Listen>
+
+<Listen>
+## QLoRA: train adapters on a 4-bit base
+
+LoRA shrinks the optimizer state, but the frozen base weights still sit in GPU memory at 16 bits. QLoRA (Dettmers and colleagues, 2023) stores the frozen base in 4 bits and backpropagates through it into 16-bit LoRA adapters. Three techniques make that work.
+
+**4-bit NormalFloat (NF4).** Pretrained weights are roughly zero-centered and normally distributed. Quantile quantization chooses the 16 levels so that each bin holds the same expected number of values; NF4 computes those levels once from the quantiles of a standard normal, normalized to the range minus 1 to 1. Weights are quantized in blocks of 64, each with its own absolute-max scaling constant, so every block is mapped onto that fixed grid. The authors describe NF4 as information-theoretically optimal for zero-centered normally distributed data, and their experiments found it better than 4-bit float.
+
+**Double quantization.** Those per-block constants cost memory: one 32-bit constant per 64 weights is 0.5 bits per parameter. QLoRA quantizes the constants themselves to 8-bit floats in blocks of 256, cutting the overhead to about 0.127 bits per parameter, a saving of about 0.373 bits, roughly 3 GB on a 65B model.
+
+**Paged optimizers.** Optimizer state is allocated in NVIDIA unified memory, so when a long batch causes a memory spike, pages move to CPU memory instead of crashing the run. The paper notes that paging only occurs on long-sequence mini-batches and that it didn't measure the slowdown systematically.
+
+During each forward and backward pass, a layer's NF4 weights are dequantized to 16-bit (BFloat16 in the paper) for the matrix multiply; gradients are computed only for the adapters. The paper also found that applying LoRA to all linear layers, not just attention, was needed to match 16-bit full fine-tuning in their experiments.
+</Listen>
+
+<DragOrder
+  client:visible
+  prompt="Order what happens in one QLoRA linear layer during a forward pass"
+  items={[
+    "Read the layer's 4-bit NF4 weight blocks and their quantized constants from GPU memory",
+    "Dequantize the constants, then the weights, to 16-bit",
+    "Multiply the input by the dequantized frozen weight",
+    "Multiply the input by A, then by B, and scale by alpha over r",
+    "Add the two results to get the layer's output",
+  ]}
+  explanation="Storage is 4-bit; compute is 16-bit. The frozen weights are dequantized on the fly, used, and discarded, so memory holds only the 4-bit copy. The adapter path is ordinary 16-bit math, and only A and B receive gradients."
+/>
+
+<Callout type="claim" title="Guanaco reaches 99.3 percent of ChatGPT (Dettmers and colleagues, May 2023)">
+**Claim:** The QLoRA paper reports that its best Guanaco model, fine-tuned in 24 hours on one GPU, reached 99.3 percent of ChatGPT's performance level on the Vicuna benchmark ([arXiv 2305.14314](https://arxiv.org/abs/2305.14314)).
+
+**Evidence for:** The authors ran tournament-style comparisons judged by GPT-4 and by human raters, with confidence intervals, and released models and code.
+
+**Evidence against, or limits:** The Vicuna benchmark is 80 prompts, the headline number relies on a model judge, the paper itself reports weaker agreement between GPT-4 and human annotators at the level of individual examples, and LLM judges show position, verbosity, and self-enhancement biases (Zheng and colleagues, 2023, Studio 3). It also compares with a 2023 ChatGPT. Read it as strong evidence that 4-bit adapter training preserves quality, not as a general ranking.
+</Callout>
+
+<Listen>
+## Where QLoRA runs, and what "QLoRA" means on a Mac
+
+The NF4 recipe in the Hugging Face stack comes from the bitsandbytes library, configured with `BitsAndBytesConfig` (`load_in_4bit`, `bnb_4bit_quant_type="nf4"`, `bnb_4bit_use_double_quant`, and `bnb_4bit_compute_dtype`). Transformers' documentation lists bitsandbytes support for NVIDIA CUDA GPUs, Intel GPUs and Gaudi, and CPUs. Apple Silicon is not on that list.
+
+On a Mac, MLX-LM offers the same idea by a different route: if you point `mlx_lm.lora` at a quantized model, it trains LoRA adapters on top of it, and its docs call that QLoRA. MLX's default quantization is affine and group-wise (4 bits, groups of 64, with a scale and bias per group), not NF4. Same pattern, different quantizer, so don't expect identical numbers across the two stacks.
+
+Is QLoRA worth it for the 0.5B model in this week's lab? Not for memory: its bf16 weights are about 1 GB. Use it there to learn the API and to measure the quality difference. It starts to matter at 7B and above, where it decides whether a run fits on the GPU you have.
+</Listen>
+
+<Callout type="pitfall" title="Comparing or merging adapters across settings that don't match">
+Three quiet mismatches cause most LoRA confusion. **Scale conventions:** PEFT's alpha 32 at r 16 is a scale of 2.0; MLX-LM's default `scale` is 20.0 with a default learning rate of 1e-5. Because Adam normalizes gradient magnitudes, scale and learning rate trade off, so compare the product, not either number alone. **Merging into a quantized base:** PEFT's docs warn that merging on a quantized model re-quantizes the base weight, so the merged result isn't exactly the adapter's behavior. Merge into the 16-bit base and re-evaluate. **Target modules:** "all-linear" in PEFT excludes the output layer; MLX-LM adapts all linear layers in the last 16 blocks by default. Count trainable parameters in both before you compare results.
+</Callout>
+
+<Listen>
+## Target modules and rank: decide with a sweep
+
+Advice on these two choices varies a lot. The original paper adapted attention only, for simplicity. QLoRA found all linear layers necessary to match full fine-tuning. Thinking Machines found MLP layers mattered most and attention-only adapters underperformed even at matched parameter counts. PEFT, if you don't specify targets, picks defaults by architecture, typically query and value. Hugging Face's LLM course suggests ranks from 4 to 32, starting at 4 to 8, with alpha about twice the rank. Maxime Labonne's course lists ranks of 16 to 128 with alpha one to two times the rank. The spread is itself information: the right values depend on the task and the data.
+
+So treat them as experiment parameters. A defensible default for a narrow task is `target_modules="all-linear"`, r = 16, alpha = 32 (scale 2), and the learning rate from lesson 7's guidance. Then run a small sweep: r in 8, 16, and 64, retuning the learning rate if needed (Thinking Machines found the optimum nearly independent of rank under the 1 over r scaling, which makes this cheap). Compare on the frozen validation set with the task metric, plus your general-ability regression set. Pick the smallest configuration within noise of the best, because smaller adapters train faster, forget less, and are cheaper to serve.
+
+Model selection belongs in the same table. If a rank-64 adapter on a 0.5B model still trails a 3B model's rank-16 adapter, the base model was the bottleneck, and no LoRA setting fixes that. Week 4 adds the frontier-model comparison that tells you whether any of it beats a well-prompted API call.
+</Listen>
+
+<GoDeeper title="LoRA as constrained optimization, and the gradient at initialization">
+The set of updates LoRA can represent is exactly the matrices of rank at most r, which is a smooth manifold away from lower ranks. If you already knew the full-fine-tuning update delta W, the best rank-r approximation in Frobenius norm would be its truncated SVD (Eckart and Young). LoRA doesn't approximate a known delta W; it optimizes the loss directly over the factorized parameters B and A, a non-convex problem with a symmetry (B A equals B G times G inverse A for any invertible r by r matrix G). Hu and colleagues probed the result empirically: the top singular directions learned at r = 8 and r = 64 overlapped strongly, which is why tiny ranks did well on their tasks. Write g for the gradient of the loss with respect to the layer output and s for alpha over r. Then the gradient with respect to B is s times g times (A x) transposed, and with respect to A is s times B transposed times g times x transposed. At initialization B is zero, so only B moves on the first step; the gradient with respect to B is the full-weight gradient g x transposed projected onto the random row space of A. LoRA's early training is a random-subspace method, which is the bridge back to Aghajanyan's intrinsic dimension.
+</GoDeeper>
+
+<Listen>
+## Checks and balances for adapter training
+
+The adapter changes a few million numbers you will never read, so verify behavior, not parameters. Predict and confirm the trainable parameter count. Score the base model before training, on the same frozen test set and with the same decoding settings you'll use after. Compare an adapter with its merged form on a handful of inputs: outputs should match to within numerical precision (exactly, in 16-bit; approximately, if you merged into a quantized base). Re-run the evaluation after any change of quantization, because 4-bit storage changes the function slightly. And keep the general-ability regression set from lesson 7 in every comparison, since a sweep that only measures the target task will happily choose the configuration that forgot the most. Finally, keep the comparison honest across stacks and hardware: when a QLoRA run on one machine and a LoRA run on another disagree, check the trainable parameter counts, the scale and learning rate, and the quantizer before concluding anything about the method.
+</Listen>

@@ -1,0 +1,373 @@
+{
+  "id": "s5-w1",
+  "studio": "s5",
+  "week": 1,
+  "title": "Week 1 quiz: The open model ecosystem",
+  "questions": [
+    {
+      "id": "s5w1-q1",
+      "type": "mcq",
+      "prompt": "Apache 2.0 and MIT are both permissive licenses. What does Apache 2.0 include that the MIT license text does not?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Permission to use the work commercially",
+          "rationale": "Both allow commercial use; MIT explicitly permits selling copies."
+        },
+        {
+          "id": "b",
+          "text": "An explicit patent license from contributors, which ends for anyone who sues over patent infringement in the work",
+          "rationale": "Yes. Section 3 of Apache 2.0 grants it; MIT's short text has no patent clause.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "A requirement to publish your modifications",
+          "rationale": "Neither is copyleft. You may keep modifications private."
+        },
+        {
+          "id": "d",
+          "text": "A ban on using the model for model-as-a-service",
+          "rationale": "Neither restricts fields of use. That kind of clause appears in some custom model licenses."
+        }
+      ],
+      "explanation": "Both licenses let you use, modify, and redistribute freely, keeping the notices. Apache 2.0 adds an explicit patent grant (with a termination clause for patent litigation), notice-file and changed-file obligations, and a statement that it grants no trademark rights. That patent grant is one reason legal teams often prefer Apache 2.0 for model weights.",
+      "week": 1,
+      "tags": [
+        "licenses"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5w1-q2",
+      "type": "multi",
+      "prompt": "You are screening a custom open-model license. Which kinds of clause should you look for because they commonly change what a product team may do? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Thresholds on monthly active users or revenue",
+          "rationale": "Llama 4 uses 700 million monthly active users; newer licenses such as the Qwen3.8-Max License use user and revenue thresholds.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Restrictions on offering the model as a service",
+          "rationale": "Mistral Large 4's license, among others, treats model-as-a-service businesses differently.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Naming and attribution requirements for derivatives",
+          "rationale": "Llama 4 requires 'Built with Llama' and a 'Llama' prefix on distributed derivative model names.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "A requirement to release your training data publicly",
+          "rationale": "None of the licenses covered requires this. Releasing data is what the OSAID asks of the publisher, not a condition on users."
+        },
+        {
+          "id": "e",
+          "text": "Regional restrictions",
+          "rationale": "The Llama 4 acceptable use policy withholds multimodal rights from EU-domiciled individuals and companies.",
+          "correct": true
+        }
+      ],
+      "explanation": "Custom licenses usually permit commercial use; the risk is in the conditions. Scan for thresholds, service restrictions, naming and attribution, incorporated use policies, and regional limits, then read the full text for the exact version you ship.",
+      "week": 1,
+      "tags": [
+        "licenses"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w1-q3",
+      "type": "scenario",
+      "prompt": "A company headquartered in Germany wants to build an internal tool on a Llama 4 multimodal model, fine-tuned on its own documents. What is the best next step?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Proceed; internal tools are exempt from the license.",
+          "rationale": "The restriction in the acceptable use policy is about who receives the rights, not whether the tool is internal."
+        },
+        {
+          "id": "b",
+          "text": "Proceed, because Hugging Face granted access to the gated repo.",
+          "rationale": "Gate approval is not a legal determination; the license terms still apply."
+        },
+        {
+          "id": "c",
+          "text": "Flag it for legal review, since the Llama 4 use policy withholds the multimodal models' rights from EU-domiciled companies, and shortlist alternatives with permissive licenses such as Apache 2.0.",
+          "rationale": "Yes. Raise the conflict early and evaluate alternatives in parallel so the project is not blocked.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Switch to a quantized GGUF copy, which is a different model and not covered.",
+          "rationale": "A quantized copy is a derivative of the same model; the base license follows it."
+        }
+      ],
+      "explanation": "License fit is a hard constraint that comes before quality. When a clause plausibly blocks your use, involve counsel and evaluate permissively licensed candidates (Gemma 4, Qwen3.8-27B, gpt-oss, Olmo, and others at the time of writing) on the same eval, so the decision rests on evidence either way.",
+      "week": 1,
+      "tags": [
+        "licenses",
+        "model-selection"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w1-q4",
+      "type": "code-reading",
+      "prompt": "This code prepares a prompt for an open chat model. What is wrong with it?",
+      "code": "text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)\ninputs = tok(text, return_tensors=\"pt\")\noutputs = model.generate(**inputs, max_new_tokens=200)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing; this is the recommended pattern.",
+          "rationale": "The docs specifically warn about this combination."
+        },
+        {
+          "id": "b",
+          "text": "The prompt likely gets two beginning-of-sequence tokens: the template already includes special tokens, and calling the tokenizer again adds them by default.",
+          "rationale": "Yes. Either tokenize inside apply_chat_template, or pass add_special_tokens=False when tokenizing the rendered string.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "add_generation_prompt=True makes the model continue the user's message.",
+          "rationale": "It does the opposite: it opens an assistant turn so the model replies."
+        },
+        {
+          "id": "d",
+          "text": "Chat templates only work with tokenize=True.",
+          "rationale": "tokenize=False is useful for inspecting the rendered string; the bug is in what happens next."
+        }
+      ],
+      "explanation": "Chat templates render every special token the model expects. Tokenizing the rendered string with default settings adds another set, which the Transformers docs say is often incorrect and hurts performance. The failure is silent: no error, just worse output. Print and inspect the token ids when a model underperforms.",
+      "week": 1,
+      "tags": [
+        "chat-templates",
+        "tokenizers"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w1-q5",
+      "type": "predict-output",
+      "prompt": "These numbers come from the final chunk of an Ollama `/api/generate` response, as shown in Ollama's API reference. What does the code print?",
+      "code": "final = {\"total_duration\": 10706818083, \"load_duration\": 6338219291,\n         \"prompt_eval_count\": 26, \"prompt_eval_duration\": 130079000,\n         \"eval_count\": 259, \"eval_duration\": 4232710000}\nprint(round(final[\"eval_count\"] / final[\"eval_duration\"] * 1e9, 1))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`61.2`",
+          "rationale": "Yes. 259 tokens over 4.23 seconds of decode time is about 61 tokens per second.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`24.2`",
+          "rationale": "That divides by total_duration (10.7 seconds), which includes model load and prefill."
+        },
+        {
+          "id": "c",
+          "text": "`0.0`",
+          "rationale": "The durations are in nanoseconds, which is why the code multiplies by 1e9."
+        },
+        {
+          "id": "d",
+          "text": "`199.9`",
+          "rationale": "That is prompt_eval_count over prompt_eval_duration: the prefill speed, not the decode speed."
+        }
+      ],
+      "explanation": "Ollama reports durations in nanoseconds and documents decode speed as eval_count divided by eval_duration, times 10 to the 9th. total_duration includes load_duration (6.3 seconds in this example, a cold start), so dividing by it badly understates decode speed.",
+      "week": 1,
+      "tags": [
+        "benchmarking",
+        "ollama"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w1-q6",
+      "type": "predict-output",
+      "prompt": "A model has 28 layers, 8 key-value heads, and a head dimension of 128. What does this print for an FP16 KV cache at 32,768 tokens?",
+      "code": "layers, kv_heads, head_dim, tokens, nbytes = 28, 8, 128, 32768, 2\nprint(2 * layers * kv_heads * head_dim * tokens * nbytes / 2**30)",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`3.5`",
+          "rationale": "Yes. 2 × 28 × 8 × 128 × 2 bytes is 114,688 bytes per token; times 32,768 tokens is exactly 3.5 GiB.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`1.75`",
+          "rationale": "That forgets the factor of 2 for keys and values."
+        },
+        {
+          "id": "c",
+          "text": "`14.0`",
+          "rationale": "That would be the size with 32 KV heads, as if the model did not use grouped-query attention."
+        },
+        {
+          "id": "d",
+          "text": "`0.11`",
+          "rationale": "That is roughly the per-token size in MiB, not the total in GiB."
+        }
+      ],
+      "explanation": "KV cache bytes = 2 × layers × KV heads × head dimension × tokens × bytes per value. Grouped-query attention keeps the KV head count small, which is why modern models' caches are a fraction of what older multi-head models needed. Even so, long contexts can need more memory than 4-bit weights.",
+      "week": 1,
+      "tags": [
+        "memory",
+        "kv-cache"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w1-q7",
+      "type": "scenario",
+      "prompt": "You run a well-reviewed 8B open model through your own Python script and its answers on long support tickets are much worse than the same model in Ollama. What do you check first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Whether the model needs fine-tuning on your tickets.",
+          "rationale": "Possibly later, but first rule out a bug: the same weights should not differ this much across runtimes."
+        },
+        {
+          "id": "b",
+          "text": "The rendered prompt (chat template, special tokens, generation prompt) and the configured context length, using a ticket whose answer is in its last line.",
+          "rationale": "Yes. Formatting bugs and silent truncation are the most common causes of a model looking worse than it is.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Whether a bigger model would be better.",
+          "rationale": "A bigger model may help, but a pipeline bug would hurt it too."
+        },
+        {
+          "id": "d",
+          "text": "The model card's benchmark table.",
+          "rationale": "The card describes the publisher's results, not your pipeline."
+        }
+      ],
+      "explanation": "When identical weights behave differently in two runtimes, the difference is in the pipeline: template, tokenization, context window, or generation settings. Print the exact token ids, set the context explicitly, and compare on a handful of identical inputs before drawing conclusions about the model.",
+      "week": 1,
+      "tags": [
+        "debugging",
+        "chat-templates"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w1-q8",
+      "type": "mcq",
+      "prompt": "Why is a `.safetensors` file safer to load from an unknown repo than a pickled PyTorch `.bin` file?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Safetensors files are encrypted.",
+          "rationale": "They are not encrypted; the header is plain JSON."
+        },
+        {
+          "id": "b",
+          "text": "Unpickling can execute arbitrary code, while a safetensors file contains only a JSON header and raw tensor bytes, with no code to run.",
+          "rationale": "Yes. That is the core of Hugging Face's case for the format.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "The Hub only accepts safetensors files from verified organizations.",
+          "rationale": "Anyone can upload safetensors; the safety comes from the format itself."
+        },
+        {
+          "id": "d",
+          "text": "Safetensors files are smaller.",
+          "rationale": "Size depends on dtype and shapes, not on the container format."
+        }
+      ],
+      "explanation": "Pickle is a program for rebuilding Python objects, which is why loading one can run code. Safetensors is data only: 8 bytes of header length, a JSON header of names, dtypes, shapes, and offsets, then bytes. Code can still arrive through trust_remote_code, which is a separate decision to review.",
+      "week": 1,
+      "tags": [
+        "security",
+        "safetensors"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5w1-q9",
+      "type": "scenario",
+      "prompt": "You have an M5 Max MacBook Pro with 36 GB of unified memory and want to run a 32B dense model with a 16K-token context for document Q&A. llama.cpp's measurements put Q4_K_M at about 4.9 bits per weight and Q8_0 at about 8.5. Which plan is best?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Q8_0, because higher precision is always worth it.",
+          "rationale": "At about 8.5 bits a 32B model needs roughly 32 GiB for weights alone, leaving almost nothing for the cache, the OS, and other apps."
+        },
+        {
+          "id": "b",
+          "text": "Q2_K, to leave as much room as possible.",
+          "rationale": "Quality degrades noticeably at very low bit widths, and Q4_K_M already fits."
+        },
+        {
+          "id": "c",
+          "text": "Start with Q4_K_M (about 18 GiB of weights, leaving room for the cache), and compare it with Q5_K_M or Q6_K on a labeled sample before committing.",
+          "rationale": "Yes. Fit first, then let your eval decide whether the extra bits are worth the memory.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Run the FP16 weights with swap enabled.",
+          "rationale": "FP16 needs about 64 GB; swapping to disk would make decoding unusably slow."
+        }
+      ],
+      "explanation": "Memory math narrows the options: 32.2e9 parameters × 4.9 / 8 is about 18.4 GiB, × 8.5 / 8 is about 32 GiB. Research finds 4-bit is usually the best trade-off for a fixed memory budget, but your task decides, so test the step up when memory allows.",
+      "week": 1,
+      "tags": [
+        "quantization",
+        "memory",
+        "model-selection"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5w1-q10",
+      "type": "multi",
+      "prompt": "Your eval harness talks to Ollama through its OpenAI-compatible endpoint. Which things should you verify rather than assume? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Which model and quantization actually served the request",
+          "rationale": "Check /v1/models or ollama ps and the model tag.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "That parameters your code relies on (for example a response format) are honored",
+          "rationale": "Ollama documents supporting a subset of the OpenAI API; test the field.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "That token counts are comparable with your API model's counts",
+          "rationale": "They come from each model's own tokenizer, so compare seconds or characters per task as well.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "That requests are being forwarded to OpenAI's servers",
+          "rationale": "A local endpoint runs locally; compatibility is about the request shape, not the destination."
+        }
+      ],
+      "explanation": "OpenAI compatibility lets one client talk to many backends, which is ideal for evals, but it guarantees the shape of the request and response, not identical behavior. Verify what ran, what was honored, and how usage was counted.",
+      "week": 1,
+      "tags": [
+        "openai-compatible",
+        "checks"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

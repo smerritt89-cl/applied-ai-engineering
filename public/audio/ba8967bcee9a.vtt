@@ -1,0 +1,61 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.048
+Fixed-size and recursive chunking.
+
+2
+00:00:02.328 --> 00:00:11.459
+Fixed-size chunking cuts the text every N characters or tokens, often with an overlap of M so each window repeats the end of the previous one.
+
+3
+00:00:11.739 --> 00:00:22.917
+It is simple, predictable, and fast, and it ignores structure completely: windows start mid-word, mid-sentence, and mid-table, and a window can straddle two unrelated sections.
+
+4
+00:00:23.197 --> 00:00:30.024
+The overlap exists to soften those bad cuts, so that a sentence split at a boundary appears whole in at least one chunk.
+
+5
+00:00:30.304 --> 00:00:33.995
+Recursive chunking keeps the size limit but chooses where to cut.
+
+6
+00:00:34.275 --> 00:00:49.357
+LangChain’s widely used recursive splitter tries a list of separators in order, by default paragraph breaks, then line breaks, then spaces, then individual characters, and only falls back to the next separator when a piece is still too large.
+
+7
+00:00:49.637 --> 00:00:54.437
+The effect is that paragraphs stay together when they fit, then sentences, then words.
+
+8
+00:00:54.717 --> 00:00:59.987
+For prose, this is the sensible default and the baseline every other strategy should beat.
+
+9
+00:01:00.267 --> 00:01:01.888
+How much does the choice matter?
+
+10
+00:01:02.168 --> 00:01:17.805
+Chroma’s 2024 technical report on chunking (Smith and Troynikov) built a token-level evaluation: generate questions with known source excerpts, then measure how much of the retrieved text is the relevant excerpt (precision,
+
+11
+00:01:18.085 --> 00:01:23.739
+and a Jaccard-style intersection over union) and how much of the excerpt was retrieved (recall).
+
+12
+00:01:24.019 --> 00:01:35.987
+They found differences of up to about 9 percent in recall between strategies, and a recursive splitter at about 200 tokens with no overlap performed consistently well across their metrics.
+
+13
+00:01:36.267 --> 00:01:43.691
+They also found the popular 800-token chunks with 400-token overlap scored among the lowest on precision.
+
+14
+00:01:43.971 --> 00:01:55.064
+Treat the specifics with care: it is vendor research on about 470 machine-generated questions over five corpora, with large variance, and the authors say as much.
+
+15
+00:01:55.344 --> 00:02:04.176
+The useful conclusion is directional: smaller, boundary-aware chunks are a strong starting point, and big overlaps are not automatically safer.

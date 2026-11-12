@@ -1,0 +1,65 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:02.325
+Deduplication, and which copy wins.
+
+2
+00:00:02.605 --> 00:00:12.141
+Enterprise corpora are full of copies: the same policy in the wiki and the shared drive, a contract and its signed scan, a deck and its PDF export.
+
+3
+00:00:12.421 --> 00:00:14.533
+Duplicates hurt retrieval directly.
+
+4
+00:00:14.813 --> 00:00:24.264
+If five copies of one paragraph are the most similar chunks to a question, they fill all five top-k slots and crowd out the second source the answer needed.
+
+5
+00:00:24.544 --> 00:00:31.392
+They also make conflicts invisible: two near-identical copies that disagree on one number look like agreement.
+
+6
+00:00:31.672 --> 00:00:35.064
+Research on training data shows how common this is at scale.
+
+7
+00:00:35.344 --> 00:00:52.709
+Lee and colleagues (2021) found a single 61-word sentence repeated over 60,000 times in the C4 dataset, and reported that models trained on deduplicated data emitted memorized text about ten times less often.
+
+8
+00:00:52.989 --> 00:01:00.435
+Retrieval corpora are smaller, but the same lesson applies: you will not know how much duplication you have until you measure it.
+
+9
+00:01:00.715 --> 00:01:02.336
+Two levels catch most of it.
+
+10
+00:01:02.616 --> 00:01:08.803
+Exact duplicates: hash the cleaned text (SHA-256) and keep one copy per hash.
+
+11
+00:01:09.083 --> 00:01:21.584
+Near duplicates: break each document into word shingles (overlapping runs of about five words), and compare sets with the Jaccard similarity, the size of the intersection over the size of the union.
+
+12
+00:01:21.864 --> 00:01:23.763
+Pairs above a threshold (0.
+
+13
+00:01:24.043 --> 00:01:28.501
+8 is a reasonable start, then inspect what it catches) are near copies.
+
+14
+00:01:28.781 --> 00:01:44.589
+Comparing every pair is quadratic, so at scale use MinHash with locality-sensitive hashing, which estimates Jaccard similarity from small signatures and finds candidate pairs without comparing everything; the datasketch library implements it.
+
+15
+00:01:44.869 --> 00:01:58.523
+Then decide, and write down, which copy wins: the newest by date, the one from the system of record, or the one with the most permissive or most restrictive access (careful: merging copies with different permissions can leak).
+
+16
+00:01:58.803 --> 00:02:06.696
+When two near copies disagree on content, consider keeping both and flagging the conflict for an owner rather than silently picking one.

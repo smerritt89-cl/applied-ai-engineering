@@ -1,0 +1,1578 @@
+{
+  "id": "s5-exam",
+  "studio": "s5",
+  "title": "Studio 5 exam: Open Models & Fine-Tuning",
+  "draw": 20,
+  "timeLimitMinutes": 40,
+  "passing": 0.8,
+  "questions": [
+    {
+      "id": "s5x-w1-q1",
+      "type": "scenario",
+      "prompt": "A teammate found `someuser/BigModel-70B-GGUF` tagged `license: apache-2.0`. Its `base_model` points to a model released under a custom community license. Which license governs your use?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Apache 2.0, because that is what the repo you download says.",
+          "rationale": "The uploader's tag cannot relicense someone else's model."
+        },
+        {
+          "id": "b",
+          "text": "Neither, because quantized weights are a new work.",
+          "rationale": "A quantized copy is derived from the original weights."
+        },
+        {
+          "id": "c",
+          "text": "The base model's custom license, because a quantization is a derivative of it; the tag is likely wrong.",
+          "rationale": "Yes. Trace derivatives to the base model and read the publisher's license.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Whichever is more permissive.",
+          "rationale": "You do not get to pick; the original terms carry through to derivatives."
+        }
+      ],
+      "explanation": "The Hub's license badge is uploader-written metadata. For fine-tunes, adapters, quantizations, and merges, follow base_model back to the publisher, read that license, and record the revision you reviewed.",
+      "week": 1,
+      "tags": [
+        "licenses"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w1-q2",
+      "type": "scenario",
+      "prompt": "An HR team wants to summarize about 200 internal investigation documents a month. Policy forbids sending them to third-party processors. What do you recommend?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Use the strongest frontier API, because quality matters most for sensitive work.",
+          "rationale": "The policy is a hard constraint that rules this out regardless of quality."
+        },
+        {
+          "id": "b",
+          "text": "Self-host the largest open model available, since it will be best.",
+          "rationale": "The largest open models need multi-GPU servers, and size is not evidence of fitness for this task."
+        },
+        {
+          "id": "c",
+          "text": "Use any model; 200 documents is too few to matter.",
+          "rationale": "Volume affects cost, not the data policy."
+        },
+        {
+          "id": "d",
+          "text": "Shortlist two or three open models that fit on approved internal hardware and whose licenses allow the use, then evaluate them on a labeled sample of past documents.",
+          "rationale": "Yes. The constraint decides the class of model; the eval decides which one.",
+          "correct": true
+        }
+      ],
+      "explanation": "Privacy and data residency are structural reasons to choose open weights. At this volume, cost is not the driver; fit, license, and measured quality are. Include human review of summaries for something this sensitive.",
+      "week": 1,
+      "tags": [
+        "model-selection",
+        "privacy"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w1-q3",
+      "type": "scenario",
+      "prompt": "You want to run Llama 3.1 8B at Q4_K_M with its full 128,000-token context on a Mac with 24 GB of unified memory. Using 128 KiB of FP16 KV cache per token, what is the realistic assessment?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Weights (about 4.6 GiB) plus cache (about 15.6 GiB) plus overhead is above 21 GiB, which leaves almost nothing for the system; use a shorter context or a quantized KV cache, and measure.",
+          "rationale": "Yes. The cache, not the weights, is the binding constraint at long context.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "It fits easily; the weights are under 5 GiB.",
+          "rationale": "The cache at 128,000 tokens is about 15.6 GiB, on top of the weights, overhead, and the OS."
+        },
+        {
+          "id": "c",
+          "text": "It cannot run at all on 24 GB.",
+          "rationale": "It runs fine at shorter contexts; only the full window is the problem."
+        },
+        {
+          "id": "d",
+          "text": "Use Q2_K weights to make room.",
+          "rationale": "Weights are the smaller term here; shrinking them further costs quality and saves little."
+        }
+      ],
+      "explanation": "At long contexts the KV cache dominates. Options: cap the context to what you need, quantize the cache (for example an 8-bit cache halves it), or use a model with sliding-window layers. Verify with the runtime's reported memory.",
+      "week": 1,
+      "tags": [
+        "memory",
+        "kv-cache"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5x-w1-q4",
+      "type": "scenario",
+      "prompt": "A promising new model needs `trust_remote_code=True`. Your team wants it in a nightly batch pipeline. What should the change request include?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing special; the Hub scans repos for malware.",
+          "rationale": "Malware scanning helps, but the transformers docs still advise caution because loading executes the repo's code."
+        },
+        {
+          "id": "b",
+          "text": "A pinned commit hash via `revision=`, a review of the repo's Python files at that commit, and a plan to re-review before any upgrade.",
+          "rationale": "Yes. This is the docs' own recommendation, turned into process.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Disable safetensors so the code runs faster.",
+          "rationale": "Weight format and remote code are separate; keep safetensors."
+        },
+        {
+          "id": "d",
+          "text": "Run it once interactively to see if it works, then deploy main.",
+          "rationale": "Main can change after your test; pin what you reviewed."
+        }
+      ],
+      "explanation": "trust_remote_code means running someone else's Python. Treat it like a dependency: review it, pin it, and upgrade deliberately. Pinning revisions is good practice for every model, not just custom ones.",
+      "week": 1,
+      "tags": [
+        "security",
+        "hub"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w1-q5",
+      "type": "scenario",
+      "prompt": "Your Ollama-based summarizer works on short reports but ignores conclusions at the end of long ones, without any error. What is the most likely cause and fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The model is too small; switch to a larger one.",
+          "rationale": "Possible, but the pattern (end of long input ignored, no error) points to truncation first."
+        },
+        {
+          "id": "b",
+          "text": "The temperature is too high.",
+          "rationale": "Sampling randomness would not systematically drop the end of documents."
+        },
+        {
+          "id": "c",
+          "text": "The context window is smaller than the documents (Ollama sets its default by available memory); set num_ctx or OLLAMA_CONTEXT_LENGTH explicitly and test with an answer placed in the last line.",
+          "rationale": "Yes. Make the context explicit and verify it with a test document.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Ollama's OpenAI-compatible endpoint strips long messages.",
+          "rationale": "The native and compatible APIs share the server's context setting; the setting is the issue."
+        }
+      ],
+      "explanation": "Runtimes often default to a context shorter than the model's maximum. Silent truncation looks like a quality problem. Check ollama ps for the CONTEXT column, set the window explicitly, and add a long-document test to your eval set.",
+      "week": 1,
+      "tags": [
+        "ollama",
+        "debugging"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w1-q6",
+      "type": "mcq",
+      "prompt": "A mixture-of-experts model has 117B total parameters and about 5B active per token. Compared with a 117B dense model at the same quantization, what should you expect when running it locally?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Similar memory needs, but much faster decoding.",
+          "rationale": "Yes. All experts must be loaded, but each token reads only the active ones.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Much less memory and similar speed.",
+          "rationale": "Memory follows total parameters; speed follows active parameters."
+        },
+        {
+          "id": "c",
+          "text": "Less memory and faster decoding.",
+          "rationale": "Every expert must be resident in memory, so the memory saving does not happen."
+        },
+        {
+          "id": "d",
+          "text": "No difference; parameter count is all that matters.",
+          "rationale": "Active parameters drive the bytes read per token."
+        }
+      ],
+      "explanation": "Decode speed is bounded by the bytes read per token, which for MoE is the active parameters (plus shared layers and cache). Memory must still hold every expert. That is why gpt-oss-120b, for example, is fast relative to its size but still needs a lot of memory.",
+      "week": 1,
+      "tags": [
+        "moe",
+        "memory"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w1-q7",
+      "type": "predict-output",
+      "prompt": "Using memory bandwidth as the ceiling for single-stream decoding, what does this estimate print for a 32B dense model at Q4_K_M on a chip with 460 GB/s of bandwidth?",
+      "code": "weights_gb = 32.2e9 * 4.8944 / 8 / 1e9   # bytes of weights, in decimal GB\nbandwidth_gb_s = 460\nprint(round(bandwidth_gb_s / weights_gb, 1))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`13.4`",
+          "rationale": "That would be the bound for Q8_0 weights (about 34 GB)."
+        },
+        {
+          "id": "b",
+          "text": "`460.0`",
+          "rationale": "Bandwidth is bytes per second, not tokens per second; divide by bytes read per token."
+        },
+        {
+          "id": "c",
+          "text": "`25.1`",
+          "rationale": "That mixes units: 18.35 is the weight size in GiB, while the bandwidth is in decimal GB per second."
+        },
+        {
+          "id": "d",
+          "text": "`23.4`",
+          "rationale": "Yes. About 19.7 GB of weights are read per generated token; 460 / 19.7 is about 23 tokens per second at most.",
+          "correct": true
+        }
+      ],
+      "explanation": "The bound ignores the KV cache and assumes perfect efficiency, so real numbers are lower. It is still a useful sanity check: a benchmark reporting decode speed above the bound is measuring something wrong. Keep units consistent, since spec sheets quote bandwidth in decimal GB per second while tools often report memory in GiB.",
+      "week": 1,
+      "tags": [
+        "benchmarking",
+        "memory"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w1-q8",
+      "type": "code-reading",
+      "prompt": "This function is meant to measure time to first token from a streamed Ollama `/api/chat` response for a reasoning model. What is wrong with it?",
+      "code": "import time, json\n\ndef ttft(lines, start):\n    for line in lines:\n        chunk = json.loads(line)\n        return time.perf_counter() - start\n",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "It should use time.time() instead of time.perf_counter().",
+          "rationale": "perf_counter is the right clock for intervals."
+        },
+        {
+          "id": "b",
+          "text": "It records the first chunk of any kind, so empty or thinking-only chunks make TTFT look shorter than the wait for the first visible answer text.",
+          "rationale": "Yes. Record the time of the first chunk whose message content is non-empty, and report thinking time separately if you need it.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "It starts the timer after the request is sent, so TTFT is overstated.",
+          "rationale": "Starting before the request is correct; the bug is in what counts as the first token."
+        },
+        {
+          "id": "d",
+          "text": "Streaming responses have no timing information.",
+          "rationale": "The final chunk carries Ollama's timing fields, and chunk arrival times give TTFT."
+        }
+      ],
+      "explanation": "Define the metric before measuring it. For user-facing latency, time to first token means time until the first visible answer text. Reasoning models may stream thinking content first, and some chunks are empty. Test your parser on recorded chunks, as the lab does.",
+      "week": 1,
+      "tags": [
+        "benchmarking",
+        "ollama"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5x-w1-q9",
+      "type": "multi",
+      "prompt": "According to Hugging Face's model card guidance, which should a model card describe? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Intended uses and limitations, including biases",
+          "rationale": "Yes, following Mitchell and colleagues' model cards paper.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "The datasets used for training",
+          "rationale": "Yes; the datasets field also links them on the Hub.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Evaluation results",
+          "rationale": "Yes, though they remain the publisher's claims.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "The uploader's API keys for gated access",
+          "rationale": "Never. Access is requested by each user through the gate."
+        }
+      ],
+      "explanation": "The card's metadata (license, base_model, datasets, pipeline_tag) supports search and tooling; the text explains intended use, limitations, training, and evaluation. Read it to shortlist, then verify with your own eval.",
+      "week": 1,
+      "tags": [
+        "model-cards"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5x-w1-q10",
+      "type": "mcq",
+      "prompt": "Dettmers and Zettlemoyer (2022) studied inference scaling across bit precisions. What was their headline finding about a fixed memory budget?",
+      "options": [
+        {
+          "id": "a",
+          "text": "8-bit precision is always best.",
+          "rationale": "They found 8-bit wastes bits that could be spent on more parameters."
+        },
+        {
+          "id": "b",
+          "text": "2-bit models match 16-bit models.",
+          "rationale": "Very low bit widths degrade noticeably; later studies on Llama 3 found the same."
+        },
+        {
+          "id": "c",
+          "text": "4-bit precision was almost universally optimal for total model bits versus zero-shot accuracy.",
+          "rationale": "Yes. A larger model at 4 bits tends to beat a smaller one at higher precision for the same memory.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Precision does not affect accuracy.",
+          "rationale": "Quantization does trade accuracy for memory; the question is where the best trade-off lies."
+        }
+      ],
+      "explanation": "Use the result as a prior, not a rule: it is an average over model families and zero-shot tasks. Confirm the trade-off on your task, especially for precise extraction or long-context work.",
+      "week": 1,
+      "tags": [
+        "quantization"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w2-q1",
+      "type": "scenario",
+      "prompt": "A product manager proposes fine-tuning a model on the last two years of the engineering wiki so that the internal assistant 'knows how our systems work'. The wiki is edited daily. What do you propose instead, and why?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Fine-tune monthly to keep up with edits.",
+          "rationale": "Retraining monthly is expensive, and fine-tuning on raw text is a weak way to add facts in the first place."
+        },
+        {
+          "id": "b",
+          "text": "Build retrieval over the wiki with citations, evaluate it, and keep fine-tuning in reserve for behavior problems that remain.",
+          "correct": true,
+          "rationale": "Yes. Changing facts belong in an index you can update, and citations let users and evaluators check the answer."
+        },
+        {
+          "id": "c",
+          "text": "Fine-tune once on the whole wiki and add a disclaimer about staleness.",
+          "rationale": "That still teaches the model to sound authoritative about facts it hasn't reliably learned."
+        },
+        {
+          "id": "d",
+          "text": "Put the whole wiki in every prompt.",
+          "rationale": "Expensive per request, and long inputs are used less reliably than focused retrieved context."
+        }
+      ],
+      "explanation": "The research on knowledge injection (Ovadia et al., Gekhman et al.) and the practical needs (freshness, citations) point the same way: retrieve facts, fine-tune behavior.",
+      "week": 2,
+      "tags": [
+        "fine-tuning",
+        "rag",
+        "decision"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5x-w2-q2",
+      "type": "mcq",
+      "prompt": "In Gekhman et al. (2024), which training choice most reduced the harm from fine-tuning examples whose answers the model didn't already know?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Training longer, so the model fully memorizes the new facts.",
+          "rationale": "Training to convergence is when the harm was largest."
+        },
+        {
+          "id": "b",
+          "text": "Early stopping on a development set, and filtering out the unknown examples.",
+          "correct": true,
+          "rationale": "Yes. The harm appeared mostly late in training, and removing unknown examples reduced overfitting without hurting accuracy."
+        },
+        {
+          "id": "c",
+          "text": "Raising the learning rate.",
+          "rationale": "The paper's mitigations were about when to stop and which examples to keep."
+        },
+        {
+          "id": "d",
+          "text": "Using only examples the model already answered perfectly.",
+          "rationale": "Only-HighlyKnown training was not best; the half-known (MaybeKnown) examples were the most useful."
+        }
+      ],
+      "explanation": "The study suggests fine-tuning works best on facts the model half-knows, teaching it to use them reliably, and that a validation split for early stopping is not optional.",
+      "week": 2,
+      "tags": [
+        "fine-tuning",
+        "research"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w2-q3",
+      "type": "scenario",
+      "prompt": "You shipped a fine-tuned model on a hosted platform 14 months ago. The platform announces that the base model enters legacy status next month and will reach end of life six months later. What does that mean for your feature, and what should you have planned for?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Nothing changes; fine-tuned models are independent copies that live forever.",
+          "rationale": "Providers' docs (Bedrock, OpenAI) tie fine-tuned models to their base model's lifecycle."
+        },
+        {
+          "id": "b",
+          "text": "You will need to rebuild on a new base model: rerun training from your versioned dataset, re-evaluate on the frozen test set, and budget this as recurring maintenance from the start.",
+          "correct": true,
+          "rationale": "Yes. A reproducible dataset build and a frozen test set turn a forced migration into a routine retrain and comparison."
+        },
+        {
+          "id": "c",
+          "text": "Migrate by copying your old fine-tuned weights onto the new base model.",
+          "rationale": "Fine-tuned weights are specific to their base model; they don't transfer."
+        },
+        {
+          "id": "d",
+          "text": "Switch to prompting only, since fine-tuning is now proven useless.",
+          "rationale": "The lifecycle is a cost to plan for, not evidence about fine-tuning's value."
+        }
+      ],
+      "explanation": "When Bedrock's Claude 3 Haiku went Legacy, new fine-tuning jobs on it stopped and the model later reached end of life. Amortize fine-tuning costs over the base model's expected life, and keep the pipeline that rebuilds the dataset and the model.",
+      "week": 2,
+      "tags": [
+        "fine-tuning",
+        "maintenance",
+        "providers"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w2-q4",
+      "type": "mcq",
+      "prompt": "Under the Llama 3.3 Community License, what applies if you use Llama outputs to fine-tune a different model and then distribute that model?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It is forbidden outright.",
+          "rationale": "The license permits it, with conditions."
+        },
+        {
+          "id": "b",
+          "text": "The distributed model's name must begin with \"Llama\", along with the license's attribution requirements.",
+          "correct": true,
+          "rationale": "Yes. Section 1.b.i sets this naming requirement, and the license also requires \"Built with Llama\" attribution."
+        },
+        {
+          "id": "c",
+          "text": "Nothing; outputs are not covered by the license.",
+          "rationale": "The clause explicitly covers outputs or results of the Llama Materials."
+        },
+        {
+          "id": "d",
+          "text": "You must pay Meta a royalty per download.",
+          "rationale": "The license has a separate clause for very large services (over 700 million monthly active users), not a per-download royalty."
+        }
+      ],
+      "explanation": "Open-weight licenses vary. Read each model's license file for naming, attribution, use policy, and scale clauses before you distill from it or distribute a derivative.",
+      "week": 2,
+      "tags": [
+        "licenses",
+        "open-models"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w2-q5",
+      "type": "scenario",
+      "prompt": "A teammate configured TRL's SFTTrainer with default settings and a plain messages dataset. About 15 percent of your examples are meeting transcripts over 2,000 tokens. Training loss looks fine. What is the most likely hidden problem, and the fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "No problem; the trainer rejects examples that are too long.",
+          "rationale": "TRL documents truncation, not rejection."
+        },
+        {
+          "id": "b",
+          "text": "Those examples are truncated at the default maximum length (keeping the start), so their answers are cut off; measure token lengths with the model's tokenizer and raise the limit, split, or drop them.",
+          "correct": true,
+          "rationale": "Yes. And with a plain messages dataset the default loss covers the whole sequence, so also consider assistant-only loss."
+        },
+        {
+          "id": "c",
+          "text": "Long examples make the learning rate too high.",
+          "rationale": "Length doesn't change the learning rate setting."
+        },
+        {
+          "id": "d",
+          "text": "The chat template is not applied to long examples.",
+          "rationale": "The trainer applies the chat template to conversational data regardless of length."
+        }
+      ],
+      "explanation": "Trainer defaults encode assumptions about your data. Validate lengths yourself before every run, and set loss masking and maximum length explicitly.",
+      "week": 2,
+      "tags": [
+        "datasets",
+        "trl",
+        "validation"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5x-w2-q6",
+      "type": "scenario",
+      "prompt": "Your invoice-dispute dataset contains thousands of emails generated from about 20 templates, with different customer names and amounts filled in. After deduplication at Jaccard 0.8, accuracy on a random test split is 98 percent; in production it is 85 percent. What is the most likely explanation?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Production users are less careful than test users.",
+          "rationale": "Possible but untestable; look at the data first."
+        },
+        {
+          "id": "b",
+          "text": "Filled-in copies of the same templates sit on both sides of the split at similarities below 0.8, so the test set rewards recognizing templates; split by template (as a group) and read the pairs near your threshold.",
+          "correct": true,
+          "rationale": "Yes. Templates are the classic near-duplicate that a high threshold misses. Grouping by template measures performance on unseen formats."
+        },
+        {
+          "id": "c",
+          "text": "The model is overfitting, so lower the learning rate.",
+          "rationale": "It may be, but the evaluation is the thing that's broken: it can't detect overfitting to templates."
+        },
+        {
+          "id": "d",
+          "text": "98 percent is within the margin of error of 85 percent.",
+          "rationale": "A 13-point gap is not noise for a test set of any reasonable size."
+        }
+      ],
+      "explanation": "A threshold is a measurement choice. Compute similarities, look at pairs just below it, and when the data has templates, sources, or customers in common, group by them.",
+      "week": 2,
+      "tags": [
+        "leakage",
+        "dedup",
+        "splits"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5x-w2-q7",
+      "type": "scenario",
+      "prompt": "Your model will run on support tickets from next quarter. You have two years of labeled tickets, and the product launched a major feature eight months ago. How should you build the test set?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Random split across all two years, stratified by ticket category.",
+          "rationale": "Stratification helps, but a random split mixes old and new periods and hides drift."
+        },
+        {
+          "id": "b",
+          "text": "Hold out the most recent months as the test set (and validation just before them), train on older data, and check category proportions against recent production.",
+          "correct": true,
+          "rationale": "Yes. A time-based split measures how the model handles the newest vocabulary and features, which is what production will look like."
+        },
+        {
+          "id": "c",
+          "text": "Use only tickets from before the feature launch, because they are cleaner.",
+          "rationale": "That tests the model on a world that no longer exists."
+        },
+        {
+          "id": "d",
+          "text": "Use the oldest tickets as the test set, since they are fully resolved.",
+          "rationale": "That measures performance on the least production-like data."
+        }
+      ],
+      "explanation": "Ask what the deployed model will see. When that is the future, test on the most recent past.",
+      "week": 2,
+      "tags": [
+        "splits",
+        "drift"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w2-q8",
+      "type": "mcq",
+      "prompt": "You run a strong model over your gold-labeled data and it disagrees with 6 percent of the labels. What is the right use of that result?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Replace the disagreeing gold labels with the model's labels.",
+          "rationale": "Then you'd be measuring the model against its own opinions. Disagreement finds candidates; people decide."
+        },
+        {
+          "id": "b",
+          "text": "Send the disagreements to human reviewers to adjudicate, fix labels and the guideline where the gold was wrong, and record the change.",
+          "correct": true,
+          "rationale": "Yes. Model-disagreement review is an efficient way to find label errors, with a person as the judge."
+        },
+        {
+          "id": "c",
+          "text": "Ignore it; gold labels are correct by definition.",
+          "rationale": "Northcutt et al. found label errors averaging at least 3.3 percent even in widely used test sets."
+        },
+        {
+          "id": "d",
+          "text": "Drop all disagreeing examples from every split.",
+          "rationale": "That removes the hardest examples, which are often the most important, and biases the test set toward easy cases."
+        }
+      ],
+      "explanation": "Label noise caps what you can measure and teaches the model mistakes. Find it with mechanical checks, double labeling, and model disagreement, and fix it with people.",
+      "week": 2,
+      "tags": [
+        "label-noise",
+        "datasets"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w2-q9",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "import re\n\ndef sh(t, k=3):\n    w = re.sub(r\"[^\\w\\s']\", \" \", t.lower()).split()\n    return {\" \".join(w[i:i + k]) for i in range(len(w) - k + 1)}\n\na, b = sh(\"Please pay by Friday!\"), sh(\"please  pay by friday\")\nprint(a == b, len(a & b) / len(a | b))",
+      "language": "python",
+      "options": [
+        {
+          "id": "a",
+          "text": "`True 1.0`",
+          "correct": true,
+          "rationale": "Normalization removes the case and punctuation differences, so the shingle sets are identical."
+        },
+        {
+          "id": "b",
+          "text": "`False 0.0`",
+          "rationale": "Without normalization they would differ; the function normalizes first."
+        },
+        {
+          "id": "c",
+          "text": "`False 0.5`",
+          "rationale": "After normalization the word sequences are identical."
+        },
+        {
+          "id": "d",
+          "text": "`True 0.5`",
+          "rationale": "Identical sets have Jaccard similarity 1.0."
+        }
+      ],
+      "explanation": "Normalize before comparing, or trivial formatting differences hide duplicates. Then decide deliberately which differences should count (numbers, names) for your task.",
+      "week": 2,
+      "tags": [
+        "dedup"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5x-w2-q10",
+      "type": "scenario",
+      "prompt": "To boost a weak category, a teammate asks a model to write 200 variations of the 12 test-set examples the fine-tuned model failed, and adds them to the training data. The test score jumps 9 points. What do you say?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Great result; synthetic data is a standard technique.",
+          "rationale": "The technique is fine; the seeds are the problem."
+        },
+        {
+          "id": "b",
+          "text": "The variations are near-duplicates of test cases, so the jump is likely leakage; regenerate from training-split seeds only, rerun the leakage check, and evaluate on the unchanged test set.",
+          "correct": true,
+          "rationale": "Yes. Synthetic data seeded from the test set carries the test answers into training."
+        },
+        {
+          "id": "c",
+          "text": "Remove the 12 examples from the test set so it is fair again.",
+          "rationale": "That shrinks coverage of exactly the weak category and hides the problem."
+        },
+        {
+          "id": "d",
+          "text": "Keep it, but report the score with wider error bars.",
+          "rationale": "Error bars describe sampling noise, not a biased measurement."
+        }
+      ],
+      "explanation": "Seed synthetic data from the training split only, and check every new batch against the test set with the near-duplicate finder before training.",
+      "week": 2,
+      "tags": [
+        "leakage",
+        "synthetic-data"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w3-q1",
+      "type": "scenario",
+      "prompt": "You're fine-tuning a model to answer questions from a 3,000-token policy excerpt included in each prompt; answers are about 40 tokens. You have 600 examples. A colleague cites a paper showing that computing loss on the instructions too can help. What do you do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Always mask the prompt; that's TRL's default, so it must be best.",
+          "rationale": "It's a sensible default, not a proven optimum for every dataset."
+        },
+        {
+          "id": "b",
+          "text": "Compare the two runs' validation losses and keep the lower one.",
+          "rationale": "The losses average over different token sets, so they aren't comparable. Use a task metric."
+        },
+        {
+          "id": "c",
+          "text": "Train both variants (completion-only loss and full-sequence loss) with everything else fixed, and compare them on the same held-out set with the task metric.",
+          "rationale": "Yes. Shi and colleagues (2024) found loss over instructions helped most with long instructions, short outputs, and little data, which describes this case; your validation set decides.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Remove the policy excerpt from the prompts so the question is moot.",
+          "rationale": "The excerpt is the context the model needs; removing it changes the task."
+        }
+      ],
+      "explanation": "Masking is a choice with a measurable effect. When research and defaults disagree, run the controlled comparison, and compare on a task metric because masking changes what the loss measures.",
+      "week": 3,
+      "tags": [
+        "sft",
+        "masking",
+        "experiment-design"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5x-w3-q2",
+      "type": "scenario",
+      "prompt": "After LoRA fine-tuning a support model, accuracy on the target task rises from 70 to 91 percent, but product managers notice it now answers unrelated questions in the ticket JSON format and has stopped declining out-of-scope requests. What is the best response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Build a regression set of general and out-of-scope prompts, score base and tuned models on it, then try mixing general examples into training, fewer steps, or a lower learning rate, keeping the configuration that holds both scores.",
+          "rationale": "Yes. This is catastrophic forgetting; measure it, then use the standard levers and pick with evidence.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Switch from LoRA to full fine-tuning, which forgets less.",
+          "rationale": "Reversed. Biderman and colleagues (2024) found LoRA forgets less than full fine-tuning."
+        },
+        {
+          "id": "c",
+          "text": "Add a sentence to the system prompt telling the model to decline out-of-scope requests.",
+          "rationale": "It may help, but without a regression set you can't tell whether it did."
+        },
+        {
+          "id": "d",
+          "text": "Accept it: the target task improved, and side effects are expected.",
+          "rationale": "Shipping a model that ignores scope is a product and safety problem, not an acceptable side effect."
+        }
+      ],
+      "explanation": "Nothing in the SFT objective protects behaviors your data doesn't exercise. The defense is a standing regression set scored on every candidate, plus training choices (data mix, steps, learning rate) that you select by those scores.",
+      "week": 3,
+      "tags": [
+        "forgetting",
+        "evaluation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w3-q3",
+      "type": "scenario",
+      "prompt": "You'll serve 12 customer-specific variants of one 8B model, each a LoRA adapter, and expect to update individual customers' adapters monthly. Which deployment fits best?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Merge all 12 adapters into one model so a single deployment serves everyone.",
+          "rationale": "Summing unrelated adapters into one weight matrix mixes their behaviors; it isn't how per-customer variants are served."
+        },
+        {
+          "id": "b",
+          "text": "Retrain one full fine-tune on all customers' data combined.",
+          "rationale": "It might work for some cases, but it removes per-customer isolation and makes monthly updates a full retrain."
+        },
+        {
+          "id": "c",
+          "text": "Merge each adapter into its own full copy of the model and deploy 12 models.",
+          "rationale": "That multiplies memory and deployment work by 12 and loses LoRA's main operational advantage."
+        },
+        {
+          "id": "d",
+          "text": "Keep one base model loaded and swap or batch the small adapters per request, versioning each adapter file.",
+          "rationale": "Yes. The LoRA paper highlights cheap task switching by swapping adapters on a shared base, and each update is a small file you can roll back.",
+          "correct": true
+        }
+      ],
+      "explanation": "Merging is the right choice for a single model where simplicity and latency matter. For many variants on one base, separate adapters save memory and make updates and rollbacks cheap; evaluate each adapter as it will be served.",
+      "week": 3,
+      "tags": [
+        "lora",
+        "deployment"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w3-q4",
+      "type": "scenario",
+      "prompt": "You have one 24 GB NVIDIA GPU and want to fine-tune a 7B model on a few thousand short examples. Using the back-of-envelope estimates from this week (about 16 bytes per parameter for full fine-tuning with Adam in mixed precision, 2 bytes per parameter for a frozen 16-bit base, about half a byte per parameter for a 4-bit base), which plan is most realistic?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Full fine-tuning, with a smaller batch size.",
+          "rationale": "About 112 GB of weights and optimizer state before activations; batch size doesn't change that."
+        },
+        {
+          "id": "b",
+          "text": "LoRA on a 16-bit base is possible but tight (about 14 GB of frozen weights plus activations); QLoRA on a 4-bit base (about 3.5 to 4 GB) leaves comfortable room. Start with QLoRA and confirm quality against a 16-bit LoRA run on a sample if you can.",
+          "rationale": "Yes. That's the memory picture, and it keeps the quality question an empirical one.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Use LoRA, and save memory by setting a higher rank.",
+          "rationale": "A higher rank adds parameters and optimizer state; it uses more memory, not less."
+        },
+        {
+          "id": "d",
+          "text": "QLoRA is impossible on 24 GB for 7B models.",
+          "rationale": "The QLoRA paper fine-tuned 33B and 65B models on single 24 GB and 48 GB GPUs."
+        }
+      ],
+      "explanation": "Estimates like these are for planning, not guarantees: activations depend on sequence length and batch size, and gradient checkpointing trades compute for memory. Do a short trial run and read the peak memory before committing to the full run.",
+      "week": 3,
+      "tags": [
+        "qlora",
+        "memory",
+        "planning"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w3-q5",
+      "type": "scenario",
+      "prompt": "A rank sweep on your extraction task gives exact match (with 95 percent bootstrap intervals on 400 test cases): r=8: 0.842 (0.81 to 0.87); r=16: 0.851 (0.82 to 0.88); r=64: 0.856 (0.82 to 0.89). Your general-ability regression score is slightly lower at r=64. Which do you pick?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Run r=256 next, since performance is still rising with rank.",
+          "rationale": "The trend is within noise; there is no evidence that rank is the bottleneck."
+        },
+        {
+          "id": "b",
+          "text": "Average the three adapters' weights.",
+          "rationale": "Adapters of different ranks can't be averaged factor by factor, and it skips the decision the data supports."
+        },
+        {
+          "id": "c",
+          "text": "r=8 or r=16: the differences are within noise, the smaller adapter is cheaper and kept more general ability. Confirm with a paired comparison before treating any gap as real.",
+          "rationale": "Yes. Pick the smallest configuration within noise of the best, and use paired tests (week 4) for close calls.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "r=64, because it has the highest exact match.",
+          "rationale": "The differences are well inside the intervals, and r=64 costs more and forgets slightly more."
+        }
+      ],
+      "explanation": "Hyperparameter sweeps produce many numbers that look different and aren't. Report intervals, prefer paired comparisons on the same cases, and break ties with cost and side effects.",
+      "week": 3,
+      "tags": [
+        "lora",
+        "rank",
+        "statistics"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5x-w3-q6",
+      "type": "predict-output",
+      "prompt": "A validation loss is reported in nats per token. What does this print?",
+      "code": "import math\nfor loss in (0.693, 1.2):\n    print(round(math.exp(loss), 2))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.5` then `0.3`",
+          "rationale": "Those are roughly e to the minus loss, the geometric mean probability of the target tokens."
+        },
+        {
+          "id": "b",
+          "text": "`2.0` then `3.32`",
+          "rationale": "Yes. Perplexity is e to the loss: about 2 and about 3.32.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`1.99` then `3.32`",
+          "rationale": "e to 0.693 is 1.9997, which rounds to 2.0."
+        }
+      ],
+      "explanation": "Perplexity is the effective number of equally likely choices per token, and e to the minus loss is the geometric mean probability given to the targets. Both are only comparable across runs with the same tokenizer, template, and masking.",
+      "week": 3,
+      "tags": [
+        "sft",
+        "loss"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5x-w3-q7",
+      "type": "code-reading",
+      "prompt": "This script trains a QLoRA adapter, merges it, and reports the merged model's accuracy as the adapter's accuracy. What is the main problem with the reported number?",
+      "code": "model = AutoModelForCausalLM.from_pretrained(MODEL_ID, quantization_config=bnb_4bit)\nmodel = get_peft_model(model, lora_config)\ntrain(model)\nmerged = model.merge_and_unload()   # merge into the 4-bit base\nprint(\"adapter accuracy:\", evaluate(merged))",
+      "options": [
+        {
+          "id": "a",
+          "text": "Merging into a quantized base re-quantizes the weights, so the merged model isn't exactly the trained adapter's function; evaluate the adapter itself, or merge into the 16-bit base and evaluate what you'll ship.",
+          "rationale": "Yes. PEFT's docs warn that merging on a quantized model re-quantizes the base weight.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "QLoRA adapters can't be merged at all.",
+          "rationale": "They can; the issue is what the merge does to precision."
+        },
+        {
+          "id": "c",
+          "text": "merge_and_unload works in place, so `merged` is None.",
+          "rationale": "It returns the merged model and isn't in place; PEFT's docs say to assign the result, as this code does."
+        },
+        {
+          "id": "d",
+          "text": "evaluate should be called before training for the number to be valid.",
+          "rationale": "A baseline before training is good practice, but it doesn't fix this number."
+        }
+      ],
+      "explanation": "Evaluate the exact artifact you deploy, in the precision you deploy it. If you train with QLoRA and serve a merged 16-bit model, re-run the test set on that merged model.",
+      "week": 3,
+      "tags": [
+        "qlora",
+        "merging",
+        "evaluation"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w3-q8",
+      "type": "mcq",
+      "prompt": "How does QLoRA's 4-bit NormalFloat (NF4) data type choose its 16 quantization levels?",
+      "options": [
+        {
+          "id": "a",
+          "text": "By running k-means on each layer's weights during training.",
+          "rationale": "No clustering is involved; the grid is computed once from the normal distribution."
+        },
+        {
+          "id": "b",
+          "text": "By keeping the 16 most frequent weight values in each layer.",
+          "rationale": "Weights are continuous; NF4 maps each to the nearest level on a fixed grid."
+        },
+        {
+          "id": "c",
+          "text": "Evenly spaced between the minimum and maximum of each weight matrix.",
+          "rationale": "That's uniform (affine) quantization, which MLX uses by default. NF4 isn't evenly spaced."
+        },
+        {
+          "id": "d",
+          "text": "From quantiles of a standard normal distribution, normalized to the range from minus 1 to 1, so each level gets equal expected mass for normally distributed weights; each block of 64 weights is scaled by its own absolute maximum.",
+          "rationale": "Yes. That's quantile quantization with a fixed, precomputed grid, applied blockwise.",
+          "correct": true
+        }
+      ],
+      "explanation": "Because pretrained weights are roughly zero-centered and normal, a grid with equal probability mass per bin wastes fewer levels on rare extreme values. Blockwise absmax scaling maps each small block onto that grid, and double quantization shrinks the cost of storing the per-block scales.",
+      "week": 3,
+      "tags": [
+        "qlora",
+        "quantization"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w3-q9",
+      "type": "multi",
+      "prompt": "Which of these loss-curve observations should make you stop and investigate before trusting the run? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Validation loss bottoms out and then rises for several evaluations while training loss keeps falling.",
+          "rationale": "Yes. The overfitting signature; check the task metric at the best checkpoint and later ones.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Both losses fall quickly and then flatten, with a small, stable gap.",
+          "rationale": "No. That's what a healthy run looks like."
+        },
+        {
+          "id": "c",
+          "text": "The training loss is perfectly flat at its initial value.",
+          "rationale": "Yes. Nothing is learning: wrong parameters frozen, learning rate near zero, or every label masked.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Training loss reaches 0.000 within 30 steps on free-text answers.",
+          "rationale": "Yes. Free text has an entropy floor well above zero; this suggests memorization or answers leaking into prompts.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "The loss is NaN from the first logged step.",
+          "rationale": "Yes. Likely a learning rate or precision problem, or examples with no scored tokens.",
+          "correct": true
+        }
+      ],
+      "explanation": "Loss curves are diagnostics. Each suspicious shape has a short list of causes you can check directly: decode a batch's labels, check for duplicates across splits, and confirm the trainable parameter count and learning rate.",
+      "week": 3,
+      "tags": [
+        "loss-curves",
+        "debugging"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w3-q10",
+      "type": "mcq",
+      "prompt": "What did Thinking Machines' \"LoRA Without Regret\" (Schulman and colleagues, 2025) report about learning rates for LoRA?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The optimal learning rate grows linearly with rank.",
+          "rationale": "They found it approximately rank-independent, which they attribute to the 1 over r scaling."
+        },
+        {
+          "id": "b",
+          "text": "LoRA should use the same learning rate as full fine-tuning.",
+          "rationale": "Their measurements found a much higher optimum for LoRA."
+        },
+        {
+          "id": "c",
+          "text": "The optimal LoRA learning rate was about 10 times the optimal full fine-tuning rate, and nearly independent of rank under the 1 over r scaling.",
+          "rationale": "Yes. They fitted a ratio of about 10 and reported the optimum changed by less than 2 times between ranks 4 and 512.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Learning rate doesn't matter for LoRA because the base weights are frozen.",
+          "rationale": "It matters a great deal; it's the main hyperparameter they swept."
+        }
+      ],
+      "explanation": "The authors say they lack a complete theory for the ratio, so treat it as a strong starting heuristic: if your full fine-tuning rate is 2e-5, start LoRA near 2e-4 and sweep around it on your validation metric.",
+      "week": 3,
+      "tags": [
+        "lora",
+        "learning-rate",
+        "research"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-01",
+      "type": "scenario",
+      "prompt": "You compare a LoRA model and a frontier model on 200 frozen cases. Each system's exact-match interval overlaps the other's, and a colleague concludes there is no difference. What should you do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Agree: overlapping intervals mean the difference is not significant.",
+          "rationale": "Overlap of separate intervals is a weak test; paired comparisons on the same cases are much more sensitive."
+        },
+        {
+          "id": "b",
+          "text": "Add the two intervals' widths and compare to the gap.",
+          "rationale": "That's an ad hoc rule with no basis. Use the paired interval."
+        },
+        {
+          "id": "c",
+          "text": "Compute the paired difference per case and bootstrap its interval; that interval is what supports or rejects a difference.",
+          "rationale": "Yes. Pairing removes the shared difficulty of each case, which separate intervals ignore.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Re-run each system until the intervals stop overlapping.",
+          "rationale": "Repeated runs of the same cases don't add independent evidence about the case distribution."
+        }
+      ],
+      "explanation": "Cases differ in difficulty, and both systems tend to find the same cases hard, so per-case scores are positively correlated. The paired interval accounts for that and is usually much narrower than the two separate intervals suggest.",
+      "week": 4,
+      "tags": [
+        "statistics",
+        "paired"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-02",
+      "type": "scenario",
+      "prompt": "The frontier model's prompt was revised 14 times while the team watched its score on the test set; the fine-tuned model was trained once. The report says the frontier model wins by 3 points. What is the main problem?",
+      "options": [
+        {
+          "id": "a",
+          "text": "The frontier model's prompt was tuned on the test set, so its score is optimistically biased; prompts should be tuned on a dev split and the test run once.",
+          "rationale": "Yes. Iterating against the test set overfits to it, for prompts as much as for weights.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Fourteen revisions is too few to find a good prompt.",
+          "rationale": "The issue is where the tuning happened, not how much."
+        },
+        {
+          "id": "c",
+          "text": "The fine-tuned model should also have been retrained 14 times on the test set.",
+          "rationale": "That would contaminate the other system too. Neither should be tuned on test data."
+        },
+        {
+          "id": "d",
+          "text": "There is no problem; prompt engineering is part of a fair comparison.",
+          "rationale": "Prompt tuning is fair on dev data with comparable budgets. Not on the test set."
+        }
+      ],
+      "explanation": "A comparison is fair when each system gets comparable tuning effort on data separate from the test set. Watching the test score while tuning turns the test set into a dev set, and the reported margin can't be trusted.",
+      "week": 4,
+      "tags": [
+        "fairness",
+        "benchmarking"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-03",
+      "type": "scenario",
+      "prompt": "Your benchmark report lists the self-hosted fine-tuned model at $0.27 per 1,000 tasks, computed from peak throughput on one GPU. Expected traffic would keep the GPU busy about 15 percent of the time. What is the honest figure to report?",
+      "options": [
+        {
+          "id": "a",
+          "text": "$0.27, because that's what the hardware can do.",
+          "rationale": "That assumes the GPU is fully used, which your traffic won't deliver."
+        },
+        {
+          "id": "b",
+          "text": "$0.04, the peak figure times 0.15.",
+          "rationale": "Low utilization raises cost per task; it doesn't lower it."
+        },
+        {
+          "id": "c",
+          "text": "Zero, since the GPU is already rented for other work.",
+          "rationale": "If the GPU is genuinely shared, account for the share it uses. Don't call it free."
+        },
+        {
+          "id": "d",
+          "text": "About $1.80, the peak figure divided by 0.15, with the utilization assumption stated and a range shown.",
+          "rationale": "Yes. Idle hours are paid for, so effective cost per task scales with one over utilization.",
+          "correct": true
+        }
+      ],
+      "explanation": "Self-hosted cost per task equals hourly price divided by useful tasks per hour. At 15 percent utilization, the useful tasks per hour are 15 percent of peak, so cost per task is about 6.7 times the peak figure. Scale-to-zero or batch scheduling can change utilization; say which you assume.",
+      "week": 4,
+      "tags": [
+        "cost",
+        "utilization"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-04",
+      "type": "code-reading",
+      "prompt": "This benchmark loader compares two recorded runs. Which important check is missing?",
+      "code": "def compare(path_a, path_b):\n    a = json.loads(open(path_a).read())[\"predictions\"]\n    b = json.loads(open(path_b).read())[\"predictions\"]\n    ea = [p[\"exact\"] for p in a]\n    eb = [p[\"exact\"] for p in b]\n    return paired_bootstrap_diff(ea, eb)",
+      "options": [
+        {
+          "id": "a",
+          "text": "A check that both runs were scored against the same test set (fingerprint) and cover the same case ids.",
+          "rationale": "Yes. Without it, a run on an older test set version, or one missing the slow tail, compares silently.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "A check that both systems used the same prompt.",
+          "rationale": "Each system may use its own recorded prompt. Inputs and scoring must match."
+        },
+        {
+          "id": "c",
+          "text": "A check that latency values are positive.",
+          "rationale": "Reasonable hygiene, but not the check that protects the comparison's validity."
+        },
+        {
+          "id": "d",
+          "text": "A check that the files are valid JSON.",
+          "rationale": "`json.loads` already raises on invalid JSON."
+        }
+      ],
+      "explanation": "Silent misalignment is the most common way a comparison lies. Fingerprint the test set at prediction time, store it in every run, and refuse to compare runs whose fingerprints or id sets differ.",
+      "week": 4,
+      "tags": [
+        "integrity",
+        "benchmarking"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-05",
+      "type": "predict-output",
+      "prompt": "What does this print?",
+      "code": "gold = [{\"owner\": \"Sam\", \"due\": None}, {\"owner\": \"Ana\", \"due\": \"2026-11-13\"},\n        {\"owner\": None, \"due\": None}, {\"owner\": \"Lee\", \"due\": None}]\npred = [{\"owner\": \"Dana\", \"due\": None}, {\"owner\": \"ana\", \"due\": \"2026-11-13\"},\n        {\"owner\": None, \"due\": None}, None]\n\ndef ok(p, g, f):\n    if p is None:\n        return False\n    norm = lambda v: v.casefold() if isinstance(v, str) else v\n    return norm(p[f]) == norm(g[f])\n\nexact = sum(all(ok(p, g, f) for f in (\"owner\", \"due\")) for p, g in zip(pred, gold)) / 4\nowner = sum(ok(p, g, \"owner\") for p, g in zip(pred, gold)) / 4\nprint(exact, owner)",
+      "options": [
+        {
+          "id": "a",
+          "text": "`0.75 0.5`",
+          "rationale": "The second number counts only fields from parsed outputs; failures must count as wrong."
+        },
+        {
+          "id": "b",
+          "text": "`0.5 0.5`",
+          "rationale": "Exact match is 2 of 4 cases. Owner accuracy is 2 of 4 too: case 1 is wrong and case 4 failed to parse.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`0.5 0.667`",
+          "rationale": "That drops the unparseable case from the owner denominator."
+        },
+        {
+          "id": "d",
+          "text": "`0.667 0.667`",
+          "rationale": "Every rate here uses all four cases."
+        }
+      ],
+      "explanation": "Two cases are fully right (cases 2 and 3). Owner is right in cases 2 and 3 and wrong in case 1, and case 4 has no output, so it is wrong on every field. Both rates divide by 4.",
+      "week": 4,
+      "tags": [
+        "scoring"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-06",
+      "type": "scenario",
+      "prompt": "Latency for your self-hosted model was measured by sending 50 requests one at a time from a laptop on the same network: p95 of 0.4 seconds. Production will receive bursts of about 40 concurrent requests. What should you do before reporting latency?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Re-measure after warm-up at the expected concurrency (and one level above), recording the engine, batch settings, and hardware alongside p50 and p95.",
+          "rationale": "Yes. Latency is a property of the whole serving setup under load, not of the model alone.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Report 0.4 seconds; network conditions are the same.",
+          "rationale": "Concurrency changes latency a lot, because requests share decode steps and may queue."
+        },
+        {
+          "id": "c",
+          "text": "Divide 0.4 seconds by 40 to estimate per-request latency under batching.",
+          "rationale": "Batching raises throughput, but each request's latency stays the same or grows."
+        },
+        {
+          "id": "d",
+          "text": "Use the API provider's published latency for a similar model.",
+          "rationale": "That measures a different system on different hardware and traffic."
+        }
+      ],
+      "explanation": "Batching trades per-request latency for throughput. Measure at realistic concurrency, after warm-up, and report the configuration with the numbers so they can be reproduced and compared.",
+      "week": 4,
+      "tags": [
+        "latency",
+        "serving"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-07",
+      "type": "mcq",
+      "prompt": "According to its documentation at the lesson's review date, what is the status of Hugging Face's Text Generation Inference (TGI)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "It is the recommended engine for new deployments on Inference Endpoints.",
+          "rationale": "The TGI docs say otherwise; Inference Endpoints supports other engines too."
+        },
+        {
+          "id": "b",
+          "text": "It has been deleted and no longer runs.",
+          "rationale": "It still exists and accepts minor fixes; it is in maintenance mode."
+        },
+        {
+          "id": "c",
+          "text": "It is in maintenance mode, and Hugging Face recommends vLLM, SGLang, llama.cpp, or MLX going forward.",
+          "rationale": "Yes. That is the notice at the top of the TGI documentation.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "It has been merged into Ollama.",
+          "rationale": "There is no such merger."
+        }
+      ],
+      "explanation": "Serving tools change quickly. Older tutorials still use TGI; for new work, check each project's current docs and pin the engine version you benchmark.",
+      "week": 4,
+      "tags": [
+        "serving",
+        "tools"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5x-w4-08",
+      "type": "multi",
+      "prompt": "Which of these does vLLM's documentation list among its features at the review date? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Continuous batching of incoming requests",
+          "rationale": "Yes.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Serving multiple LoRA adapters on one base model",
+          "rationale": "Yes. Clients select an adapter by the name registered with --lora-modules.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Schema-constrained output through a structured_outputs request field",
+          "rationale": "Yes. The older guided_* fields were removed in 0.12.0.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Automatic fine-tuning of the served model on user traffic",
+          "rationale": "No. Serving never changes the weights."
+        },
+        {
+          "id": "e",
+          "text": "An OpenAI-compatible API server",
+          "rationale": "Yes.",
+          "correct": true
+        }
+      ],
+      "explanation": "These are the features that matter most for serving a fine-tuned extraction model: batching for cost, adapters for serving your LoRA without merging, constrained output for valid JSON, and a familiar API.",
+      "week": 4,
+      "tags": [
+        "vllm",
+        "serving"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-09",
+      "type": "scenario",
+      "prompt": "A product manager asks whether to use DPO to improve the extraction model's owner accuracy, since 'preference tuning is what made ChatGPT good.' You have 3,000 examples with gold labels. What is the best advice?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Use DPO: create pairs by pairing each gold output with a corrupted one.",
+          "rationale": "That can work mechanically, but gold labels already define the target precisely; supervised fine-tuning on more or better-labeled data is the simpler, direct fix."
+        },
+        {
+          "id": "b",
+          "text": "Use RLHF with PPO, since it outperforms DPO.",
+          "rationale": "Neither is the natural tool when correct outputs can be written down."
+        },
+        {
+          "id": "c",
+          "text": "Stick with supervised fine-tuning, and improve owner accuracy through error analysis: more or better-labeled examples of the failing cases, and checks such as owner resolution against the team directory.",
+          "rationale": "Yes. Preference tuning fits tasks with many acceptable outputs and comparison feedback, not exact-label extraction.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Distill owner labels from a frontier model and skip human labels.",
+          "rationale": "The frontier model also makes owner errors, and you would lose your ground truth."
+        }
+      ],
+      "explanation": "The feedback you can collect decides the method. Demonstrations and gold labels fit supervised fine-tuning; comparisons fit preference tuning. For extraction, the bigger wins usually come from error analysis, better data, and deterministic checks.",
+      "week": 4,
+      "tags": [
+        "preference-tuning",
+        "method-choice"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w4-10",
+      "type": "code-reading",
+      "prompt": "In this DPO setup, what does the reference model provide, and what happens if you set `ref_model` to None in TRL's DPOTrainer?",
+      "code": "from trl import DPOConfig, DPOTrainer\n\ntrainer = DPOTrainer(\n    model=sft_model,            # your supervised model\n    ref_model=None,\n    args=DPOConfig(beta=0.1),\n    train_dataset=pairs,        # rows with prompt, chosen, rejected\n)",
+      "options": [
+        {
+          "id": "a",
+          "text": "The reward labels; with None, training fails.",
+          "rationale": "DPO's labels are the chosen and rejected fields. The reference anchors the log-ratios."
+        },
+        {
+          "id": "b",
+          "text": "The log-probabilities that anchor each log-ratio; with None, TRL uses the initial policy (the model before DPO training starts) as the reference.",
+          "rationale": "Yes. TRL's docs say a None reference defaults to the initial state of the model being trained.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "A second policy that is trained jointly; with None, only one model is trained.",
+          "rationale": "The reference is frozen, not trained."
+        },
+        {
+          "id": "d",
+          "text": "Sampled responses during training; with None, nothing is sampled.",
+          "rationale": "DPO trains on fixed pairs and samples nothing either way."
+        }
+      ],
+      "explanation": "The implicit reward of a response is beta times the log of how much more likely the policy makes it than the reference. Using the starting model (usually your supervised model) as the reference means DPO rewards moving toward preferred responses relative to where you began, with beta limiting how far.",
+      "week": 4,
+      "tags": [
+        "dpo",
+        "trl"
+      ],
+      "difficulty": 3
+    },
+    {
+      "id": "s5x-w5-01",
+      "type": "scenario",
+      "prompt": "Halfway through project week you find four gold labels in the frozen test set that you now believe are wrong. What should you do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Fix them in place; correct labels make the benchmark more accurate.",
+          "rationale": "Editing the frozen set changes the fingerprint and makes earlier runs incomparable, and fixes chosen while you can see model outputs can bias the result."
+        },
+        {
+          "id": "b",
+          "text": "Log the suspected errors, keep the frozen set unchanged for the pre-registered run, and if they matter, create a version 2 and report a clearly labeled rerun on it alongside the original.",
+          "rationale": "Yes. Versioning keeps the comparison honest and still lets you report the better labels.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Delete the four cases from the test set.",
+          "rationale": "Removing cases after seeing results is selection, and it also changes the fingerprint silently."
+        },
+        {
+          "id": "d",
+          "text": "Ignore them; four labels out of 150 can't matter.",
+          "rationale": "Four cases can move exact match by almost 3 points, comparable to many margins. Record and assess them."
+        }
+      ],
+      "explanation": "A frozen test set is an instrument. Label errors are normal; the discipline is to version the fix and report both, rather than adjusting the instrument mid-measurement.",
+      "week": 5,
+      "tags": [
+        "test-set",
+        "project"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w5-02",
+      "type": "scenario",
+      "prompt": "Your base model's license forbids publishing derivatives without permission, and your training data includes internal transcripts. The project requires a model card. What is the right move?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Publish the adapter anyway, since adapters are small.",
+          "rationale": "Size doesn't change what the license permits."
+        },
+        {
+          "id": "b",
+          "text": "Skip the model card, since the adapter can't be published.",
+          "rationale": "The requirement is an honest card; you can keep it and the adapter private."
+        },
+        {
+          "id": "c",
+          "text": "Write the full model card, keep the adapter and card private (or switch to a base model whose license permits publishing), and describe the training data instead of releasing it.",
+          "rationale": "Yes. The project page allows a private card when the license or data forbids publishing.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Rename the adapter so it doesn't mention the base model.",
+          "rationale": "Hiding provenance violates the spirit of a model card and may violate the license's attribution terms."
+        }
+      ],
+      "explanation": "License and data constraints are part of the engineering. A good card states the base model and its license, describes what data was used even if it can't be released, and is honest about where the adapter should not be used.",
+      "week": 5,
+      "tags": [
+        "licenses",
+        "model-card"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5x-w5-03",
+      "type": "mcq",
+      "prompt": "Which metadata fields on a Hugging Face model card link your LoRA adapter to the model it was built on and display its license?",
+      "options": [
+        {
+          "id": "a",
+          "text": "`base_model` and `license`",
+          "rationale": "Yes. The Hub uses base_model to show the relationship (adapter, fine-tune, quantized, merge) and license to display and filter by license.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "`parent` and `copyright`",
+          "rationale": "These are not the Hub's field names."
+        },
+        {
+          "id": "c",
+          "text": "`pipeline_tag` and `tags`",
+          "rationale": "These describe the task and add search tags, not provenance or license."
+        },
+        {
+          "id": "d",
+          "text": "`model-index` and `datasets`",
+          "rationale": "model-index holds evaluation results and datasets lists training datasets."
+        }
+      ],
+      "explanation": "Set `base_model` to the exact Hub id you fine-tuned, and `license` to the applicable license (with license_name and license_link for custom licenses). Put eval results in the card too, with their intervals.",
+      "week": 5,
+      "tags": [
+        "model-card",
+        "hub"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5x-w5-04",
+      "type": "scenario",
+      "prompt": "Your pre-registered margin was minus 3 points. The paired lower bound came out at minus 3.4, and the fine-tuned model is 70 percent cheaper. A stakeholder suggests saying the model 'passed' because minus 3.4 is close. What do you write?",
+      "options": [
+        {
+          "id": "a",
+          "text": "That it passed, since the difference from the margin is negligible.",
+          "rationale": "Changing the verdict after seeing the result undoes the point of pre-registering it."
+        },
+        {
+          "id": "b",
+          "text": "Drop the cost result so the report doesn't look contradictory.",
+          "rationale": "Cost is required and is exactly what the stakeholder needs to weigh."
+        },
+        {
+          "id": "c",
+          "text": "Rerun the benchmark until the lower bound clears minus 3.",
+          "rationale": "Repeated reruns on the same cases are fishing, and the cases don't change."
+        },
+        {
+          "id": "d",
+          "text": "That it didn't meet the pre-registered rule, report the interval and the cost saving, and propose either collecting more test cases to narrow the interval or an explicit decision by the business to accept a wider margin for the savings.",
+          "rationale": "Yes. Report the rule's verdict honestly and make any change of margin an explicit, visible decision.",
+          "correct": true
+        }
+      ],
+      "explanation": "A pre-registered rule is valuable precisely when the result is close. Report what the rule says, then lay out the options. The business can choose to accept more risk for a large saving, but that should be a stated decision, not a reworded verdict.",
+      "week": 5,
+      "tags": [
+        "decision-rule",
+        "communication"
+      ],
+      "difficulty": 2
+    }
+  ]
+}

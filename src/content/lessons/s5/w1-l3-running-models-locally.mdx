@@ -1,0 +1,336 @@
+---
+id: s5-w1-l3
+studio: s5
+week: 1
+order: 3
+title: Running models locally
+summary: Quantization and its memory and quality trade-off, the GGUF format and llama.cpp, Ollama, LM Studio, and MLX on Apple Silicon, how to estimate memory from parameters and the KV cache, and how OpenAI-compatible local endpoints let one client talk to many backends.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Compute the memory a model needs from its parameter count, bits per weight, and KV cache, and decide whether it fits
+  - Explain what quantization trades away, and choose a quantization level with evidence rather than habit
+  - Run a model through llama.cpp, Ollama, LM Studio, or MLX, and know what each is for
+  - Measure time to first token and decode speed correctly, and estimate an upper bound on decode speed from memory bandwidth
+  - Point an OpenAI-compatible client at a local endpoint, and verify which model and quantization actually answered
+sources:
+  - { id: llamacpp-quantize, use: summarized, where: "Bits per weight table for Llama 3.1 8B; perplexity and KLD note" }
+  - { id: hf-hub-gguf, use: summarized, where: "Quantization types" }
+  - { id: gguf-spec, use: summarized }
+  - { id: llamacpp-repo, use: summarized }
+  - { id: llamacpp-server, use: summarized, where: "Default host and port; OpenAI-compatible endpoints" }
+  - { id: dettmers-2022-kbit-scaling, use: summarized }
+  - { id: huang-2024-llama3-quant, use: summarized }
+  - { id: dettmers-2022-llm-int8, use: linked }
+  - { id: frantar-2022-gptq, use: linked }
+  - { id: ollama-api-reference, use: summarized, where: "Generate a completion; response fields and tokens per second" }
+  - { id: ollama-docs-api, use: summarized }
+  - { id: ollama-context-length, use: summarized }
+  - { id: ollama-faq, use: summarized, where: "KV cache type; parallel requests" }
+  - { id: ollama-openai-compat, use: summarized }
+  - { id: ollama-structured-outputs, use: linked }
+  - { id: ollama-library-llama32, use: linked }
+  - { id: lmstudio-docs, use: summarized }
+  - { id: lmstudio-openai-compat, use: summarized }
+  - { id: mlx-repo, use: summarized }
+  - { id: mlx-lm-repo, use: summarized, where: "README; generate.py GenerationResponse" }
+  - { id: mlx-lm-server, use: summarized }
+  - { id: hf-mlx-community, use: linked }
+  - { id: yt-wwdc25-mlx-llms, use: embedded }
+  - { id: hf-chat-basics, use: summarized, where: "Performance and memory bandwidth" }
+  - { id: hf-kv-cache-explanation, use: summarized }
+  - { id: hf-llama31-blog, use: summarized, where: "Inference memory requirements" }
+  - { id: kwon-2023-pagedattention, use: summarized, where: "Section 3, KV cache size example" }
+  - { id: ainslie-2023-gqa, use: summarized }
+  - { id: apple-macbook-pro-specs, use: summarized }
+  - { id: hf-llm-course, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: predict-output
+    prompt: An 8B-parameter model is quantized to Q4_K_M (about 4.9 bits per weight). Roughly how much memory do the weights alone need?
+    code: |
+      params = 8.03e9
+      bits = 4.8944
+      print(round(params * bits / 8 / 2**30, 2), "GiB")
+    options:
+      - id: a
+        text: "`4.58 GiB`"
+        correct: true
+        rationale: 8.03e9 × 4.8944 / 8 bytes is about 4.91e9 bytes, which is 4.58 GiB, matching the llama.cpp table.
+      - id: b
+        text: "`16.0 GiB`"
+        rationale: That is roughly the FP16 size (2 bytes per parameter).
+      - id: c
+        text: "`2.0 GiB`"
+        rationale: That would be 2 bits per weight. Q4_K_M uses close to 5 bits once block scales are counted.
+    explanation: >-
+      Weights take parameters × bits per weight / 8 bytes. "4-bit" formats store extra scale values per block of weights,
+      so the effective bits per weight is higher than the name suggests: 4.89 for Q4_K_M in llama.cpp's measurement on
+      Llama 3.1 8B. Then add the KV cache and runtime overhead before deciding it fits.
+  - id: kc2
+    type: mcq
+    prompt: Why does a 4-bit model usually generate tokens faster than the same model in 16-bit on a laptop?
+    options:
+      - id: a
+        text: Generation is limited mainly by how fast the weights can be read from memory, and 4-bit weights are about a quarter of the bytes.
+        correct: true
+        rationale: Yes. Each generated token reads every active weight once, so fewer bytes means more tokens per second.
+      - id: b
+        text: 4-bit arithmetic is four times faster than 16-bit arithmetic on every chip.
+        rationale: Compute is rarely the bottleneck for single-stream decoding; memory bandwidth is.
+      - id: c
+        text: The 4-bit model produces shorter answers.
+        rationale: Quantization changes the weights slightly, not the target length.
+    explanation: >-
+      The Transformers docs note that each active parameter must be read from memory for every generated token, which
+      makes decoding bandwidth-bound and explains why quantization and higher-bandwidth hardware help most. Divide memory
+      bandwidth by the bytes read per token for a rough upper bound on decode speed; real numbers are lower.
+  - id: kc3
+    type: scenario
+    prompt: >-
+      You benchmark a local model through Ollama. The first request takes 7 seconds; the next ones take 1.5 seconds. The
+      final response chunk of the first request shows a `load_duration` of about 5.5 seconds. What should your benchmark do?
+    options:
+      - id: a
+        text: Report the average of all runs, including the first.
+        rationale: That mixes a one-time model load into a per-request latency number.
+      - id: b
+        text: Run a warm-up request first, report load time separately, and compute decode speed from eval_count and eval_duration on the warm runs.
+        correct: true
+        rationale: Right. Cold start, prefill, and decode are different costs; measure and report each.
+      - id: c
+        text: Switch to MLX, which never has load time.
+        rationale: Every runtime loads weights into memory; MLX reports it differently, but it is there.
+    explanation: >-
+      Ollama's final chunk separates load time, prompt evaluation (prefill), and token generation (decode), all in
+      nanoseconds. A model stays loaded for a while after a request (five minutes by default, set with keep_alive), so the
+      first call is the outlier. Report cold-start load time, time to first token, and decode tokens per second as separate
+      numbers, with the median over several warm runs.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## Two questions: does it fit, and how fast is it?
+
+Running a model on your own machine comes down to two numbers. **Memory:** the weights, plus a cache that grows with the conversation, plus runtime overhead, must fit in the memory your accelerator can use. On an Apple Silicon Mac that is unified memory shared by CPU and GPU. Apple's spec page, read today, lists the M5 Max MacBook Pro with 36 GB of unified memory on the 32-core GPU version, and 48, 64, or 128 GB on the 40-core GPU version. **Speed:** how long until the first token appears, and how many tokens per second after that.
+
+Those two speed numbers come from two different phases. **Prefill** processes your whole prompt in parallel and is limited mostly by compute; its result is the time to first token. **Decode** produces one token at a time, and the Transformers docs explain why it is slow: each active parameter has to be read from memory for every generated token, so decoding is limited by **memory bandwidth**, and adding compute barely helps. That gives you a handy upper bound. Apple lists 460 GB/s of memory bandwidth for the 32-core GPU M5 Max and 614 GB/s for the 40-core version. A model whose weights are 5 GB can't decode faster than about 614 / 5, roughly 120 tokens per second, on the faster chip, and real numbers come in below that bound.
+
+Both questions lead to the same lever: use fewer bytes per weight. That is quantization.
+</Listen>
+
+<Listen>
+## Quantization: fewer bits per weight
+
+Models are usually trained and published in 16-bit floating point (FP16 or BF16): 2 bytes per parameter, so an 8B model needs about 16 GB just for weights. **Quantization** stores the weights with fewer bits, typically 8, 6, 5, or 4, and converts them back to higher precision on the fly during computation.
+
+Modern schemes quantize in **blocks**. A group of weights (for example 32, 64, or 256 of them) shares a scale, and sometimes an offset, stored at higher precision, so each block can use its small range of integers well. Those scales cost bits, which is why a "4-bit" format has more than 4 effective bits per weight. llama.cpp's quantize README measures this on Llama 3.1 8B: Q4_K_M comes to 4.89 bits per weight (4.58 GiB), Q5_K_M to 5.70, Q6_K to 6.56, Q8_0 to 8.50, and F16 to 16.0 (14.96 GiB). The "K_M" variants are mixes that keep some sensitive tensors at higher precision. MLX's converter defaults to 4-bit affine quantization with a group size of 64.
+
+What do you give up? The same README says quality loss is usually measured as **perplexity** (how surprised the model is by reference text) or **KL divergence** from the unquantized model's output distribution. The research gives a consistent picture. Dettmers and Zettlemoyer (2022) ran more than 35,000 experiments across model families and found that, for a fixed memory budget, 4-bit precision was almost universally the best trade-off between total model bits and zero-shot accuracy, with small block sizes helping. In other words, a bigger model at 4 bits usually beats a smaller one at 8. Below 4 bits, things degrade: Huang and colleagues (2024) found Llama 3 suffered non-negligible degradation at very low bit widths. Methods such as GPTQ and LLM.int8() (both in the sources) are different ways of quantizing with less damage.
+
+The engineering rule: 4 to 6 bits is the usual starting range. Treat anything lower as an experiment, and measure on your own task, because averages over benchmarks can hide a sharp drop on exactly the thing you need, such as precise extraction or long-context retrieval.
+</Listen>
+
+<Predict
+  title="Bigger model at 4 bits, or smaller at 8?"
+  code={`def weight_gib(params_billion, bits):
+    return params_billion * 1e9 * bits / 8 / 2**30
+
+print(round(weight_gib(14, 4.89), 1), round(weight_gib(8, 8.50), 1))`}
+  options={["8.0 7.9", "7.0 8.0", "14.0 8.0", "8.0 4.0"]}
+  answer={0}
+>
+A 14B model at 4.89 bits needs 14e9 × 4.89 / 8 bytes, about 7.97 GiB. An 8B model at 8.5 bits needs about 7.92 GiB. Nearly the same memory. The k-bit scaling results suggest the 14B at 4 bits is usually the better choice at that budget, but "usually" is a claim about averages. Your eval on your task settles it.
+</Predict>
+
+<Listen>
+## The KV cache: memory that grows with context
+
+Weights are a fixed cost. The second big consumer grows with every token. During generation, each attention layer stores a **key** and a **value** vector for every token so far, so they are not recomputed at each step; the Transformers docs describe this cache as tensors of shape batch × heads × sequence length × head dimension, per layer. Its size is
+
+KV cache bytes = 2 × layers × KV heads × head dimension × context length × bytes per value × batch size.
+
+The 2 is for keys and values. The PagedAttention paper (Kwon and colleagues, 2023) gives a worked example: for OPT-13B, one token of KV cache is 2 × 5,120 × 40 layers × 2 bytes, about 800 KB, so a 2,048-token sequence needs up to 1.6 GB.
+
+Modern models shrink this with **grouped-query attention** (Ainslie and colleagues, 2023): many query heads share a few key-value heads. Llama 3.1 8B has 32 layers, 8 KV heads, and a head dimension of 128, so in FP16 one token costs 2 × 32 × 8 × 128 × 2 = 131,072 bytes, or 128 KiB. Hugging Face's Llama 3.1 post lists the FP16 cache at about 2 GB for 16,000 tokens and 15.6 GB at 128,000, and notes that for the small model the cache can use as much memory as the weights near the maximum context. At 4-bit weights the cache is the bigger number.
+
+Three things change the estimate. **Sliding-window layers** only keep the last W tokens: Ai2's Olmo 3.1 32B config uses a 4,096-token window on three of every four layers, which caps most of its cache. **KV cache quantization** stores keys and values in 8 or 4 bits; Ollama's FAQ lists the default cache type as f16 with quantized options. And **parallel requests** multiply the cache, which Ollama's FAQ also notes. For mixture-of-experts models, memory depends on the total parameters (every expert must be loaded), while decode speed depends on the active parameters.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s5-w1-memory-estimator"
+  title="Build a memory estimator"
+  starter={`GIB = 2**30
+
+def weight_gib(params, bits_per_weight):
+    """Memory for the weights in GiB: params * bits / 8 bytes."""
+    # TODO
+    pass
+
+def kv_bytes_per_token(layers, kv_heads, head_dim, bytes_per_value=2):
+    """Keys and values for one token across all layers: 2 * layers * kv_heads * head_dim * bytes."""
+    # TODO
+    pass
+
+def kv_cache_gib(layers, kv_heads, head_dim, context, bytes_per_value=2, batch=1,
+                 sliding_window=None, sliding_layers=0):
+    """KV cache in GiB. The first (layers - sliding_layers) layers keep every token;
+    sliding layers keep at most sliding_window tokens. Multiply by batch."""
+    # TODO
+    pass
+
+def estimate_gib(model, bits_per_weight, context, kv_bytes=2, overhead_gib=1.0):
+    """Total = weights + KV cache + a fixed runtime overhead.
+    model is a dict with params, layers, kv_heads, head_dim, and optional sliding_window, sliding_layers."""
+    # TODO
+    pass
+
+def max_context(model, bits_per_weight, memory_gib, kv_bytes=2, overhead_gib=1.0):
+    """Largest whole-token context that fits in memory_gib (for models without sliding windows).
+    Return 0 if the weights and overhead alone do not fit."""
+    # TODO
+    pass
+
+LLAMA_31_8B = {"params": 8.03e9, "layers": 32, "kv_heads": 8, "head_dim": 128}
+OLMO_31_32B = {"params": 32.2e9, "layers": 64, "kv_heads": 8, "head_dim": 128,
+               "sliding_window": 4096, "sliding_layers": 48}
+
+QUANTS = {"Q4_K_M": 4.8944, "Q6_K": 6.5633, "Q8_0": 8.5008, "F16": 16.0005}
+for name, bits in QUANTS.items():
+    row = [round(estimate_gib(LLAMA_31_8B, bits, ctx) or 0, 1) for ctx in (4096, 32768, 131072)]
+    print(f"Llama 3.1 8B {name:7} 4K/32K/128K context: {row} GiB")
+print("max context in 16 GiB at Q4_K_M:", max_context(LLAMA_31_8B, 4.8944, 16))
+`}
+  tests={`assert kv_bytes_per_token(40, 40, 128) == 819200, "OPT-13B: about 800 KB per token (PagedAttention paper)"
+assert kv_bytes_per_token(32, 8, 128) == 131072, "Llama 3.1 8B: 128 KiB per token in FP16"
+assert abs(kv_cache_gib(32, 8, 128, 128000) - 15.625) < 1e-6, "Llama 3.1 8B at 128,000 tokens is about 15.6 GiB (HF blog)"
+assert abs(kv_cache_gib(32, 8, 128, 1024, batch=4) - 0.5) < 1e-9, "batch multiplies the cache"
+assert abs(kv_cache_gib(32, 8, 128, 1024, bytes_per_value=1) - 0.0625) < 1e-9, "an 8-bit cache halves it"
+assert abs(weight_gib(8.03e9, 4.8944) - 4.575) < 0.01, "Q4_K_M Llama 3.1 8B weights are about 4.58 GiB (llama.cpp table)"
+full = kv_cache_gib(64, 8, 128, 65536)
+windowed = kv_cache_gib(64, 8, 128, 65536, sliding_window=4096, sliding_layers=48)
+assert abs(full - 16.0) < 1e-9 and abs(windowed - 4.75) < 1e-9, f"sliding windows cap 48 of 64 layers: expected 16.0 and 4.75, got {full}, {windowed}"
+short = kv_cache_gib(64, 8, 128, 2048, sliding_window=4096, sliding_layers=48)
+assert abs(short - kv_cache_gib(64, 8, 128, 2048)) < 1e-12, "below the window, sliding layers keep every token"
+e = estimate_gib(LLAMA_31_8B, 4.8944, 4096)
+assert abs(e - (weight_gib(8.03e9, 4.8944) + 0.5 + 1.0)) < 1e-9, "4,096 tokens of cache is 0.5 GiB, plus 1 GiB overhead"
+o = estimate_gib(OLMO_31_32B, 4.8944, 65536, overhead_gib=0)
+assert abs(o - (weight_gib(32.2e9, 4.8944) + 4.75)) < 1e-9, "estimate_gib must pass the sliding window through"
+m = max_context(LLAMA_31_8B, 4.8944, 16)
+assert isinstance(m, int) and m > 0, "max_context returns a positive int when the weights fit"
+assert estimate_gib(LLAMA_31_8B, 4.8944, m) <= 16 < estimate_gib(LLAMA_31_8B, 4.8944, m + 1), "the largest context that fits, not one more"
+assert max_context(LLAMA_31_8B, 16.0005, 12) == 0, "F16 weights (about 15 GiB) do not fit in 12 GiB"`}
+  solution={`GIB = 2**30
+
+def weight_gib(params, bits_per_weight):
+    return params * bits_per_weight / 8 / GIB
+
+def kv_bytes_per_token(layers, kv_heads, head_dim, bytes_per_value=2):
+    return 2 * layers * kv_heads * head_dim * bytes_per_value
+
+def kv_cache_gib(layers, kv_heads, head_dim, context, bytes_per_value=2, batch=1,
+                 sliding_window=None, sliding_layers=0):
+    per_layer_token = 2 * kv_heads * head_dim * bytes_per_value
+    full_layers = layers - sliding_layers
+    window_tokens = context if sliding_window is None else min(context, sliding_window)
+    total = per_layer_token * (full_layers * context + sliding_layers * window_tokens) * batch
+    return total / GIB
+
+def estimate_gib(model, bits_per_weight, context, kv_bytes=2, overhead_gib=1.0):
+    kv = kv_cache_gib(model["layers"], model["kv_heads"], model["head_dim"], context,
+                      bytes_per_value=kv_bytes,
+                      sliding_window=model.get("sliding_window"),
+                      sliding_layers=model.get("sliding_layers", 0))
+    return weight_gib(model["params"], bits_per_weight) + kv + overhead_gib
+
+def max_context(model, bits_per_weight, memory_gib, kv_bytes=2, overhead_gib=1.0):
+    free = memory_gib - weight_gib(model["params"], bits_per_weight) - overhead_gib
+    if free <= 0:
+        return 0
+    per_token = kv_bytes_per_token(model["layers"], model["kv_heads"], model["head_dim"], kv_bytes)
+    return int(free * GIB // per_token)`}
+>
+Fill in the five functions, then press **Check my answer**. The tests use published reference points: the 800 KB per token from the PagedAttention paper, the 15.6 GB cache at 128,000 tokens from Hugging Face's Llama 3.1 post, and the 4.58 GiB Q4_K_M size from llama.cpp's table. When it passes, read the printed table: at 128K context the cache is larger than the 4-bit weights. The 1 GiB overhead is an assumption; check real usage with `ollama ps` or MLX's peak memory and adjust it.
+</PyRunner>
+
+<Callout type="pitfall" title="The context you think you have is not the context you get">
+Runtimes don't always give you the model's full context window. Ollama's context-length docs, read today, set the default by available VRAM (4K tokens below 24 GiB, 32K from 24 to 48 GiB, 256K at 48 GiB or more), and its FAQ and Modelfile reference still quote older, smaller defaults. Input beyond the configured window is not an error you can rely on seeing. Set the context explicitly (`num_ctx` in the request options, or the `OLLAMA_CONTEXT_LENGTH` environment variable), check the `CONTEXT` column of `ollama ps`, and test with a document whose last line contains the answer.
+</Callout>
+
+<Listen>
+## GGUF and llama.cpp
+
+**llama.cpp** is a C and C++ inference engine that runs on CPUs and GPUs with few dependencies; its README calls Apple silicon a first-class citizen, optimized through ARM NEON, Accelerate, and Metal. It introduced **GGUF**, a single-file binary format designed for fast loading and memory mapping. A GGUF file holds the tensors plus key-value metadata: architecture, context length, tokenizer, chat template, and quantization type. That is why one GGUF file is enough to run a model, unlike a transformers repo with separate config and tokenizer files. File names follow a convention that encodes the base name, size, fine-tune, version, and quantization, so `...-8B-Instruct-Q4_K_M.gguf` tells you what you have.
+
+You get GGUF files in two ways: download them from the Hub (many popular models have official or community GGUF repos, linked through `base_model`), or convert a transformers model and quantize it with `llama-quantize`, optionally using an importance matrix computed on sample text to reduce quality loss. `llama-server` serves a model over HTTP with OpenAI-compatible endpoints such as `/v1/chat/completions` and `/v1/models`. Note a recent change: the server README now gives the default address as 127.0.0.1 on port **9931**, changed in October 2026 from the long-standing 8080, so older tutorials will point you at the wrong port. Check the README or pass `--port` yourself.
+</Listen>
+
+<Listen>
+## Ollama and LM Studio: packaged local inference
+
+**Ollama** packages model download, storage, and serving behind one command. `ollama pull llama3.2:3b` fetches a quantized model from its library (the Llama 3.2 3B tag is about 2 GB), and the background server listens on `localhost:11434`. Its native API has `/api/chat` and `/api/generate` endpoints that stream newline-delimited JSON by default; the last chunk, marked `done: true`, carries the timing fields that the lab uses: `load_duration`, `prompt_eval_count` and `prompt_eval_duration` (prefill), `eval_count` and `eval_duration` (decode), and `total_duration`, all durations in nanoseconds. The API reference gives the decode speed formula directly: `eval_count` divided by `eval_duration`, times 10 to the 9th. Ollama also accepts a JSON schema in the `format` field for structured output, keeps a model loaded for five minutes after use by default (`keep_alive`), and exposes an OpenAI-compatible API under `/v1`.
+
+**LM Studio** is a desktop app for finding, downloading, and chatting with models, with a local server for code. Its docs say it runs llama.cpp (GGUF) models and, on Apple Silicon Macs, MLX models too, and it ships an `lms` command-line tool for loading models and starting the server. Its OpenAI-compatible endpoints include `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, and `/v1/models`, and its examples use `http://localhost:1234/v1`. It is a good choice when you or a teammate want a GUI to compare models before writing code.
+
+Choosing between them is mostly about workflow. Ollama is convenient for scripts, servers, and teammates who live in a terminal. LM Studio suits interactive comparison and people who prefer a GUI. llama.cpp directly gives you every knob and the newest features first. All three serve GGUF models, so a quantized file you trust can move between them.
+</Listen>
+
+```bash
+ollama pull llama3.2:3b
+curl -s http://localhost:11434/api/chat -d '{
+  "model": "llama3.2:3b",
+  "messages": [{"role": "user", "content": "Name one prime number."}],
+  "stream": false,
+  "options": {"num_ctx": 8192}
+}' | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r["message"]["content"], r["eval_count"] / r["eval_duration"] * 1e9, "tok/s")'
+```
+
+<Listen>
+## MLX on Apple Silicon
+
+**MLX** is Apple's open source array framework for machine learning on Apple silicon. Its README highlights the design choice that matters here: arrays live in **unified memory**, so CPU and GPU operate on the same data without copying it between them. **mlx-lm** builds LLM inference and fine-tuning on top. `pip install mlx-lm` gives you `mlx_lm.generate` and `mlx_lm.chat` on the command line, and a Python API in which `load` returns a model and tokenizer, and `stream_generate` yields responses that report `prompt_tps` (prefill tokens per second), `generation_tps` (decode tokens per second), and `peak_memory` in GB. `mlx_lm.convert` with `-q` quantizes a Hugging Face model, by default to 4 bits with a group size of 64, and the `mlx-community` organization on the Hub hosts many models already converted. `mlx_lm.server` offers an HTTP API modeled on OpenAI's chat API, which its docs say is not recommended for production.
+
+On a Mac, MLX and the GGUF runtimes are both reasonable; which is faster for a given model and quantization is an empirical question that changes with releases, so measure both on your machine. The WWDC25 session below, from Apple's MLX team, walks through running, quantizing, and fine-tuning LLMs with mlx-lm.
+</Listen>
+
+<Video id="tn2Hvw7eCsw" title="WWDC25: Explore large language models on Apple silicon with MLX" channel="Apple Developer" minutes={20} source="https://developer.apple.com/videos/play/wwdc2025/298/">
+Watch for three things: the `mlx_lm.generate` and Python API usage, how quantization is applied during conversion, and the discussion of unified memory and model size. Fine-tuning comes up again in week 3.
+</Video>
+
+<Listen>
+## One client, many backends: OpenAI-compatible endpoints
+
+Ollama, llama-server, LM Studio, and mlx-lm's server all expose an OpenAI-style chat completions endpoint. In practice that means you can point the official `openai` Python client at `http://localhost:11434/v1` (Ollama's docs pass a placeholder API key, which it ignores) and reuse code written for a hosted API. That is useful for swapping backends in an eval harness, and for tools that only speak that protocol.
+
+"Compatible" is a promise about the shape of requests, not about behavior. Ollama's docs say it supports a subset of the OpenAI API. Model names differ per server, some parameters are ignored, structured output support varies, and usage numbers come from each server's own tokenizer. So verify three things on any local endpoint: which model actually answered (list `/v1/models`, or `ollama ps`), which quantization it is running (in the model tag or GGUF name), and that a field your code depends on is really honored, by testing it rather than reading about it.
+</Listen>
+
+```python
+from openai import OpenAI
+
+local = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")  # key is required but ignored
+reply = local.chat.completions.create(
+    model="llama3.2:3b",
+    messages=[{"role": "user", "content": "Reply with the word ready."}],
+)
+print(reply.model, reply.choices[0].message.content, reply.usage)
+```
+
+<Callout type="tip" title="Measure speed like an engineer">
+Tokens per second is only comparable within one tokenizer, because different models split the same text into different numbers of tokens. When you compare a local model with an API model, also report **seconds per task** and **characters per second**. Discard a warm-up run, report the median and the worst of several runs, report cold-start load time separately, and write down the quantization, context setting, and runtime version next to every number. The lab builds exactly this.
+</Callout>
+
+<LabLink path="labs/studio-5/01-local-inference" title="Lab: benchmark a local model against Claude" needs={["Ollama or mlx-lm installed (optional)", "Anthropic API key (optional)"]} minutes={60}>
+Run a small open model through Ollama's HTTP API or MLX, measure time to first token and decode tokens per second from the streamed response, and run the same extraction prompt against a Claude model for comparison. Offline tests cover the benchmarking math and response parsing with recorded fixtures, so you can complete the core of the lab without either runtime or a key.
+</LabLink>
+
+<GoDeeper title="Why decode speed has a bandwidth ceiling">
+For a single conversation, generating one token requires reading every active weight from memory once (plus the KV cache so far), while the arithmetic per weight is only a couple of operations. Dividing a chip's memory bandwidth by bytes read per token therefore bounds decode speed from above. For an 8B model at Q4_K_M (about 4.9 GB) on a 614 GB/s M5 Max, the bound is about 125 tokens per second; long contexts lower it further, because the cache is read too. This is also why the Transformers docs point to speculative decoding, where a small draft model proposes several tokens and the large model checks them in one pass, as a way around the bandwidth limit, and why it helps dense models more than mixture-of-experts models. Prefill is different: the whole prompt is processed in parallel, the arithmetic per weight read is large, and the chip's compute becomes the limit. That is why a long prompt costs time to first token, and a long answer costs decode time.
+</GoDeeper>
+
+<Listen>
+## Choosing what to run, with evidence
+
+A working engineer picks a local model the same way as an API model, with two extra constraints. Start from the hardware: subtract a safety margin for the operating system and other apps from your memory, then use your estimator to list which model sizes and quantizations fit at the context length you need. Shortlist two or three models whose licenses fit (lesson 1) and whose cards suit the task (lesson 2). Try the shortlisted quantizations on a labeled sample: if Q4_K_M matches Q8_0 on your task, take the smaller one; if it doesn't, the extra memory is the price of accuracy. Measure time to first token, decode speed, and seconds per task on warm runs. Finally, run the same sample through a frontier API, so you know exactly what local inference costs you in quality and what it saves you in privacy, money, or latency. That comparison is the core of this studio, and the lab is your first version of it.
+</Listen>

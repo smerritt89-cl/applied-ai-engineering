@@ -1,0 +1,327 @@
+---
+id: s5-w2-l6
+studio: s5
+week: 2
+order: 6
+title: Data quality, splits, and contamination
+summary: Train, validation, and test splits and what each is for; stratified and group-aware splitting; exact and near-duplicate detection with shingles, Jaccard, and MinHash; the ways test data leaks into training; label noise; and keeping a frozen test set that matches production.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain what the train, validation, and test splits are each for, and why choosing on a split biases its score
+  - Split data with stratification and group constraints (threads, customers, source documents) and explain when a time-based split is needed
+  - Detect exact and near-duplicates with normalized hashing, word shingles, and Jaccard similarity, and reason about MinHash LSH at scale
+  - Recognize the common forms of leakage between training and evaluation data, including leakage through templates, prompts, and repeated test-set use
+  - Estimate and reduce label noise, and maintain a frozen, versioned test set that matches the production distribution
+sources:
+  - { id: hamel-evals-faq, use: summarized, where: "Train, dev, and test sets; gold dataset staleness" }
+  - { id: anthropic-demystifying-evals, use: linked }
+  - { id: sklearn-cross-validation, use: summarized, where: "Stratified, group, and time-series splitters" }
+  - { id: lee-2021-dedup, use: summarized }
+  - { id: datasketch-lsh, use: summarized }
+  - { id: kapoor-2022-leakage, use: summarized }
+  - { id: northcutt-2021-label-errors, use: summarized }
+  - { id: deng-2023-contamination, use: summarized }
+  - { id: zhang-2024-gsm1k, use: summarized }
+  - { id: gekhman-2024-new-knowledge, use: summarized, where: "Early stopping on a development set" }
+  - { id: miller-2024-error-bars, use: linked }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 8, Dataset Engineering (deduplication)" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your fine-tuned extractor scores 91 percent on the test set. You read the failures, fix two labeling-guideline
+      problems, relabel some training data, retrain, and score 94 percent on the same test set. You repeat this three
+      more times and reach 96 percent. What is the most accurate description of the 96?
+    options:
+      - id: a
+        text: An unbiased estimate of production accuracy, since you never trained on the test set.
+        rationale: >-
+          You never trained on it, but you made five rounds of decisions by looking at its failures and scores. It has
+          become a validation set, and the score of the version you picked is biased upward.
+      - id: b
+        text: An optimistic estimate. The test set now guides your choices, so you need a fresh held-out set to report an honest number.
+        correct: true
+        rationale: >-
+          Yes. Every decision informed by a split makes its score less trustworthy as an estimate. Use a validation set
+          for iteration and reserve a test set (or a fresh sample) for the final report.
+      - id: c
+        text: Meaningless; any reuse of a test set invalidates all of its results.
+        rationale: Too strong. Reuse makes the estimate optimistic, more so the more you reuse it; it doesn't make it random.
+    explanation: >-
+      This is the same selection effect as picking the best of many noisy measurements: the maximum is biased upward.
+      Iterate on the validation split, look at the test split rarely, and when you've looked too often, refresh it
+      with new production samples and keep the old version for comparison.
+  - id: kc2
+    type: mcq
+    prompt: What did Northcutt and colleagues (2021) find when they examined label errors in widely used test sets?
+    options:
+      - id: a
+        text: Errors were negligible, well under one in a thousand labels.
+        rationale: They estimated at least 3.3 percent on average across ten test sets.
+      - id: b
+        text: An average of at least 3.3 percent label errors, enough that correcting them could change which model ranked higher.
+        correct: true
+        rationale: Yes. With corrected labels, smaller models sometimes outperformed larger ones on ImageNet and CIFAR-10.
+      - id: c
+        text: Errors were common in training sets but absent from test sets, which are carefully curated.
+        rationale: The paper's point is precisely that test sets have them too, and that they destabilize benchmarks.
+    explanation: >-
+      A test set is a measuring instrument, and its labels are part of the instrument. If a few percent of gold labels
+      are wrong, a difference of a few points between two models may be noise in the gold, not a difference in the
+      models. Audit a sample of test labels before you trust small differences.
+  - id: kc3
+    type: predict-output
+    prompt: >-
+      MinHash LSH with b bands of r rows returns a candidate pair with true Jaccard similarity s with probability
+      1 - (1 - s^r)^b. What does this print?
+    code: |
+      p = lambda s, r=5, b=20: 1 - (1 - s**r)**b
+      print(round(p(0.8), 3), round(p(0.3), 3))
+    options:
+      - id: a
+        text: "`1.0 0.047`"
+        correct: true
+        rationale: A pair at 0.8 is almost certainly found; a pair at 0.3 is found about 5 percent of the time.
+      - id: b
+        text: "`0.8 0.3`"
+        rationale: The candidate probability is not the similarity itself; banding turns it into an S-curve.
+      - id: c
+        text: "`0.328 0.002`"
+        rationale: That is s to the fifth power, the chance that one band of five rows matches, before combining 20 bands.
+    explanation: >-
+      Banding sharpens a gradual similarity into a near step function around a threshold (here roughly 0.5), which is
+      why LSH can find near-duplicates among millions of documents without comparing every pair. The candidates still
+      need an exact Jaccard check, because some false positives get through.
+---
+import PyRunner from '@components/lesson/PyRunner';
+import DragOrder from '@components/lesson/DragOrder';
+
+<Listen>
+## A score is only as good as the data behind it
+
+In week 4 you will put a number on your fine-tuned model: accuracy on the extraction task, side by side with a frontier model. That number will drive a decision about cost and quality. This lesson is about the ways that number can be wrong before any model runs, because the data that produced it was flawed: duplicates that let the model see test answers in training, related documents split across train and test, labels that are themselves mistakes, or a test set that doesn't look like production.
+
+None of this is new to you. Studio 3 built test sets, kept test cases out of prompts, and put error bars on pass rates. Fine-tuning raises the stakes, because now the same pool of labeled data feeds both training and evaluation, and anything that crosses from one to the other inflates the score. Kapoor and Narayanan (2022) surveyed machine-learning-based science and found leakage errors affecting 329 papers across 17 fields, often producing overly optimistic results. Careful researchers made these mistakes; you will be tempted to make them too.
+</Listen>
+
+<Listen>
+## Three splits, three jobs
+
+The **training set** is what the model learns from. The **validation set** (also called the dev set) is what you use to make decisions: how many epochs, which learning rate, which checkpoint, whether a data change helped. Gekhman and colleagues' new-knowledge result from lesson 4 depended on it: stopping when validation accuracy peaked avoided most of the harm from training too long. The **test set** is what you report, ideally once per decision you're making.
+
+The reason for separating validation from test is a statistical fact you already know. If you measure ten checkpoints on the same set and pick the best, the best score is biased upward: you selected partly on noise. The more choices you make on a set, the more optimistic its numbers become. The validation set absorbs that bias so the test set doesn't. Hamel Husain and Shreya Shankar's evals FAQ applies the same rule to LLM judges: tune on one split, measure on another.
+
+How big should each be? The test set must be large enough that the differences you care about exceed its margin of error. In Studio 3 you computed that 50 cases at 80 percent give roughly plus or minus 11 points, which can't separate 80 from 85. For fine-tuning, a common pattern is to fix the test set's size from that calculation first, set aside a similar or smaller validation set, and give everything else to training. The lab's 70/15/15 split of 44 documents is far too small for a real benchmark, and saying so out loud is part of the exercise.
+</Listen>
+
+<Listen>
+## Splitting: random is not enough
+
+A random split assumes every example is independent. Real data rarely is.
+
+**Stratify** when you have categories whose proportions matter. If 10 percent of documents are support tickets, a random split of a small dataset can put almost none of them in the test set. Stratified splitting allocates each category to each split in proportion, so every split has every kind of document. scikit-learn's splitters (StratifiedKFold and relatives) do this for you; the lab implements it by hand so you can see it.
+
+**Group** when examples are related. An email and its reply, three messages from one support thread, ten tickets from one customer, five chunks of one long document: if one lands in training and another in test, the model has effectively seen part of the test answer. Group-aware splitting assigns whole groups to a single split (scikit-learn's GroupKFold and StratifiedGroupKFold). Choose the group by asking what production looks like. If your model will see new customers, group by customer, so the test set measures performance on customers it never saw.
+
+**Split by time** when production is the future. If the model will run on next quarter's documents, train on older data and test on the most recent, because vocabulary, products, and formats drift. A random split hides that drift; a time-based split measures it.
+
+These constraints compete in small datasets, which is why the lab fills each stratum with whole groups until it reaches its target, then moves on. Expect split sizes to be close to the requested fractions, not exact.
+</Listen>
+
+<Predict
+  title="How often does a random split cut a thread?"
+  code={`# A thread has two messages. Each message is assigned to train with
+# probability 0.8 and to test with probability 0.2, independently.
+p_same = 0.8**2 + 0.2**2
+print(round(1 - p_same, 2))`}
+  options={["0.32", "0.2", "0.04", "0.64"]}
+  answer={0}
+>
+About a third of two-message threads end up split across train and test (2 x 0.8 x 0.2 = 0.32), and the share rises with longer threads. In a dataset with hundreds of threads, a random split is practically guaranteed to leak. Group-aware splitting brings it to zero by construction.
+</Predict>
+
+<Listen>
+## Duplicates and near-duplicates
+
+Duplicates are the most common leak, and they hurt in two places. In training, a repeated example counts several times, overweighting whatever it says. Across splits, a duplicate in both train and test lets the model score by recall. Lee and colleagues (2021) found that standard language-modeling datasets were full of near-duplicates, that train-test overlap affected over 4 percent of the validation sets they examined, and that deduplicated training data made models emit memorized text ten times less often.
+
+Detect duplicates in two passes.
+
+**Exact duplicates**: normalize the text (lowercase, collapse whitespace, strip punctuation if formatting differences don't matter for your task), hash it, and group identical hashes. This catches the same email exported twice.
+
+**Near-duplicates**: break each normalized text into word **shingles** (every run of k consecutive words) and compare sets with **Jaccard similarity**, the size of the intersection over the size of the union. A forwarded ticket with an added header, a meeting note re-posted with one typo fixed, or a templated email with a different customer name will share most of their shingles. Choosing k and the threshold is an empirical step: compute similarities, sort the pairs, and read a sample around your candidate threshold. Templates are the hard case. Two invoices generated from the same template differ only in names and numbers, and whether they count as duplicates depends on what you want the test set to measure: if production is full of that template, you want it in training, but you also want test cases that the model can't solve by having memorized one filled-in copy.
+
+Comparing every pair is quadratic, which is fine for thousands of documents and hopeless for millions. At scale, **MinHash** compresses each shingle set into a short signature whose agreement rate estimates Jaccard similarity, and **locality-sensitive hashing** (LSH) buckets signatures so only likely pairs are compared. The datasketch library documents both.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s5-w2-leak-finder"
+  title="Find cross-split leaks: shared groups and near-duplicates"
+  starter={`import re
+
+def shingles(text, k=3):
+    """Lowercase, replace anything that is not a letter, digit, whitespace, or apostrophe with a space,
+    split into words, and return the set of k-word shingles (joined with single spaces).
+    A text with fewer than k words returns one shingle of all its words; no words returns an empty set."""
+    # TODO
+    pass
+
+def jaccard(a, b):
+    """Size of the intersection over size of the union; 0.0 if both sets are empty."""
+    # TODO
+    pass
+
+def find_leaks(train, test, threshold=0.4, k=3):
+    """Return a sorted list of (train_id, test_id, reason) for every train/test pair that leaks.
+    reason is "same group" if the records share a "group", otherwise "near-duplicate" if the
+    Jaccard similarity of their shingles is >= threshold. A pair is reported at most once."""
+    # TODO
+    pass
+
+TRAIN = [
+    {"id": "a1", "group": "acct-17", "text": "Hi Priya, your invoice 4471 is overdue. Please pay by Friday to avoid a late fee."},
+    {"id": "a2", "group": "acct-22", "text": "Sam: I'll update the roadmap slide once the final numbers are in."},
+    {"id": "a3", "group": "acct-31", "text": "Reminder: benefits enrollment closes Friday. Make your selections in the portal."},
+]
+TEST = [
+    {"id": "b1", "group": "acct-40", "text": "Hi Omar, your invoice 5120 is overdue. Please pay by Friday to avoid a late fee."},
+    {"id": "b2", "group": "acct-22", "text": "Sam: the roadmap slide is done, numbers attached."},
+    {"id": "b3", "group": "acct-55", "text": "Ana: I'll call the vendor about the delayed shipment tomorrow."},
+    {"id": "b4", "group": "acct-61", "text": "REMINDER: Benefits enrollment closes Friday!  Make your selections in the portal."},
+]
+
+for a in TRAIN:
+    for b in TEST:
+        j = jaccard(shingles(a["text"]), shingles(b["text"]))
+        if j:
+            print(a["id"], b["id"], round(j, 2))
+print(find_leaks(TRAIN, TEST))
+`}
+  tests={`assert shingles("A b, C d!") == {"a b c", "b c d"}, "lowercase, drop punctuation, 3-word shingles"
+assert shingles("Two words") == {"two words"}
+assert shingles(" ... ") == set()
+assert abs(jaccard({1, 2, 3}, {2, 3, 4}) - 0.5) < 1e-9
+assert jaccard(set(), set()) == 0.0
+assert abs(jaccard(shingles(TRAIN[2]["text"]), shingles(TEST[3]["text"])) - 1.0) < 1e-9, "case, punctuation, and spacing differences should vanish after normalization"
+j = jaccard(shingles(TRAIN[0]["text"]), shingles(TEST[0]["text"]))
+assert 0.4 < j < 0.6, "the two filled-in invoice templates share about half their shingles"
+leaks = find_leaks(TRAIN, TEST)
+assert leaks is not None, "find_leaks returned None"
+assert leaks == [("a1", "b1", "near-duplicate"), ("a2", "b2", "same group"), ("a3", "b4", "near-duplicate")], leaks
+assert find_leaks(TRAIN, TEST, threshold=0.6) == [("a2", "b2", "same group"), ("a3", "b4", "near-duplicate")], "a stricter threshold misses the template pair"`}
+  solution={`def shingles(text, k=3):
+    words = re.sub(r"[^\\w\\s']", " ", text.lower()).split()
+    if not words:
+        return set()
+    if len(words) < k:
+        return {" ".join(words)}
+    return {" ".join(words[i:i + k]) for i in range(len(words) - k + 1)}
+
+def jaccard(a, b):
+    if not a and not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+def find_leaks(train, test, threshold=0.4, k=3):
+    leaks = []
+    for a in train:
+        for b in test:
+            if a["group"] == b["group"]:
+                leaks.append((a["id"], b["id"], "same group"))
+            elif jaccard(shingles(a["text"], k), shingles(b["text"], k)) >= threshold:
+                leaks.append((a["id"], b["id"], "near-duplicate"))
+    return sorted(leaks)`}
+>
+Implement the three functions, then press **Check my answer**. Look at what each check catches. The benefits reminder (a3 and b4) is the same message with different capitalization and spacing: a near-duplicate at similarity 1.0 after normalization. The two overdue-invoice emails (a1 and b1) are one template filled in twice; they share only about half their shingles, so a strict threshold of 0.6 misses them. Sam's two messages (a2 and b2) share almost no text but come from the same account, which only the group check sees. Neither check alone is enough.
+</PyRunner>
+
+<Listen>
+## The many ways test data leaks
+
+Duplicates and split groups are the obvious leaks. Here is the fuller list to check for when you build a fine-tuning dataset, most of which you've met in earlier studios:
+
+- **Shared source.** Several examples derived from one document (chunks, threads, revisions) landing in different splits.
+- **Templates.** Machine-generated documents that differ only in names and numbers.
+- **The answer in the input.** A label pasted into the prompt as an example, or an input field that encodes the label (a ticket's "resolution" field, when the task is to predict the resolution). Lesson 5's validator checks the first case.
+- **Test cases in prompts and few-shot examples.** Studio 3's rule applies unchanged: examples you put in a prompt come from training data, never from the test set.
+- **Synthetic data seeded from test cases.** If you generate training examples by asking a model to vary existing examples, seed it only from the training split, or the variations become near-duplicates of your test set.
+- **Repeated test-set use.** Every time you look at test failures and change something, the test set leaks into your decisions. That's the knowledge-check scenario above.
+- **Pretraining contamination.** For public benchmarks, the base model may have seen the test data during pretraining. Deng and colleagues (2023) found evidence of this for popular benchmarks, and Zhang and colleagues (2024) built a fresh look-alike of the GSM8K math benchmark and saw some models' accuracy drop by up to 8 percent. Your own labeled test set, built from your own documents, is protected from this by construction, as long as it never gets published.
+</Listen>
+
+<Callout type="pitfall" title="The test set that quietly became a training set">
+It rarely happens in one step. Someone adds "a few hard test cases" to the training data to fix a failure. Someone else generates synthetic variations of the test failures. A month later the test score is up 8 points and production complaints haven't changed. Protect the test split mechanically: keep it in a separate file with a fingerprint (a hash of its contents) recorded in the dataset manifest, check new training data against it with the near-duplicate finder before every run, and require a second person's review for any change to the test file.
+</Callout>
+
+<Listen>
+## Label noise: when the gold is wrong
+
+Every labeled dataset contains errors, and test sets are no exception. Northcutt and colleagues (2021) estimated at least 3.3 percent label errors on average across ten widely used test sets in vision, language, and audio, and showed that correcting them could change which model looked better. If two fine-tuned models differ by two points on a test set with three percent bad labels, you don't yet know which is better.
+
+Noise does different damage in each split. In **training**, the model learns the errors: a consistent labeling mistake becomes a consistent model mistake, which is one reason guideline consistency matters more than volume. In **test**, errors cap the accuracy you can measure and blur comparisons.
+
+Practical ways to find and reduce it:
+
+- **Mechanical checks first.** For extraction, the evidence-quote check from Studio 1 and the lab catches labels whose quotes aren't in the document. It's cheap and certain, and in the lab it catches a third of the planted errors on its own.
+- **Double labeling on a sample.** Two people label the same examples independently; measure agreement (Studio 3, week 4) and adjudicate disagreements. Disagreement clusters usually point at an ambiguous guideline rule.
+- **Model-disagreement review.** Run a strong model over the labeled data and send the examples where it disagrees with the gold label to a person. This finds errors efficiently, but the person decides, not the model: otherwise you are slowly replacing your labels with the model's opinions and then measuring the model against itself.
+- **Fix the guideline, then relabel.** When you change a rule, relabel every affected example, in all splits, and record the guideline version in the dataset card.
+</Listen>
+
+<Listen>
+## A frozen test set that matches production
+
+Pull the threads together into one rule: the test set is a measuring instrument, so build it to match what you'll measure, then stop touching it.
+
+- **Match production.** Sample test documents from the same sources, time period, and mix your deployed model will see. If production is 40 percent chat messages, the test set should be roughly 40 percent chat messages, plus deliberate extra coverage of the rare cases you care about, reported separately so they don't distort the headline number.
+- **Label it with the most care.** Every test label gets human review, two reviewers if you can afford it. Model-drafted labels never enter the test set unreviewed.
+- **Freeze and version it.** Record a fingerprint of the test file in the manifest. Any change produces a new version with a new fingerprint and a note saying why.
+- **Refresh deliberately.** Production drifts and repeated looks bias the score. Periodically build a new test version from fresh production samples, and score current models on both versions so you can tell model changes from test changes. The evals FAQ calls stale gold data out as a common failure.
+- **Report with error bars.** State the test-set size and the margin of error (Studio 3, week 3; Miller's paper on error bars for evals), so nobody reads a two-point difference on 200 examples as a result.
+</Listen>
+
+<Mermaid
+  alt="Pipeline diagram. Raw labeled data goes to label validation; failures go to a quarantine that is fixed and relabeled, then returns to validation. Valid records go to exact and near-duplicate removal, then to a stratified, group-aware split into train, validation, and test. A leakage check compares the splits; if it finds leaks, the split is redone. Train feeds the fine-tuning run; validation feeds checkpoint and early-stopping decisions; test is frozen with a fingerprint and used only for reported results."
+  caption="The lab implements every box except training. The test split leaves the pipeline frozen."
+  chart={`flowchart LR
+  R["Raw labeled data"] --> V{"Labels valid?"}
+  V -- "no" --> Q["Quarantine: fix or relabel"]
+  Q --> V
+  V -- "yes" --> D["Remove exact and near-duplicates"]
+  D --> S["Stratified, group-aware split"]
+  S --> L{"Leakage across splits?"}
+  L -- "yes" --> S
+  L -- "no" --> TR["Train: fine-tuning run"]
+  L -- "no" --> VA["Validation: checkpoints, early stopping"]
+  L -- "no" --> TE["Test: frozen, fingerprinted, reported"]`}
+/>
+
+<DragOrder
+  client:visible
+  prompt="Put the dataset-building steps in a safe order"
+  items={[
+    "Validate every label against its source and quarantine failures",
+    "Remove exact and near-duplicate documents",
+    "Split by stratum, keeping each group in one split",
+    "Check every pair across splits for shared groups and near-duplicates",
+    "Freeze the test split and record its fingerprint",
+    "Train on the training split, choosing checkpoints on the validation split",
+  ]}
+  explanation="Validate before deduplicating, so a bad label doesn't survive as the kept copy of a cluster. Deduplicate before splitting, so copies can't land on both sides. Check leakage after splitting, because grouping and deduplication catch different things. Freeze the test set before any training decision is made."
+/>
+
+<GoDeeper title="Why MinHash estimates Jaccard, and what banding does">
+Pick a random permutation of all possible shingles and record, for each document, the first of its shingles in that order. Two documents record the same shingle exactly when the first shingle of their union lies in their intersection, which happens with probability |A intersect B| / |A union B|: the Jaccard similarity. Repeat with n independent hash functions (standing in for permutations) and the fraction of agreements is an unbiased estimate of Jaccard, with variance shrinking like 1/n.
+
+LSH then cuts each n-value signature into b bands of r rows. Two documents become candidates if they agree on every row of at least one band. One band matches with probability s to the power r, so at least one of b bands matches with probability 1 - (1 - s^r)^b. That S-shaped curve rises sharply around a threshold of roughly (1/b) to the power 1/r, which is how datasketch chooses b and r for the threshold you request. Candidates still get an exact Jaccard check, because the curve has tails: some dissimilar pairs become candidates (false positives) and some similar ones don't (false negatives).
+</GoDeeper>
+
+<Listen>
+## What a working engineer would do
+
+Build the dataset with a script, never by hand in a spreadsheet, so every step is repeatable and reviewable: validate, quarantine, deduplicate, split with groups and strata, check leakage, freeze the test set, write a manifest. Run it in CI when the data changes, the same way Studio 3 gated prompt changes on evals. Read samples at every stage: the pairs near your near-duplicate threshold, the quarantined labels, a random handful of each split. And keep two habits that protect the score: iterate on validation, report on test, and refresh the test set from production on a schedule instead of polishing the old one.
+
+The lab puts all of this together for the action-item task, and its output is in the format next week's training tools accept.
+</Listen>

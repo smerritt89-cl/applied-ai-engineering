@@ -1,0 +1,291 @@
+---
+id: s5-w4-l11
+studio: s5
+week: 4
+order: 11
+title: Serving open models
+summary: How open models are served in practice. Prefill and decode, why batching trades latency for throughput, what vLLM, SGLang, llama.cpp, Ollama, TGI, and Hugging Face Inference Endpoints are for today, serving a LoRA adapter, quantized serving and how to check it, constrained decoding for structured output, and the break-even math between an API and a rented GPU.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Explain prefill, decode, and the KV cache, and why continuous batching raises throughput at some cost to per-request latency
+  - Choose a serving option (vLLM, SGLang, llama.cpp, Ollama, or a managed endpoint) for a given workload, and know that TGI is now in maintenance mode
+  - Serve a LoRA adapter on its base model and request schema-constrained JSON from an OpenAI-compatible open-model server
+  - Decide when to quantize for serving, and re-run the benchmark to check what quantization cost
+  - Compute the monthly volume at which a rented GPU becomes cheaper than an API, and recognize when it never does
+sources:
+  - { id: kwon-2023-pagedattention, use: summarized, where: "Abstract and introduction" }
+  - { id: yt-anyscale-vllm, use: embedded }
+  - { id: vllm-docs, use: summarized, where: "Feature list" }
+  - { id: vllm-openai-server, use: summarized }
+  - { id: vllm-lora-docs, use: summarized, where: "Serving LoRA adapters" }
+  - { id: vllm-structured-outputs, use: summarized, where: "structured_outputs parameters; migration from guided_* fields" }
+  - { id: willard-2023-guided, use: linked }
+  - { id: sglang-repo, use: linked }
+  - { id: llamacpp-server, use: summarized, where: "Features; grammar and JSON schema options" }
+  - { id: ollama-structured-outputs, use: summarized }
+  - { id: ollama-openai-compat, use: linked }
+  - { id: hf-tgi-docs, use: summarized, where: "Maintenance-mode notice" }
+  - { id: hf-inference-endpoints, use: summarized }
+  - { id: hf-inference-endpoints-pricing, use: summarized, where: "Instance prices; per-minute billing" }
+  - { id: frantar-2022-gptq, use: linked }
+  - { id: lin-2023-awq, use: linked }
+  - { id: claude-pricing-docs, use: summarized, where: "Model pricing" }
+  - { id: hf-qwen3-4b-instruct-2507, use: linked }
+  - { id: hf-llm-course, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: You raise the maximum batch size on your vLLM server from 8 to 64 concurrent sequences. What usually happens?
+    options:
+      - id: a
+        text: Both throughput and per-request latency improve, because the GPU is used more efficiently.
+        rationale: Throughput usually rises, but each request now shares each decode step with more others, so per-request latency tends to rise.
+      - id: b
+        text: Total tokens per second rises, while each request's latency stays the same or gets somewhat worse.
+        correct: true
+        rationale: Yes. Decode is memory-bandwidth bound, so adding sequences to a step is cheap until compute or KV-cache memory runs out. Individual requests wait a little more.
+      - id: c
+        text: Nothing changes, because batching only matters for training.
+        rationale: Batching is the central lever in serving. It is why a busy server costs far less per token than an idle one.
+    explanation: >-
+      Each decode step reads the model's weights from GPU memory once and produces one token for every sequence in
+      the batch. More sequences per step means more tokens per weight read, so throughput climbs until compute or
+      KV-cache memory becomes the limit. The price is that each request shares the GPU with more neighbors. Pick the
+      batch limit by measuring p95 latency against your latency budget.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your extraction job costs about $0.10 per 1,000 tasks on a small, cheap API model that passes your benchmark.
+      A teammate proposes self-hosting your fine-tuned 4B model on a $0.80 per hour GPU that handles 3,000 tasks per
+      hour. What should you conclude first?
+    options:
+      - id: a
+        text: Self-hosting is cheaper at any volume, because open models have no per-token fees.
+        rationale: The GPU has an hourly fee. Even fully busy, 0.80 / 3,000 is about $0.27 per 1,000 tasks, already above the API's price.
+      - id: b
+        text: Self-hosting can never beat this API on cost alone, because even a fully used GPU costs more per task; any case for it has to rest on latency, privacy, or control.
+        correct: true
+        rationale: Yes. Break-even exists only if the GPU's best-case cost per task is below the API's. Here it isn't, so volume can't rescue it.
+      - id: c
+        text: It breaks even at a high enough volume, so forecast volume and decide.
+        rationale: That is true when the GPU's fully used cost per task is below the API's. Check that condition before forecasting.
+    explanation: >-
+      Compare against the cheapest API model that passes your benchmark, not only the frontier model. Small API models
+      are priced so low that a rented GPU only wins on cost when it stays busy and the alternative is an expensive
+      model. Self-hosting can still be the right call, but for reasons you should name: data control, latency,
+      availability, or a model no API offers.
+  - id: kc3
+    type: code-reading
+    prompt: >-
+      This request goes to a vLLM server running a recent release. What is wrong with it?
+    code: |
+      resp = client.chat.completions.create(
+          model="action-items",
+          messages=[{"role": "user", "content": snippet}],
+          extra_body={"guided_json": ActionItem.model_json_schema()},
+      )
+    options:
+      - id: a
+        text: "`guided_json` was removed in vLLM 0.12.0; use `extra_body={\"structured_outputs\": {\"json\": schema}}` or `response_format` with a JSON schema."
+        correct: true
+        rationale: Yes. The vLLM docs list the migration from guided_* fields to structured_outputs.
+      - id: b
+        text: The model name must be the base model's Hub id, not the adapter name.
+        rationale: With --lora-modules, clients select an adapter by the name you registered, so "action-items" is correct.
+      - id: c
+        text: Open-model servers can't constrain output to a schema.
+        rationale: vLLM, llama.cpp, Ollama, and SGLang all offer schema-constrained decoding.
+    explanation: >-
+      Serving engines evolve quickly, and parameter names move between releases. Pin the engine version in your
+      deployment, read the docs for that version, and keep a test that sends one constrained request and checks the
+      result validates against your Pydantic model.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## What a serving engine does
+
+When you ran a model locally in week 1, one request at a time, generation looked simple: tokenize, run the model, sample, repeat. A production server faces a different problem. Requests arrive at random times, with prompts and outputs of different lengths, and you are paying for the GPU every minute whether it is busy or not. The serving engine's job is to keep the GPU doing useful work while keeping each request's wait acceptable.
+
+Two phases matter. **Prefill** processes the whole prompt in one pass and is compute-heavy: a 600-token prompt becomes a large matrix multiplication. **Decode** then produces output tokens one at a time, and each step must read essentially all of the model's weights from GPU memory to produce a single token per sequence. Decode is limited by memory bandwidth, not arithmetic, which is the key to everything that follows: if each step reads the weights once anyway, producing a token for 32 sequences in that step costs little more than producing one.
+
+During decode the model also keeps a **KV cache**: the attention keys and values for every token so far, so it doesn't recompute them each step. The KV cache grows with sequence length and with the number of sequences in flight, and it competes with the weights for GPU memory. How many requests you can serve at once is often set by how much KV cache fits.
+
+For your extraction task this shape is favorable. Prompts are short once the model is fine-tuned (no long instructions or few-shot examples), and outputs are a small JSON object. Short prompts and short outputs mean many sequences fit in memory at once, which is exactly where batching pays.
+</Listen>
+
+<Listen>
+## Throughput versus latency, and continuous batching
+
+**Throughput** is how much work the server completes per unit time (tokens per second, or tasks per hour). **Latency** is how long one request waits. Batching trades one for the other. Put more sequences into each decode step and throughput rises, because the weight reads are shared; but each request now waits for a step that does more work, and new requests may queue.
+
+Older servers used static batching: collect a batch, run it until every sequence finishes, then start the next. Short requests sat idle waiting for the longest one. **Continuous batching** schedules at the level of individual decode steps: when a sequence finishes, a waiting request takes its slot at the next step. Every current engine in this lesson does this.
+
+The other big idea came from the vLLM paper (Kwon and colleagues, 2023). Allocating each request's KV cache as one contiguous block wastes memory, because you must reserve space for the longest possible output. **PagedAttention** stores the KV cache in fixed-size blocks, like pages in an operating system's virtual memory, allocated as the sequence grows. Less waste means more sequences in flight. The paper reports two to four times the throughput of the systems it compared against at similar latency, with larger gains for longer sequences.
+
+The practical consequences for your benchmark: throughput is not a property of the model, it is a property of the model, the hardware, the engine, the batch settings, and the traffic. Measure it under the concurrency you expect, and report it with those settings. The cost-per-task number from lesson 10 is only as good as that measurement.
+</Listen>
+
+<Video id="5ZlavKF_98U" title="Fast LLM Serving with vLLM and PagedAttention" channel="Anyscale" minutes={32} source="https://arxiv.org/abs/2309.06180">
+Two of the vLLM authors present the system at Ray Summit 2023. Watch for the memory-waste argument (why reserving contiguous KV cache limits batch size), the paging analogy, and how sharing KV blocks helps when several outputs come from one prompt. The specific benchmark numbers are from 2023; the design ideas are what still matter.
+</Video>
+
+<Listen>
+## The serving options, and what each is for
+
+The landscape changes quickly, so here is the state at this lesson's review date, from each project's own documentation.
+
+**vLLM** is the general-purpose GPU server most teams reach for. Its docs list continuous batching, PagedAttention, prefix caching, many quantization formats (FP8, INT8, INT4, GPTQ, AWQ, GGUF, and others), multi-LoRA serving, speculative decoding, and an OpenAI-compatible API server. **SGLang** is a comparable high-performance serving framework, which its project describes as optimized for agentic workloads and large-scale serving. Choose between them by benchmarking your model on your hardware.
+
+**llama.cpp** and its `llama-server` run GGUF models (usually quantized) on CPUs, Apple silicon, and GPUs. The server offers OpenAI-compatible routes, continuous batching with parallel slots, and grammar- or JSON-schema-constrained output. It is the natural choice for laptops, edge devices, and modest single-machine deployments.
+
+**Ollama** wraps local models in a simple tool and API for desktops and developer workflows, with structured outputs and OpenAI-compatible endpoints. It is excellent for development and prototypes; for a shared, high-traffic service, a dedicated engine gives you more control over batching and memory.
+
+**Text Generation Inference (TGI)**, Hugging Face's own server, is now in maintenance mode. Its documentation says it will accept only minor fixes and recommends vLLM, SGLang, llama.cpp, or MLX going forward. You will still find TGI in older tutorials and deployments; don't start new work on it.
+
+**Hugging Face Inference Endpoints** is a managed option: you pick a model and a GPU instance, and the service runs a supported engine (vLLM among them) with autoscaling, billing per minute while the endpoint is running. Cloud providers offer comparable managed services. Managed hosting removes the operations work in exchange for a markup on GPU time and less control.
+
+A reasonable default for the project: develop locally with Ollama or llama.cpp, benchmark and serve with vLLM on a single rented GPU, and say in your write-up what you would change for production traffic.
+</Listen>
+
+<Listen>
+## Serving your adapter, with schema-constrained output
+
+A LoRA adapter is a small set of extra weights that sits on top of an unchanged base model. You can **merge** it into the base weights and serve the result as an ordinary model, or serve it **unmerged**, which lets one server host the base model plus several adapters and pick one per request. vLLM supports the second: start the server with `--enable-lora`, register each adapter under a name with `--lora-modules`, and clients choose the adapter by sending that name as the model. Set `--max-lora-rank` to the highest rank among your adapters; setting it much higher wastes memory.
+
+The other half is **structured output**. In Studio 1 you saw that constrained decoding (Willard and Louf, 2023) masks invalid tokens at each step so the output must match a grammar or schema. Open-model servers expose this directly, which removes the most common failure of small models: invalid JSON. In vLLM the request field is `structured_outputs`, with options for a JSON schema, a regex, a fixed set of choices, or a grammar; the older `guided_json` family of fields was removed in version 0.12.0. vLLM also accepts the OpenAI-style `response_format` with a JSON schema. llama.cpp's server accepts a JSON schema or a GBNF grammar, and Ollama's `format` field accepts a JSON schema.
+
+Constraining decoding changes what the model can say, so benchmark with the same constraint you will use in production, and keep validating with your Pydantic model on the way back. Constrained output guarantees shape, not truth (Studio 1, lesson 9).
+</Listen>
+
+```bash
+# Serve the base model plus your adapter on one GPU (vLLM). Pin the vLLM version you benchmarked.
+vllm serve Qwen/Qwen3-4B-Instruct-2507 \
+    --enable-lora \
+    --lora-modules action-items=./adapters/action-items-v1 \
+    --max-lora-rank 16
+```
+
+```python
+from openai import OpenAI          # vLLM's server speaks the OpenAI chat completions API
+from pydantic import BaseModel
+
+class ActionItem(BaseModel):
+    is_action_item: bool
+    owner: str | None
+    due_date: str | None
+    priority: str | None
+
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused-for-local")
+
+resp = client.chat.completions.create(
+    model="action-items",          # the adapter name registered with --lora-modules
+    messages=[{"role": "user", "content": snippet}],
+    max_tokens=200,
+    extra_body={"structured_outputs": {"json": ActionItem.model_json_schema()}},
+)
+item = ActionItem.model_validate_json(resp.choices[0].message.content)   # still validate
+```
+
+<Listen>
+## Quantized serving, and how to check what it cost
+
+Quantization stores weights in fewer bits than the 16 used in training: 8-bit, 4-bit, or formats such as FP8. Smaller weights mean less memory (a cheaper GPU, or more room for KV cache and larger batches) and less data to read per decode step, which often means faster decoding. Weight-only methods such as GPTQ (Frantar and colleagues, 2022) and AWQ (Lin and colleagues, 2023) quantize after training using a small calibration set; GGUF is llama.cpp's file format with its own family of quantization schemes. You met QLoRA in week 3, which trains adapters on a 4-bit base; serving is a separate decision about how the final weights are stored.
+
+Quantization is lossy, and how much it costs depends on the model, the method, the bit width, and your task. Published averages on general benchmarks won't tell you how a 4-bit version handles your house priority convention. So treat a quantized model as a new system: run the frozen benchmark on it and report the paired difference against the 16-bit version, alongside the memory, throughput, and cost gains. If you serve an adapter, check that the quantized base plus adapter matches what you evaluated; an adapter trained on one version of the weights can behave differently on another.
+
+A sensible order for the project: benchmark in 16-bit (or the precision you trained in), then try one quantized variant only if memory or cost requires it, and keep it only if its paired interval stays within the margin you wrote down in advance.
+</Listen>
+
+<Callout type="pitfall" title="Benchmarking one system, deploying another">
+The quality numbers in your report came from one configuration: a precision, an engine version, a decoding constraint, a prompt format, an adapter. Change any of them on the way to production (switch to a 4-bit file to fit a cheaper GPU, upgrade the engine, merge the adapter, drop the schema constraint for speed) and you are serving a system you haven't measured. Record the full serving configuration with every benchmark run, and re-run the frozen benchmark whenever the configuration changes. It is cheap, and it is the only evidence that the deployed system is the one you approved.
+</Callout>
+
+<Listen>
+## Self-hosting versus an API: the cost math
+
+Now put prices on it. An API charges per token, so its cost scales linearly with volume: cost per task times tasks. A rented GPU charges per hour, so its monthly cost is flat as long as one GPU can keep up, then steps up by one GPU's cost each time you need another. Hugging Face lists one NVIDIA L4 on AWS at $0.80 per hour and one A100 80GB at $2.50 per hour at the time of writing; an always-on GPU runs about 730 hours a month.
+
+Two facts give you the whole picture. First, the GPU's **best-case cost per task** is its hourly price divided by the tasks it completes per hour at the highest utilization you would plan for (planning for 100 percent leaves no headroom for traffic spikes). If that number is above the API's cost per task, self-hosting never wins on cost, at any volume. Second, if it is below, the **break-even volume** is the monthly GPU cost divided by the API's cost per task: below that volume you are paying for an idle GPU, above it you are saving money.
+
+Run the numbers with real prices and a pattern appears. Against a frontier model with a long few-shot prompt, a small fine-tuned model on one GPU breaks even at a few hundred thousand tasks a month. Against a small, cheap API model, it may never break even. Anthropic lists Claude Haiku 5.5 at $0.10 per million input tokens and $0.50 per million output tokens at the review date, so a 600-token extraction costs a few hundredths of a cent. That is why model selection in this program always compares against the cheapest API model that passes your benchmark, not only against the most capable one.
+
+Cost is rarely the only reason to self-host. Data that can't leave your network, latency targets an API can't meet, independence from a provider's deprecation schedule, or a model no API offers are all legitimate reasons. Name the reason in your write-up, so cost isn't doing work it can't support.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s5-w4-break-even"
+  title="Break-even between an API and a rented GPU"
+  starter={`import math
+
+HOURS_PER_MONTH = 730
+
+def api_cost_per_task(input_tokens, output_tokens, usd_per_mtok_in, usd_per_mtok_out):
+    """Dollars for one task at per-million-token prices."""
+    # TODO
+    pass
+
+def selfhost_monthly_cost(volume, gpu_hourly, tasks_per_hour, max_util=0.7, hours=HOURS_PER_MONTH):
+    """Always-on GPUs: enough GPUs that none runs above max_util, and at least one.
+    gpus = max(1, ceil(volume / (tasks_per_hour * hours * max_util))). Return gpus * gpu_hourly * hours."""
+    # TODO
+    pass
+
+def break_even_volume(api_task_cost, gpu_hourly, tasks_per_hour, max_util=0.7, hours=HOURS_PER_MONTH):
+    """Monthly volume at which one always-on GPU costs the same as the API.
+    Return None if the GPU's best-case cost per task, gpu_hourly / (tasks_per_hour * max_util),
+    is not below api_task_cost (then self-hosting never wins on cost).
+    Otherwise return gpu_hourly * hours / api_task_cost."""
+    # TODO
+    pass
+
+# Prices at the review date (check the pricing pages before reusing them).
+sonnet = api_cost_per_task(620, 70, 2.00, 10.00)    # frontier-tier model, long few-shot prompt
+haiku = api_cost_per_task(620, 70, 0.10, 0.50)      # small API model, same prompt
+for name, cost in (("Sonnet 5.5", sonnet), ("Haiku 5.5", haiku)):
+    if cost is None:
+        print("Implement api_cost_per_task first.")
+        break
+    v = break_even_volume(cost, gpu_hourly=0.80, tasks_per_hour=3000)
+    print(name, f"\${cost * 1000:.3f} per 1,000 tasks;", "never breaks even" if v is None else f"break-even at {v:,.0f} tasks/month")
+`}
+  tests={`assert api_cost_per_task(1_000_000, 0, 2.0, 10.0) == 2.0, "a million input tokens at $2/MTok is $2"
+assert abs(api_cost_per_task(620, 70, 2.00, 10.00) - 0.00194) < 1e-12, "620 * 2 / 1e6 + 70 * 10 / 1e6"
+assert selfhost_monthly_cost(0, 0.80, 3000) == 0.80 * 730, "an always-on GPU costs the same with no traffic"
+assert selfhost_monthly_cost(1_000_000, 0.80, 3000) == 0.80 * 730, "one GPU at 70 percent handles 1,533,000 tasks a month"
+assert selfhost_monthly_cost(2_000_000, 0.80, 3000) == 2 * 0.80 * 730, "above one GPU's planned capacity, add a second"
+sonnet = api_cost_per_task(620, 70, 2.00, 10.00)
+v = break_even_volume(sonnet, 0.80, 3000)
+assert v is not None and abs(v - 0.80 * 730 / sonnet) < 1e-6, "break-even = monthly GPU cost / API cost per task"
+assert abs(selfhost_monthly_cost(v, 0.80, 3000) - v * sonnet) < 1e-6, "at break-even the two monthly bills are equal"
+haiku = api_cost_per_task(620, 70, 0.10, 0.50)
+assert break_even_volume(haiku, 0.80, 3000) is None, "the GPU's best case (about $0.38 per 1,000) is above Haiku's (about $0.10)"
+assert break_even_volume(0.80 / (3000 * 0.7), 0.80, 3000) is None, "equal best-case cost is not a win"`}
+  solution={`def api_cost_per_task(input_tokens, output_tokens, usd_per_mtok_in, usd_per_mtok_out):
+    return (input_tokens * usd_per_mtok_in + output_tokens * usd_per_mtok_out) / 1e6
+
+def selfhost_monthly_cost(volume, gpu_hourly, tasks_per_hour, max_util=0.7, hours=HOURS_PER_MONTH):
+    capacity = tasks_per_hour * hours * max_util
+    gpus = max(1, math.ceil(volume / capacity))
+    return gpus * gpu_hourly * hours
+
+def break_even_volume(api_task_cost, gpu_hourly, tasks_per_hour, max_util=0.7, hours=HOURS_PER_MONTH):
+    best_case = gpu_hourly / (tasks_per_hour * max_util)
+    if best_case >= api_task_cost:
+        return None
+    return gpu_hourly * hours / api_task_cost`}
+>
+Write the three functions, then press **Check my answer**. The printed lines show the result that surprises most people: against the frontier-tier model, one GPU breaks even at roughly 300,000 tasks a month, and against the small API model it never does. Then change `tasks_per_hour` to 300 (an unbatched server answering one request at a time) and watch the frontier break-even disappear too. Batching is what makes self-hosting affordable.
+</PyRunner>
+
+<GoDeeper title="Why decode is memory-bound: a back-of-envelope estimate">
+A 4-billion-parameter model in 16-bit precision is about 8 GB of weights. A GPU with roughly 300 GB/s of memory bandwidth (the class of an L4) can read those weights at most about 37 times per second, so a single sequence decodes at best a few dozen tokens per second, however fast the arithmetic units are. Batch 32 sequences and the same weight read yields 32 tokens, so aggregate throughput can approach 32 times higher until the arithmetic or the KV-cache memory runs out. Quantizing to 4 bits cuts the bytes per read by about four, which is why quantized models often decode faster even though dequantizing adds arithmetic. The numbers here are rough on purpose (check your GPU's datasheet), but the shape of the argument is why serving engineers obsess over batch size, KV-cache memory, and bytes per weight.
+</GoDeeper>
+
+<Listen>
+## What a working engineer would do
+
+For the project, keep serving boring and measured. Pick one engine and pin its version. Serve the base model and your adapter from the same server, so the base-versus-tuned comparison isolates the adapter. Use schema-constrained decoding for both, plus Pydantic validation on the way back. Measure throughput and p50 and p95 latency at two or three concurrency levels with a small load script, and record the hardware, precision, and settings next to the numbers. Then compute cost per 1,000 tasks at the utilization you can honestly expect, and the break-even volume against both the frontier model and the cheapest API model that passes your benchmark. If the cost case doesn't hold, say so: a write-up that concludes "fine-tuning matched quality, but a small API model is cheaper at our volume" is a successful benchmark.
+</Listen>

@@ -1,0 +1,373 @@
+{
+  "id": "s5-w3",
+  "studio": "s5",
+  "week": 3,
+  "title": "Week 3 quiz: Parameter-efficient fine-tuning",
+  "questions": [
+    {
+      "id": "s5w3-q1",
+      "type": "mcq",
+      "prompt": "The LoRA paper scales the update `BAx` by `alpha / r` and sets alpha to the first rank tried without tuning it. What reason does the paper give?",
+      "options": [
+        {
+          "id": "a",
+          "text": "With Adam, tuning alpha is roughly the same as tuning the learning rate, and dividing by r reduces the need to retune hyperparameters when r changes.",
+          "rationale": "Yes. That is the paper's stated rationale, which is why it treats alpha as a fixed constant.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "It is required for the adapter to be mergeable into W0.",
+          "rationale": "Any scaled B A can be merged; the scale just multiplies the merged update."
+        },
+        {
+          "id": "c",
+          "text": "It keeps the adapter's output bounded so training can't diverge.",
+          "rationale": "The paper doesn't make a stability argument for the scale."
+        },
+        {
+          "id": "d",
+          "text": "It makes the adapter's parameter count independent of r.",
+          "rationale": "The count is r times (d plus k) regardless of any scale factor."
+        }
+      ],
+      "explanation": "Because Adam normalizes gradient magnitudes, multiplying the adapter's output by a constant mostly acts like changing the learning rate. That's also why configurations from different frameworks (PEFT's alpha over r versus MLX-LM's direct scale) must be compared as scale times learning rate, not one number at a time.",
+      "week": 3,
+      "tags": [
+        "lora",
+        "hyperparameters"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w3-q2",
+      "type": "predict-output",
+      "prompt": "A model has 16 decoder blocks, hidden size 2048, and grouped-query attention with a key/value width of 512. What does this print for rank-8 adapters on `q_proj` and `v_proj` only?",
+      "code": "blocks, hidden, kv_width, r = 16, 2048, 512, 8\nq = r * (hidden + hidden)\nv = r * (hidden + kv_width)\nprint(blocks * (q + v))",
+      "options": [
+        {
+          "id": "a",
+          "text": "`67108864`",
+          "rationale": "That's the dense 2048 by 2048 weight times 16. LoRA adds r times (in plus out), not in times out."
+        },
+        {
+          "id": "b",
+          "text": "`1048576`",
+          "rationale": "That treats v_proj as square (2048 by 2048). With grouped-query attention it outputs only 512."
+        },
+        {
+          "id": "c",
+          "text": "`53248`",
+          "rationale": "That's one block. Multiply by the 16 blocks."
+        },
+        {
+          "id": "d",
+          "text": "`851968`",
+          "rationale": "Yes. Per block, 8 times 4096 plus 8 times 2560 is 53,248; times 16 blocks is 851,968.",
+          "correct": true
+        }
+      ],
+      "explanation": "Always derive shapes from the config: q and o use num_attention_heads times head_dim, k and v use num_key_value_heads times head_dim. Then compare your count with what PEFT or MLX-LM reports before a long run.",
+      "week": 3,
+      "tags": [
+        "lora",
+        "parameter-count"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w3-q3",
+      "type": "code-reading",
+      "prompt": "This function builds labels for one chat example so that only the assistant's answer is trained. After fine-tuning with it, the model gives correct answers but keeps generating text after them. What is the bug?",
+      "code": "IGNORE = -100\n\ndef build_labels(input_ids, prompt_len, end_of_turn_id):\n    labels = list(input_ids)\n    for i in range(prompt_len):\n        labels[i] = IGNORE\n    for i, tok in enumerate(input_ids):\n        if tok == end_of_turn_id:\n            labels[i] = IGNORE   # special tokens aren't content\n    return labels",
+      "options": [
+        {
+          "id": "a",
+          "text": "Labels must be shifted by one position here, or the loss is computed on the wrong tokens.",
+          "rationale": "Hugging Face causal LM models shift labels internally, so labels are a masked copy of input_ids."
+        },
+        {
+          "id": "b",
+          "text": "It masks the end-of-turn token, so the model is never trained to emit it and never learns to stop.",
+          "rationale": "Yes. The closing marker of the assistant turn has to be inside the scored span; it's how the model learns where the answer ends.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "Using -100 for ignored positions only works for padding, not for prompts.",
+          "rationale": "The ignore index applies to any position; it is how prompt masking is implemented."
+        },
+        {
+          "id": "d",
+          "text": "The prompt mask should cover `prompt_len + 1` positions.",
+          "rationale": "The prompt range is fine as written; the problem is in the second loop."
+        }
+      ],
+      "explanation": "Masking the end-of-turn tokens inside the prompt would be harmless, but this loop also masks the one that closes the answer. A useful check before training: decode the unmasked label positions of one example and confirm they read as the answer followed by the end-of-turn marker.",
+      "week": 3,
+      "tags": [
+        "sft",
+        "masking"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w3-q4",
+      "type": "multi",
+      "prompt": "Which of these are part of how QLoRA reduces GPU memory compared with 16-bit LoRA? Select all that apply.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Quantizing the per-block quantization constants themselves (double quantization)",
+          "rationale": "Yes. It cuts the constants' overhead from about 0.5 to about 0.127 bits per parameter.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Computing the forward pass in 4-bit arithmetic",
+          "rationale": "No. Weights are dequantized to 16-bit for computation; 4-bit is the storage type."
+        },
+        {
+          "id": "c",
+          "text": "Merging the adapter into the base model after every step",
+          "rationale": "No. Merging happens, if at all, after training."
+        },
+        {
+          "id": "d",
+          "text": "Storing the frozen base weights in the 4-bit NormalFloat (NF4) format",
+          "rationale": "Yes. The base weights dominate memory once the optimizer state is small.",
+          "correct": true
+        },
+        {
+          "id": "e",
+          "text": "Paging optimizer state to CPU memory during memory spikes",
+          "rationale": "Yes. Paged optimizers use NVIDIA unified memory to survive spikes from long sequences.",
+          "correct": true
+        }
+      ],
+      "explanation": "QLoRA separates the storage data type (NF4) from the computation data type (BFloat16 in the paper). Gradients flow through the dequantized frozen weights into the 16-bit adapters, which are the only trained parameters.",
+      "week": 3,
+      "tags": [
+        "qlora",
+        "quantization",
+        "memory"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w3-q5",
+      "type": "scenario",
+      "prompt": "You want to run this week's QLoRA notebook on your Apple Silicon MacBook instead of Colab. The `BitsAndBytesConfig` cell fails. What's the best path?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Drop quantization and run full fine-tuning on the CPU.",
+          "rationale": "Possible for tiny models but slow, and it changes the experiment you were trying to run."
+        },
+        {
+          "id": "b",
+          "text": "Use Unsloth locally on macOS, since it's built for low-memory training.",
+          "rationale": "Unsloth's fine-tuning guide says local installation requires Windows or Linux."
+        },
+        {
+          "id": "c",
+          "text": "Use MLX-LM: point `mlx_lm.lora` at a quantized MLX model, which trains LoRA on the quantized base (MLX's affine 4-bit, not NF4), and compare results on the same test set.",
+          "rationale": "Yes. That is the native QLoRA-style path on a Mac. Different quantizer, same idea, so re-measure rather than assume equal numbers.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "Reinstall bitsandbytes from source until it builds.",
+          "rationale": "The Transformers docs list CUDA, Intel, and CPU backends for bitsandbytes, not Apple Silicon. Building won't add a Metal backend."
+        }
+      ],
+      "explanation": "Pick the stack the hardware supports, then translate settings carefully: MLX-LM uses a direct scale (default 20.0) instead of alpha over r, adapts the last 16 blocks by default, and needs --mask-prompt to match completion-only loss.",
+      "week": 3,
+      "tags": [
+        "mlx",
+        "qlora",
+        "hardware"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w3-q6",
+      "type": "scenario",
+      "prompt": "A teammate fine-tunes on 2,000 synthetic tickets generated from 40 sentence templates, splits rows at random into train and test, and reports 99 percent exact match. On real tickets from last week, exact match is 61 percent. What is the most likely explanation, and the fix?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Leakage: near-identical sentences from the same templates appear in both train and test. Split by template (or by source), and add real examples to the test set.",
+          "rationale": "Yes. A random row split of templated data measures recall of templates, not generalization.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "The real tickets were mislabeled; relabel them until the scores agree.",
+          "rationale": "Check labels, yes, but a 38-point gap with a random split of templated data has a more obvious cause."
+        },
+        {
+          "id": "c",
+          "text": "The base model is too small; switch to a 7B model.",
+          "rationale": "Maybe eventually, but you can't judge any model until the test set measures what you care about."
+        },
+        {
+          "id": "d",
+          "text": "Overfitting from too many epochs; retrain with one epoch and the same split.",
+          "rationale": "Fewer epochs may help a little, but the same split will still report near-perfect scores."
+        }
+      ],
+      "explanation": "The lab's data generator holds out whole templates for validation and test for exactly this reason, and even then the test set is only as good as its resemblance to production traffic. Freeze a test set of real, labeled examples as soon as you have them.",
+      "week": 3,
+      "tags": [
+        "evaluation",
+        "leakage",
+        "data"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w3-q7",
+      "type": "mcq",
+      "prompt": "What did Aghajanyan, Zettlemoyer, and Gupta (2020) report about the intrinsic dimension of fine-tuning?",
+      "options": [
+        {
+          "id": "a",
+          "text": "LoRA at rank 1 matches full fine-tuning on every task.",
+          "rationale": "That's neither their claim nor true in general; Biderman and colleagues (2024) found LoRA underperformed on large code and math training runs."
+        },
+        {
+          "id": "b",
+          "text": "Pretraining increases intrinsic dimension, so fine-tuning gets harder as models improve.",
+          "rationale": "Reversed. They found pretraining lowers it."
+        },
+        {
+          "id": "c",
+          "text": "Fine-tuning needs at least as many trainable parameters as the model has layers times hidden size.",
+          "rationale": "No. Their point was how few parameters suffice."
+        },
+        {
+          "id": "d",
+          "text": "Training only 200 parameters, randomly projected into the full space, reached 90 percent of full fine-tuning performance for RoBERTa on MRPC, and larger, more pretrained models tended to have lower intrinsic dimension.",
+          "rationale": "Yes. This is the evidence LoRA's authors cite for their low intrinsic rank hypothesis.",
+          "correct": true
+        }
+      ],
+      "explanation": "Intrinsic dimension is the smallest random subspace in which training reaches a target fraction (90 percent here) of full performance. Low values for pretrained models explain why small adapters can work, and why the effect is strongest for narrow tasks on large pretrained models.",
+      "week": 3,
+      "tags": [
+        "lora",
+        "research"
+      ],
+      "difficulty": 1
+    },
+    {
+      "id": "s5w3-q8",
+      "type": "predict-output",
+      "prompt": "The Hugging Face Trainer counts optimizer steps after gradient accumulation. On one GPU, what does this print?",
+      "code": "import math\nn_examples = 300\nper_device_batch = 8\ngrad_accum = 2\neffective = per_device_batch * grad_accum\nsteps_per_epoch = math.ceil(math.ceil(n_examples / per_device_batch) / grad_accum)\nprint(effective, steps_per_epoch)",
+      "options": [
+        {
+          "id": "a",
+          "text": "`4 75`",
+          "rationale": "Gradient accumulation multiplies the effective batch, it doesn't divide it."
+        },
+        {
+          "id": "b",
+          "text": "`16 19`",
+          "rationale": "Yes. 38 micro-batches of 8, grouped in pairs, give 19 optimizer steps of effective batch 16.",
+          "correct": true
+        },
+        {
+          "id": "c",
+          "text": "`16 18`",
+          "rationale": "300 divided by 16 is 18.75; the partial last batch still produces a step."
+        },
+        {
+          "id": "d",
+          "text": "`8 38`",
+          "rationale": "That counts micro-batches. With accumulation 2, two micro-batches make one optimizer step."
+        }
+      ],
+      "explanation": "Steps, not examples, are what the x-axis of a loss curve and settings like eval_steps and warmup_steps count. With small datasets, 'evaluate every 10 steps' may mean only a couple of evaluations per epoch, so check the arithmetic before choosing eval_steps.",
+      "week": 3,
+      "tags": [
+        "training",
+        "batch-size"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w3-q9",
+      "type": "mcq",
+      "prompt": "What did Biderman and colleagues (2024), in \"LoRA Learns Less and Forgets Less\", find when comparing LoRA with full fine-tuning on code and math?",
+      "options": [
+        {
+          "id": "a",
+          "text": "LoRA forgot more than full fine-tuning because its updates are concentrated in few directions.",
+          "rationale": "Reversed: LoRA forgot less."
+        },
+        {
+          "id": "b",
+          "text": "Full fine-tuning was cheaper than LoRA at their scale.",
+          "rationale": "The paper is about learning and forgetting, not cost; LoRA remains the cheaper method."
+        },
+        {
+          "id": "c",
+          "text": "LoRA underperformed full fine-tuning on the target domain but better preserved the base model's abilities outside it, and full fine-tuning learned much higher-rank weight changes.",
+          "rationale": "Yes. They report perturbation ranks 10 to 100 times typical LoRA ranks for full fine-tuning.",
+          "correct": true
+        },
+        {
+          "id": "d",
+          "text": "LoRA matched full fine-tuning at every rank.",
+          "rationale": "No. In their standard low-rank settings it substantially underperformed."
+        }
+      ],
+      "explanation": "It's a trade-off, not a verdict. For a narrow product behavior learned from thousands of examples, LoRA's lower forgetting and cost usually win. For teaching a large new domain from huge data, expect to need higher ranks or full fine-tuning, and measure.",
+      "week": 3,
+      "tags": [
+        "lora",
+        "forgetting",
+        "research"
+      ],
+      "difficulty": 2
+    },
+    {
+      "id": "s5w3-q10",
+      "type": "scenario",
+      "prompt": "You compare two runs on the same data. Run A (PEFT): r=16, lora_alpha=32, learning rate 2e-4. Run B (MLX-LM defaults except rank): r=16, scale=20.0, learning rate 1e-5, last 16 of 24 blocks. Run B's validation loss is worse, and a colleague concludes MLX-LM trains worse models. What's the right response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Rerun B with settings translated to match A (scale 2.0, learning rate 2e-4, all blocks, prompt masking on), confirm the trainable parameter counts match, and compare task metrics on the same test set.",
+          "rationale": "Yes. Match the experiment first, then compare results with the task metric rather than raw loss.",
+          "correct": true
+        },
+        {
+          "id": "b",
+          "text": "Raise B's scale to 200 so its updates are definitely large enough.",
+          "rationale": "That changes a third variable at random. Translate the settings instead."
+        },
+        {
+          "id": "c",
+          "text": "Compare the two final training losses instead, since validation sets can be noisy.",
+          "rationale": "Training loss is even less comparable, and with different masking the numbers can differ tenfold without any model difference."
+        },
+        {
+          "id": "d",
+          "text": "Agree, and standardize on PEFT.",
+          "rationale": "The runs differ in effective step size and in which layers are adapted, so the comparison says nothing about the frameworks."
+        }
+      ],
+      "explanation": "Scale times learning rate is what roughly governs the adapter's effective step size under Adam (A: 2.0 times 2e-4; B: 20 times 1e-5, half as large). B also adapts only two thirds of the blocks, and MLX-LM doesn't mask the prompt unless you pass --mask-prompt, so even its loss values aren't on the same scale. A fair comparison holds everything fixed except the variable under test.",
+      "week": 3,
+      "tags": [
+        "lora",
+        "mlx",
+        "experiment-design"
+      ],
+      "difficulty": 3
+    }
+  ]
+}

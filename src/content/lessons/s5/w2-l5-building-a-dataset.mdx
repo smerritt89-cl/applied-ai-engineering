@@ -1,0 +1,377 @@
+---
+id: s5-w2-l5
+studio: s5
+week: 2
+order: 5
+title: Building a fine-tuning dataset
+summary: The chat JSONL format and what a trainer does with it, how many examples you need, where examples come from (real data, experts, synthetic data, distillation), what providers' terms say about training on their outputs, PII and consent, and a validator that catches broken examples before a training run does.
+estMinutes: 65
+reviewed: 2026-11-11
+objectives:
+  - Write supervised fine-tuning examples in the chat (messages) JSONL format and explain which tokens a trainer learns from
+  - Plan dataset size empirically, starting small and measuring a learning curve, instead of guessing a number
+  - Compare real, expert-written, synthetic, and distilled examples, and verify model-generated labels before training on them
+  - Describe accurately what current provider terms and open-model licenses say about using outputs to train other models, and know when to involve your legal team
+  - Handle PII and consent in training data, knowing that fine-tuned models can memorize and reproduce training text
+  - Validate a JSONL training file for schema, roles, length, duplicates, and label leakage
+sources:
+  - { id: openai-sft-guide, use: summarized, where: "Data format; how many examples; distillation" }
+  - { id: trl-dataset-formats, use: adapted, where: "Standard and conversational formats; prompt-completion" }
+  - { id: trl-sft-trainer, use: summarized, where: "Expected dataset format; completion_only_loss; assistant_only_loss; max_length" }
+  - { id: gcp-gemini-supervised-tuning, use: summarized, where: "Dataset limits" }
+  - { id: zhou-2023-lima, use: summarized }
+  - { id: wang-2022-self-instruct, use: summarized }
+  - { id: gudibande-2023-imitation, use: summarized }
+  - { id: huyen-ai-engineering, use: summarized, where: "Chapter 8, Dataset Engineering (data curation, synthesis, distillation)" }
+  - { id: hamel-evals-faq, use: linked, where: "Synthetic data generation" }
+  - { id: anthropic-commercial-terms, use: summarized, where: "Sections B and D.4" }
+  - { id: openai-services-agreement, use: summarized, where: "Section 3.3(e) and the Permitted Exception definition" }
+  - { id: gemini-api-terms, use: summarized, where: "Use restrictions" }
+  - { id: llama-3-3-license, use: summarized, where: "Section 1.b.i" }
+  - { id: openai-gpt-oss, use: linked }
+  - { id: qwen-github, use: linked }
+  - { id: carlini-2021-extraction, use: summarized }
+  - { id: presidio-repo, use: linked }
+  - { id: hf-chat-templates, use: linked }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      You want 3,000 labeled examples for a ticket-triage model you plan to fine-tune and then offer to other
+      companies as a product. A teammate suggests generating all of the labels with a frontier model from a
+      commercial API, because it's fast. What do you do first?
+    options:
+      - id: a
+        text: Generate them. Outputs belong to the customer under most terms, so any use is fine.
+        rationale: >-
+          Owning outputs and being allowed to use them to build a competing model are different questions. The
+          commercial terms of Anthropic, OpenAI, and Google each restrict using their services or outputs to develop
+          competing models.
+      - id: b
+        text: Read the provider's current terms for your account type with your legal team, decide whether this use is allowed, and plan human review of the labels either way.
+        correct: true
+        rationale: >-
+          Yes. The restriction is real, its scope ("competing" models, exceptions for internal classifiers) is a legal
+          question, and your agreement may differ from the public one. Independently of terms, model-drafted labels
+          need verification before they become ground truth.
+      - id: c
+        text: Use an open-weight model with an Apache 2.0 license to draft the labels instead; then no review is needed.
+        rationale: >-
+          A permissive license may solve the terms question, but it does nothing for label quality. Model-drafted
+          labels still need checking.
+    explanation: >-
+      Two separate checks apply to every distillation plan: may we use these outputs this way (terms and licenses,
+      decided with legal), and are these outputs right (verification and human review, decided with evidence).
+  - id: kc2
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      import json
+      a = {"task": "Book venue", "owner": "Lee"}
+      b = {"owner": "Lee", "task": "Book venue"}
+      print(a == b, json.dumps(a) == json.dumps(b))
+    options:
+      - id: a
+        text: "`True False`"
+        correct: true
+        rationale: Dicts compare by content, but json.dumps keeps insertion order, so the two strings differ.
+      - id: b
+        text: "`True True`"
+        rationale: That would need sort_keys=True on both calls.
+      - id: c
+        text: "`False False`"
+        rationale: Python dicts compare equal regardless of key order.
+    explanation: >-
+      Duplicate detection on serialized examples only works if serialization is canonical. Serialize labels with
+      sort_keys=True (and the same separators) when you write them, or compare parsed objects. The same issue makes
+      two copies of one example look different to a naive hash.
+  - id: kc3
+    type: multi
+    prompt: >-
+      Your training file uses the conversational messages format, and you plan to train with Hugging Face TRL's
+      SFTTrainer. Which statements match TRL's documentation? Select all that apply.
+    options:
+      - id: a
+        text: The trainer applies the model's chat template to conversational data automatically.
+        correct: true
+      - id: b
+        text: By default, loss on a messages dataset covers the whole sequence, including the system and user turns, unless you enable assistant-only loss.
+        correct: true
+      - id: c
+        text: Sequences longer than max_length are truncated, and the default max_length is 1024 tokens.
+        correct: true
+      - id: d
+        text: Examples longer than the limit are rejected with an error, so you will notice them.
+        rationale: The docs describe truncation, not rejection. A long example loses its end, which is where the answer is.
+    explanation: >-
+      Read your trainer's defaults before you train. Truncation from the end silently cuts off the assistant answer
+      of a long example, which is why the validator in this lesson flags long examples instead of trusting the trainer
+      to complain. Week 3 sets these options explicitly.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The dataset is the specification
+
+Last lesson ended with a decision: fine-tune only for behavior that prompting can't deliver, with a test set and a baseline to beat. If you do, the dataset is where that behavior gets specified. A model trained on your examples learns to imitate them, including their mistakes, their inconsistencies, and their gaps. A prompt can be read and argued with in a review; a dataset of 3,000 examples rarely is. So treat the dataset like code: a schema, validation, review, versioning, and tests.
+
+This lesson covers what one example looks like, how many you need, where they come from, the legal and privacy questions that come with each source, and a validator you'll reuse in the lab. Throughout, the running task is the one from Studio 1: extract action items, with owners, deadlines, and verbatim evidence, from emails, tickets, meeting notes, and chat.
+</Listen>
+
+<Listen>
+## One example, one line
+
+The format most tools accept is **chat JSONL**: one JSON object per line, each with a `messages` list of turns that have a `role` (system, user, or assistant) and `content`. OpenAI's fine-tuning API uses it, and Hugging Face TRL calls it the conversational format. TRL also accepts a **prompt-completion** variant, where the turns before the answer go under `prompt` and the answer under `completion`. For the extraction task, an example looks like the block below: the system prompt you will use in production, the document as the user turn, and the gold label as the assistant turn.
+
+A few rules make the difference between a dataset that trains well and one that doesn't:
+
+- **Match production.** Use the same system prompt and the same user-message layout the deployed model will see. A model trained on one layout and served with another is being tested off-distribution.
+- **Make the target exactly what you want back.** For extraction, that is the JSON object and nothing else: no "Here are the items:" preamble, unless you want the model to say it every time.
+- **Include the negatives.** Documents with no action items need an empty list as their answer. Leave them out and the model learns that every document has items, and invents some.
+- **One canonical serialization.** Write labels with sorted keys so identical labels produce identical text; you'll see why in a moment.
+</Listen>
+
+```json
+{"messages": [
+  {"role": "system", "content": "You extract action items from business documents ... Return JSON with an \"items\" list."},
+  {"role": "user", "content": "<document>\nAna: I'll call the vendor about the delayed shipment tomorrow.\n</document>\n\nExtract the action items from this document."},
+  {"role": "assistant", "content": "{\"items\": [{\"due_date\": null, \"due_phrase\": \"tomorrow\", \"evidence\": \"I'll call the vendor about the delayed shipment tomorrow.\", \"owner\": \"Ana\", \"owner_missing_reason\": null, \"priority\": \"medium\", \"task\": \"Call the vendor about the delayed shipment\"}]}"}
+]}
+```
+
+<Listen>
+## What the trainer actually learns from
+
+Supervised fine-tuning minimizes next-token loss on your examples: the same objective as pretraining, applied to your text. Which tokens count toward the loss is a setting, and its default may not be what you expect. TRL's documentation is explicit: for a conversational language-modeling dataset (a plain `messages` list), the default computes loss on the whole sequence, system prompt and user document included, unless you turn on assistant-only loss; for a prompt-completion dataset, the default computes loss on the completion only. The trainer applies the model's chat template to conversational data for you, which turns the role-tagged turns into the exact token layout that model family expects.
+
+Training on the whole sequence spends some of the learning on reproducing your system prompt and your documents, which is rarely the behavior you want. Week 3 sets these options deliberately. For now, the dataset decision is to keep the prompt and the answer cleanly separable, which both formats do.
+
+The other default to know is length. TRL truncates sequences longer than its maximum length (1,024 tokens by default in the version checked) and keeps the start. For a chat example, the end is the answer. A long document can therefore become an example whose answer was cut off, and training proceeds without a complaint. That is why the validator below flags long examples itself.
+</Listen>
+
+<Callout type="pitfall" title="Silent truncation removes the answer">
+A 3,000-token meeting transcript in a run configured for 1,024 tokens becomes an example that teaches "read part of a transcript, then stop." Nothing errors. Before every run, compute the token length of each example with the target model's tokenizer (the character estimate in this lesson is only a first pass), then either raise the limit, split long documents, or drop them, and record which you did.
+</Callout>
+
+<Listen>
+## How many examples?
+
+Less than most people expect to start, and more than most people expect to finish. OpenAI's guide requires at least 10 examples and recommends starting with about 50 well-crafted demonstrations, evaluating, and rethinking the task or prompt if 50 shows no effect before adding more. LIMA got strong results from 1,000 carefully curated examples, which is a statement about quality more than quantity: the authors spent their effort on diversity and consistency, not volume. Provider limits are much higher (Google's documentation allows millions of examples), but limits are not recommendations.
+
+The defensible way to choose a size is empirical: a **learning curve**. Train on 50, 100, 200, and 400 examples, score each model on the same validation set, and plot score against size. If the curve is still rising steeply, labeling more is worth it. If it has flattened, more of the same data won't help; you need different data (harder cases, the failure modes from your error analysis) or a different approach. This also gives you a number your manager will understand: what the next 500 labels are expected to buy.
+
+Coverage matters more than count. Your examples should span the kinds of input production sees (in the lab: four document types, with and without action items, explicit dates and vague ones, named owners and group requests), in roughly the proportions you expect, with deliberate extra examples of the hard cases.
+</Listen>
+
+<Listen>
+## Where examples come from
+
+Each source has a characteristic strength and a characteristic failure, and good datasets usually mix them.
+
+**Real data, labeled by people.** Production inputs (documents your feature actually receives) have the right distribution by definition. Their labels are the expensive part. Labelers need a written guideline with worked examples, and you should have two people label a sample independently and measure their agreement (Studio 3, week 4). Disagreement usually means the guideline is ambiguous, and fixing the guideline is cheaper than fixing the model.
+
+**Expert-written examples.** A domain expert writes inputs and ideal outputs from scratch. These are excellent for rare but important cases (the legal-hold email, the payroll emergency) and for defining the behavior you want. They drift from reality: experts write cleaner, more typical inputs than real users do.
+
+**Synthetic data.** A model generates inputs, outputs, or both. Self-Instruct (Wang and colleagues, 2022) showed a model can bootstrap instruction data from a small seed set, and Studio 3 used dimension-based generation to cover a space of inputs deliberately. Synthetic inputs are a fine way to fill coverage gaps. Their risk is sameness: generated text tends to be more uniform than real text, so check diversity, and keep at least your test set real.
+
+**Distillation.** A stronger model labels inputs, and you train a smaller model on those labels: the cost-motivated path from lesson 4. The research warning here is "The False Promise of Imitating Proprietary LLMs" (Gudibande and colleagues, 2023): models fine-tuned on ChatGPT outputs learned its style convincingly enough to fool crowd raters, but closed little of the gap on factuality and on tasks the imitation data didn't cover. For a narrow task like extraction, distillation works much better, provided the teacher's labels are checked. Every label a model drafts is a model output, and the checks from Studio 1 apply: verify evidence quotes against the source, check owners and dates, and have a person review a sample (or all of them, for a test set). The lab's optional live step does exactly this, and refuses to train on drafts until someone marks them reviewed.
+</Listen>
+
+<Listen>
+## Terms of service: may you train on these outputs?
+
+Distillation from a commercial model raises a question that has nothing to do with quality: do the provider's terms allow it? The answer differs by provider and by agreement, and it matters. Here is what the current public commercial terms say, in summary, as checked on the review date. This is a description, not legal advice.
+
+- **Anthropic** (Commercial Terms, Section D.4): customers may not access the services to build a competing product or service, including to train competing AI models, except as Anthropic expressly approves. Separately (Section B), Anthropic may not train its models on customer content from the services.
+- **OpenAI** (Services Agreement, Section 3.3(e)): customers may not use output to develop AI models that compete with OpenAI's products and services, with a defined "Permitted Exception": models primarily for categorizing, classifying, or organizing data (for example embeddings or classifiers) that are not distributed or made commercially available to third parties, and fine-tuning through OpenAI's own fine-tuning services.
+- **Google** (Gemini API Additional Terms): you may not use the services to develop models that compete with them.
+- **Meta Llama 3.3** (Community License, Section 1.b.i): you may use Llama outputs to train or improve another model, but if you distribute that model, its name must start with "Llama", alongside the license's other attribution and use terms.
+- **Permissively licensed open models**, such as OpenAI's gpt-oss (Apache 2.0), put no such restriction in the license itself; still read each model card, since licenses vary by model and some come with a separate usage policy.
+
+Notice the shape of the problem. The restrictions turn on words like "competing", which your company's lawyers interpret, not you. Enterprise agreements can differ from the public versions. And terms change, so the version that governs your account is the one in effect when you use the service. The engineering contribution is to make the question visible: record which model produced each label, under which account, on what date, so that the legal review has facts to work with and you can remove a source's labels if the answer is no.
+</Listen>
+
+| Source of training labels | Main question | Who decides |
+|---|---|---|
+| Your own people, your own data | Do you have the right to use this data for training (contracts, privacy notices)? | Legal and privacy, with the data owner |
+| A commercial API (Claude, GPT, Gemini) | Do the provider's terms for your account allow this use of outputs? | Legal, from the current agreement |
+| An open-weight model | What does that model's license require (naming, attribution, use policy)? | Legal, from the model's license file |
+| Any model | Are the labels correct? | You, with verification and human review |
+
+<Callout type="pitfall" title="Distillation you can't take back">
+The expensive mistake is not drafting labels with a frontier model; it is training and shipping a model on them before anyone asked whether the terms allowed it, without recording which labels came from where. If the answer turns out to be no, a model trained on mixed, untracked data has to be rebuilt from scratch. Track provenance per example (a `drafted_by` field and a review status, as in the lab) from the first day.
+</Callout>
+
+<Listen>
+## PII and consent
+
+Training data deserves more care than prompt data, for a technical reason: models can memorize it. Carlini and colleagues (2021) extracted hundreds of verbatim training sequences from GPT-2, including names, phone numbers, and email addresses, and some of those sequences appeared in only one document in the training data. Larger models were more vulnerable. A fine-tuned model is trained on far less data, but it is also trained for several epochs on exactly your examples, which is the condition under which memorization is easiest. Assume a fine-tuned model can repeat pieces of its training set to anyone who can query it.
+
+Four habits follow:
+
+- **Minimize.** If the task doesn't need the customer's name, account number, or address to learn the behavior, remove or replace it before the data reaches the training set. Tools such as Presidio (open source) detect and mask many common PII types; measure what it misses on your data before relying on it.
+- **Consent and purpose.** Data collected to resolve a support ticket wasn't necessarily collected to train a model. Whether you may reuse it depends on your contracts, privacy notices, and the law where your users live. That is a question for your privacy and legal teams, and the answer belongs in the dataset's documentation.
+- **Deletion.** When a person asks for their data to be deleted, you can delete a row from a file, but you can't delete it from trained weights. The practical answer is to retrain from the corrected data, so keep the pipeline that rebuilds the dataset and the model reproducible.
+- **Access.** A training file is a concentrated copy of sensitive data. Store it like production data, not in a notebook folder.
+
+The lab's data is entirely fictional, with reserved `.example` email domains, so you can practice without any of these risks. Real projects start with the questions above.
+</Listen>
+
+<Predict
+  title="Why canonical serialization matters"
+  code={`import json
+seen = set()
+examples = [
+    {"owner": "Lee", "task": "Book venue"},
+    {"task": "Book venue", "owner": "Lee"},
+]
+for ex in examples:
+    seen.add(json.dumps(ex))
+print(len(seen), len({json.dumps(ex, sort_keys=True) for ex in examples}))`}
+  options={["2 1", "1 1", "2 2", "1 2"]}
+  answer={0}
+>
+json.dumps keeps each dict's insertion order, so the same label written by two different code paths serializes to two different strings and slips past a set-based duplicate check. With sort_keys=True, both serialize identically. The lab's to_chat_example uses sort_keys=True so that duplicate detection on the written file is meaningful.
+</Predict>
+
+<PyRunner
+  client:visible
+  id="s5-w2-jsonl-validator"
+  title="Validate a JSONL training file"
+  starter={`import json
+
+def validate_lines(lines, max_chars=2000):
+    """Return a list of (line_number, problem) tuples, line numbers starting at 1, in line order.
+
+    Structural checks (report the FIRST one that applies, then move to the next line):
+      "invalid JSON"                 the line doesn't parse
+      "no messages list"             no non-empty "messages" list
+      "unknown role"                 a role other than system, user, assistant
+      "system not first"             a system message anywhere but position 0
+      "empty content"                content missing, not a string, or only whitespace
+      "bad turn order"               after an optional system message, turns must go user, assistant,
+                                     user, assistant, ... and the last turn must be assistant
+    Content checks (report every one that applies, in this order):
+      "too long"                     total characters of all contents > max_chars
+      "answer not JSON with items"   the last message's content isn't a JSON object with an "items" list
+      "label leaked"                 the last message's content appears inside a system or user message
+      "duplicate of line K"          same messages as an earlier line (compare with sort_keys=True)
+    """
+    problems = []
+    # TODO
+    return problems
+
+def ex(*turns):
+    return json.dumps({"messages": [{"role": r, "content": c} for r, c in turns]})
+
+SYS = "Extract action items as JSON with an items list."
+DOC = "<document>Ana: I'll call the vendor tomorrow.</document>"
+ANSWER = json.dumps({"items": [{"task": "Call the vendor", "owner": "Ana"}]}, sort_keys=True)
+
+LINES = [
+    ex(("system", SYS), ("user", DOC), ("assistant", ANSWER)),                     # 1 fine
+    ex(("user", DOC), ("assistant", json.dumps({"items": []}))),                   # 2 fine: no system, empty answer
+    '{"messages": [{"role": "user", "content": "hi"}',                             # 3 broken JSON
+    ex(("system", SYS), ("user", DOC)),                                            # 4 ends on the user turn
+    ex(("user", DOC), ("system", SYS), ("assistant", ANSWER)),                     # 5 system in the middle
+    ex(("system", SYS), ("human", DOC), ("assistant", ANSWER)),                    # 6 unknown role
+    ex(("system", SYS), ("user", "   "), ("assistant", ANSWER)),                   # 7 empty user turn
+    ex(("system", SYS), ("user", DOC + " x" * 1200), ("assistant", ANSWER)),       # 8 too long
+    ex(("system", SYS), ("user", DOC), ("assistant", "Ana will call the vendor.")),  # 9 prose answer
+    ex(("system", SYS + " Example: " + ANSWER), ("user", DOC), ("assistant", ANSWER)),  # 10 answer in the prompt
+    ex(("system", SYS), ("user", DOC), ("assistant", ANSWER)),                     # 11 same as line 1
+]
+
+for n, problem in validate_lines(LINES):
+    print(n, problem)
+`}
+  tests={`got = validate_lines(LINES)
+assert got is not None, "validate_lines returned None"
+d = {}
+for n, p in got:
+    d.setdefault(n, []).append(p)
+assert 1 not in d and 2 not in d, "lines 1 and 2 are valid (a system message is optional, an empty items list is a valid answer)"
+assert d.get(3) == ["invalid JSON"], "line 3 does not parse"
+assert d.get(4) == ["bad turn order"], "a conversation must end on the assistant turn"
+assert d.get(5) == ["system not first"], "line 5 has a system message after the user turn"
+assert d.get(6) == ["unknown role"], "line 6 uses the role human"
+assert d.get(7) == ["empty content"], "line 7 has a whitespace-only user turn"
+assert d.get(8) == ["too long"], "line 8 is over max_chars"
+assert d.get(9) == ["answer not JSON with items"], "line 9 answers in prose"
+assert d.get(10) == ["label leaked"], "the gold answer appears verbatim in the system prompt"
+assert d.get(11) == ["duplicate of line 1"], "line 11 repeats line 1"
+assert [n for n, _ in got] == sorted(n for n, _ in got), "report problems in line order"
+assert validate_lines(LINES[7:8], max_chars=10_000) == [], "max_chars is a parameter"
+assert validate_lines([ex(("user", "a"), ("assistant", "{}"))]) == [(1, "answer not JSON with items")], "an object without items fails"
+assert validate_lines([ex(("assistant", ANSWER))]) == [(1, "bad turn order")], "the first turn after system must be user"`}
+  solution={`def validate_lines(lines, max_chars=2000):
+    problems = []
+    seen = {}
+    for n, line in enumerate(lines, start=1):
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            problems.append((n, "invalid JSON"))
+            continue
+        msgs = obj.get("messages") if isinstance(obj, dict) else None
+        if not isinstance(msgs, list) or not msgs:
+            problems.append((n, "no messages list"))
+            continue
+        structural = None
+        for i, m in enumerate(msgs):
+            role = m.get("role") if isinstance(m, dict) else None
+            if role not in ("system", "user", "assistant"):
+                structural = "unknown role"
+                break
+            if role == "system" and i != 0:
+                structural = "system not first"
+                break
+            content = m.get("content")
+            if not isinstance(content, str) or not content.strip():
+                structural = "empty content"
+                break
+        if structural is None:
+            turns = [m["role"] for m in msgs if m["role"] != "system"]
+            ok = all(t == ("user" if i % 2 == 0 else "assistant") for i, t in enumerate(turns))
+            if not ok or not turns or turns[-1] != "assistant":
+                structural = "bad turn order"
+        if structural:
+            problems.append((n, structural))
+            continue
+        if sum(len(m["content"]) for m in msgs) > max_chars:
+            problems.append((n, "too long"))
+        answer = msgs[-1]["content"]
+        try:
+            parsed = json.loads(answer)
+            good = isinstance(parsed, dict) and isinstance(parsed.get("items"), list)
+        except json.JSONDecodeError:
+            good = False
+        if not good:
+            problems.append((n, "answer not JSON with items"))
+        if any(answer.strip() in m["content"] for m in msgs[:-1]):
+            problems.append((n, "label leaked"))
+        key = json.dumps(msgs, sort_keys=True)
+        if key in seen:
+            problems.append((n, "duplicate of line " + str(seen[key])))
+        else:
+            seen[key] = n
+    return problems`}
+>
+Write `validate_lines`, then press **Check my answer**. Every check here maps to a real failure: broken lines stop a training job, a conversation that ends on the user turn has nothing to learn, a prose answer teaches the model to stop producing JSON, a duplicated example is weighted twice, and an answer pasted into the prompt as an "example" teaches the model to copy. A provider's upload check catches the structural problems. Nobody but you catches the last four.
+</PyRunner>
+
+<GoDeeper title="Documenting a dataset">
+Teams that fine-tune more than once write a short dataset card next to the files, in the spirit of a model card: what the task is and what it is not; where every example came from (with counts per source: real, expert, synthetic, model-drafted and reviewed); the labeling guideline and its version; inter-annotator agreement on a sample; what PII handling was applied; which terms and licenses were reviewed, by whom, and when; the split procedure and the test set's fingerprint; and known gaps. It takes an hour and pays for itself the first time someone asks "can we use this model for the Canadian customers?" or "why did the March retrain get worse?". Chip Huyen's chapter on dataset engineering in *AI Engineering* covers curation, augmentation, and synthesis in more depth, and the Hugging Face chat templates guide shows how your messages become tokens for a given model family.
+</GoDeeper>
+
+<LabLink path="labs/studio-5/02-sft-dataset" title="Lab: build a supervised fine-tuning dataset" needs={["Anthropic API key (optional: only the label-drafting step needs one)"]} minutes={90}>
+Build the training set for next week's fine-tune from 50 fictional documents: validate every gold label (and quarantine three planted bad ones), remove an exact duplicate and two near-duplicates, split by document kind while keeping threads together, check for cross-split leakage, write chat JSONL, freeze the test set, and validate the output with a fuller version of the validator above. The optional live step drafts labels for new documents with Claude and marks them as needing review.
+</LabLink>
+
+<Listen>
+## What a working engineer would do
+
+Before labeling anything, write the labeling guideline and the schema, and label 30 examples yourself. You will find the ambiguities (is "someone should" an action item? is "by Friday" a due date?) faster than any process will, and your decisions become the guideline's worked examples. Then plan sources on purpose: real inputs for the bulk and the whole test set, expert-written examples for rare and high-stakes cases, model-drafted labels only after the terms question has an answer, and human review for every drafted label that will be used as gold. Record provenance per example. Validate the file in code before every run. And start small: 50 to 100 examples, a training run, a score on the validation set, and only then a decision about labeling more.
+
+Next lesson covers the part that makes the score trustworthy: splits, duplicates, leakage, label noise, and a test set that matches production.
+</Listen>

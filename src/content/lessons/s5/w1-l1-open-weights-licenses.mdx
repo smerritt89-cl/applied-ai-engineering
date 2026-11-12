@@ -1,0 +1,344 @@
+---
+id: s5-w1-l1
+studio: s5
+week: 1
+order: 1
+title: Open weights, licenses, and the landscape
+summary: What "open" actually means for a model, how to read the licenses that come with open weights, who publishes the major open model families at the time of writing, and when an open model is the right call instead of a frontier API.
+estMinutes: 55
+reviewed: 2026-11-11
+objectives:
+  - Distinguish open-weight models from open source AI as defined by the OSI Open Source AI Definition
+  - Read a model license for the clauses that change what you can build (user caps, service restrictions, naming, use policies, regional limits)
+  - Name the major open model publishers and families at the time of writing, and find their current releases and licenses yourself
+  - Decide between an open model and a frontier API using privacy, cost at scale, customization, and offline needs, backed by an eval
+sources:
+  - { id: osi-osaid, use: summarized }
+  - { id: osi-osaid-announcement, use: summarized }
+  - { id: osi-llama-still-not-open, use: summarized }
+  - { id: apache-2-license, use: summarized, where: "Sections 2 to 4 and 6" }
+  - { id: osi-mit-license, use: summarized }
+  - { id: llama4-license, use: summarized, where: "Sections 1.b and 2" }
+  - { id: llama4-use-policy, use: summarized }
+  - { id: gemma-terms, use: summarized }
+  - { id: gemma-prohibited-use, use: summarized }
+  - { id: gemma4-license, use: summarized }
+  - { id: gemma4-apache-blog, use: summarized }
+  - { id: qwen38-max-license, use: summarized }
+  - { id: mistral-large4-license, use: summarized }
+  - { id: openmdw-license, use: summarized }
+  - { id: minimax-m3-card, use: summarized, where: "License section" }
+  - { id: hf-meta-llama, use: summarized }
+  - { id: hf-meta-models, use: summarized }
+  - { id: meta-muse-spark-open-blog, use: linked }
+  - { id: hf-gemma4-31b, use: summarized }
+  - { id: hf-qwen38-27b, use: summarized }
+  - { id: qwen-github, use: linked }
+  - { id: hf-deepseek-v41-flash, use: summarized }
+  - { id: mistral-docs, use: linked }
+  - { id: hf-gpt-oss-120b, use: summarized }
+  - { id: openai-gpt-oss, use: linked }
+  - { id: hf-phi4-reasoning-vision, use: summarized }
+  - { id: hf-nemotron35-super, use: summarized }
+  - { id: hf-olmo31-32b, use: summarized }
+  - { id: hf-dolma3, use: summarized }
+  - { id: hf-kimi-k31-pro, use: summarized }
+  - { id: hf-glm53, use: summarized }
+  - { id: hf-hub-licenses, use: summarized }
+  - { id: claude-pricing-docs, use: summarized, where: "Model pricing table, read 2026-11-11" }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter 4, model build versus buy" }
+  - { id: hf-llm-course, use: linked, where: "Chapter 1" }
+knowledgeCheck:
+  - id: kc1
+    type: mcq
+    prompt: A vendor says their model is "open source" because the weights are on Hugging Face under Apache 2.0. Under the OSI Open Source AI Definition 1.0, what else would they need to provide?
+    options:
+      - id: a
+        text: Nothing; a permissive license on the weights is sufficient.
+        rationale: The license grants the freedoms for the weights, but the definition also asks for the preferred form for modification, which goes beyond weights.
+      - id: b
+        text: Detailed information about the training data, plus the complete code used to train and run the system.
+        correct: true
+        rationale: Yes. The definition requires data information, code, and parameters, all under terms that grant the four freedoms.
+      - id: c
+        text: A free hosted API so people can use the model without downloading it.
+        rationale: Hosting has nothing to do with the definition. It is about what you receive and what you may do with it.
+    explanation: >-
+      The OSAID asks for the "preferred form for making modifications": data information detailed enough that a skilled
+      person could build a substantially equivalent system, the complete training and inference code, and the parameters.
+      Apache-licensed weights alone make a model open-weight and commercially usable, which is valuable, but not open
+      source in the OSI's sense. Ai2's Olmo models, which ship their training data, are the usual counterexample.
+  - id: kc2
+    type: scenario
+    prompt: >-
+      Your company has about 2 million monthly active users and wants to fine-tune a Llama 4 model and ship it inside
+      your product under the name "AcmeAssist". Which license issue needs fixing before launch?
+    options:
+      - id: a
+        text: The 700 million monthly active user clause; you must request a license from Meta.
+        rationale: That clause only applies above 700 million monthly active users, measured on the release date.
+      - id: b
+        text: Nothing; fine-tuned derivatives are outside the license.
+        rationale: Derivatives are covered. The license sets conditions on distributing them.
+      - id: c
+        text: The naming and attribution terms; a distributed derivative model's name must begin with "Llama", and the product must display "Built with Llama".
+        correct: true
+        rationale: Right. If you distribute the fine-tuned model, its name needs the Llama prefix, and the attribution line is required.
+    explanation: >-
+      Custom "community" licenses mostly bite on conditions, not on whether you may use the model at all. For Llama 4 the
+      ones product teams trip over are attribution ("Built with Llama"), the naming rule for distributed derivatives, the
+      acceptable use policy, and, for the multimodal models, the exclusion of EU-domiciled individuals and companies. Read
+      the license for the exact model and version you ship, and have counsel confirm.
+  - id: kc3
+    type: multi
+    prompt: Which of these are strong reasons to choose an open-weight model over a frontier API? Select all that apply.
+    options:
+      - id: a
+        text: The data may not leave your own infrastructure.
+        correct: true
+        rationale: Self-hosting keeps prompts and outputs inside your environment.
+      - id: b
+        text: The product must work without network access, for example on a field laptop.
+        correct: true
+        rationale: Only a model you run locally works offline.
+      - id: c
+        text: You need the highest possible quality on a hard reasoning task and have a small volume of requests.
+        rationale: At low volume, a frontier API is usually both better and cheaper than running your own hardware. Measure, but this points away from self-hosting.
+      - id: d
+        text: You need to fine-tune the model's weights on your own data and control exactly which version runs.
+        correct: true
+        rationale: Weight access lets you fine-tune and pin a version indefinitely.
+    explanation: >-
+      Privacy, offline use, customization, and version control are structural advantages of open weights. Cost is
+      conditional: self-hosting has a fixed cost that only beats per-token pricing at high, steady volume. Quality is an
+      empirical question you settle with an eval on your own task.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## What you actually get when a model is "open"
+
+When a lab releases an open model, you typically download three things: a set of **weights** (the learned parameters, often tens or hundreds of gigabytes), a **config** describing the architecture, and a **tokenizer** with its chat template. With an inference library you can run it on your own hardware, inspect it, quantize it, and fine-tune it. That is a lot of freedom compared with an API, where you only see text in and text out.
+
+What you usually don't get is how the model was made: the training data, the data filtering code, and the training code. That gap is why careful people say **open-weight** rather than open source. Think of it like receiving a compiled binary under a generous license. You can run it, patch it, and redistribute it, but you can't rebuild it from source, and you can't audit what went into it.
+
+The Open Source Initiative, the body that maintains the Open Source Definition for software, published the **Open Source AI Definition 1.0** in October 2024. It carries the four software freedoms over to AI systems: freedom to **use** the system for any purpose without asking permission, to **study** how it works, to **modify** it for any purpose, and to **share** it, modified or not. To make those freedoms real, it asks for the "preferred form for making modifications," which has three parts: **data information** detailed enough that a skilled person could build a substantially equivalent system (provenance, scope, collection, filtering, and a list of sources), the complete **code** for training and inference, and the **parameters**.
+
+By that standard, most popular open models are open-weight only. A few publishers go further. Ai2 releases its Olmo models under Apache 2.0 along with the Dolma pretraining data and its training code, which is why researchers use Olmo when they need to study how training choices affect behavior.
+</Listen>
+
+<Callout type="claim" title="OSI: Llama's license is not open source (February 2025)">
+**Who and when:** Jordan Maris, writing on the Open Source Initiative blog on 18 February 2025, argued that Meta's Llama license "is still not Open Source," and called the marketing open washing. [Read the post](https://opensource.org/blog/metas-llama-license-is-still-not-open-source).
+
+**Evidence for:** the license restricts who may use the model (a separate license is needed above 700 million monthly active users), incorporates an acceptable use policy that limits fields of use, and the Llama 4 use policy withholds rights to the multimodal models from individuals and companies based in the EU. Restricting persons and fields of use conflicts with the OSI's software definition.
+
+**Evidence against, or nuance:** for most companies the weights are downloadable and commercially usable at no cost, which is far more open than an API. Whether you call that "open" is a labeling argument. The practical point for you: the license text, not the label on the model page, decides what you may build.
+</Callout>
+
+<Listen>
+## Permissive licenses: Apache 2.0 and MIT
+
+Many open models now ship under the same licenses as ordinary software, and those are the easiest to work with.
+
+**Apache 2.0** grants a perpetual, worldwide, royalty-free right to use, copy, modify, sublicense, and distribute the work (section 2). It also grants an explicit **patent license** from each contributor, which ends for anyone who sues claiming the work infringes a patent (section 3). Its conditions are about notices: when you redistribute, include the license, mark files you changed, keep the copyright and attribution notices, and carry forward the contents of any NOTICE file (section 4). It grants no trademark rights (section 6), so you can ship a fine-tune but not call it by the publisher's brand. At the time of writing, OpenAI's gpt-oss models, Google's Gemma 4, Ai2's Olmo models, Qwen3.8-27B, and several Mistral models (including Mistral Small 4 and Mistral Large 3) use Apache 2.0.
+
+**MIT** is shorter. It permits essentially anything, including selling, on the single condition that you keep the copyright and permission notice, and it disclaims all warranties. Unlike Apache 2.0, its text contains no explicit patent grant. DeepSeek's recent model cards state that both the repository and the weights are MIT licensed, and Microsoft's Phi models use MIT.
+
+One caution that applies to both: the license on the weights says nothing about the **outputs** or the **training data**. A permissively licensed model can still produce text that infringes someone's rights, and it can be trained on data with its own terms. License review covers what you may do with the artifact; your product still needs its own checks on what the model says.
+</Listen>
+
+<Listen>
+## Custom licenses: read for the conditions
+
+The other large group is custom licenses written by the publisher. They usually allow commercial use, and the risk is in the conditions. Five kinds of clause come up again and again, and they are what you scan for.
+
+**User or revenue thresholds.** The Llama 4 Community License requires a separate license from Meta if your products had more than 700 million monthly active users on the release date. Newer custom licenses use revenue: the Qwen3.8-Max License (for Qwen's largest Qwen3.8 model) requires products above 100 million monthly users or 20 million dollars in monthly revenue to display the model's name, and requires a separate license for model-as-a-service businesses above 50 million dollars of revenue over 12 months.
+
+**Model-as-a-service restrictions.** Several licenses treat hosting the model for others differently from building products with it. Mistral Large 4's Ecosystem Open-Weight License is a modified MIT license under which model-as-a-service businesses need a commercial license. Moonshot's Kimi K3.1-Pro license and MiniMax's Community License have comparable clauses, and MiniMax's base grant covers non-commercial use only, with conditions for commercial use.
+
+**Naming and attribution.** Llama 4 requires you to display "Built with Llama," and a derivative model you distribute must have a name that begins with "Llama."
+
+**Use policies.** Llama 4 incorporates an acceptable use policy; the Gemma Terms of Use (which cover Gemma releases before Gemma 4) incorporate a Prohibited Use Policy, require you to pass the restrictions on to anyone you distribute to, and let Google restrict use remotely or otherwise. Use policies can change after you adopt the model, so note the version you agreed to.
+
+**Regional limits.** The Llama 4 acceptable use policy withholds rights to the multimodal Llama 4 models from individuals and companies whose principal place of business is in the EU (end users of products built on them are exempt). Hugging Face even has a gating setting for this.
+
+Licenses also change between generations. Gemma moved from the Gemma Terms of Use to Apache 2.0 with Gemma 4, and NVIDIA's Nemotron 3.5 models use OpenMDW 1.1, a permissive license written for models and data. Always read the license for the exact model and version you ship. On the Hugging Face Hub, a repo whose card says `license: other` keeps the actual terms in a LICENSE file and names the license in `license_name`; that file is the one to read.
+</Listen>
+
+<Callout type="pitfall" title="Treating the Hub's license tag as legal review">
+The license badge on a model page comes from the card's metadata, which the uploader writes. Quantized copies and fine-tunes uploaded by third parties sometimes carry the wrong tag, or drop the base model's conditions entirely. Trace every model back to its `base_model` and read the publisher's license, record the exact repo revision you used, and have counsel sign off on custom licenses. The tag is a search filter, not a contract.
+</Callout>
+
+## The landscape at the time of writing
+
+This table is a snapshot read from each publisher's Hugging Face pages and announcements on 11 November 2026. It will be out of date within weeks, which is the point of the exercise after it: you need to be able to rebuild it yourself. "Total / active" is for mixture-of-experts (MoE) models, which activate only a fraction of their parameters for each token; where the active count is quoted from a repo name, treat it as the publisher's label.
+
+| Publisher | Recent open release(s) | Sizes | License |
+|---|---|---|---|
+| Meta | Llama 4 Scout and Maverick (April 2025); Muse Spark Open (October 2026), Muse Glimmer (August 2026) | Maverick about 400B total, 17B active; Muse Spark Open 816B total, 42B active per its repo name; Glimmer 30B | Llama 4 Community License; Muse Model License (gated); Glimmer under Apache 2.0 |
+| Google | Gemma 4 (2026) | E2B, E4B, 26B MoE with about 4B active, 31B dense | Apache 2.0 |
+| Alibaba (Qwen) | Qwen3.8 (2026) | 27B dense up to 2.4T total, 95B active | Apache 2.0 for 27B; custom licenses for the largest models |
+| DeepSeek | DeepSeek V4 and V4.1 (2026) | Hundreds of billions to over a trillion total parameters | MIT |
+| Mistral AI | Mistral Large 4, Mistral Small 4, Ministral 3 | About 1T total for Large 4; 119B for Small 4 | Custom for Large 4; Apache 2.0 for Small 4 and others |
+| OpenAI | gpt-oss-120b and gpt-oss-20b (August 2025) | 117B total, 5.1B active; 21B total, 3.6B active | Apache 2.0 |
+| Microsoft | Phi-4 family | Up to 15B | MIT |
+| NVIDIA | Nemotron 3.5 (2026) | 30B to 120B total, 3B to 12B active | OpenMDW 1.1 |
+| Ai2 | Olmo 3.1 (7B, 32B), with training data | 7B, 32B | Apache 2.0 |
+| Moonshot AI, Z.ai, MiniMax | Kimi K3.1 Pro, GLM-5.3, MiniMax-M3 (2026) | Hundreds of billions to trillions total | Custom licenses (GLM-5.3-Flash is MIT) |
+
+Two patterns stand out. First, the very largest open models are as big as frontier models and need a multi-GPU server; the sizes you can run on a laptop are the small dense models and small-active MoE models, which lesson 3 covers. Second, licenses vary inside a single family, so "Qwen is Apache" or "Mistral is Apache" is wrong as often as it is right.
+
+<Callout type="tip" title="Rebuild the table yourself">
+Go to the publisher's organization page on the Hub (for example `huggingface.co/google` or `huggingface.co/Qwen`), sort by recently created, open the model card, and read three things: the `license` field in the metadata, the LICENSE file if the license is `other`, and the parameter count shown on the page. Then check the publisher's own announcement for the release date and any claims, which you treat as claims until you have run your own eval.
+</Callout>
+
+<Listen>
+## Open model or frontier API?
+
+Teams choose open models for four structural reasons. **Privacy and data control:** prompts and outputs never leave infrastructure you control, which matters for regulated data, contracts that forbid third-party processing, and anything you would not paste into someone else's service. **Offline and edge use:** a model on the device works without a network, on a plane, in a clinic, or in a factory. **Customization:** with the weights you can fine-tune on your data (weeks 2 and 3 of this studio), quantize for your hardware, or constrain decoding however you like. **Version control:** the weights you tested are the weights that run, for as long as you want, with no deprecation schedule.
+
+**Cost at scale** is the fifth reason, and the one most often misjudged. An API charges per token. Self-hosting charges for hardware and operations whether you use it or not. Self-hosting only wins when volume is high and steady enough to keep the hardware busy, and when the API you are comparing against is expensive. Chip Huyen's *AI Engineering* frames this as a build-versus-buy decision that also counts engineering time, monitoring, and the safety work an API provider would otherwise do.
+
+The case for frontier APIs is equally concrete. The strongest frontier models still lead on the hardest reasoning, coding, and agentic tasks; someone else runs, scales, and secures the serving stack; and you get new capabilities without migrating. For most teams the answer is a mix: a frontier API where quality decides, and a small open model where privacy, offline use, latency, or volume decide. The way to choose is the one this program keeps returning to: build a small eval from real examples and measure quality, cost per task, and latency for each candidate.
+</Listen>
+
+<Predict
+  title="Where does self-hosting break even?"
+  code={`# Monthly workload: 600M input tokens, 60M output tokens.
+# API prices in USD per million tokens (Claude pricing page, read 2026-11-11).
+prices = {"claude-haiku-5-5": (0.10, 0.50), "claude-opus-5-5": (4.00, 20.00)}
+self_host = 2000  # assumed fixed monthly cost of a GPU server, all in
+
+for model, (p_in, p_out) in prices.items():
+    api = 600 * p_in + 60 * p_out
+    print(model, api, "self-host cheaper" if self_host < api else "API cheaper")`}
+  options={[
+    "haiku: 90.0, API cheaper; opus: 3600.0, self-host cheaper",
+    "haiku: 90.0, self-host cheaper; opus: 3600.0, self-host cheaper",
+    "haiku: 900.0, API cheaper; opus: 36000.0, self-host cheaper",
+    "Both API cheaper",
+  ]}
+  answer={0}
+>
+Haiku costs 600 × 0.10 + 60 × 0.50 = 90 dollars a month, far below the 2,000 dollar server. Opus costs 600 × 4 + 60 × 20 = 3,600 dollars, so the same server is cheaper, but only if an open model you can run on it actually matches Opus's quality on your task. That comparison is the real decision: self-hosting a weaker model is cheaper than an API only when the cheap API tier can't do the job and the open model can. The 2,000 dollar figure is an assumption for the exercise; price your own hardware, power, and engineering time.
+</Predict>
+
+<Mermaid
+  alt="Decision flowchart for choosing between an open-weight model and a frontier API. If data must stay on your infrastructure or the product must work offline, shortlist open models whose licenses allow your use. Otherwise, if you need to fine-tune weights or pin a version indefinitely, also shortlist open models. Otherwise start with frontier APIs, including a cheap tier. In every branch, run an eval on 20 to 50 real examples comparing quality, cost per task, and latency, and pick the cheapest option that meets the bar; license review happens before any open model goes to production."
+  caption="Constraints narrow the field; the eval decides."
+  chart={`flowchart TD
+  A["New task"] --> B{"Data must stay in-house, or must work offline?"}
+  B -- "yes" --> O["Shortlist open models whose licenses allow your use"]
+  B -- "no" --> C{"Need to fine-tune weights or pin a version?"}
+  C -- "yes" --> O
+  C -- "no" --> F["Shortlist frontier APIs, including a cheap tier"]
+  F --> E["Eval on 20 to 50 real examples: quality, cost per task, latency"]
+  O --> L["License review for the exact model and version"]
+  L --> E
+  E --> P["Pick the cheapest option that meets the bar"]`}
+/>
+
+<PyRunner
+  client:visible
+  id="s5-w1-license-screen"
+  title="Screen a license against a use case"
+  starter={`# Simplified summaries of three licenses, as read on 2026-11-11.
+# A teaching aid, not legal advice: the real texts have more conditions.
+LICENSES = {
+    "apache-2.0": {
+        "commercial": True, "mau_limit": None, "maas_annual_revenue_limit": None,
+        "attribution": "Include the LICENSE and NOTICE files and mark changed files",
+        "derivative_name_prefix": None, "use_policy": False, "eu_multimodal_restricted": False,
+    },
+    "llama4": {
+        "commercial": True, "mau_limit": 700_000_000, "maas_annual_revenue_limit": None,
+        "attribution": "Display 'Built with Llama'",
+        "derivative_name_prefix": "Llama", "use_policy": True, "eu_multimodal_restricted": True,
+    },
+    "qwen3.8-max": {
+        "commercial": True, "mau_limit": None, "maas_annual_revenue_limit": 50_000_000,
+        "attribution": "Display the model name above 100M monthly users or $20M monthly revenue",
+        "derivative_name_prefix": None, "use_policy": False, "eu_multimodal_restricted": False,
+    },
+}
+
+def screen(license_id, use):
+    """Return a list of findings, each a string starting with BLOCK, REVIEW, or DO.
+
+    use has: mau (int), annual_revenue (int, USD), model_as_a_service (bool),
+             derivative_name (str or None), eu_based (bool), multimodal (bool)
+
+    Rules, in this order:
+      BLOCK  if mau_limit is set and use["mau"] > mau_limit
+             -> "BLOCK: above the monthly active user limit; a separate license is required"
+      REVIEW if maas_annual_revenue_limit is set, the use is model-as-a-service,
+             and annual_revenue > the limit
+             -> "REVIEW: model-as-a-service above the revenue limit needs a separate license"
+      BLOCK  if eu_multimodal_restricted and eu_based and multimodal
+             -> "BLOCK: multimodal rights are not granted to EU-based companies"
+      REVIEW if derivative_name_prefix is set, derivative_name is not None,
+             and derivative_name does not start with the prefix
+             -> "REVIEW: derivative name must start with <prefix>"
+      REVIEW if use_policy -> "REVIEW: check the acceptable use policy"
+      DO     always, last -> "DO: " + attribution
+    """
+    # TODO
+    pass
+
+startup = {"mau": 2_000_000, "annual_revenue": 5_000_000, "model_as_a_service": False,
+           "derivative_name": "AcmeAssist", "eu_based": False, "multimodal": False}
+for lic in LICENSES:
+    print(lic, screen(lic, startup))
+`}
+  tests={`base = {"mau": 2_000_000, "annual_revenue": 5_000_000, "model_as_a_service": False,
+        "derivative_name": "AcmeAssist", "eu_based": False, "multimodal": False}
+r = screen("apache-2.0", base)
+assert r is not None, "screen returned None"
+assert r == ["DO: Include the LICENSE and NOTICE files and mark changed files"], "Apache 2.0 has only notice obligations here"
+r = screen("llama4", base)
+assert r == ["REVIEW: derivative name must start with Llama", "REVIEW: check the acceptable use policy", "DO: Display 'Built with Llama'"], f"got {r}"
+ok_name = dict(base, derivative_name="Llama-Acme-Assist")
+assert "REVIEW: derivative name must start with Llama" not in screen("llama4", ok_name), "a Llama-prefixed name is fine"
+no_dist = dict(base, derivative_name=None)
+assert len(screen("llama4", no_dist)) == 2, "no distributed derivative means no naming finding"
+huge = dict(base, mau=900_000_000)
+assert screen("llama4", huge)[0].startswith("BLOCK: above the monthly"), "900M MAU is above Llama 4's limit"
+eu = dict(base, eu_based=True, multimodal=True)
+assert "BLOCK: multimodal rights are not granted to EU-based companies" in screen("llama4", eu)
+assert all(not f.startswith("BLOCK") for f in screen("apache-2.0", eu)), "Apache 2.0 has no regional limits"
+host = dict(base, model_as_a_service=True, annual_revenue=80_000_000)
+assert screen("qwen3.8-max", host)[0] == "REVIEW: model-as-a-service above the revenue limit needs a separate license"
+small_host = dict(host, annual_revenue=10_000_000)
+assert not any("revenue limit" in f for f in screen("qwen3.8-max", small_host)), "below the limit is fine"
+assert screen("qwen3.8-max", host)[-1].startswith("DO: "), "the DO line always comes last"`}
+  solution={`def screen(license_id, use):
+    lic = LICENSES[license_id]
+    findings = []
+    if lic["mau_limit"] is not None and use["mau"] > lic["mau_limit"]:
+        findings.append("BLOCK: above the monthly active user limit; a separate license is required")
+    limit = lic["maas_annual_revenue_limit"]
+    if limit is not None and use["model_as_a_service"] and use["annual_revenue"] > limit:
+        findings.append("REVIEW: model-as-a-service above the revenue limit needs a separate license")
+    if lic["eu_multimodal_restricted"] and use["eu_based"] and use["multimodal"]:
+        findings.append("BLOCK: multimodal rights are not granted to EU-based companies")
+    prefix = lic["derivative_name_prefix"]
+    name = use["derivative_name"]
+    if prefix and name is not None and not name.startswith(prefix):
+        findings.append(f"REVIEW: derivative name must start with {prefix}")
+    if lic["use_policy"]:
+        findings.append("REVIEW: check the acceptable use policy")
+    findings.append("DO: " + lic["attribution"])
+    return findings`}
+>
+Write `screen`, then press **Check my answer**. The license records are deliberately simplified, which is exactly why a real team keeps such a screen as a first pass that routes models to legal review rather than as the review itself. Notice how much the result depends on facts about *your* use (users, revenue, hosting, region, distribution), not just on the model.
+</PyRunner>
+
+<GoDeeper title="Why the definition asks for data information, not the data itself">
+The OSAID deliberately stops short of requiring the training data to be released. Training sets often contain material that can't legally be redistributed (copyrighted text, personal data), so the definition asks for enough information about the data to build a substantially equivalent system, plus a list of the public and third-party sources. Critics argue that without the data you can't truly study or reproduce a model; supporters argue that a stricter rule would leave almost no qualifying models. For engineering purposes the distinction shows up in two places. Without data information you can't check whether a benchmark leaked into training (Studio 1 covered contamination), and you can't reason about what the model has never seen. When provenance matters, for example in regulated settings, models with released data such as Olmo let you answer questions that an open-weight release can't.
+</GoDeeper>
+
+<Listen>
+## What a working engineer does with this
+
+On a real team, picking an open model is a small procurement process. Write down the constraints first: where data may go, whether you need offline use, expected volume, and whether you plan to fine-tune or host the model for others. Shortlist two or three models whose licenses fit, using the publisher's license text, not the tag. Record the exact repo and revision, so the model you evaluated is the one you deploy. Run the same eval you would run on an API model, and include a frontier API in it as a reference point so you know what you are giving up. Then get license sign-off, and put a reminder in the calendar to re-check the landscape, because the table above will be stale by next quarter. The next lesson shows you how to read the rest of a model card and run a model with the Hugging Face libraries.
+</Listen>

@@ -1,0 +1,73 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.301
+Contextual Retrieval.
+
+2
+00:00:01.581 --> 00:00:09.880
+In September 2024, Anthropic published Contextual Retrieval, a technique aimed at the “chunk without context” problem.
+
+3
+00:00:10.160 --> 00:00:22.000
+The method: before indexing, give a model the whole document plus one chunk, and ask it for a short context that situates the chunk within the document (typically 50 to 100 tokens).
+
+4
+00:00:22.280 --> 00:00:35.528
+Prepend that context to the chunk, then build both the embedding index ( Contextual Embeddings ) and a BM25 keyword index ( Contextual BM25 ) over the contextualized chunks.
+
+5
+00:00:35.808 --> 00:00:47.584
+The post’s example: a chunk that says only that revenue grew 3 percent over the previous quarter becomes findable once it is prefixed with which company’s filing and which quarter it came from.
+
+6
+00:00:47.864 --> 00:00:58.360
+Anthropic measured retrieval failure as 1 minus recall@20 (the share of questions whose relevant chunk was not in the top 20) across several datasets.
+
+7
+00:00:58.640 --> 00:01:04.016
+They reported that Contextual Embeddings cut the failure rate by 35 percent (5.
+
+8
+00:01:04.296 --> 00:01:05.341
+7 to 3.
+
+9
+00:01:05.621 --> 00:01:11.339
+7 percent), adding Contextual BM25 cut it by 49 percent (to 2.
+
+10
+00:01:11.619 --> 00:01:16.547
+9 percent), and adding a reranking step cut it by 67 percent (to 1.
+
+11
+00:01:16.827 --> 00:01:17.893
+9 percent).
+
+12
+00:01:18.173 --> 00:01:28.755
+They also found that passing 20 chunks to the model worked better than 10 or 5 in their tests, and that Gemini and Voyage embeddings performed best among those they tried.
+
+13
+00:01:29.035 --> 00:01:39.040
+The cost is one model call per chunk, but the calls share a document, so prompt caching helps a lot: the post estimated a one-time cost of about $1.
+
+14
+00:01:39.320 --> 00:01:52.739
+02 per million document tokens with Claude 3 Haiku, under stated assumptions (800-token chunks, 8,000-token documents, 100 tokens of context per chunk).
+
+15
+00:01:53.019 --> 00:01:58.821
+Prices and models have changed since, so redo that arithmetic for today’s models before you commit.
+
+16
+00:01:59.101 --> 00:02:12.520
+Two caveats in the spirit of this course: these are Anthropic’s measurements on Anthropic’s chosen datasets, and the post itself tells readers to always run evals and to experiment with settings on their own use case.
+
+17
+00:02:12.800 --> 00:02:19.499
+It also suggests tailoring the context prompt to your domain, for example by including a glossary of key terms.
+
+18
+00:02:19.779 --> 00:02:26.285
+Week 3 adds the BM25 and reranking pieces; you can add the context step to any chunker.

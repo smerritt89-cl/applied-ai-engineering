@@ -1,0 +1,318 @@
+---
+id: s5-w4-l10
+studio: s5
+week: 4
+order: 10
+title: Benchmarking your model against a frontier model
+summary: A benchmark that survives a skeptical review. One frozen test set and one metric for every system, per-field accuracy and exact match for extraction, paired bootstrap intervals, cost per 1,000 tasks including hosting, latency percentiles, and failure analysis, plus a hard look at the claim that small fine-tuned models match frontier models.
+estMinutes: 60
+reviewed: 2026-11-11
+objectives:
+  - Design a three-way comparison (base model, fine-tuned model, frontier model) on one frozen, fingerprinted test set that none of the systems was tuned on
+  - Score extraction with per-field accuracy and exact match, with normalization rules fixed in advance and failed outputs kept in the denominator
+  - Report every comparison as a paired difference with a bootstrap interval, and state the claim the interval supports
+  - Compute cost per 1,000 tasks for an API model and for a self-hosted model, including the hosting you pay for while idle
+  - Measure latency at p50 and p95 under realistic load, and run a failure analysis that explains the numbers
+sources:
+  - { id: miller-2024-error-bars, use: summarized, where: "Paired differences and clustered standard errors" }
+  - { id: anthropic-stats-evals-post, use: summarized }
+  - { id: efron-1979-bootstrap, use: linked }
+  - { id: deng-2023-contamination, use: summarized }
+  - { id: zhao-2024-lora-land, use: summarized, where: "Abstract; results table; GPT-4 evaluation setup" }
+  - { id: bucher-2024-finetuned-small, use: summarized }
+  - { id: hsieh-2023-distilling-step, use: summarized }
+  - { id: gudibande-2023-imitation, use: summarized }
+  - { id: claude-pricing-docs, use: summarized, where: "Model pricing and batch discount" }
+  - { id: hf-inference-endpoints-pricing, use: summarized, where: "GPU instance prices; per-minute billing" }
+  - { id: artificial-analysis-methodology, use: linked, where: "Latency and output speed definitions" }
+  - { id: anthropic-demystifying-evals, use: linked }
+  - { id: huyen-ai-engineering, use: linked, where: "Chapter on evaluation methodology" }
+knowledgeCheck:
+  - id: kc1
+    type: scenario
+    prompt: >-
+      Your LoRA model scores 84 percent exact match and the frontier model 80 percent on the same 120 frozen cases.
+      The paired bootstrap interval for the difference is minus 3 to plus 11 points. Your manager asks, "So the small
+      model is better?" What is the most accurate answer?
+    options:
+      - id: a
+        text: Yes. It scored 4 points higher on the same cases, so it is better.
+        rationale: The interval includes zero and negative values. A 4-point gap on 120 cases is within the range sampling noise produces.
+      - id: b
+        text: On this test set it is no worse than about 3 points below the frontier model and may be better; the data can't tell which, so the decision should rest on cost and latency unless we collect more cases.
+        correct: true
+        rationale: Yes. That is the claim the interval supports, and it moves the decision to the axes where the systems clearly differ.
+      - id: c
+        text: No. Because the interval includes zero, the two models are equally good.
+        rationale: An interval that includes zero means the difference is not resolved, not that it is zero. "No detectable difference" is different from "equal."
+    explanation: >-
+      State the claim the interval supports: a lower bound tells you the worst plausible gap, and the width tells you
+      whether more cases would help. When quality is unresolved but cost or latency differ clearly, those axes carry
+      the decision, as long as the worst plausible quality gap is acceptable to the business.
+  - id: kc2
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      def cost_per_1000(gpu_hourly, tasks_per_hour, utilization):
+          return gpu_hourly / (tasks_per_hour * utilization) * 1000
+
+      print(round(cost_per_1000(2.50, 5000, 0.10), 2))
+    options:
+      - id: a
+        text: "`0.5`"
+        rationale: That is the cost at full utilization. You pay for the idle 90 percent of each hour too.
+      - id: b
+        text: "`5.0`"
+        correct: true
+        rationale: 2.50 / (5000 * 0.10) = 0.005 dollars per task, so $5.00 per 1,000.
+      - id: c
+        text: "`0.05`"
+        rationale: Check the order of operations. Utilization divides the useful throughput, which raises the cost.
+    explanation: >-
+      A rented GPU bills by the hour whether or not requests arrive. At 10 percent utilization, the effective cost per
+      task is ten times the busy-GPU figure, which is why self-hosted cost claims must state the utilization they assume.
+  - id: kc3
+    type: multi
+    prompt: Which of these make a small-model versus frontier-model comparison unfair or misleading? Select all that apply.
+    options:
+      - id: a
+        text: Some test cases are near-duplicates of training examples, because both were sampled from the same week of meetings.
+        correct: true
+        rationale: Contamination. The fine-tuned model is being tested partly on what it memorized.
+      - id: b
+        text: Outputs that failed to parse are dropped before computing each system's accuracy.
+        correct: true
+        rationale: Dropping failures rewards the system that fails most. A parse failure is a wrong answer.
+      - id: c
+        text: The frontier model gets a few-shot prompt, while the fine-tuned model gets the short prompt format it was trained on.
+        rationale: This is fine if recorded and if both saw the same inputs. Each system should get its best reasonable prompt for the same task, with an equal tuning budget.
+      - id: d
+        text: The normalization rules (case, whitespace, date format) were chosen after looking at which system they helped.
+        correct: true
+        rationale: Choosing scoring rules after seeing results is a forking path. Fix them before scoring, and apply them to every system.
+    explanation: >-
+      Fair does not mean identical prompts. It means identical inputs, identical scoring, a test set no system was
+      tuned on, and equal effort on each system's setup. Different prompts are fine when each is the system's
+      reasonable best and is recorded with the results.
+---
+import PyRunner from '@components/lesson/PyRunner';
+
+<Listen>
+## The question your benchmark has to answer
+
+By the end of week 3 you have a LoRA adapter that seems to work. Your team is about to ask a concrete question: should the action-item extractor run on this small model, on your own hardware, instead of calling a frontier model's API? The answer depends on four numbers and how sure you are of each: quality, cost per task, latency, and the kinds of mistakes each system makes.
+
+A benchmark that answers this is a controlled experiment, and the controls are where most comparisons go wrong. You need at least three systems. The **frontier model** is the incumbent or the alternative. The **fine-tuned model** is the candidate. The **untuned base model**, served the same way, is the control: it tells you how much of the candidate's quality came from fine-tuning and how much was already in the base model. Without it, a reader can't tell whether your training run did anything.
+
+You built most of the machinery in Studio 3: a versioned test set, code graders, paired statistics, a decision written before you run. This lesson adapts it to the situation fine-tuning creates. The candidate was trained on data you made, so contamination is a live risk. The systems are served differently, so cost and latency need their own accounting. And extraction outputs have structure, so a single pass or fail hides most of what you need to know.
+</Listen>
+
+<Listen>
+## One frozen test set, one metric, for everyone
+
+Start with the rule that makes every other number meaningful: every system is scored on the **same frozen test set** with the **same scoring code**. Frozen means the cases and gold labels are fixed before any system is run, stored in the repository, and identified by a fingerprint (a hash of ids, inputs, and labels). Every recorded run stores the fingerprint it was scored against, and your scorer refuses to compare runs whose fingerprints differ. That one check catches the most common silent error in comparisons: someone fixes three gold labels between runs, and the "improvement" is the label fix.
+
+The test set must also be one that **no system was tuned on**. For the fine-tuned model that means no test case, and no near-duplicate of one, appears in the training data. Deng and colleagues (2023) document how often public benchmarks leak into training corpora and how much that inflates scores; your own pipeline can leak the same way at small scale. If training and test examples were both sampled from the same week of meetings, a model can score well by recognizing recurring phrases. Split by source (by meeting, by customer, by month) rather than by row, and run a near-duplicate check between the splits before training. For the frontier model, "not tuned on" means you didn't iterate its prompt against the test cases. Tune prompts on a dev split, then run the test split once.
+
+Same inputs does not mean same prompt. The fine-tuned model expects the short format it was trained on; the frontier model does best with instructions and a few examples. Give each system its reasonable best prompt, with a comparable tuning budget, and record each prompt version with its results. What you must hold constant is the input each system sees, the output schema, and the scoring.
+</Listen>
+
+<Callout type="pitfall" title="Test contamination you created yourself">
+The classic version: you generate synthetic training data with a frontier model, seeded from the same transcripts you later label as the test set. The fine-tuned model then scores suspiciously well on exactly those meetings. Prevent it structurally. Freeze and fingerprint the test split first, keep its source documents out of every data-generation step, and run an n-gram or embedding similarity check between training examples and test inputs. If the fine-tuned model beats the frontier model by a surprising margin, check contamination before you celebrate.
+</Callout>
+
+<Listen>
+## Scoring extraction: per-field accuracy and exact match
+
+An extraction has fields, and fields fail independently. For the action-item task in this studio, each case has a gold record with four fields: whether the snippet contains an action item, the owner, the resolved due date, and the priority. Report **per-field accuracy** (the share of cases where that field matches gold) and **exact match** (the share where every field matches). Exact match is the number that answers "how often is the record fully right," which is usually what a downstream user cares about. Per-field accuracy tells you where the errors are, which is what you need to improve anything.
+
+Three scoring decisions deserve to be written down before you score anything.
+
+**Normalization.** Decide what counts as formatting and what counts as an error. Case and surrounding whitespace in a name are formatting. A date one day off is an error, not a formatting difference. Write these rules as code, apply them to every system, and don't revise them after seeing which system they favor.
+
+**Nulls.** A field the source doesn't support should be null in the gold record. A prediction of null matches a gold null; an invented value against a gold null is wrong. This is how the benchmark rewards abstention, the habit you built in Studio 1.
+
+**Failures stay in the denominator.** An output that doesn't parse, fails schema validation, times out, or is refused is a wrong answer on every field. Dropping failures before computing accuracy rewards the system that fails most often, and small models fail to produce valid structure more often than frontier models unless you constrain their decoding (lesson 11). Report the parse rate as its own column so the reader sees it.
+
+For lists of items (a whole transcript in, many action items out), you also need a matching step between predicted and gold items before field scoring, for example by evidence quote or by owner plus a normalized task. The lab keeps one candidate item per case so the scoring stays simple; the project asks you to handle full lists.
+</Listen>
+
+<PyRunner
+  client:visible
+  id="s5-w4-field-scoring"
+  title="Score per-field accuracy and exact match"
+  starter={`FIELDS = ("is_action_item", "owner", "due_date", "priority")
+
+def normalize(value):
+    """Strings: strip and casefold. Everything else: unchanged."""
+    # TODO
+    pass
+
+def score(gold_records, predictions):
+    """gold_records and predictions are lists in the same case order.
+    A prediction is a dict, or None if the output failed to parse.
+    Return {"n": ..., "parse_rate": ..., "exact": ..., "fields": {field: accuracy}}.
+    A None prediction, or a missing key, is wrong on that field. Never drop cases."""
+    # TODO
+    pass
+
+GOLD = [
+    {"is_action_item": True,  "owner": "Priya", "due_date": "2026-11-13", "priority": "high"},
+    {"is_action_item": True,  "owner": "Sam",   "due_date": None,         "priority": "medium"},
+    {"is_action_item": False, "owner": None,    "due_date": None,         "priority": None},
+    {"is_action_item": True,  "owner": "Ana",   "due_date": "2026-11-10", "priority": "low"},
+    {"is_action_item": True,  "owner": "Lee",   "due_date": "2026-11-20", "priority": "medium"},
+]
+PRED = [
+    {"is_action_item": True,  "owner": "priya ", "due_date": "2026-11-13", "priority": "high"},
+    {"is_action_item": True,  "owner": "Sam",    "due_date": "2026-11-14", "priority": "medium"},
+    {"is_action_item": False, "owner": None,     "due_date": None,         "priority": None},
+    None,
+    {"is_action_item": True,  "owner": "Lee",    "due_date": "2026-11-20"},
+]
+print(score(GOLD, PRED))
+`}
+  tests={`assert normalize("  Priya ") == "priya", "strip and casefold strings"
+assert normalize(None) is None and normalize(True) is True, "leave non-strings alone"
+r = score(GOLD, PRED)
+assert r is not None, "score returned None"
+assert r["n"] == 5, "keep every case, including the one that failed to parse"
+assert abs(r["parse_rate"] - 0.8) < 1e-9, "4 of 5 outputs parsed"
+assert abs(r["fields"]["owner"] - 0.8) < 1e-9, "'priya ' matches 'Priya' after normalization; the None prediction is wrong"
+assert abs(r["fields"]["due_date"] - 0.6) < 1e-9, "an invented date against a gold null is wrong; null against null is right"
+assert abs(r["fields"]["priority"] - 0.6) < 1e-9, "a missing key is wrong"
+assert abs(r["exact"] - 0.4) < 1e-9, "only cases 1 and 3 are fully right"`}
+  solution={`def normalize(value):
+    if isinstance(value, str):
+        return value.strip().casefold()
+    return value
+
+def score(gold_records, predictions):
+    n = len(gold_records)
+    field_hits = {f: 0 for f in FIELDS}
+    exact = 0
+    parsed = 0
+    for gold, pred in zip(gold_records, predictions):
+        if pred is not None:
+            parsed += 1
+        hits = {}
+        for f in FIELDS:
+            hits[f] = pred is not None and f in pred and normalize(pred[f]) == normalize(gold[f])
+            field_hits[f] += hits[f]
+        exact += all(hits.values())
+    return {"n": n, "parse_rate": parsed / n, "exact": exact / n,
+            "fields": {f: field_hits[f] / n for f in FIELDS}}`}
+>
+Write `normalize` and `score`, then press **Check my answer**. Notice what the tests insist on: the unparseable output stays in the count, the missing `priority` key is an error rather than a skip, and the invented due date in case 2 is wrong even though it looks plausible.
+</PyRunner>
+
+<Listen>
+## Intervals: reuse what you built in Studio 3
+
+A fine-tuning project usually ends with a test set of a hundred to a few hundred cases, because every case needs a careful label. At that size, sampling noise is large. With 150 cases and an exact-match rate near 80 percent, a 95 percent interval for one system spans roughly plus or minus 6 to 7 points. Two systems a few points apart are not distinguishable from their separate intervals alone.
+
+The fix is the one from Studio 3, lesson 7: compare systems **paired**, on the same cases. For each case, compute the difference in score between the two systems (1 minus 0, 0 minus 0, and so on), then bootstrap the mean of those differences by resampling cases with replacement. Pairing helps because cases differ in difficulty and both systems tend to find the same cases hard. Miller's paper on error bars for evals (2024), and Anthropic's companion post, recommend exactly this: report paired differences, because the correlation between systems' per-question scores shrinks the variance of the difference.
+
+Then say what the interval supports. If the paired interval for "fine-tuned minus frontier" is plus 1 to plus 12 points, you can say the fine-tuned model is better on this distribution of cases. If it is minus 2 to plus 9, the honest claim is "no detectable loss, and possibly a gain," which may still be enough to switch if the small model is much cheaper. If the lower bound is minus 8, you can't rule out a real loss, and you need more cases or a different decision. Write the margin you will accept before you run, as you did for the CI gate in Studio 3.
+
+Two more habits carry over. If your cases come in clusters (several snippets from the same meeting), resample whole clusters, because cases within a meeting are correlated. And if you run each system more than once, report the spread across runs separately; repeated runs of the same case are not extra cases.
+</Listen>
+
+<Predict
+  title="Why pairing narrows the interval"
+  code={`# Per-case exact match on 6 cases, for two systems that find the same cases hard.
+a = [1, 1, 0, 1, 0, 1]
+b = [1, 1, 0, 1, 0, 0]
+
+diffs = [x - y for x, y in zip(a, b)]
+mean_a, mean_b = sum(a) / 6, sum(b) / 6
+print(round(mean_a - mean_b, 3), sum(1 for d in diffs if d != 0))`}
+  options={["0.167 1", "0.167 6", "0.333 1", "0.0 0"]}
+  answer={0}
+>
+The means differ by one case in six, about 0.167, and only one case is discordant. All of the information about the difference lives in the discordant cases; the four cases where both systems agree add no noise to the difference. An unpaired comparison treats each system's agreement-heavy scores as independent samples and so sees much more variance. This is also why McNemar's test (Studio 3) looks only at the discordant pairs.
+</Predict>
+
+<Listen>
+## Cost per 1,000 tasks, including the hardware
+
+Quality differences are often small and uncertain; cost differences are often large and certain. Compute **cost per 1,000 tasks** for each system, because per-request prices are too small to reason about and per-month totals depend on volume.
+
+For an **API model**, cost per task is input tokens times the input price plus output tokens times the output price, using the token counts you recorded during the benchmark, not an estimate. Include everything a task actually consumes: system prompt and few-shot examples (often most of the input), retries after validation failures, and any reasoning tokens the model bills as output. Check the provider's pricing page on the day you write the report. As of this lesson's review date, Anthropic lists Claude Haiku 5.5 at $0.10 and $0.50 per million input and output tokens and Claude Sonnet 5.5 at $2 and $10, with a 50 percent discount for batch processing; those numbers change, which is why your report records the date and the source.
+
+For a **self-hosted model**, the unit is GPU time, and the formula is the GPU's hourly price divided by the tasks it completes per hour, times 1,000. Two inputs are easy to get wrong. **Throughput** must be measured, at the batch size and concurrency you will actually run (lesson 11 explains why throughput depends so much on batching). **Utilization** is the share of paid hours that do useful work. A rented GPU bills whether or not requests arrive; Hugging Face Inference Endpoints, for example, bills per minute while an endpoint is running and lists one NVIDIA L4 on AWS at $0.80 per hour at the time of writing. If your traffic keeps the GPU busy 20 percent of the time, your effective cost per task is five times the busy-GPU figure. Scale-to-zero and batch scheduling change utilization, so say which you assume.
+
+Then name the costs that aren't per task: engineering time to build and maintain serving, monitoring, on-call, and retraining when the task drifts. You don't have to put a dollar figure on them, but a report that compares only GPU-hours to API tokens understates the cost of self-hosting.
+</Listen>
+
+<Listen>
+## Latency, measured the way users feel it
+
+Report latency as percentiles, at least **p50** (the median) and **p95** (the slowest one in twenty), because averages hide the tail and users notice the tail. For interactive features, measure **time to first token** separately from total time; for extraction, where your code needs the whole JSON object, total time is what matters.
+
+Measure under realistic conditions, or the numbers mean little. Call the API from the region your application runs in. Load the self-hosted server with the concurrency you expect in production, because a server that answers one request in 300 milliseconds may take several seconds per request when forty arrive at once. Warm up first, so model loading and cache misses don't land in your sample. Record the hardware, the serving engine and its version, quantization, and batch settings alongside the numbers. Independent benchmarkers such as Artificial Analysis publish their latency definitions for exactly this reason: two "latency" numbers measured differently can't be compared.
+
+Latency is also where the systems often differ most. A small model on a dedicated GPU, close to your application, can answer in well under a second; a frontier API call commonly takes longer, and its tail depends on load you don't control. Whether that matters depends on the product: a batch job that processes yesterday's meetings overnight doesn't care, and an inline suggestion while someone types does.
+</Listen>
+
+<Mermaid
+  alt="Benchmark pipeline. A frozen, fingerprinted test set feeds three systems: the untuned base model and the fine-tuned model on the same self-hosted server, and the frontier model through its API. Each system's run records predictions, token counts, latency, and the test-set fingerprint. A scorer checks fingerprints and ids, then computes per-field accuracy and exact match. A statistics step computes bootstrap intervals and paired differences against the frontier model. A cost step uses token counts and prices for the API, and GPU hourly price, throughput, and utilization for self-hosting. A failure analysis step reads every disagreement. All of these feed the report and the decision."
+  caption="Every system runs on the same frozen cases, and every number in the report traces back to a recorded run."
+  chart={`flowchart TD
+  T[("Frozen test set + fingerprint")] --> B["Base model (self-hosted)"]
+  T --> F["Fine-tuned model (self-hosted)"]
+  T --> X["Frontier model (API)"]
+  B --> R["Recorded runs: outputs, tokens, latency, fingerprint"]
+  F --> R
+  X --> R
+  R --> S["Scorer: check fingerprint and ids, per-field accuracy, exact match"]
+  S --> ST["Paired bootstrap intervals vs the frontier model"]
+  R --> C["Cost per 1,000: tokens x price, or GPU $/h / (throughput x utilization)"]
+  R --> L["Latency p50 / p95"]
+  S --> FA["Failure analysis: read every disagreement"]
+  ST --> REP["Report and decision"]
+  C --> REP
+  L --> REP
+  FA --> REP`}
+/>
+
+<Listen>
+## Failure analysis: read the disagreements
+
+The numbers say how often each system is wrong. Only reading the errors says why, and the why decides what you do next. Pull every case where the systems disagree, plus every case where both are wrong, and label each error with a short category: missed item, invented item, wrong owner, date arithmetic, priority convention, schema failure, and so on. This is the error analysis loop from Studio 3, lesson 2, applied to a comparison.
+
+Patterns you are likely to see in a fine-tuning comparison:
+
+- **Convention errors favor the fine-tuned model.** If priority follows a house rule ("anything a client is waiting on is high"), a model trained on hundreds of labeled examples learns the rule; a frontier model with a few-shot prompt has to infer it. This is the narrow, learnable kind of task where fine-tuning tends to win.
+- **Judgment and world-knowledge errors favor the frontier model.** Ambiguous ownership, unusual phrasing, or a snippet unlike anything in training is where a larger, more general model holds up better.
+- **Schema failures cluster in small models** unless decoding is constrained. If most of the fine-tuned model's errors are parse failures, the fix is in serving (lesson 11), not training.
+- **Shared errors point at the labels or the task.** If every system gets a case wrong in the same way, read the gold label again. Sometimes the label is wrong, and sometimes the snippet is genuinely ambiguous and should be marked as such in the next version of the test set (never silently edited in this one).
+
+Report a small table of error categories by system. It is the most persuasive part of the write-up for a reader who doesn't trust aggregate scores, and it tells you whether a second round of training data would help.
+</Listen>
+
+<Callout type="claim" title="Claim: small fine-tuned models match or beat frontier models on narrow tasks">
+**Who and when:** the Predibase team (Zhao and colleagues) in the technical report [LoRA Land](https://arxiv.org/abs/2405.00732), April 2024, whose title says 310 fine-tuned models "rival GPT-4." The same claim circulates widely among open-model practitioners.
+
+**Evidence for.** LoRA Land fine-tuned 10 base models of 2 to 7 billion parameters on 31 tasks with 4-bit LoRA. The fine-tuned models beat their base models by 34 points and GPT-4 by 10 points on average, and the best fine-tuned model beat GPT-4 on 24 of the 31 tasks. Bucher and Martini (2024) found fine-tuned BERT-style classifiers beat zero-shot GPT-3.5, GPT-4, and Claude Opus on every text-classification task they tested. Hsieh and colleagues (2023) trained a 770-million-parameter model, using rationales, that outperformed few-shot PaLM 540B on one benchmark with 80 percent of the training data.
+
+**Evidence against, or limits.** In LoRA Land, GPT-4 was prompted simply (zero or one example, no chain of thought), and it still won on the broader tasks, including Python coding and MMLU. The comparison point was a 2023 model, and frontier models have improved since. Gudibande and colleagues (2023) showed the failure mode on the other side: models fine-tuned to imitate ChatGPT fooled crowd raters on style but closed little of the capability gap on targeted evaluations, especially on tasks not covered by the imitation data. And averages over many tasks say nothing about yours.
+
+**How to read it.** The evidence supports a narrower claim: on a well-defined task with good labeled data and a fixed output format, a fine-tuned small model often matches a prompted frontier model, at lower cost per task. Whether that holds for your task is what your benchmark is for.
+</Callout>
+
+<LabLink path="labs/studio-5/04-benchmark" title="Lab 04: Benchmark a fine-tuned model against a frontier model" needs={[]} minutes={60}>
+Score recorded predictions from a LoRA model, its untuned base, and a frontier model on the same frozen extraction test set. You'll write the integrity checks (fingerprint, duplicates, missing cases), per-field accuracy and exact match, bootstrap and paired bootstrap intervals, cost per 1,000 tasks for API and self-hosted systems, latency percentiles, and a Markdown report. Offline, no API key. The data is synthetic, so the lesson is the method, not the numbers.
+</LabLink>
+
+<GoDeeper title="Why the paired interval is narrower, in one line of algebra">
+For per-case scores A and B, the variance of the mean difference is (Var A + Var B minus 2 Cov(A, B)) divided by n. An unpaired comparison effectively assumes the covariance is zero. In practice it is strongly positive, because hard cases are hard for every system, so the paired variance is smaller, sometimes by a lot. The bootstrap estimates this without the formula: resampling the same case indices for both systems preserves the covariance automatically. Clustered data adds a design effect on top, which is why Miller recommends clustered standard errors when questions share a source document. If you want the original argument for the bootstrap itself, Efron's 1979 paper is short and readable for a mathematician.
+</GoDeeper>
+
+<Listen>
+## The report, and the decision it supports
+
+Put the results in one table: for each system, the test-set size, parse rate, exact match with its interval, per-field accuracy, cost per 1,000 tasks with its assumptions, and p50 and p95 latency. Below it, the paired differences against the frontier model, the error-category table, and two sentences on what the benchmark doesn't cover (traffic unlike the test set, drift over time, adversarial inputs).
+
+Then write the decision the way a reviewer can check it: "On 150 frozen cases, the fine-tuned model's exact match is within 2 points below to 12 points above the frontier model's. At our expected volume and 20 percent GPU utilization it costs about 30 percent less per 1,000 tasks, and its p95 latency is under a second against over two seconds. We recommend switching the batch pipeline, keeping the frontier model as a fallback for snippets the small model fails to parse, and re-running this benchmark monthly on a fresh sample." That paragraph is the deliverable. The rest of the report is the evidence for it.
+</Listen>
