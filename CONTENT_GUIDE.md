@@ -167,6 +167,60 @@ Each lab folder contains:
 Tests import from `starter` (the learner's file). Make offline tests meaningful,
 so a learner without an API key still learns. Use the official `anthropic` SDK.
 
+### 5a. Review track: WALKTHROUGH.md, CHANGE.md, test_change.py, change_solution.py
+
+The learner is a PM and AI strategist, not a professional programmer. The course
+optimizes for **reading, judging, and directing code** (much of it AI-written), so
+every lab also has:
+
+- `WALKTHROUGH.md`: a guided tour of `solution.py` for a reader with rusty Python.
+  - Open with "What this code does" (2 to 4 short paragraphs) and "How to read this lab"
+    (open `work.py` side by side; run the tests in VS Code's Testing panel).
+  - Then one section per function or logical block, in reading order. Each section:
+    a heading with the function name and line range (`## \`cost_usd\` (lines 40 to 58)`),
+    a short excerpt of the key lines in a ```python block, then plain-English explanation:
+    what it does, how each non-obvious construct works (name the Python feature on first use:
+    list comprehension, f-string, `with`, decorators, type hints, `**kwargs`...), **why it is
+    built this way** (the design decision and the bug it prevents), and what a reviewer of
+    AI-written code should check here.
+  - "What the tests check": group the tests and say what each group proves, and what they
+    don't cover.
+  - "Review questions": 3 to 5 questions with answers in a `<details>` block.
+  - Line numbers must match `solution.py` exactly. Verify them.
+- `CHANGE.md`: one realistic change request, sized for a coding assistant in one or two
+  prompts (a new parameter, a new case, a refactor, a bug fix). Sections: "The change"
+  (what and why), "Write your prompt" (tell the learner to write their own first, with
+  hints on what a good prompt includes), "Example prompt" (in `<details>`), "Review the
+  AI's change" (a checklist: scope creep, untouched behavior, tests, edge cases, docs),
+  and "Check it" (`pytest <lab>/test_change.py -q`).
+- `test_change.py`: acceptance tests for the change, every test marked
+  `@pytest.mark.change`. Import from `starter` exactly like the lab's main test file
+  (same sys.path / sys.modules header). They must FAIL against `solution.py` and PASS
+  against `change_solution.py`. The full suite skips them unless test_change.py is run by name.
+- `change_solution.py`: the full module with the change applied, as a reference.
+
+## 5b. Code walkthroughs for in-browser exercises
+
+Every `<PyRunner id="...">` gets `src/content/walkthroughs/<id>.yaml` (schema in
+`src/content.config.ts`; reference example: `s1-temperature.yaml`). It is the default
+view of the exercise; writing the code becomes an optional tab.
+
+- `summary`: what the program does and why it's structured this way (2 short paragraphs).
+- `code`: the complete program: the PyRunner's `starter` with the `solution` filled in,
+  cleaned up as exemplary code (clear names, docstrings, comments only where they add
+  something). It must pass the PyRunner's `tests` (verify by running them).
+- `notes`: 5 to 9 notes covering every line in reading order, each with exact `lines:
+  [from, to]` (1-based, inclusive; the build checks the range). Each note explains the
+  Python constructs used, in plain English, and the design reason behind them; include a
+  concrete worked value where it helps. Point out what an AI-written version might get
+  wrong here.
+- `review`: 3 questions about reading and judging this code. At least one "an AI changed
+  it to this; what happens?" (code-reading with a plausible but flawed variant), plus
+  compare-two-versions, predict-the-effect-of-a-change, or why-is-it-designed-this-way.
+  Question ids start with `wt-`.
+- `direct`: a realistic change, an example prompt that is specific about what must not
+  change and what tests to add, and a 4 to 6 item review checklist.
+
 ## 6. Voice and style
 
 - Second person, plain and direct, for a mathematically literate professional who is new to ML engineering. Explain jargon on first use.

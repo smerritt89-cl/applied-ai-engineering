@@ -45,12 +45,38 @@ export function inlineMd(src: string): string {
   return s.replace(/\u0000(\d+)\u0000/g, (_, i) => codes[Number(i)]);
 }
 
-/** Paragraph-level: blank lines separate paragraphs. */
+/**
+ * Block-level Markdown subset. Blocks are separated by blank lines:
+ * - paragraphs (single newlines join into one line)
+ * - bullet lists ("- item", one per line)
+ * - fenced code (```), shown as plain <pre>, not highlighted
+ */
 export function blockMd(src: string): string {
-  return src
-    .trim()
+  // Fenced code first: it may contain blank lines, so pull it out before splitting.
+  const fences: string[] = [];
+  const text = src.trim().replace(/```[a-z]*\n([\s\S]*?)```/g, (_, body) => {
+    fences.push(`<pre><code>${escapeHtml(body.replace(/\n$/, ''))}</code></pre>`);
+    return `\n\n\u0001${fences.length - 1}\u0001\n\n`;
+  });
+  return text
     .split(/\n\s*\n/)
-    .map((p) => `<p>${inlineMd(p.replace(/\n/g, ' '))}</p>`)
+    .map((b) => b.trim())
+    .filter(Boolean)
+    .map((b) => {
+      const fence = b.match(/^\u0001(\d+)\u0001$/);
+      if (fence) return fences[Number(fence[1])];
+      const lines = b.split('\n');
+      if (lines.every((l) => /^\s*[-*] /.test(l) || /^\s{2,}\S/.test(l))) {
+        // Continuation lines (indented) join the previous item.
+        const items: string[] = [];
+        for (const l of lines) {
+          if (/^\s*[-*] /.test(l)) items.push(l.replace(/^\s*[-*] /, ''));
+          else items[items.length - 1] += ' ' + l.trim();
+        }
+        return `<ul>${items.map((i) => `<li>${inlineMd(i)}</li>`).join('')}</ul>`;
+      }
+      return `<p>${inlineMd(b.replace(/\n/g, ' '))}</p>`;
+    })
     .join('');
 }
 
@@ -58,6 +84,21 @@ export async function highlight(code: string, lang = 'python'): Promise<string> 
   return codeToHtml(code.replace(/\n$/, ''), {
     lang,
     themes: { light: 'github-light', dark: 'github-dark' },
+  });
+}
+
+/** Like highlight(), but every line gets data-line="n" (1-based) so the UI can point at line ranges. */
+export async function highlightLines(code: string, lang = 'python'): Promise<string> {
+  return codeToHtml(code.replace(/\n$/, ''), {
+    lang,
+    themes: { light: 'github-light', dark: 'github-dark' },
+    transformers: [
+      {
+        line(node, line) {
+          node.properties['data-line'] = line;
+        },
+      },
+    ],
   });
 }
 

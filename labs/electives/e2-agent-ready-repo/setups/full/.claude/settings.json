@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": ["Bash(python3 -m pytest *)", "Bash(python -m pytest *)", "Bash(git diff *)", "Bash(git status)"],
+    "deny": ["Edit(/tests/**)", "Read(./.env)"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect_tests.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/run_tests.py",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/run_tests.py",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -95,6 +95,24 @@ export default function SettingsPanel() {
       </section>
 
       <section class="card stack">
+        <h2 style="margin-top:0">Labs on this computer</h2>
+        <label style="font-weight:400">
+          Course folder (absolute path), used by the "Open in VS Code" buttons on lab links
+          <input
+            type="text"
+            value={p.settings.repoPath ?? ''}
+            placeholder="/Users/you/Projects/applied-ai-engineering"
+            style="width:100%;margin-top:4px"
+            onChange={(e) => {
+              const v = (e.currentTarget as HTMLInputElement).value.trim();
+              update((s) => (s.settings.repoPath = v.startsWith('/') ? v : undefined));
+            }}
+          />
+        </label>
+        <p class="small muted" style="margin:0">To find it: in Terminal, <code>cd</code> into the folder and run <code>pwd</code>.</p>
+      </section>
+
+      <section class="card stack">
         <h2 style="margin-top:0">Backup and restore</h2>
         {!isPersistent() && <p class="callout pitfall">Local storage is blocked here, so nothing is being saved between visits.</p>}
         <p class="small muted">Progress started {new Date(p.createdAt).toLocaleDateString()}. It lives only in this browser.</p>

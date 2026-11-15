@@ -64,6 +64,8 @@ export interface Settings {
   narrationRate: number; // 0.75 .. 2
   speechVoice?: string; // Web Speech fallback voice name
   autoTrackTime: boolean;
+  /** Absolute path of this repo on your computer, for "Open in VS Code" links (per device). */
+  repoPath?: string;
 }
 
 /** Your notes for one lesson (typed in the Notes column on lesson pages). */

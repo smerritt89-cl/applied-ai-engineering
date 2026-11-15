@@ -1,0 +1,153 @@
+id: s1-temperature
+summary: |
+  This program turns a model's raw scores (logits) into probabilities, applies a temperature, and then picks a token at random according to those probabilities. It is the sampling step from the lesson, written out in about twenty lines of plain Python.
+
+  It is split into two small functions on purpose: one that computes the probabilities, and one that uses them to pick. That split is what makes the code easy to test, because the first function always gives the same answer for the same input, while the second involves chance.
+code: |
+  import math
+  import random
+
+
+  def apply_temperature(logits, t):
+      """Return softmax(logits / t) as a list of probabilities.
+
+      Subtract the max logit before exponentiating, for numerical stability.
+      """
+      scaled = [x / t for x in logits]
+      m = max(scaled)
+      exps = [math.exp(x - m) for x in scaled]
+      total = sum(exps)
+      return [e / total for e in exps]
+
+
+  def sample(logits, t, rng=random):
+      """Pick an index using the probabilities from apply_temperature."""
+      probs = apply_temperature(logits, t)
+      return rng.choices(range(len(probs)), weights=probs, k=1)[0]
+
+
+  logits = [2.0, 1.0, 0.1]
+  for t in (0.2, 1.0, 2.0):
+      print(t, [round(p, 3) for p in apply_temperature(logits, t)])
+notes:
+  - lines: [1, 2]
+    title: Imports from the standard library
+    text: |
+      `math` gives us `math.exp` (e raised to a power), and `random` gives us weighted random choice. Both ship with Python, so nothing needs installing.
+
+      Imports go at the top so a reader can see every dependency at a glance. When you review AI-written code, the import list is a quick first check: an unexpected package is often a sign the code does more than you asked, or depends on something you'd have to install.
+  - lines: [5, 9]
+    title: A function with a docstring
+    text: |
+      `def apply_temperature(logits, t):` defines a function that takes two inputs: `logits`, a list of scores, and `t`, the temperature.
+
+      The text in triple quotes is a **docstring**: documentation that lives inside the function. Good docstrings say what comes back and any non-obvious rule. This one names the trick in line 12 so that a future reader (or an AI asked to edit this code) doesn't "simplify" it away.
+  - lines: [10, 10]
+    title: Step 1, apply the temperature
+    text: |
+      `[x / t for x in logits]` is a **list comprehension**: build a new list by dividing each score by `t`. Read it right to left: "for each x in logits, compute x / t".
+
+      This one line is the whole of "temperature". With scores `[2, 1]`:
+
+      - `t = 0.5` gives `[4, 2]`: the gap doubles, so the favorite wins more often.
+      - `t = 2` gives `[1, 0.5]`: the gap halves, so choices even out.
+  - lines: [11, 12]
+    title: Step 2, subtract the maximum (the overflow guard)
+    text: |
+      `math.exp(1000)` is too large for a Python float and raises `OverflowError`. Real models produce large logits, so this would crash in practice.
+
+      The fix: subtract the largest value from every score first. The biggest becomes 0 (and e to the 0 is 1), so nothing can overflow. It doesn't change the answer, because e to the (x minus m) equals e to the x divided by e to the m, and the same e to the m divides every term, so it cancels out when we normalize in the next step.
+
+      This is the kind of detail AI-written code sometimes leaves out. It works on small test inputs and then fails on real data, which is exactly why the exercise's last check uses scores of 1000 and 999.
+  - lines: [13, 14]
+    title: Step 3, normalize so the numbers sum to 1
+    text: |
+      `sum(exps)` adds up the exponentiated scores, and `[e / total for e in exps]` divides each by that total. The results are all between 0 and 1 and add up to 1, which is what makes them probabilities.
+
+      Lines 12 to 14 together are **softmax**. You'll see this exact pattern in every machine learning library.
+  - lines: [17, 20]
+    title: Sampling, kept separate
+    text: |
+      `sample` doesn't recompute anything: it calls `apply_temperature` and hands the probabilities to `rng.choices`, which picks an index with those weights. An index with probability 0.88 gets picked about 88% of the time.
+
+      `rng=random` is a **default argument**. Normally it uses Python's `random` module, but a test can pass in a seeded generator such as `random.Random(42)` to make the "random" pick repeatable. Designing for testability like this is a sign of well-structured code.
+
+      `k=1` asks for one pick, and `[0]` takes it out of the one-item list that `choices` returns.
+  - lines: [23, 25]
+    title: A small demonstration
+    text: |
+      The loop runs the same three scores at three temperatures and prints rounded probabilities, so you can watch the effect:
+
+      - At `0.2`, almost all the probability lands on the first score.
+      - At `1.0`, it's spread but clearly favors the first.
+      - At `2.0`, it's much more even.
+
+      Press **Run this code** below to see the actual numbers.
+review:
+  - id: wt-temp-remove-max
+    type: code-reading
+    prompt: An AI assistant "cleans up" `apply_temperature` into the version below. What happens when you call `apply_temperature([1000.0, 999.0], 1.0)`?
+    code: |
+      def apply_temperature(logits, t):
+          exps = [math.exp(x / t) for x in logits]
+          total = sum(exps)
+          return [e / total for e in exps]
+    options:
+      - id: a
+        text: It returns about `[0.731, 0.269]`, the same as before
+        rationale: It would for small scores. With scores near 1000, `math.exp` overflows before any division happens.
+      - id: b
+        text: It raises `OverflowError`
+        correct: true
+        rationale: Right. `math.exp(1000)` is too large for a float. The shorter version dropped the subtract-the-max step that prevented this.
+      - id: c
+        text: It returns `[1.0, 0.0]` because the numbers are so close
+        rationale: Close scores give close probabilities, not 1 and 0. And this version never gets that far.
+    explanation: The "cleanup" looks equivalent and passes small tests, which is what makes this regression easy to miss in review. The docstring warned about it; a good review checks that the code still does what the docstring promises.
+  - id: wt-temp-lower-t
+    type: mcq
+    prompt: You change the temperature from `1.0` to `0.5` for the scores `[2.0, 1.0, 0.1]`. What happens to the first probability?
+    options:
+      - id: a
+        text: It goes up
+        correct: true
+        rationale: Dividing by 0.5 doubles every gap between scores, so the top score pulls further ahead.
+      - id: b
+        text: It goes down
+        rationale: That's what raising the temperature does.
+      - id: c
+        text: It stays the same, because softmax always normalizes
+        rationale: Normalizing makes the values sum to 1, but the gaps between scores still change the shares.
+    explanation: Lower temperature means sharper, more predictable choices; higher means flatter, more varied ones.
+  - id: wt-temp-design
+    type: scenario
+    prompt: Why is it useful that `sample` takes an `rng` argument instead of always calling `random.choices` directly?
+    options:
+      - id: a
+        text: It makes the code run faster
+        rationale: Passing the generator in has no meaningful speed effect.
+      - id: b
+        text: A test can pass a seeded generator, so the "random" result is repeatable and checkable
+        correct: true
+        rationale: Exactly. Code that hides its randomness is hard to test; code that accepts it as an input is easy.
+      - id: c
+        text: Python requires it when using `choices`
+        rationale: It doesn't. `random.choices` works on its own.
+    explanation: Accepting dependencies (like a random generator, a clock, or an API client) as arguments is a common pattern that makes code testable. You'll see it again when the labs pass a fake API client into your functions.
+direct:
+  task: |
+    You want `apply_temperature` to handle `t = 0` sensibly. Right now it crashes with `ZeroDivisionError`. Many APIs treat temperature 0 as "always pick the top choice" (greedy decoding).
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In apply_temperature, handle t == 0 as greedy decoding: return a probability of 1.0 for the highest logit and 0.0 for every other one. If several logits tie for the highest, give the probability to the first of them.
+
+    Keep the existing behavior for t > 0 exactly as it is, including the subtract-the-max step. Raise a ValueError for negative t.
+
+    Update the docstring to describe the t == 0 and negative t cases, and add test asserts for: t == 0, a tie at the top, and a negative t.
+  checklist:
+    - The t > 0 path is unchanged (the subtract-the-max line is still there)
+    - t == 0 returns exactly one 1.0 and the rest 0.0, with ties going to the first index
+    - Negative t raises ValueError instead of silently doing something odd
+    - The docstring was updated to match the new behavior
+    - New tests cover each new case, and the existing checks still pass

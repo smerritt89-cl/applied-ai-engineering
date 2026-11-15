@@ -15,6 +15,29 @@ pip install -r requirements.txt
 cp .env.example .env   # then paste your API key into .env
 ```
 
+## Two tracks
+
+**Review track (default).** The course is built around reading, judging, and directing
+code, much of it AI-written, more than typing it from scratch. For each lab:
+
+1. Run `python lab.py review all` once. It copies each lab's `solution.py` to `work.py`,
+   your own copy (gitignored). While `work.py` exists, that lab's tests run against it.
+2. Open the lab in VS Code (the **Open in VS Code** button on the lesson page) and read
+   `WALKTHROUGH.md`: a guided tour of the code, section by section, and what the tests check.
+3. Run the tests from VS Code's **Testing** panel (flask icon). They should all pass.
+4. Do `CHANGE.md`: ask a coding assistant (Claude Code, for example) to make a specific
+   change to `work.py`, review what it did against the checklist, then run
+   `test_change.py`, which passes only when the change is right.
+
+**Write track (optional).** `python lab.py reset <lab>` removes `work.py`; the tests go
+back to `starter.py`, and you implement it yourself using the steps in the lab's README.
+
+## VS Code
+
+Open the `labs` folder itself in VS Code (not the whole repo): `code labs`. The
+settings in `labs/.vscode/` select the lab Python environment, put the tests in the
+Testing panel, and open Markdown files as formatted pages.
+
 ## Running a lab
 
 ```bash

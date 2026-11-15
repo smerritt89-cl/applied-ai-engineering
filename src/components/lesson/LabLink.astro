@@ -3,10 +3,19 @@
  * <LabLink path="labs/studio-1/01-first-call" title="Your first API call"
  *          needs={["Anthropic API key"]} minutes={30} />
  *
- * Points to a hands-on exercise that can't run in the browser (it needs an
- * API key, network access, a GPU, or real files). Labs live in this repo's
- * labs/ folder; notebooks (.ipynb) also get an "Open in Colab" link.
+ * Points to a hands-on lab that runs on your computer (it needs an API key,
+ * network access, a GPU, or real files). Labs live in this repo's labs/ folder.
+ *
+ * Two tracks (see labs/README.md):
+ * - Review (default): read WALKTHROUGH.md beside the finished code, run the
+ *   tests, then do CHANGE.md: direct a coding assistant to make a change and
+ *   review its work.
+ * - Write: implement starter.py yourself.
+ *
+ * "Open in VS Code" uses vscode:// links, which need the repo's location on
+ * this computer (saved once in Settings, or in the box this component shows).
  */
+import fs from 'node:fs';
 import { SITE } from '../../site.config';
 
 interface Props {
@@ -21,21 +30,78 @@ const { path, title, needs = [], minutes, notebook } = Astro.props;
 const gh = `${SITE.REPO_URL}/tree/${SITE.BRANCH}/${path}`;
 const repoPath = SITE.REPO_URL.replace('https://github.com/', '');
 const colab = notebook ? `https://colab.research.google.com/github/${repoPath}/blob/${SITE.BRANCH}/${path}/${notebook}` : null;
+// Open the walkthrough when the lab has one, otherwise its README.
+const openFile = fs.existsSync(`${path}/WALKTHROUGH.md`) ? 'WALKTHROUGH.md' : 'README.md';
+const hasChange = fs.existsSync(`${path}/CHANGE.md`);
+const labRel = path.replace(/^labs\//, '');
 ---
 
-<div class="activity lab">
+<div class="activity lab" data-lab-path={path} data-lab-file={openFile}>
   <div class="activity-label">Local lab{minutes ? ` · about ${minutes} min` : ''}</div>
   <h3>{title}</h3>
   <slot />
-  <p class="small">
-    Folder: <code>{path}/</code>. Open its <code>README.md</code> for steps.
-    {needs.length > 0 && <> Needs: {needs.join(', ')}.</>}
+  <ol class="small lab-steps">
+    <li><strong>Read</strong> <code>{openFile}</code>: a guided tour of the finished code{openFile === 'README.md' ? ' (in the README)' : ''}.</li>
+    <li><strong>Run the tests</strong> from VS Code's Testing panel (the flask icon). They run against your review copy, <code>work.py</code>.</li>
+    {hasChange && <li><strong>Direct the AI</strong>: <code>CHANGE.md</code> has a change to make with Claude Code, and what to check before accepting it.</li>}
+  </ol>
+  {needs.length > 0 && <p class="small">Needs: {needs.join(', ')}.</p>}
+
+  <div class="row lab-open" hidden>
+    <a class="btn btn-primary btn-small lab-open-file" href="#">Open this lab in VS Code</a>
+    <a class="btn btn-small lab-open-folder" href="#">Open the labs folder</a>
+  </div>
+  <p class="small muted lab-open-hint" hidden>
+    First time today? Click <strong>Open the labs folder</strong> first, so the lab opens with its Python environment and tests ready.
   </p>
-  <pre><code>{`cd labs                          # one-time setup: see labs/README.md
-source .venv/bin/activate
-pytest ${path.replace(/^labs\//, '')} -q   # watch the checks fail, then make them pass`}</code></pre>
+  <form class="lab-path-form small" hidden>
+    <label>
+      Where is the course folder on this computer?
+      <input type="text" name="repo" placeholder="/Users/you/Projects/applied-ai-engineering" style="width:100%;margin-top:4px" />
+    </label>
+    <button class="btn btn-small" type="submit" style="margin-top:6px">Save</button>
+    <span class="muted">Saved in this browser (also editable in Settings). In Terminal, <code>cd</code> to the folder and run <code>pwd</code> to get it.</span>
+  </form>
+
+  <details class="small" style="margin-top:8px">
+    <summary>Terminal commands, and the write-it-yourself track</summary>
+    <pre><code>{`cd labs && source .venv/bin/activate
+python lab.py review ${labRel}    # once: make work.py, your copy of the solution
+pytest ${labRel} -q              # run the tests against it
+python lab.py reset ${labRel}    # to write it yourself: tests go back to starter.py`}</code></pre>
+  </details>
   <div class="row small">
     <a href={gh} target="_blank" rel="noopener">View on GitHub</a>
     {colab && <a href={colab} target="_blank" rel="noopener">Open in Colab</a>}
   </div>
 </div>
+
+<script>
+  import { load, update, subscribe } from '../../lib/progress';
+
+  const render = () => {
+    const root = load().settings.repoPath?.replace(/\/+$/, '');
+    document.querySelectorAll<HTMLElement>('[data-lab-path]').forEach((lab) => {
+      const open = lab.querySelector<HTMLElement>('.lab-open')!;
+      const hint = lab.querySelector<HTMLElement>('.lab-open-hint')!;
+      const form = lab.querySelector<HTMLFormElement>('.lab-path-form')!;
+      open.hidden = hint.hidden = !root;
+      form.hidden = Boolean(root);
+      if (root) {
+        // vscode://file/<absolute path> opens a file or folder in VS Code.
+        lab.querySelector<HTMLAnchorElement>('.lab-open-file')!.href = `vscode://file${root}/${lab.dataset.labPath}/${lab.dataset.labFile}`;
+        lab.querySelector<HTMLAnchorElement>('.lab-open-folder')!.href = `vscode://file${root}/labs`;
+      }
+    });
+  };
+
+  document.querySelectorAll<HTMLFormElement>('.lab-path-form').forEach((form) =>
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = String(new FormData(form).get('repo') ?? '').trim();
+      if (v.startsWith('/')) update((s) => (s.settings.repoPath = v));
+    }),
+  );
+  render();
+  subscribe(render);
+</script>

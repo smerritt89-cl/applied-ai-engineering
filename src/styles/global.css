@@ -392,3 +392,43 @@ details.go-deeper[open] { padding-bottom: 8px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- Code walkthroughs (Walkthrough.tsx) ---------- */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 8px 0 14px; }
+.tab {
+  font: inherit; font-size: 0.92rem; background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 8px 12px; margin-bottom: -1px; color: var(--muted); cursor: pointer;
+}
+.tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.tab:hover { color: var(--text); }
+.wt-summary { margin-bottom: 4px; }
+.wt-h { font-size: 1rem; margin: 22px 0 8px; }
+.wt-code pre { counter-reset: wtline; max-height: 460px; overflow: auto; position: relative; margin: 0; }
+.wt-code .line { display: inline-block; width: 100%; padding-left: 2.8em; position: relative; border-radius: 3px; transition: opacity 0.15s, background 0.15s; }
+.wt-code .line::before {
+  counter-increment: wtline; content: counter(wtline);
+  position: absolute; left: 0; width: 2em; text-align: right; color: var(--muted); opacity: 0.7; user-select: none;
+}
+.wt-code .line:empty::after { content: '\200b'; } /* blank lines keep their height */
+.wt-code.wt-focus .line:not(.wt-hl) { opacity: 0.45; }
+.wt-code .line.wt-hl { background: var(--accent-soft); opacity: 1; }
+.wt-note {
+  border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: var(--radius-sm);
+  background: var(--surface); padding: 12px 14px; margin-top: 10px;
+}
+.wt-note-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.wt-badge { font-size: 0.78rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+.wt-note h5 { font-size: 1rem; margin: 6px 0 4px; }
+.wt-note p, .wt-all p { margin: 6px 0; }
+.wt-note ul, .wt-all ul { margin: 6px 0; padding-left: 1.2em; }
+.wt-note pre, .wt-all pre { font-size: 0.82rem; padding: 8px 10px; }
+.wt-all ol { padding-left: 1.3em; }
+.wt-all li { margin: 10px 0; }
+.wt-link { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: left; }
+.wt-direct { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 4px; }
+.wt-direct summary { cursor: pointer; }
+.wt-direct .notes-text { min-height: 110px; resize: vertical; }
+.wt-prompt { white-space: pre-wrap; font-size: 0.85rem; }
+.wt-checklist { list-style: none; padding: 0; }
+.wt-checklist li { margin: 4px 0; }
+@media (prefers-reduced-motion: reduce) { .wt-code .line { transition: none; } }

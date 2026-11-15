@@ -219,4 +219,59 @@ const sources = defineCollection({
   }),
 });
 
-export const collections = { studios, lessons, quizzes, exams, projects, sources };
+/**
+ * Code walkthroughs: the default view of every <PyRunner> exercise.
+ *
+ * The course emphasizes reading, judging, and directing code (much of it
+ * AI-written) over typing it from scratch. Each walkthrough shows complete,
+ * well-written code with numbered notes on how it's built and why, then review
+ * questions, then an optional "direct the AI" task. Writing the code yourself
+ * stays available as an optional tab on the same exercise.
+ *
+ * One YAML file per exercise in src/content/walkthroughs/, named by the
+ * PyRunner's `id`. Served to the island as /walkthroughs/<id>.json.
+ */
+const walkthroughNote = z.object({
+  /** Line range in `code` this note explains, 1-based and inclusive: [3, 7]. */
+  lines: z.tuple([z.number().int().min(1), z.number().int().min(1)]),
+  /** Short label, for example "Scale by temperature". */
+  title: z.string(),
+  /** Paragraph Markdown (blank line between paragraphs; inline `code`, **bold**). */
+  text: z.string(),
+});
+
+const walkthroughs = defineCollection({
+  loader: glob({ pattern: '*.yaml', base: './src/content/walkthroughs', generateId: ({ data }) => String(data.id) }),
+  schema: z
+    .object({
+      id: z.string(),
+      /** What the code does and why it's built this way, for a reader who isn't a professional programmer. */
+      summary: z.string(),
+      /** Complete, runnable, well-written code (the exercise's starter with the solution filled in). */
+      code: z.string(),
+      notes: z.array(walkthroughNote).min(3),
+      /** Questions about reading and judging this code: spot the bug, compare versions, predict a change. */
+      review: z.array(questionSchema).min(2).max(4),
+      /** Optional: practice directing an AI to change the code, then reviewing what comes back. */
+      direct: z
+        .object({
+          /** The change you want made (Markdown). */
+          task: z.string(),
+          /** A strong example prompt, shown after you write yours. */
+          prompt: z.string(),
+          /** What to check in the AI's result before accepting it. */
+          checklist: z.array(z.string()).min(2),
+        })
+        .optional(),
+    })
+    .superRefine((w, ctx) => {
+      const lineCount = w.code.replace(/\n$/, '').split('\n').length;
+      w.notes.forEach((n, i) => {
+        if (n.lines[0] > n.lines[1] || n.lines[1] > lineCount) {
+          ctx.addIssue({ code: 'custom', path: ['notes', i, 'lines'], message: `Note "${n.title}" points at lines ${n.lines.join('-')}, but the code has ${lineCount} lines` });
+        }
+      });
+    }),
+});
+
+export const collections = { studios, lessons, quizzes, exams, projects, sources, walkthroughs };
