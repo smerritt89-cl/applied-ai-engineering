@@ -12,12 +12,20 @@ import pytest
 HERE = pathlib.Path(__file__).parent
 CASES = HERE / "cases.json"
 
+# Every lab has a module named `starter`. Import THIS lab's copy now, while this
+# folder is first on sys.path; importing inside a fixture would pick up whichever
+# lab's `starter` pytest collected last.
+import sys as _sys
+
+_sys.path.insert(0, str(HERE))
+for _mod in ("starter", "solution"):
+    _sys.modules.pop(_mod, None)
+import starter as _starter  # noqa: E402  (the learner's file)
+
 
 @pytest.fixture
 def h():
-    import starter  # the learner's file; conftest puts this folder on sys.path
-
-    return starter
+    return _starter
 
 
 # ---------------------------------------------------------------------------
