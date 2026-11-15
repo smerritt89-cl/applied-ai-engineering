@@ -1,0 +1,173 @@
+id: s1-cost-calculator
+summary: |
+  This program turns a price table and a description of your workload (requests per day, tokens in, tokens out) into dollars: the cost of one request, the cost of a month, and the break-even point against a fixed monthly bill such as a self-hosted server. It then prints a monthly comparison across six models for a support-ticket summarizer.
+
+  The three functions are stacked on purpose. `request_cost` holds all the pricing rules (cached input, batch discount, unknown models), and the other two only multiply or divide its answer. So there is exactly one place where the pricing logic can be wrong, and fixing or changing it there fixes every number the program prints.
+code: |
+  # USD per million tokens. Snapshot 2026-11-11; check the pricing pages before real decisions.
+  PRICES = {
+      "claude-opus-5-5":   {"input": 4.00, "cached_input": 0.20,  "output": 20.00},
+      "claude-sonnet-5-5": {"input": 2.00, "cached_input": 0.10,  "output": 10.00},
+      "claude-haiku-5-5":  {"input": 0.10, "cached_input": 0.01,  "output": 0.50},
+      "gpt-6.1-sol":       {"input": 2.00, "cached_input": 0.10,  "output": 10.00},
+      "gemini-3.8-flash":  {"input": 0.75, "cached_input": 0.075, "output": 3.75},
+      "grok-4.3":          {"input": 1.25, "cached_input": 0.20,  "output": 2.50},
+  }
+
+
+  def request_cost(model, input_tokens, output_tokens, cached_input_tokens=0, batch=False):
+      """Cost in USD of one request. cached_input_tokens is the PART of input_tokens served
+      from cache (priced at cached_input); the rest is priced at input. Batch halves the total.
+      Raise KeyError for an unknown model. Ignore cache-write premiums here."""
+      p = PRICES[model]  # an unknown model raises KeyError, on purpose
+      uncached_input = input_tokens - cached_input_tokens
+      cost = (
+          uncached_input * p["input"]
+          + cached_input_tokens * p["cached_input"]
+          + output_tokens * p["output"]
+      ) / 1_000_000
+      return cost / 2 if batch else cost
+
+
+  def monthly_cost(model, requests_per_day, input_tokens, output_tokens,
+                   cached_input_tokens=0, batch=False, days=30):
+      """Cost in USD of `days` days of identical requests."""
+      per_request = request_cost(model, input_tokens, output_tokens, cached_input_tokens, batch)
+      return per_request * requests_per_day * days
+
+
+  def break_even_requests_per_day(model, fixed_monthly_usd, input_tokens, output_tokens,
+                                  cached_input_tokens=0, days=30):
+      """Requests per day at which paying per token on this model costs the same as a
+      fixed monthly bill (for example, a self-hosted GPU server for an open-weight model)."""
+      per_request = request_cost(model, input_tokens, output_tokens, cached_input_tokens)
+      return fixed_monthly_usd / (days * per_request)
+
+
+  # A support-ticket summarizer: 20,000 tickets/day, 2,000 tokens in, 300 out.
+  for m in PRICES:
+      print(f"{m:18s} {monthly_cost(m, 20_000, 2_000, 300):>10,.2f}")
+  print("break-even vs $2,000/month server on sonnet:",
+        round(break_even_requests_per_day("claude-sonnet-5-5", 2_000, 2_000, 300)))
+notes:
+  - lines: [1, 9]
+    title: A price table as a dictionary of dictionaries
+    text: |
+      `PRICES` is a **nested dictionary**: each model name maps to another dict of three prices, so `PRICES["claude-haiku-5-5"]["output"]` is 0.50. The extra spaces that line the columns up are ignored by Python; they're there so a reviewer can scan down a column and spot a typo.
+
+      Three prices per model, because providers charge differently for each kind of token. Output costs several times more than input for most of these models, and input served from a prompt cache (text the provider has already processed and stored) costs a fraction of normal input.
+
+      The first-line comment dates the snapshot. Prices change often, so any number derived from this table is only as current as that date. Before a real decision, re-check the pricing pages and update the table, rather than trusting a figure an AI (or a colleague) remembered.
+  - lines: [12, 15]
+    title: The contract for one request
+    text: |
+      `request_cost` takes the model name, token counts, and two options. `cached_input_tokens=0` and `batch=False` are **default arguments**, so the simple case is just `request_cost("claude-haiku-5-5", 2000, 500)`.
+
+      The docstring carries a rule that is easy to get wrong: `cached_input_tokens` is the **part** of `input_tokens` that came from cache, not an extra amount on top. Different tools report caching differently (in the Messages API's own usage object, cache reads are a separate count from `input_tokens`), so a cost function must say which convention it uses. When an AI writes cost code for you, this is the first thing to check, because the wrong convention produces numbers that look plausible.
+  - lines: [16, 16]
+    title: Fail loudly on an unknown model
+    text: |
+      `PRICES[model]` uses **square-bracket indexing**, which raises `KeyError` if the name isn't in the table. That is the behavior we want: a typo such as `"claude-sonet-5-5"` should stop the calculation, not quietly produce a number.
+
+      Compare the response parser earlier in this lesson, which used `dict.get` with a default of 0 for missing usage fields. There, a missing field genuinely means zero tokens. Here, a missing model means a mistake. Choosing between `[]` and `.get` is choosing what "missing" means, and it is worth asking about every time you see one in review.
+  - lines: [17, 22]
+    title: Split the input, price each part, convert to dollars
+    text: |
+      `uncached_input = input_tokens - cached_input_tokens` applies the "part of" rule from the docstring. Each part is then multiplied by its own price. Prices are per million tokens, so the sum is divided by `1_000_000` (the underscores are only for readability).
+
+      Worked value from the hidden checks: Opus, 2,000 input tokens of which 1,500 are cached, and 500 output. That is 500 x 4.00 + 1,500 x 0.20 + 500 x 20.00 = 2,000 + 300 + 10,000 = 12,300, so $0.0123. Without the cache it would be $0.018. Note that the output tokens are most of the bill here even though there are fewer of them, which is typical.
+  - lines: [23, 23]
+    title: The batch discount, applied last
+    text: |
+      `cost / 2 if batch else cost` is a **conditional expression** (sometimes called a ternary): "this value if the condition is true, otherwise that value", in one line. Batch processing (submitting requests to run asynchronously, with results later) is priced at half, so batch halves the whole total.
+
+      Applying the discount once, at the end, means it covers all three token kinds. A version that halved only the input price would understate the savings, and a version that also halved inside `monthly_cost` would double-count them.
+  - lines: [26, 30]
+    title: A month is just multiplication
+    text: |
+      `monthly_cost` calls `request_cost` and multiplies by requests per day and days. It adds no pricing rules of its own, which is the point of the stacked design: there is one source of truth for "what does a request cost".
+
+      The signature is split across two lines inside the parentheses, which Python allows. `days=30` is a parameter rather than a hard-coded 30, so a 31-day month or a 7-day pilot is just another argument. Worked value: Haiku at 2,000 in and 500 out is $0.00045 a request, times 1,000 a day, times 30 days, is $13.50.
+  - lines: [33, 38]
+    title: Break-even against a fixed bill
+    text: |
+      If a self-hosted server costs a fixed amount per month, the per-token API is cheaper below some daily volume and dearer above it. Setting fixed cost equal to days x requests x cost per request and solving for requests gives `fixed_monthly_usd / (days * per_request)`.
+
+      For Sonnet at 2,000 in and 300 out, a request costs $0.007, so a $2,000 server breaks even at 2,000 / (30 x 0.007), about 9,524 requests a day.
+
+      Notice this function has no `batch` parameter, so it always compares against full-price requests. If your workload could run as a batch job, the real break-even is twice as high. Spotting a missing option like this is a review skill: check whether every function in a family accepts the same choices.
+  - lines: [41, 45]
+    title: The comparison table
+    text: |
+      The loop prints one line per model using an **f-string** (a string starting with `f` that fills in `{...}` expressions). `{m:18s}` pads the name to 18 characters; `{...:>10,.2f}` right-aligns the number in 10 characters, with thousands commas and 2 decimals. Run it and you'll see Opus at $8,400.00 a month and Haiku at $210.00 for the same workload.
+
+      That 40x gap is real only if the cheaper model does the job. The numbers tell you what a model must achieve to be worth its price; your own eval on real tickets tells you whether it does. Try setting `cached_input_tokens=1500`: Opus falls to $4,980 and Haiku to $129, because caching helps most where input is expensive.
+review:
+  - id: wt-cost-cache-added
+    type: code-reading
+    prompt: An AI assistant rewrites the cost step as shown. What does `request_cost("claude-opus-5-5", 2000, 500, cached_input_tokens=1500)` return now?
+    code: |
+      cost = (
+          input_tokens * p["input"]
+          + cached_input_tokens * p["cached_input"]
+          + output_tokens * p["output"]
+      ) / 1_000_000
+    options:
+      - id: a
+        text: "`0.0183`, more than with no cache at all"
+        correct: true
+        rationale: "Right. 2,000 x 4.00 + 1,500 x 0.20 + 500 x 20.00 = 18,300 per million. Caching now appears to make requests more expensive."
+      - id: b
+        text: "`0.0123`, the same as before"
+        rationale: The original subtracted the cached part first. This version prices all 2,000 input tokens at full price and then adds the cached ones again.
+      - id: c
+        text: "`0.0063`, because the cached tokens are subtracted twice"
+        rationale: Nothing is subtracted in this version. That's the bug.
+    explanation: This variant treats `cached_input_tokens` as extra input instead of part of it. With the default of 0 cached tokens it gives the right answer, so a test that never uses caching won't catch it. Always check which caching convention a cost function assumes, and test it with a nonzero cache.
+  - id: wt-cost-get-default
+    type: mcq
+    prompt: To "avoid crashes", an AI changes line 16 to `p = PRICES.get(model, PRICES["claude-haiku-5-5"])`. What is the main problem?
+    options:
+      - id: a
+        text: It is slower, because `.get` does two lookups
+        rationale: The speed difference is negligible. The problem is what the code now does with a bad name.
+      - id: b
+        text: A mistyped or new model id is silently priced as Haiku, so a cost estimate for an expensive model can come out 40 times too low with no error
+        correct: true
+        rationale: Right. The crash was the feature. A wrong number that looks fine is far more dangerous than an error you see immediately.
+      - id: c
+        text: Nothing, as long as the default model exists in the table
+        rationale: The code will run, and that is exactly the problem. It runs and gives the wrong answer for any model not in the table.
+    explanation: '"Never crash" is not the same as "correct". Use `.get` with a default when missing really means a known value (zero tokens), and indexing when missing means a mistake. The hidden checks require a `KeyError` for an unknown model for this reason.'
+  - id: wt-cost-break-even-scenario
+    type: scenario
+    prompt: The demo shows Sonnet breaks even with a $2,000 a month server at about 9,524 requests a day, and your workload is 20,000 a day. Your director asks whether that means you should self-host an open-weight model. What's the best answer?
+    options:
+      - id: a
+        text: Yes. 20,000 is more than twice the break-even, so self-hosting clearly saves money
+        rationale: The break-even only compares token prices to the server's price. It assumes the open model is as good, and it leaves out the people, monitoring, and peak capacity a server needs.
+      - id: b
+        text: No. APIs are always cheaper than self-hosting
+        rationale: Not always. At high, steady volume a fixed cost can win. The point is to decide with numbers and an eval, not a rule of thumb.
+      - id: c
+        text: Not yet. First check whether an open model passes the same quality eval, and whether a cheaper API tier (or batch, or caching) already beats $2,000. Then price the full cost of running a server
+        correct: true
+        rationale: "Right. At this workload Haiku costs about $210 a month, so if it passes the eval, the server isn't competing with Sonnet at all. The break-even is a floor, not a recommendation."
+    explanation: The calculator answers "what would it cost". Whether the cheaper option is acceptable is a quality question that only an eval on your own data can answer.
+direct:
+  task: |
+    Your team runs the ticket summarizer overnight as a batch job, but `break_even_requests_per_day` has no `batch` option, so it understates how much volume a self-hosted server needs to beat the API.
+
+    Write the prompt you'd give a coding assistant to add batch support to the break-even function.
+  prompt: |
+    Add a batch=False keyword parameter to break_even_requests_per_day, after cached_input_tokens and before days, and pass it through to request_cost so the break-even uses the batch price when batch=True.
+
+    Do not change request_cost or monthly_cost, the PRICES table, or the default behavior (with batch=False the result must be exactly what it is now). Existing calls that pass days by keyword must keep working. Update the docstring to mention batch.
+
+    Add test asserts for: batch=True gives exactly twice the non-batch break-even for the same inputs; the default call still returns 2000 / (30 * 0.01) for sonnet at 3000 in and 400 out; and an unknown model still raises KeyError.
+  checklist:
+    - "`request_cost`, `monthly_cost`, and `PRICES` are untouched"
+    - The batch discount is applied once, by passing `batch` to `request_cost`, not by halving again inside the break-even function
+    - With `batch=True` the break-even is exactly double; with the default it is unchanged
+    - The new parameter was added as a keyword argument with a default, so existing calls still work
+    - The docstring mentions `batch`, and the new asserts cover both cases and the `KeyError`

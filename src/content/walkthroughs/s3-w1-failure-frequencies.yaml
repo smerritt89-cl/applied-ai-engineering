@@ -1,0 +1,179 @@
+id: s3-w1-failure-frequencies
+summary: |
+  This program takes traces that a person has already read and labeled (pass or fail, plus the failure modes they saw) and turns them into a ranked list of the issues worth fixing first. It counts how many failing traces show each mode, then scores each mode by count times severity.
+
+  It is split into two functions so each step can be checked on its own. `mode_counts` is pure counting, with one guard against bad labels. `top_issues` adds the judgment (severity weights) and a fully specified sort order, so the same data always gives the same ranking, ties included.
+code: |
+  from collections import Counter
+
+  # 15 annotated traces from the Studio 1 action-item extractor.
+  ANNOTATED = [
+      {"id": "a01", "outcome": "pass", "modes": []},
+      {"id": "a02", "outcome": "fail", "modes": ["suggestion_as_commitment"]},
+      {"id": "a03", "outcome": "fail", "modes": ["missed_item"]},
+      {"id": "a04", "outcome": "fail", "modes": ["missed_item", "wrong_due_date"]},
+      {"id": "a05", "outcome": "pass", "modes": []},
+      {"id": "a06", "outcome": "fail", "modes": ["paraphrased_evidence"]},
+      {"id": "a07", "outcome": "fail", "modes": ["missed_item"]},
+      {"id": "a08", "outcome": "fail", "modes": ["suggestion_as_commitment", "missed_item"]},
+      {"id": "a09", "outcome": "pass", "modes": []},
+      {"id": "a10", "outcome": "fail", "modes": ["wrong_due_date"]},
+      {"id": "a11", "outcome": "fail", "modes": ["invented_owner"]},
+      {"id": "a12", "outcome": "fail", "modes": ["missed_item", "missed_item"]},
+      {"id": "a13", "outcome": "pass", "modes": []},
+      {"id": "a14", "outcome": "fail", "modes": ["paraphrased_evidence"]},
+      {"id": "a15", "outcome": "fail", "modes": ["suggestion_as_commitment"]},
+  ]
+
+  # 1 = cosmetic, 3 = harmful. A team judgment: write down who set these and why.
+  SEVERITY = {"invented_owner": 3, "wrong_due_date": 3, "suggestion_as_commitment": 2,
+              "missed_item": 2, "paraphrased_evidence": 1}
+
+
+  def mode_counts(annotated):
+      """{mode: number of FAILING traces showing it}. Count each trace at most once per mode.
+      Raise ValueError if a passing trace lists any modes (that's a labeling mistake to surface)."""
+      counts = Counter()
+      for trace in annotated:
+          if trace["outcome"] == "pass":
+              if trace["modes"]:
+                  raise ValueError(f"{trace['id']}: marked pass but lists failure modes")
+              continue
+          counts.update(set(trace["modes"]))  # set(): a12 lists missed_item twice
+      return counts
+
+
+  def top_issues(annotated, severity, k):
+      """The k highest-priority modes as dicts {"mode", "count", "rate", "score"}.
+      rate = count / number of annotated traces; score = count * severity (an integer).
+      Sort by score (high first), then count (high first), then mode name (A to Z)."""
+      n = len(annotated)
+      rows = [
+          {"mode": mode, "count": count, "rate": count / n, "score": count * severity[mode]}
+          for mode, count in mode_counts(annotated).items()
+      ]
+      rows.sort(key=lambda r: (-r["score"], -r["count"], r["mode"]))
+      return rows[:k]
+
+
+  print(mode_counts(ANNOTATED))
+  for row in top_issues(ANNOTATED, SEVERITY, 3):
+      print(f"{row['mode']:26s} {row['count']} traces  {row['rate']:.0%}  score {row['score']}")
+notes:
+  - lines: [1, 1]
+    title: Counter, a dict built for counting
+    text: |
+      `Counter` from the standard library's `collections` module is a dict whose values are counts. Asking for a key it hasn't seen returns 0 instead of raising `KeyError`, and `.update(...)` adds 1 for each item you hand it. It saves you writing the "if key not in dict, set it to 0" dance by hand.
+  - lines: [2, 20]
+    title: The annotated traces
+    text: |
+      Each dict is one trace after a human has read it: an `id`, an `outcome` of `"pass"` or `"fail"`, and a list of failure `modes` (the labels from the open-coding step in the lesson). A failing trace can show more than one mode, like `a04`, which both missed an item and got a due date wrong.
+
+      Look at `a12`: it lists `missed_item` twice, because the extractor missed two items in that meeting. Whether that counts as one or two is a real design question, and the docstring below answers it.
+  - lines: [21, 24]
+    title: Severity is a judgment, so say whose
+    text: |
+      `SEVERITY` maps each mode to a weight from 1 (cosmetic) to 3 (harmful). The comment matters as much as the numbers: the counts come from data, but these weights come from people, and a ranking is only as trustworthy as the weights behind it.
+
+      The dict literal continues onto a second line. Python allows that freely inside brackets, braces, and parentheses, with no line-continuation character needed.
+  - lines: [25, 37]
+    title: mode_counts, one vote per trace per mode
+    text: |
+      The loop reads each trace. For a passing trace there is nothing to count, so `continue` moves on, but first it checks for a contradiction: a pass that lists failure modes is a labeling mistake. Raising `ValueError` with the trace id (built with an **f-string**) stops the run and tells you exactly which row to fix, instead of silently counting or ignoring it.
+
+      For a failing trace, `set(trace["modes"])` removes duplicates before counting. `set(["missed_item", "missed_item"])` is just `{"missed_item"}`, so `a12` adds 1, not 2. The question being answered is "how many traces show this problem", which is what tells you how often users hit it.
+
+      Worked value: `missed_item` appears in `a03`, `a04`, `a07`, `a08`, `a12`, so its count is 5. Without the `set()`, it would be 6. That's a quiet inflation an AI-written version can easily introduce, and it changes the rate you'd report to a stakeholder.
+  - lines: [38, 48]
+    title: top_issues, building one row per mode
+    text: |
+      `n = len(annotated)` is the denominator for `rate`: all annotated traces, passing ones included. So `missed_item` has a rate of 5 / 15, about 33%, meaning "a third of the traces we read show this".
+
+      The **list comprehension** builds one dict per mode. `.items()` on the counter gives `(mode, count)` pairs, and each row computes `rate` and `score = count * severity[mode]`. Note `severity[mode]` with square brackets, not `severity.get(mode)`: if someone adds a new mode label without giving it a severity, you get a `KeyError` that names the missing mode, rather than a silent `None` that crashes later or a default weight nobody chose.
+  - lines: [49, 50]
+    title: A sort order with every tie broken
+    text: |
+      `rows.sort(key=...)` sorts the list in place, using the **lambda** (a small unnamed function) to compute a sort key for each row. The key here is a **tuple**, and Python compares tuples element by element: first by the first item, and only on a tie by the second, and so on.
+
+      Negating the numbers (`-r["score"]`, `-r["count"]`) makes them sort high to low while `r["mode"]` still sorts A to Z. With this data, `suggestion_as_commitment` (3 traces times 2) and `wrong_due_date` (2 traces times 3) both score 6; the second element breaks the tie in favor of the higher count.
+
+      `rows[:k]` is a **slice**: the first `k` rows, or all of them if there are fewer than `k`. The ranking is fully determined, which matters when two people run the report and expect the same answer.
+  - lines: [51, 55]
+    title: The report
+    text: |
+      The first print shows the raw counts; the loop prints the top three with an f-string that pads the mode name (`:26s`) and shows the rate as a percentage (`:.0%`).
+
+      Try the lesson's experiment: set `invented_owner` to 5 and run again. Its score goes from 3 to 5, which closes most of the gap to the two modes tied at 6 (at a weight of 7 or more, a single trace would push it into second place). Whether that is right depends on whether a wrong owner really is that costly, which is a question for the team, not the code.
+review:
+  - id: wt-failfreq-no-set
+    type: code-reading
+    prompt: An AI assistant tidies `mode_counts` and drops the `set()`, as below. With the same data and severities, what does `top_issues` now report for `missed_item`?
+    code: |
+      def mode_counts(annotated):
+          counts = Counter()
+          for trace in annotated:
+              if trace["outcome"] == "pass":
+                  if trace["modes"]:
+                      raise ValueError(f"{trace['id']}: marked pass but lists failure modes")
+                  continue
+              counts.update(trace["modes"])
+          return counts
+    options:
+      - id: a
+        text: Count 5, rate 33%, score 10, unchanged
+        rationale: That's the original. Without `set()`, `a12`'s two `missed_item` labels both get counted.
+      - id: b
+        text: Count 6, rate 40%, score 12
+        correct: true
+        rationale: Right. `a12` now contributes 2, so the count is 6, the rate is 6 / 15, and the score is 6 times 2.
+      - id: c
+        text: It raises an error because `update` needs a set
+        rationale: "`Counter.update` accepts any iterable, lists included. That's why the change looks harmless."
+    explanation: "The ranking doesn't change here, but the rate you'd quote (\"40% of traces miss an item\") is now false: only 5 of 15 traces do. Counting labels instead of traces is a common slip, and the exercise's first test exists to catch it."
+  - id: wt-failfreq-reverse
+    type: predict-output
+    prompt: "Someone replaces the sort line with `rows.sort(key=lambda r: (r[\"score\"], r[\"count\"], r[\"mode\"]), reverse=True)`. What changes?"
+    options:
+      - id: a
+        text: Nothing; it's the same order written more clearly
+        rationale: "`reverse=True` reverses the whole key, including the name, so the final tiebreak flips."
+      - id: b
+        text: The top three for this data stay the same, but ties on score and count now go Z to A instead of A to Z
+        correct: true
+        rationale: "Right. Score and count still sort high first, but mode names now sort backwards. This data has no such tie, so you'd only notice on other data (the exercise's last test catches it)."
+      - id: c
+        text: The list now sorts lowest score first
+        rationale: "`reverse=True` makes the numbers sort high first, as intended. Only the name tiebreak goes wrong."
+    explanation: Tie-breaking bugs are easy to miss because they rarely show up on the data you happen to be looking at. When the spec mixes directions (high first, then A to Z), negating the numbers is the clean way to say it.
+  - id: wt-failfreq-raise
+    type: scenario
+    prompt: Why does `mode_counts` raise `ValueError` when a passing trace lists failure modes, instead of just skipping that trace?
+    options:
+      - id: a
+        text: Because Python cannot count modes from a passing trace
+        rationale: It could count them easily. The question is whether it should.
+      - id: b
+        text: Because a pass with failure modes is a contradiction in the labels, and silently picking one interpretation would hide an annotation mistake
+        correct: true
+        rationale: Exactly. Either the outcome or the modes is wrong, and only a person can say which. Stopping with the trace id gets it fixed.
+      - id: c
+        text: To make the function run faster on large datasets
+        rationale: Speed isn't the concern.
+    explanation: Error analysis is only as good as the labels. Code that surfaces bad labels loudly is a check on the humans, the same way the evals are a check on the model.
+direct:
+  task: |
+    Your product lead wants to see the rate among **failing** traces too ("of the meetings we got wrong, how many were missed items?"), alongside the existing rate over all traces. Add that to `top_issues` without changing anything else.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In top_issues, add a "fail_rate" field to each row: count divided by the number of traces whose outcome is "fail". If there are no failing traces, fail_rate is 0.0 (and there will be no rows anyway).
+
+    Do not change "mode", "count", "rate" (still count / all annotated traces), or "score", and do not change the sort order or mode_counts. Keep severity[mode] as a plain lookup so a missing severity still raises KeyError.
+
+    Update the docstring to define fail_rate, and add the fail rate to the printed report. Add asserts that missed_item has fail_rate 5 / 11 on ANNOTATED, that rate is still 5 / 15, and that the order of the top three is unchanged.
+  checklist:
+    - rate is still count over all traces; fail_rate uses only failing traces (11 here)
+    - mode_counts and the sort key are untouched
+    - No division by zero when every trace passes
+    - The docstring defines both rates so nobody confuses them in a report
+    - New asserts check both rates on real numbers, and the old checks still pass

@@ -1,0 +1,176 @@
+id: e1-w4-attention-head
+summary: |
+  This is one causal self-attention head, the core operation of a GPT, written on plain lists. Each of T tokens produces a query, a key, and a value by multiplying its vector by three learned matrices. Each token's query is compared with every earlier token's key to get scores, the future is masked out, a softmax turns the scores into weights, and the output for each position is the weighted average of the values it is allowed to see.
+
+  It's split into three functions so the defining properties can be tested one at a time: `softmax` (a distribution, even with masked entries), `causal_attention_weights` (no weight on the future), and `attention_head` (the full computation). The tests check properties rather than particular numbers: rows sum to 1, the first token sees only itself, and changing future tokens leaves earlier outputs unchanged. Those are the checks that catch a broken mask, the bug that makes validation loss look superb while the model is actually cheating.
+code: |
+  import math
+  import random
+
+  NEG_INF = float("-inf")
+
+
+  def matmul(A, B):
+      return [[sum(a * b for a, b in zip(row, col)) for col in zip(*B)] for row in A]
+
+
+  def transpose(A):
+      return [list(r) for r in zip(*A)]
+
+
+  def softmax(row):
+      """A numerically stable softmax that gives float('-inf') entries probability 0."""
+      m = max(row)
+      e = [math.exp(v - m) if v != NEG_INF else 0.0 for v in row]
+      s = sum(e)
+      return [v / s for v in e]
+
+
+  def causal_attention_weights(scores):
+      """Mask scores[t][s] for s > t (the future) with -inf, then softmax each row."""
+      T = len(scores)
+      masked = [[scores[t][s] if s <= t else NEG_INF for s in range(T)] for t in range(T)]
+      return [softmax(row) for row in masked]
+
+
+  def attention_head(x, Wq, Wk, Wv):
+      """One causal self-attention head. x is T x C; returns (output T x head_size, weights T x T)."""
+      q, k, v = matmul(x, Wq), matmul(x, Wk), matmul(x, Wv)
+      head_size = len(q[0])
+      scores = [[val / math.sqrt(head_size) for val in row] for row in matmul(q, transpose(k))]
+      wei = causal_attention_weights(scores)
+      return matmul(wei, v), wei
+
+
+  rng = random.Random(0)
+  T, C, hs = 4, 4, 3
+  x = [[rng.gauss(0, 1) for _ in range(C)] for _ in range(T)]
+  Wq = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+  Wk = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+  Wv = [[rng.gauss(0, 1) for _ in range(hs)] for _ in range(C)]
+  out, wei = attention_head(x, Wq, Wk, Wv)
+  for row in wei:
+      print([round(w, 3) for w in row])
+notes:
+  - lines: [1, 12]
+    title: Setup, and the two matrix helpers
+    text: |
+      `NEG_INF = float("-inf")` creates Python's negative infinity once and names it, so the mask code below reads as intent rather than as a magic value. It compares equal to itself, so `v != NEG_INF` is a reliable test.
+
+      `matmul` and `transpose` are the same helpers as in the backprop-by-hand exercise: `zip(*B)` iterates over the columns of B, so entry (i, k) of the product is the dot product of row i of A with column k of B.
+  - lines: [15, 20]
+    title: A softmax that understands masked entries
+    text: |
+      This is the stable softmax from earlier lessons (subtract the max, exponentiate, normalize), with one addition: a **conditional expression** inside the list comprehension that maps `-inf` entries to exactly 0.0.
+
+      In Python, `math.exp(float("-inf"))` already returns 0.0, so the guard is mostly about being explicit. The property that really keeps this safe is that every row has at least one finite entry, so `m` is finite and `s` is positive. The causal mask guarantees that, because a position can always see itself. A softmax over a row that is entirely `-inf` would divide by zero, which is worth knowing if you ever write a mask that can hide everything (padding masks can).
+
+      Worked check from the tests: `softmax([1000.0, 999.0])` sums to 1 instead of overflowing.
+  - lines: [23, 27]
+    title: The causal mask
+    text: |
+      `scores[t][s]` is how much position t wants to attend to position s. Line 26 is a nested list comprehension that keeps entries with s at most t (the past and the present) and replaces everything above the diagonal (the future) with `-inf`. After the softmax those become exactly 0.
+
+      Worked value: if all scores are 0, row t keeps t + 1 zeros and the softmax spreads weight evenly over them, so row 0 is `[1, 0, 0, 0]`, row 1 is `[0.5, 0.5, 0, 0]`, and row 3 is four quarters. That is the lecture's "version 2": a running average of everything so far, which the tests check.
+
+      Masking **before** the softmax with `-inf` is what makes each row still sum to 1 over the visible positions. Zeroing weights **after** the softmax would leave rows that sum to less than 1, and masking with 0 instead of `-inf` would leak the future (see the first review question).
+  - lines: [30, 33]
+    title: Queries, keys, and values
+    text: |
+      `x` is T x C: one C-dimensional vector per position. The three products on line 32 each give a T x head_size matrix, computed with **tuple unpacking** on one line.
+
+      The usual reading: the **query** is what a position is looking for, the **key** is what a position offers to be found by, and the **value** is what it hands over if chosen. They come from separate learned matrices, so "what I match on" and "what I pass along" can differ.
+
+      `head_size = len(q[0])` reads the size from the data instead of taking another argument, so the function can't be called with a size that disagrees with the matrices.
+  - lines: [34, 34]
+    title: Scaled dot products
+    text: |
+      `matmul(q, transpose(k))` is the T x T matrix of dot products: entry (t, s) is q_t . k_s. Each is then divided by the square root of `head_size`.
+
+      Why: if the entries of q and k are roughly independent with variance 1, a dot product of `head_size` such terms has variance `head_size`. Dividing by its square root brings the variance back to 1. Without it, scores grow with the head size, and a softmax of large scores is nearly one-hot: each position attends to a single other position, and its gradients become tiny. It's the same saturation problem as tanh with badly scaled weights.
+
+      A test recomputes one weight by hand with this exact scaling, so leaving out the square root, or dividing by `head_size` itself, fails it.
+  - lines: [35, 36]
+    title: The output is a weighted average of values
+    text: |
+      `wei` is T x T, and `matmul(wei, v)` is T x head_size: row t is the sum over s of wei[t][s] times v[s]. Since each row of weights is non-negative and sums to 1, every output is a **convex combination** of the values at positions 0 to t.
+
+      Two consequences that the tests use: position 0 can only average over itself, so `out[0] == v[0]` exactly; and if the queries and keys are all zero, every score is 0 and the output is the running mean of the values.
+
+      Returning the weights as well as the output costs nothing and makes the head inspectable. Attention weights are the first thing to print when a model behaves oddly.
+  - lines: [39, 47]
+    title: Print the weights and read the triangle
+    text: |
+      The demo builds random inputs and weight matrices for T = 4 positions and prints the 4 x 4 weight matrix. Check it by eye:
+
+      - Everything above the diagonal is 0.0, so no position sees the future.
+      - Row 0 is `[1.0, 0.0, 0.0, 0.0]`.
+      - Every row sums to 1 (up to rounding).
+
+      Here the last row puts about 0.97 on position 2: with random weights, one dot product happened to be much larger than the rest. Patterns like that are normal at initialization and mean nothing yet. The point of the demo is the shape of the matrix, not its values.
+review:
+  - id: wt-attn-mask-zero
+    type: code-reading
+    prompt: An AI assistant writes the mask as below, saying "-inf can cause NaNs, so I used 0.0". What does position 0 attend to now?
+    code: |
+      masked = [[scores[t][s] if s <= t else 0.0 for s in range(T)] for t in range(T)]
+      return [softmax(row) for row in masked]
+    options:
+      - id: a
+        text: Only itself, as before
+        rationale: A score of 0 isn't a mask. After the softmax it becomes a positive weight, so future positions get some attention.
+      - id: b
+        text: Itself and every future position, with weights that depend on how its own score compares with 0
+        correct: true
+        rationale: Right. Each "masked" entry is a score of 0, and exp(0 - m) is positive. Every position now leaks information from the future.
+      - id: c
+        text: Nothing, because the row sums to 0
+        rationale: Softmax output always sums to 1. The problem is where that weight goes.
+    explanation: This is the leak the lab warns about. A model that can see the next token predicts it trivially, so training and validation loss look excellent while generation, which can't see the future, is poor. The test that changes future tokens and checks that earlier outputs don't move catches it directly.
+  - id: wt-attn-running-mean
+    type: predict-output
+    prompt: "With all-zero `Wq` and `Wk` (so every score is 0), what is `out[2]`?"
+    options:
+      - id: a
+        text: "`v[2]`"
+        rationale: That's only true for position 0, which has nothing else to look at.
+      - id: b
+        text: The mean of `v[0]`, `v[1]`, and `v[2]`
+        correct: true
+        rationale: Yes. Equal scores over the three visible positions give weights of one third each.
+      - id: c
+        text: The mean of all four values `v[0]` to `v[3]`
+        rationale: That would require seeing position 3, which the mask hides from position 2.
+    explanation: Zero queries and keys reduce attention to a causal running average, the lecture's version 2. Learned queries and keys replace those equal weights with data-dependent ones, which is the whole advance from averaging to attention.
+  - id: wt-attn-scale
+    type: scenario
+    prompt: A reviewer asks why the scores are divided by the square root of `head_size`. Which answer is correct?
+    options:
+      - id: a
+        text: It normalizes each row of weights to sum to 1
+        rationale: The softmax does that. The scaling happens before it.
+      - id: b
+        text: It keeps the variance of the scores near 1 regardless of head size, so the softmax doesn't become nearly one-hot at initialization
+        correct: true
+        rationale: Exactly. A dot product of d unit-variance terms has variance d. Dividing by the square root of d restores unit variance.
+      - id: c
+        text: It makes the computation faster
+        rationale: It adds a little work. Its purpose is numerical, not speed.
+    explanation: Large scores make the softmax sharp, which means each position effectively copies one other position and gradients through the softmax nearly vanish. The scaling is a one-line fix that a "simplifying" edit can easily remove, so it's worth a test.
+direct:
+  task: |
+    A GPT block uses several heads in parallel and concatenates their outputs. You want a `multi_head_attention(x, heads)` function, where `heads` is a list of `(Wq, Wk, Wv)` tuples, that runs each head and joins the results along the feature dimension.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function multi_head_attention(x, heads) where heads is a list of (Wq, Wk, Wv) tuples. Call attention_head for each head and return (out, weights): out is T x (sum of the head sizes), formed by concatenating each position's per-head outputs in the order the heads are given, and weights is the list of per-head T x T weight matrices.
+
+    Do not change softmax, causal_attention_weights, or attention_head. Do not add an output projection yet. Raise ValueError if heads is empty.
+
+    Add test asserts: with one head, the output equals attention_head's output; with two heads of size 3, the output is T x 6 and its first 3 columns equal the first head's output; changing future tokens doesn't change earlier rows; an empty head list raises ValueError.
+  checklist:
+    - Each head is computed by the existing `attention_head`, not a copy of its code
+    - Outputs are concatenated per position along the feature dimension, in head order (not stacked as extra rows)
+    - The causal property still holds for the combined output
+    - The three existing functions are unchanged
+    - Tests cover the one-head case, the output shape, and the no-future-leak property

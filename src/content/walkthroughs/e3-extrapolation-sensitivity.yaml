@@ -1,0 +1,142 @@
+id: e3-extrapolation-sensitivity
+summary: |
+  This program asks a simple question about an exponential trend: if a quantity doubles every so many days, how long until it grows from where it is now to a target? It then answers that question for several assumed doubling times at once, so you can see how much the answer depends on the assumption.
+
+  The work is split into one function that does the math for a single assumption and one that builds a table across assumptions. That split is the whole idea of a sensitivity analysis: hold the model fixed, vary the inputs you are unsure about, and look at the spread. The demo runs it for METR's 50% and 80% time horizons against a one-month task.
+code: |
+  import math
+
+
+  def years_to_reach(current_hours, target_hours, doubling_days):
+      """Years until a quantity growing by doubling every doubling_days goes from
+      current_hours to target_hours. Return 0 if already there."""
+      if current_hours >= target_hours:
+          return 0
+      doublings = math.log2(target_hours / current_hours)
+      return doublings * doubling_days / 365
+
+
+  def table(current_hours, target_hours, doubling_options):
+      """Return a list of (doubling_days, years) rounded to 1 decimal place."""
+      return [
+          (d, round(years_to_reach(current_hours, target_hours, d), 1))
+          for d in doubling_options
+      ]
+
+
+  WORK_MONTH = 167  # hours
+  # METR, May 2026: public frontier 50% horizon about 12 h; 80% horizon about 1.5 h.
+  # TH1.1 doubling times: about 89 days (since 2024), 131 (since 2023), 196 (full trend).
+  for label, now in [("50% horizon", 12), ("80% horizon", 1.5)]:
+      print(label, table(now, WORK_MONTH, [89, 131, 196]))
+notes:
+  - lines: [1, 6]
+    title: The question, in a docstring
+    text: |
+      `import math` gives us `math.log2`, the base-2 logarithm. Base 2 is the natural choice here because the growth is stated as a doubling time.
+
+      The function takes three inputs: where the quantity is now, where we want it, and how many days each doubling takes. Its **docstring** also states an edge case: "Return 0 if already there". Writing the edge case into the docstring is good practice, because it is exactly the kind of thing an AI edit might drop.
+  - lines: [7, 8]
+    title: Already there means zero
+    text: |
+      If the current value is already at or past the target, no time is needed. Without this check, `target / current` would be at most 1 and its log2 would be 0 or **negative**, giving a negative number of years, which reads like "this already happened some time ago". Returning 0 is clearer.
+
+      Note it uses `>=`, so an exact match also returns 0 (the formula would give 0 there anyway, but the intent is explicit).
+  - lines: [9, 10]
+    title: Count the doublings, then convert to years
+    text: |
+      The math: growth by doubling means value(t) = current times 2 to the (t / doubling time). Setting that equal to the target and solving gives t = log2(target / current) times the doubling time. So the number of doublings is `math.log2(target_hours / current_hours)`, and multiplying by `doubling_days / 365` converts doublings to years.
+
+      Worked values with the lesson's numbers: going from 12 hours to 167 hours is a factor of about 13.9, which is about 3.80 doublings. At 131 days per doubling, that is 3.80 times 131 / 365, about 1.36 years.
+
+      What to check in an AI version: the log base. Using `math.log` (natural log) instead of `math.log2` undercounts doublings by a factor of ln 2, about 0.69, and makes every timeline about 30% too short. Nothing crashes, and the numbers still look plausible.
+  - lines: [13, 18]
+    title: The sensitivity table
+    text: |
+      `table` builds a list of `(doubling_days, years)` pairs, one per assumption, using a **list comprehension** spread over several lines for readability. Each element is a **tuple** created with parentheses: `(d, round(...))`.
+
+      `round(x, 1)` rounds to one decimal place. Rounding here, at the presentation step, rather than inside `years_to_reach`, is deliberate: the underlying function keeps full precision so it can be reused or tested, and only the table is formatted for reading. An AI version that rounds inside `years_to_reach` would pass these tests but quietly lose precision for anything else that uses it, such as summing or comparing timelines.
+
+      Returning pairs instead of just the years keeps each number attached to the assumption that produced it, which makes the output hard to misquote. The hidden tests turn it into a lookup with `dict(table(...))`, since a list of pairs converts straight into a **dict**.
+  - lines: [21, 23]
+    title: The inputs, with their sources
+    text: |
+      `WORK_MONTH = 167` is a named constant (about 167 working hours in a month), with a comment giving its unit. The two comment lines record where the other numbers come from: METR's May 2026 horizons (12 hours at 50% reliability, 1.5 hours at 80%) and three doubling times fitted over different windows of the same trend.
+
+      Citing inputs next to the code is a habit worth keeping. Every number in a forecast is a claim, and a reviewer should be able to trace each one to its source without asking.
+  - lines: [24, 25]
+    title: Two reliability levels, three doubling times
+    text: |
+      `for label, now in [...]` loops over a list of `(label, value)` tuples and **unpacks** each into two names. For each reliability level it prints a row of the table.
+
+      The output:
+
+      - 50% horizon: about 0.9, 1.4, or 2.0 years, for doubling times of 89, 131, or 196 days.
+      - 80% horizon: about 1.7, 2.4, or 3.7 years.
+
+      Same organization, same trend, and the date for a month-long task ranges from under a year to almost four, depending on two choices. The 80% row is further out because it starts lower (1.5 hours needs about 6.8 doublings to reach 167, versus 3.8 from 12 hours). When you hear a single date, ask which doubling time and which reliability level it assumes.
+review:
+  - id: wt-es-natural-log
+    type: code-reading
+    prompt: "An AI assistant rewrites line 9 as below, saying \"log and log2 are the same up to a constant.\" What does `years_to_reach(12, 167, 131)` return now?"
+    code: |
+      doublings = math.log(target_hours / current_hours)
+    options:
+      - id: a
+        text: About 1.36, the same as before
+        rationale: The "constant" is exactly the problem. The formula needs the number of doublings, which is the base-2 log specifically.
+      - id: b
+        text: About 1.96, roughly 44% too late
+        rationale: That would be dividing by ln 2 instead of multiplying. The natural log of a number is smaller than its log2, so the years go down.
+      - id: c
+        text: About 0.94, roughly 30% too soon
+        correct: true
+        rationale: Right. ln(13.9) is about 2.63 instead of 3.80 doublings, so the answer shrinks by a factor of ln 2, about 0.69. The timeline looks more urgent than the data support.
+    explanation: '"The same up to a constant" is true and irrelevant when the constant changes the answer. The hidden tests would catch this one (one doubling at 365 days must be 1.0 year), which is why a test with an exact, hand-checkable answer is worth having.'
+  - id: wt-es-already-there
+    type: predict-output
+    prompt: If lines 7 and 8 (the "already there" check) were removed, what would `years_to_reach(10, 5, 100)` return?
+    options:
+      - id: a
+        text: About -0.27, a negative number of years
+        correct: true
+        rationale: Right. log2(5 / 10) is -1, so one negative doubling at 100 days is -100 / 365, about -0.27. It reads like "the target was reached three months ago".
+      - id: b
+        text: 0, because you can't go backwards in time
+        rationale: Nothing in the remaining formula enforces that. The math happily returns a negative number.
+      - id: c
+        text: It raises `ValueError` from `math.log2`
+        rationale: The ratio 0.5 is positive, so log2 is fine. It would only raise for zero or a negative ratio.
+    explanation: Edge cases that produce valid-looking numbers are more dangerous than ones that crash. A negative timeline in a table of positives might be noticed; in a single computed field on a dashboard it might not.
+  - id: wt-es-design
+    type: scenario
+    prompt: An executive asks you for "the date" when AI agents can do month-long tasks. Based on what this code shows, what is the most defensible answer?
+    options:
+      - id: a
+        text: About 1.4 years, the middle doubling time at 50% reliability
+        rationale: That is one cell of the table presented as if it were the answer. It hides both assumptions.
+      - id: b
+        text: Somewhere between about one and four years, depending on which doubling time holds and whether you need 50% or 80% reliability, with the reliability choice mattering about as much as the trend choice
+        correct: true
+        rationale: Right. Reporting the range, and naming what drives it, is the honest summary of a sensitivity table.
+      - id: c
+        text: It can't be estimated at all, so give no answer
+        rationale: The trend does constrain the answer. Refusing to summarize it is less useful than a range with its assumptions stated.
+    explanation: The purpose of a sensitivity table is to show which assumptions move the answer most. Here the reliability level matters about as much as the doubling time. That is what a decision-maker needs to hear.
+direct:
+  task: |
+    Readers find years hard to compare across rows. Add a function that turns the table into calendar dates (for example, "2027-08") counted from a start date, so the output reads as "month-long tasks at 50% reliability by about 2027-03 to 2028-04".
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function as_dates(rows, start) where rows is the output of table() and start is a datetime.date. Return a list of (doubling_days, "YYYY-MM") pairs, where each date is start plus years * 365 days, formatted with strftime("%Y-%m"). Import datetime from the standard library.
+
+    Do not change years_to_reach or table: keep log2, the already-there check returning 0, and rounding only inside table.
+
+    Add test asserts: as_dates([(365, 1.0)], datetime.date(2026, 5, 1)) == [(365, "2027-05")]; a row with 0 years returns the start month. Print the 50% rows as dates from 2026-05-01 in the demo.
+  checklist:
+    - years_to_reach and table are unchanged (still log2, still return 0 when already there)
+    - The new function takes table's output rather than recomputing the math
+    - Dates come from the standard library datetime module, with no new dependency
+    - A zero-year row returns the start month instead of failing
+    - The demo still prints the original tables as well as the new dates

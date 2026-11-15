@@ -1,0 +1,203 @@
+id: e1-w4-bpe-tokenizer
+summary: |
+  This is a complete byte-level Byte Pair Encoding (BPE) tokenizer, the same algorithm family GPT models use. Text is converted to UTF-8 bytes (ids 0 to 255). Training repeatedly finds the most frequent adjacent pair of ids and replaces it everywhere with a new id, recording each merge. Encoding replays those merges on new text in the order they were learned, and decoding maps ids back to bytes and then to text.
+
+  Small functions do one job each: `get_counts` and `merge` are the two primitives, and `train`, `encode`, and `decode` are short loops built on them. Starting from bytes rather than characters means any string can be encoded, including emoji and text in any language, with no "unknown token". The price is that some ids are fragments of a character, which is why `decode` must handle invalid byte sequences.
+code: |
+  def get_counts(ids):
+      """Return a dict mapping each adjacent pair (ids[i], ids[i+1]) to its count."""
+      counts = {}
+      for pair in zip(ids, ids[1:]):
+          counts[pair] = counts.get(pair, 0) + 1
+      return counts
+
+
+  def merge(ids, pair, new_id):
+      """Replace every non-overlapping occurrence of pair, scanning left to right, with new_id."""
+      out, i = [], 0
+      while i < len(ids):
+          if i < len(ids) - 1 and (ids[i], ids[i + 1]) == pair:
+              out.append(new_id)
+              i += 2
+          else:
+              out.append(ids[i])
+              i += 1
+      return out
+
+
+  def train(text, vocab_size):
+      """Learn vocab_size - 256 merges from text. Returns merges: dict pair -> new_id."""
+      ids = list(text.encode("utf-8"))
+      merges = {}
+      for new_id in range(256, vocab_size):
+          counts = get_counts(ids)
+          if not counts:
+              break                                   # fewer than two tokens left
+          pair = max(counts, key=counts.get)          # the most frequent pair
+          ids = merge(ids, pair, new_id)
+          merges[pair] = new_id
+      return merges
+
+
+  def build_vocab(merges):
+      """Map every id to its bytes: 0..255 are single bytes; each merge concatenates its parts."""
+      vocab = {i: bytes([i]) for i in range(256)}
+      for (a, b), idx in sorted(merges.items(), key=lambda kv: kv[1]):
+          vocab[idx] = vocab[a] + vocab[b]
+      return vocab
+
+
+  def encode(text, merges):
+      """Apply the learned merges to new text, earliest-learned merge first."""
+      ids = list(text.encode("utf-8"))
+      while len(ids) >= 2:
+          counts = get_counts(ids)
+          pair = min(counts, key=lambda p: merges.get(p, float("inf")))
+          if pair not in merges:
+              break                                   # nothing left that we know how to merge
+          ids = merge(ids, pair, merges[pair])
+      return ids
+
+
+  def decode(ids, merges):
+      """Join the bytes of each id and decode as UTF-8, replacing invalid sequences."""
+      vocab = build_vocab(merges)
+      return b"".join(vocab[i] for i in ids).decode("utf-8", errors="replace")
+
+
+  corpus = "the cat sat on the mat. the hat is on the cat. " * 4
+  merges = train(corpus, 256 + 12)
+  vocab = build_vocab(merges)
+  print([vocab[i] for i in sorted(merges.values())])
+  ids = encode("the cat", merges)
+  print(ids, "->", repr(decode(ids, merges)))
+notes:
+  - lines: [1, 6]
+    title: Counting adjacent pairs
+    text: |
+      `zip(ids, ids[1:])` pairs each id with the next one, producing **tuples** like `(1, 2)`. Tuples can be dict keys because they can't be changed after creation; lists can't.
+
+      `counts.get(pair, 0) + 1` is the standard counting idiom. `dict.get` returns the stored value, or the default `0` if the key isn't there yet, so the first sighting of a pair doesn't raise `KeyError`.
+
+      Worked value from the tests: `[1, 2, 3, 1, 2]` gives `{(1, 2): 2, (2, 3): 1, (3, 1): 1}`. Python dicts remember insertion order, so pairs are listed in the order they first appear, which matters for tie-breaking in `train`.
+  - lines: [9, 19]
+    title: Merging, left to right without overlap
+    text: |
+      A `while` loop with a manual index `i` is used instead of a `for` loop because the step size varies: after a match, skip both ids (`i += 2`); otherwise copy one id and move on (`i += 1`).
+
+      The check `i < len(ids) - 1` comes first so that `ids[i + 1]` is never read past the end. Python's `and` **short-circuits**: if the left side is false, the right side isn't evaluated.
+
+      "Non-overlapping, left to right" is a real rule, not a detail. `merge([1, 1, 1], (1, 1), 2)` gives `[2, 1]`: the first two 1s merge, and the third has no partner left. A version that merged every overlapping position would count a single 1 in two places.
+
+      The function builds and returns a **new** list rather than editing `ids` in place, so the caller's list is never changed by surprise.
+  - lines: [22, 33]
+    title: Training learns merges greedily
+    text: |
+      `text.encode("utf-8")` converts the string to a `bytes` object, and `list(...)` turns it into a list of integers from 0 to 255. Every new id starts at 256, so `range(256, vocab_size)` runs once per merge: `vocab_size=259` means exactly 3 merges.
+
+      `max(counts, key=counts.get)` iterates over the dict's keys and returns the one with the largest count. `key=` takes a function that scores each item; here it's the dict's own `get` method. When counts tie, `max` returns the first one it saw, which is the pair that appeared first in the text. That makes training deterministic.
+
+      Worked example from the minbpe README, `"aaabdaaabac"`: merge 1 is `(97, 97)` (`aa`) to 256, merge 2 is `(256, 97)` (`aaa`) to 257, merge 3 is `(257, 98)` (`aaab`) to 258.
+
+      The `break` on line 29 handles text that becomes a single token (or is empty): there are no pairs left, so asking for more merges stops early instead of crashing on `max` of an empty dict.
+  - lines: [36, 41]
+    title: The vocabulary, built in merge order
+    text: |
+      Line 38 is a **dict comprehension** giving each byte value its one-byte `bytes` object; `bytes([97])` is `b'a'`.
+
+      Line 39 sorts the merges by their new id using `sorted(..., key=lambda kv: kv[1])`. A **lambda** is a small unnamed function; `kv` is a `(pair, new_id)` item and `kv[1]` is the id. The loop header also unpacks each item as `(a, b), idx`, nested tuple unpacking in one step.
+
+      Order matters because later merges are built from earlier ones: 258 is `vocab[257] + vocab[98]`, so 257 must already exist. Dicts keep insertion order, so `merges` happens to be in order already, but sorting makes the requirement explicit and keeps it correct if the merges were loaded from a file in a different order.
+  - lines: [44, 53]
+    title: Encoding replays merges by rank
+    text: |
+      Training applied merges in a specific order, so encoding must too: at each step, find the adjacent pair with the **lowest** merge id (the earliest learned) and merge it.
+
+      Line 49 does that with `min` and a lambda key. `merges.get(p, float("inf"))` gives each known pair its merge id and every unknown pair infinity, so unknown pairs always lose. If even the winner has infinite rank, `pair not in merges` is true and the loop stops: nothing more can be merged.
+
+      Why not "merge the most frequent pair in this text"? Because the result could differ from the segmentation the model saw during training. The same text must always become the same ids.
+
+      This is simple but slow: it recounts all pairs after every merge, which is fine for an exercise and far too slow for a production tokenizer.
+  - lines: [56, 59]
+    title: Decoding bytes, safely
+    text: |
+      `b"".join(...)` concatenates the `bytes` for each id. Then `.decode("utf-8", errors="replace")` turns the bytes into text, replacing any invalid sequence with the replacement character U+FFFD.
+
+      Why invalid sequences can happen: characters outside ASCII take 2 to 4 bytes in UTF-8, and a model can emit ids that split a character, or end mid-character. Id 128 on its own is a continuation byte with no lead byte, which isn't valid UTF-8. With the default `errors="strict"`, decoding a model's output would raise `UnicodeDecodeError`. The test `decode([128], merges)` checks for exactly this.
+
+      Rebuilding the vocabulary on every call is wasteful; a class that builds it once would be the natural next step.
+  - lines: [62, 67]
+    title: Train on a small corpus and read the merges
+    text: |
+      The demo trains 12 merges on a repetitive sentence and prints the byte string each new id stands for. The first merges are `b'at'`, `b'th'`, `b'the'`, and later ones span word boundaries, like `b' the '` and `b'at. the '`. With no rule against it, BPE happily merges across spaces and punctuation, which is why GPT-2 and later tokenizers split text with a regex first.
+
+      `encode("the cat", merges)` gives 3 ids for 7 bytes, and decoding returns the original string. The round trip is the first property to test for any tokenizer, and compression on familiar text is the second.
+review:
+  - id: wt-bpe-encode-by-frequency
+    type: code-reading
+    prompt: "An AI assistant rewrites the pair selection in `encode` as below, explaining it as \"merge what's most common in this text, like training does\". What is the main problem?"
+    code: |
+      known = {p: c for p, c in get_counts(ids).items() if p in merges}
+      if not known:
+          break
+      pair = max(known, key=known.get)
+      ids = merge(ids, pair, merges[pair])
+    options:
+      - id: a
+        text: "`decode(encode(s))` no longer returns `s`"
+        rationale: It still round-trips, because every merge it applies is a valid one that `decode` can expand. That's why round-trip tests won't catch this.
+      - id: b
+        text: The same text can be split into different ids than the trained tokenizer would produce, because merges may be applied in a different order than they were learned
+        correct: true
+        rationale: Right. Encoding has to reproduce training's merge order (lowest id first) to be consistent. A model trained on one segmentation sees unfamiliar id sequences under another.
+      - id: c
+        text: It crashes when no known pairs remain
+        rationale: The `if not known` check stops the loop cleanly.
+    explanation: This is a case where the obvious test, round-tripping, passes while the behavior is wrong. The exercise also checks the exact ids for the minbpe README example, which is the kind of test that pins down segmentation, not just reversibility.
+  - id: wt-bpe-merge-overlap
+    type: predict-output
+    prompt: "What does `merge([3, 1, 1, 1, 3], (1, 1), 9)` return?"
+    options:
+      - id: a
+        text: "`[3, 9, 1, 3]`"
+        correct: true
+        rationale: Yes. Scanning left to right, the first two 1s merge into 9, and the third 1 has no partner left.
+      - id: b
+        text: "`[3, 9, 9, 3]`"
+        rationale: That would require the middle 1 to be used twice, once in each overlapping pair.
+      - id: c
+        text: "`[3, 1, 9, 3]`"
+        rationale: That merges from the right. The loop scans from the left.
+    explanation: Non-overlapping, left-to-right replacement is what training did, so encoding must do the same. A version that used `str.replace`-like logic on a joined string, or overlapping matches, would quietly change the counts.
+  - id: wt-bpe-errors-replace
+    type: scenario
+    prompt: Why does `decode` use `errors="replace"` instead of the default strict decoding?
+    options:
+      - id: a
+        text: Because the tokenizer can produce invalid ids
+        rationale: Every id it produces maps to bytes. The issue is what those bytes form when joined.
+      - id: b
+        text: Because a sequence of valid ids can still form invalid UTF-8, for example a model output that splits a multi-byte character, and strict decoding would raise an exception
+        correct: true
+        rationale: Exactly. Byte-level tokens can be fragments of a character. Replacing invalid bytes with U+FFFD keeps generation from crashing.
+      - id: c
+        text: Because it's faster
+        rationale: The error mode doesn't meaningfully affect speed.
+    explanation: This is a real production concern. A language model generating text token by token can stop mid-character, and the decoder has to cope. Seeing a replacement character in output is a hint that this happened.
+direct:
+  task: |
+    Training merges takes time, so you want to save them to a JSON file and load them back. There's a catch: JSON object keys must be strings, and `merges` uses tuple keys like `(97, 97)`.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add two functions: save_merges(merges, path) and load_merges(path). Store the merges in JSON as a list of [a, b, new_id] triples sorted by new_id (not as a dict, because JSON keys must be strings). load_merges returns a dict with tuple keys (a, b) mapping to int ids, exactly the format train returns.
+
+    Use the json module and open files with encoding="utf-8". Do not change train, encode, decode, merge, get_counts, or build_vocab.
+
+    Add test asserts: load_merges(save_merges result) == the original merges for the README example and for the 20-merge corpus; encoding a string with loaded merges gives the same ids as with the originals; and loaded keys are tuples of ints, not lists or strings.
+  checklist:
+    - The JSON format is a list of triples (or another format that keeps integer pairs), not stringified tuple keys
+    - Loaded keys are tuples of ints, so `pair in merges` still works in `encode`
+    - Merge order (by new id) is preserved, so `build_vocab` and `encode` behave the same
+    - No existing function was changed
+    - Tests compare encodings before and after a save-load round trip

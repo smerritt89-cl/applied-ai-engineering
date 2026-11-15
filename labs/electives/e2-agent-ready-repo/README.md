@@ -6,6 +6,22 @@ lessons e2-w1-l3, e2-w2-l5, and e2-w3-l7). **Time:** 60 to 120 minutes, most of 
 of a subscription's usage; six to nine runs in total. Check your own numbers with `/usage` or the
 `total_cost_usd` field described below.
 
+## Review track
+
+This lab's main exercise is already a review exercise: you run agents and judge their diffs. The review
+track adds two things to prepare you for it:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of
+   `solution.py`). While it exists, `test_pricing.py` runs against it, so Step 0 shows 28 passed instead of
+   4 failed; `make_workspace.py` still copies the buggy `starter.py` into every workspace.
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it. It tours the reference fix line by
+   line, explains how the workspace builder, setups, hooks, and holdout tests fit together, and lists what to
+   check in an agent's version of each function. Run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to add a promo-code discount cap to `work.py`,
+   review its diff against the checklist, then run `pytest electives/e2-agent-ready-repo/test_change.py -q`.
+
+Then do Steps 0 to 4 below as written: they are the same on both tracks.
+
 ## What's here
 
 | Path | What it is |

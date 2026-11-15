@@ -7,6 +7,18 @@ measured change.
 
 This lab goes with lesson `s1-w2-l6`, "Iterating on prompts like an engineer."
 
+## Review track
+
+If you're on the review track (the default), you don't write the code below from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to add a summary word-count check to `run_check`, review its
+   diff, then run `pytest studio-1/03-prompt-test-harness/test_change.py -q`.
+
+The task description and steps below are the write track, if you'd rather implement it yourself in `starter.py`. The
+live comparison in step 3 works on either track (on the review track, run `python work.py` instead of `starter.py`).
+
 ## The task
 
 Ledgerly is a fictional invoicing app. Its support team wants each incoming

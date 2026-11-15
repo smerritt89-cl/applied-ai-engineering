@@ -1,0 +1,183 @@
+id: e2-w2-pretooluse-guard
+summary: |
+  This program is the decision logic of a Claude Code `PreToolUse` hook, pulled out into a function you can test. Before the agent runs a tool, the hook receives a JSON description of the call on stdin. `decide` reads it and returns an exit code and a message: `2` blocks the call (and the message tells the agent why), `0` means "no objection" and the normal permission flow continues.
+
+  It blocks two kinds of call: edits or writes to protected places (anything under `tests/` or `migrations/`, and any `.env` file) and shell commands containing a few dangerous strings. The careful part is path handling: an agent might send an absolute path, a relative one, or one with `..` in it, so the function normalizes every path relative to the project before comparing. Separating "decide" from "read stdin and exit" is what makes all of this checkable in a browser, without running Claude Code.
+code: |
+  import json
+  import posixpath
+
+  PROTECTED_DIRS = ("tests", "migrations")
+  PROTECTED_FILES = (".env",)
+  DANGEROUS = ("rm -rf", "git push --force", "git reset --hard")
+
+
+  def decide(event_json, project_dir="/repo"):
+      """Decide whether to allow a tool call. event_json is the JSON string a PreToolUse hook gets on stdin.
+
+      Return (exit_code, message): (2, reason) blocks the call, (0, "") allows it.
+      Malformed input is allowed (fail open), so the normal permission flow still decides.
+      """
+      try:
+          e = json.loads(event_json)
+      except (ValueError, TypeError):
+          return (0, "")
+      tool = e.get("tool_name", "")
+      tool_input = e.get("tool_input") or {}
+
+      if tool in ("Edit", "Write"):
+          path = str(tool_input.get("file_path", ""))
+          full = path if path.startswith("/") else posixpath.join(project_dir, path)
+          rel = posixpath.relpath(posixpath.normpath(full), project_dir)
+          parts = rel.split("/")
+          if parts[0] in PROTECTED_DIRS or parts[-1] in PROTECTED_FILES:
+              return (2, f"Blocked: {rel} is protected. Explain to the user why it needs to change instead.")
+
+      if tool == "Bash":
+          command = str(tool_input.get("command", ""))
+          for bad in DANGEROUS:
+              if bad in command:
+                  return (2, f"Blocked: '{bad}' needs a person's approval.")
+
+      return (0, "")
+
+
+  def event(tool, **tool_input):
+      return json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input})
+
+
+  print(decide(event("Edit", file_path="/repo/tests/test_pricing.py")))
+  print(decide(event("Write", file_path="/repo/pricing.py")))
+  print(decide(event("Bash", command="git push --force origin main")))
+notes:
+  - lines: [1, 6]
+    title: Imports and the policy as data
+    text: |
+      `json` parses the event; `posixpath` is the forward-slash flavor of Python's path tools. Using `posixpath` explicitly (instead of `os.path`) means the function behaves the same on any machine, which matters when the paths come from a Unix-style tool event.
+
+      The three **tuples** are the policy. Keeping them at the top, separate from the logic, means changing what's protected is a one-line data change that a reviewer can see at a glance. (The lab's real `protect_tests.py` protects only `tests/` and `.env`; this exercise adds `migrations/` and the shell checks.)
+  - lines: [9, 14]
+    title: The contract in the docstring
+    text: |
+      The return value is a **tuple** of `(exit_code, message)`, mirroring what a real hook does: exit with a code, and print the reason to stderr. Returning instead of exiting is what makes the function testable.
+
+      `project_dir="/repo"` is a **default argument**. In the real hook it would come from the `CLAUDE_PROJECT_DIR` environment variable; here a test can pass any folder.
+
+      The docstring states the most important design choice up front: malformed input fails open.
+  - lines: [15, 20]
+    title: Parse defensively, then read with .get
+    text: |
+      `try: ... except (ValueError, TypeError):` catches the two errors `json.loads` can raise on bad input: `ValueError` (which `json.JSONDecodeError` is a kind of) for text that isn't JSON, and `TypeError` for something that isn't a string at all, such as `None`. Listing the exceptions you expect, rather than a bare `except:`, keeps real bugs visible.
+
+      Why return `(0, "")` on bad input? For a convenience check like this, a crash or a parse failure shouldn't stop the agent; the normal permission system still applies. For a security-critical check you'd make the opposite choice and fail closed. Either way, it should be a decision, not an accident.
+
+      `e.get("tool_name", "")` uses **dict.get** with a default, so a missing key gives an empty string instead of a `KeyError`. `e.get("tool_input") or {}` goes one step further: it also turns an explicit `null` into an empty dict.
+  - lines: [22, 25]
+    title: Normalize the path before comparing
+    text: |
+      This is the heart of the function. Agents send paths in different shapes, and a naive check misses some of them.
+
+      - Line 24 is a **conditional expression**: keep an absolute path as it is, or join a relative one onto the project folder. `migrations/0042_add_col.py` becomes `/repo/migrations/0042_add_col.py`.
+      - `posixpath.normpath` resolves `.` and `..`, so `/repo/src/../tests/test_a.py` becomes `/repo/tests/test_a.py` and can't sneak past.
+      - `posixpath.relpath(..., project_dir)` turns it back into a path relative to the project: `tests/test_a.py`.
+
+      Comparing the normalized relative path is much more robust than searching the raw string for `"tests"`.
+  - lines: [26, 28]
+    title: Compare path components, not text
+    text: |
+      `rel.split("/")` breaks the path into **components**: `"tests/test_pricing.py"` becomes `["tests", "test_pricing.py"]`. Then:
+
+      - `parts[0] in PROTECTED_DIRS` checks the top-level folder exactly. `"tests2"` is not `"tests"`, so `/repo/tests2/x.py` is allowed, as the spec requires.
+      - `parts[-1] in PROTECTED_FILES` checks the file name (index `-1` means "last item"), so `.env` is protected in any folder.
+
+      The message is an **f-string**: `{rel}` is replaced by the path, so the agent learns exactly what was blocked. The wording also tells it what to do instead (explain to the user), which tends to work better than a bare refusal.
+
+      A path outside the project, like `/etc/hosts`, becomes `../etc/hosts`; its first part is `..`, so this hook allows it. That's deliberate scope: other layers (permissions, the sandbox) handle writes outside the project.
+  - lines: [30, 34]
+    title: Shell commands, and the limits of substring matching
+    text: |
+      For `Bash`, the check is a plain substring search: if `"rm -rf"` appears anywhere in the command, block it. `cd build && rm -rf ./out` is caught because the dangerous part is in the middle.
+
+      Be honest about what this misses. `rm -r -f`, `rm -fr`, two spaces between `rm` and `-rf`, or the same command assembled inside a script all slip past. That's why the lesson calls a hook like this a complement to deny rules and the sandbox, not a replacement. When an AI proposes a regex that "catches every variant", be skeptical: shell syntax is too flexible for pattern matching to be a security boundary.
+  - lines: [36, 36]
+    title: The default is "no objection"
+    text: |
+      Everything that didn't match falls through to `(0, "")`, including `Read` calls on test files. Reads are not this hook's business: the agent needs to read tests to fix code. A guard that blocks too much gets disabled by frustrated users, which is worse than a narrow guard that stays on.
+  - lines: [39, 45]
+    title: A helper to build events, and a demonstration
+    text: |
+      `def event(tool, **tool_input):` uses **`**kwargs`** (here named `tool_input`): any keyword arguments are collected into a dict. `event("Edit", file_path="/repo/x.py")` builds `{"file_path": "/repo/x.py"}` and wraps it in the event shape, so tests stay short and readable.
+
+      The three prints show one block, one allow, and one blocked shell command:
+
+      - `(2, 'Blocked: tests/test_pricing.py is protected. ...')`
+      - `(0, '')`
+      - `(2, "Blocked: 'git push --force' needs a person's approval.")`
+review:
+  - id: wt-guard-startswith
+    type: code-reading
+    prompt: "An AI assistant replaces the component check with `if rel.startswith(PROTECTED_DIRS) or rel.endswith(PROTECTED_FILES):` (str.startswith accepts a tuple). What does `decide(event(\"Edit\", file_path=\"/repo/tests2/x.py\"))` return now?"
+    code: |
+      rel = posixpath.relpath(posixpath.normpath(full), project_dir)
+      if rel.startswith(PROTECTED_DIRS) or rel.endswith(PROTECTED_FILES):
+          return (2, f"Blocked: {rel} is protected. Explain to the user why it needs to change instead.")
+    options:
+      - id: a
+        text: "`(0, \"\")`, because tests2 is a different folder"
+        rationale: That's the original's answer. `startswith` compares text, and "tests2/x.py" does start with "tests".
+      - id: b
+        text: "`(2, \"Blocked: tests2/x.py is protected. ...\")`"
+        correct: true
+        rationale: Right. Text prefixes aren't folder boundaries. The same bug would block `migrations_old/` and, via `endswith`, a file named `prod.env`.
+      - id: c
+        text: It raises `TypeError`, because startswith needs a string
+        rationale: "`str.startswith` and `str.endswith` both accept a tuple of options, so this runs without error."
+    explanation: Comparing path components (after splitting on "/") is the reliable way to ask "is this inside that folder?". Text prefixes are a common AI shortcut that looks right on the obvious test cases.
+  - id: wt-guard-dotdot
+    type: predict-output
+    prompt: "What does `decide(event(\"Write\", file_path=\"src/../tests/test_a.py\"))` return?"
+    options:
+      - id: a
+        text: "`(0, \"\")`, because the path starts with src/"
+        rationale: The path is normalized first. `normpath` resolves `src/..` away before any comparison.
+      - id: b
+        text: "`(2, \"Blocked: tests/test_a.py is protected. ...\")`"
+        correct: true
+        rationale: "Right. It's joined to `/repo`, normalized to `/repo/tests/test_a.py`, and made relative: `tests/test_a.py`, whose first component is protected."
+      - id: c
+        text: It raises an error, because relative paths with .. are invalid
+        rationale: They're perfectly valid paths; the function just resolves them.
+    explanation: Normalize, then compare. Any guard that checks paths without normalizing them can be walked around with `..`.
+  - id: wt-guard-fail-open
+    type: scenario
+    prompt: "`decide(\"not json\")` returns `(0, \"\")`. When would you want the opposite (block on bad input)?"
+    options:
+      - id: a
+        text: Never; hooks should always fail open
+        rationale: Failing open is right for convenience checks, but not for checks that protect something important.
+      - id: b
+        text: When the hook is a security control, such as blocking access to production credentials
+        correct: true
+        rationale: Right. If a parse failure means "allow", an attacker or a bug that garbles the input disables the control. Security checks should fail closed.
+      - id: c
+        text: Only when the JSON is empty
+        rationale: The question is about what the check protects, not the shape of the bad input.
+    explanation: Fail-open versus fail-closed is a design decision to make deliberately for every guard. Write it in the docstring, as this one does, so a reviewer can check the code matches.
+direct:
+  task: |
+    The shell check is easy to dodge with extra spaces (`rm  -rf`, two spaces) and doesn't know `git push -f`. Make the command check a little more robust without pretending it's a security boundary.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In decide's Bash branch, normalize whitespace before matching: collapse any run of spaces or tabs to a single space (for example with " ".join(command.split())), then check the DANGEROUS strings against the normalized command. Add "git push -f" to DANGEROUS. The block message should still name the DANGEROUS entry that matched.
+
+    Don't change the Edit/Write path logic, the fail-open behavior on malformed JSON, or the return format. Don't try to parse shell syntax or add a regex; keep it a substring check.
+
+    Add a short comment saying this is a convenience check and that deny rules and the sandbox are the real boundary. Add asserts: "rm  -rf /tmp/x" (two spaces) is blocked; "git push -f origin main" is blocked; "git push origin main" is allowed; "python3 -m pytest -q" is still allowed; and all existing asserts still pass.
+  checklist:
+    - Only the Bash branch changed; the path checks are identical
+    - Matching runs on the whitespace-normalized command, and the message still names the matched entry
+    - "`git push origin main` (no force flag) is still allowed"
+    - No regex or shell parser crept in, and no claim in comments that this makes the hook secure
+    - Malformed JSON still returns (0, "")
+    - New asserts cover the double-space case, the new entry, and a safe command

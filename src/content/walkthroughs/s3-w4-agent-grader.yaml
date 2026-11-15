@@ -1,0 +1,187 @@
+id: s3-w4-agent-grader
+summary: |
+  This program grades runs of a customer-service agent that can look up orders, verify identity, and issue refunds or cancellations. A run passes only if three things hold: the database ends up in the right state, the agent followed policy on the way there (no write action before the user confirmed and before identity was verified), and it didn't wander, staying within a step budget. A final function computes **pass^k**, the chance that an agent succeeds on a task k times in a row, which measures reliability rather than one lucky success.
+
+  The checks are separate functions so each failure has a name. The most important design point is that the outcome check alone isn't enough: an agent that refunds first and asks questions later reaches the right end state by breaking the rules, and only a check on the *trajectory* (the sequence of actions) catches it.
+code: |
+  from math import comb
+
+  WRITE_TOOLS = {"issue_refund", "cancel_order"}
+
+
+  def end_state_ok(final_db, goal_db):
+      """True if every key in goal_db has the same value in final_db (extra keys are fine)."""
+      return all(key in final_db and final_db[key] == value for key, value in goal_db.items())
+
+
+  def policy_violations(trajectory):
+      """trajectory: list of dicts {"tool": name, "args": {...}} in call order, plus
+      {"tool": "user_confirmed"} entries when the user explicitly confirmed.
+      Return a list of strings, one per violation:
+        "write before confirmation: <tool>"   a WRITE_TOOLS call with no earlier user_confirmed
+        "no identity check: <tool>"           a WRITE_TOOLS call with no earlier verify_identity call
+      Check both rules for every write call, in order."""
+      violations = []
+      confirmed = verified = False
+      for step in trajectory:
+          tool = step["tool"]
+          if tool == "user_confirmed":
+              confirmed = True
+          elif tool == "verify_identity":
+              verified = True
+          elif tool in WRITE_TOOLS:
+              if not confirmed:
+                  violations.append(f"write before confirmation: {tool}")
+              if not verified:
+                  violations.append(f"no identity check: {tool}")
+      return violations
+
+
+  def grade_run(run, goal_db, max_steps=12):
+      """A run passes only if the end state is right, there are no policy violations,
+      and the number of tool calls (excluding user_confirmed) is at most max_steps."""
+      steps = sum(1 for s in run["trajectory"] if s["tool"] != "user_confirmed")
+      return (end_state_ok(run["final_db"], goal_db)
+              and not policy_violations(run["trajectory"])
+              and steps <= max_steps)
+
+
+  def pass_hat_k(results_by_task, k):
+      """results_by_task: dict task_id -> list of booleans (one per trial).
+      Return the mean over tasks of C(successes, k) / C(trials, k)."""
+      per_task = [comb(sum(trials), k) / comb(len(trials), k) for trials in results_by_task.values()]
+      return sum(per_task) / len(per_task)
+
+
+  run = {
+      "final_db": {"order_17": "refunded", "order_18": "shipped"},
+      "trajectory": [
+          {"tool": "lookup_order", "args": {"id": "order_17"}},
+          {"tool": "verify_identity", "args": {"email": "kim@example.com"}},
+          {"tool": "user_confirmed"},
+          {"tool": "issue_refund", "args": {"id": "order_17"}},
+      ],
+  }
+  print(grade_run(run, {"order_17": "refunded"}))
+  print(pass_hat_k({"t1": [True, True, True, False], "t2": [True, False, False, False]}, 2))
+notes:
+  - lines: [1, 4]
+    title: Imports and the list of risky tools
+    text: |
+      `from math import comb` imports just the binomial coefficient function: `comb(4, 2)` is 6, the number of ways to choose 2 items from 4.
+
+      `WRITE_TOOLS` is a **set** of the tools that change things in the real world. Naming them in one place makes the policy explicit and easy to extend: add `"change_address"` here and the rules below apply to it automatically.
+  - lines: [5, 9]
+    title: end_state_ok, check the goal and only the goal
+    text: |
+      `goal_db.items()` gives each `(key, value)` pair the task requires. The **generator expression** inside `all(...)` demands, for each one, that the key exists in the final database **and** has the right value.
+
+      `key in final_db` comes first on purpose. If the key is missing, `and` **short-circuits** and never evaluates `final_db[key]`, which would raise `KeyError`. So a missing key is a clean failure, not a crash.
+
+      Extra keys in the final state are ignored ("order_18" is fine). The check is about whether the agent did what was asked, not whether the database looks exactly like a snapshot, which would break on every unrelated field.
+  - lines: [10, 17]
+    title: The two policy rules, specified
+    text: |
+      The docstring defines the data format (each step is a tool call; user confirmations appear as their own steps) and the exact violation strings. "Earlier" is the key word: the rules are about **order**, not presence. A confirmation that arrives after the refund doesn't count.
+  - lines: [18, 31]
+    title: policy_violations, a single pass with two flags
+    text: |
+      `confirmed = verified = False` is **chained assignment**: both names start as `False`. The loop walks the trajectory in order and flips each flag when its event happens. Because the flags only ever turn on, they answer "has this happened yet?" at every point in the run.
+
+      When a write tool appears, both rules are checked against the flags *at that moment*, and each broken rule adds an **f-string** message naming the tool. The `elif` chain means a step is exactly one kind of thing.
+
+      Walk the `sneaky` run from the tests: `issue_refund` comes first, while both flags are still `False`, so it collects both violations, in the documented order. The later `verify_identity` and `user_confirmed` don't undo that. One thing for a reviewer to notice: one confirmation covers every later write. If policy should require a fresh confirmation per write, the confirmed flag would need to reset after each write.
+  - lines: [32, 41]
+    title: grade_run, all three conditions
+    text: |
+      `steps` counts tool calls, excluding `user_confirmed`, because that's an event from the user, not an action the agent chose. A run with 11 lookups plus verify and refund is 13 steps, over the default budget of 12, which catches an agent stuck in a loop even if it eventually succeeds.
+
+      The return combines three conditions with `and`, wrapped in parentheses so it can span lines. `not policy_violations(...)` is True when the list is empty, because an empty list is falsy.
+
+      The `sneaky` run passes `end_state_ok` and fails here. An outcome-only grader would score it as a success, and that's the failure the tau-bench authors call out.
+  - lines: [42, 48]
+    title: pass_hat_k, reliability across trials
+    text: |
+      For each task you've run several trials. `sum(trials)` counts successes (True adds as 1). `comb(successes, k) / comb(trials, k)` is the probability that k trials drawn from this task's runs, without replacement, are **all** successes. Averaging over tasks gives pass^k.
+
+      Worked values: task `t1` succeeded 3 of 4 times, so pass^2 is C(3,2) / C(4,2) = 3 / 6 = 0.5. Task `t2` succeeded once, and C(1,2) is 0, so 0. The mean is 0.25, while the plain success rate (pass^1) is 0.5. Reliability falls off fast as k grows, which matters for an agent users will hit again and again.
+
+      Edges a reviewer should ask about: `comb` returns 0 when k exceeds the count, so asking for k larger than the number of trials divides by zero; and an empty `results_by_task` divides by zero too.
+  - lines: [49, 60]
+    title: A well-behaved run
+    text: |
+      The demo run looks up the order, verifies identity, gets confirmation, then refunds: right end state, no violations, 3 counted steps. It prints `True`, then the pass^2 value 0.25.
+review:
+  - id: wt-agent-presence
+    type: code-reading
+    prompt: An AI assistant rewrites `policy_violations` to check for the confirmation and identity steps anywhere in the run, as below. What does it return for the `sneaky` trajectory (refund first, then verify, then confirm)?
+    code: |
+      def policy_violations(trajectory):
+          tools = [s["tool"] for s in trajectory]
+          violations = []
+          for tool in tools:
+              if tool in WRITE_TOOLS:
+                  if "user_confirmed" not in tools:
+                      violations.append(f"write before confirmation: {tool}")
+                  if "verify_identity" not in tools:
+                      violations.append(f"no identity check: {tool}")
+          return violations
+    options:
+      - id: a
+        text: Both violations, the same as before
+        rationale: Both steps appear somewhere in the list, so neither check fires.
+      - id: b
+        text: An empty list, so the sneaky run now passes the grader
+        correct: true
+        rationale: "Right. The rules are about order (\"no earlier\"), but this version only checks presence. A refund before any checks is graded as perfect."
+      - id: c
+        text: It raises an error because `tools` is a list of strings
+        rationale: "`in` works on lists of strings."
+    explanation: This version reads naturally and passes every test where the steps are in the right order. The bug only shows on a run designed to break it, which is why the exercise includes `sneaky`. When reviewing trajectory checks, ask whether the rule is about whether something happened or when.
+  - id: wt-agent-pass4
+    type: predict-output
+    prompt: "Using the same results, `{\"t1\": [True, True, True, False], \"t2\": [True, False, False, False]}`, what is `pass_hat_k(results, 4)`?"
+    options:
+      - id: a
+        text: "0.0"
+        correct: true
+        rationale: "Right. Neither task succeeded in all four trials. C(3,4) and C(1,4) are both 0."
+      - id: b
+        text: "0.125"
+        rationale: That would be some average of success rates; pass^4 asks for four successes in a row.
+      - id: c
+        text: "0.5"
+        rationale: That's pass^1, the plain success rate.
+    explanation: pass^1 of 0.5 can hide an agent that never succeeds reliably. For tasks a customer repeats, pass^k for k of 4 or 8 is a much better picture of what they'll experience.
+  - id: wt-agent-outcome-only
+    type: scenario
+    prompt: A teammate argues that `end_state_ok` is enough, since "the customer got their refund". What's the strongest reason to keep the trajectory checks?
+    options:
+      - id: a
+        text: An agent can reach the right end state by breaking policy, for example refunding before verifying identity, and that is a real failure even when this customer was legitimate
+        correct: true
+        rationale: Exactly. The next customer might be an impostor. Policy violations are failures whether or not this run's outcome happened to be fine.
+      - id: b
+        text: Trajectory checks make the grader faster
+        rationale: They add work, not remove it.
+      - id: c
+        text: The end state check can't detect refunds
+        rationale: It can; the sneaky run passes it.
+    explanation: For agents, how they got there is part of the grade. Outcome checks, trajectory rules, and a step budget measure three different things, and a run must pass all three.
+direct:
+  task: |
+    Policy is tightening: each write now needs its **own** confirmation. A single "yes" from the user shouldn't cover a refund and then a cancellation. Change `policy_violations` so a confirmation is used up by the first write after it.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In policy_violations, make each user_confirmed cover only the next write call: after any WRITE_TOOLS call, reset the confirmed flag to False. Identity verification still lasts for the whole run (do not reset verified).
+
+    Keep the violation strings and their order exactly as they are, and keep checking both rules for every write. Do not change end_state_ok, grade_run, or pass_hat_k.
+
+    Update the docstring to say a confirmation covers one write. Add asserts that: verify, confirm, refund, cancel gives ["write before confirmation: cancel_order"]; verify, confirm, refund, confirm, cancel gives []; and the existing good and sneaky trajectories give the same results as before.
+  checklist:
+    - The confirmed flag resets after every write, whether or not that write had a violation
+    - verified does not reset
+    - Violation strings and their order are unchanged
+    - The good and sneaky runs grade exactly as before
+    - New asserts cover two writes with one confirmation and with two

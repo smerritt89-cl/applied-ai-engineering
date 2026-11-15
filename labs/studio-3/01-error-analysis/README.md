@@ -2,6 +2,18 @@
 
 **Goes with:** Studio 3, week 1 (lessons 1 to 3). **Time:** about 90 minutes, most of it reading traces.
 
+## Review track
+
+Start here if you're on the review track (the default). Run `python lab.py review all` once from `labs`, so
+`work.py` holds a copy of `solution.py`, then:
+
+1. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it: a section-by-section tour of the code and
+   what the tests check. Run the tests from VS Code's **Testing** panel; they should pass.
+2. Do [CHANGE.md](CHANGE.md): direct a coding assistant to make one change to `work.py`, review it against the
+   checklist, and run `test_change.py`.
+
+The write track (implement `starter.py` yourself) is the steps below.
+
 ## Goal
 
 Before you write a single grader, find out how your system actually fails. You will:

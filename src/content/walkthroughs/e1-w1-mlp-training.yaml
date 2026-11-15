@@ -1,0 +1,282 @@
+id: e1-w1-mlp-training
+summary: |
+  This program builds a small neural network out of the scalar autograd engine and trains it by gradient descent. A `Neuron` computes tanh of a weighted sum, a `Layer` is a list of neurons, an `MLP` (multilayer perceptron) chains layers, and `train` repeats the four-step loop that every deep learning framework runs: forward, zero the gradients, backward, update.
+
+  The classes are deliberately thin. Each one does a single job and exposes the same two things, a way to call it on an input and a `parameters()` list, so the training loop never needs to know what is inside the model. That uniform interface is the same idea as PyTorch's `nn.Module`, and it's why the loop at the bottom would work unchanged on a much bigger network.
+code: |
+  import math
+  import random
+
+
+  class Value:
+      """A complete scalar autograd Value (your lesson 1 engine plus a few more operations)."""
+
+      def __init__(self, data, _children=()):
+          self.data = data
+          self.grad = 0.0
+          self._backward = lambda: None
+          self._prev = set(_children)
+
+      def __add__(self, other):
+          other = other if isinstance(other, Value) else Value(other)
+          out = Value(self.data + other.data, (self, other))
+          def _backward():
+              self.grad += out.grad
+              other.grad += out.grad
+          out._backward = _backward
+          return out
+
+      def __mul__(self, other):
+          other = other if isinstance(other, Value) else Value(other)
+          out = Value(self.data * other.data, (self, other))
+          def _backward():
+              self.grad += other.data * out.grad
+              other.grad += self.data * out.grad
+          out._backward = _backward
+          return out
+
+      def __pow__(self, k):
+          out = Value(self.data ** k, (self,))
+          def _backward():
+              self.grad += k * self.data ** (k - 1) * out.grad
+          out._backward = _backward
+          return out
+
+      def tanh(self):
+          t = math.tanh(self.data)
+          out = Value(t, (self,))
+          def _backward():
+              self.grad += (1 - t * t) * out.grad
+          out._backward = _backward
+          return out
+
+      def __neg__(self): return self * -1
+      def __sub__(self, other): return self + (-other)
+      def __radd__(self, other): return self + other
+      def __rmul__(self, other): return self * other
+      def __rsub__(self, other): return (-self) + other
+
+      def backward(self):
+          topo, seen = [], set()
+          def build(v):
+              if v not in seen:
+                  seen.add(v)
+                  for c in v._prev:
+                      build(c)
+                  topo.append(v)
+          build(self)
+          self.grad = 1.0
+          for v in reversed(topo):
+              v._backward()
+
+
+  class Neuron:
+      def __init__(self, n_in, rng):
+          self.w = [Value(rng.uniform(-1, 1)) for _ in range(n_in)]
+          self.b = Value(rng.uniform(-1, 1))
+
+      def __call__(self, x):
+          """tanh(w . x + b): a weighted sum of the inputs plus a bias, squashed into (-1, 1)."""
+          act = sum((wi * xi for wi, xi in zip(self.w, x)), self.b)
+          return act.tanh()
+
+      def parameters(self):
+          return self.w + [self.b]
+
+
+  class Layer:
+      def __init__(self, n_in, n_out, rng):
+          self.neurons = [Neuron(n_in, rng) for _ in range(n_out)]
+
+      def __call__(self, x):
+          outs = [n(x) for n in self.neurons]
+          return outs[0] if len(outs) == 1 else outs
+
+      def parameters(self):
+          return [p for n in self.neurons for p in n.parameters()]
+
+
+  class MLP:
+      def __init__(self, n_in, sizes, seed=0):
+          rng = random.Random(seed)
+          dims = [n_in] + sizes
+          self.layers = [Layer(dims[i], dims[i + 1], rng) for i in range(len(sizes))]
+
+      def __call__(self, x):
+          for layer in self.layers:
+              x = layer(x)
+          return x
+
+      def parameters(self):
+          """Every weight and bias in every layer, as one flat list."""
+          return [p for layer in self.layers for p in layer.parameters()]
+
+
+  def mse_loss(model, xs, ys):
+      """Sum of squared errors over the dataset, as a Value you can call backward() on."""
+      preds = [model(x) for x in xs]
+      return sum(((p - y) ** 2 for p, y in zip(preds, ys)), Value(0.0))
+
+
+  def train(model, xs, ys, steps=100, lr=0.05):
+      """Full-batch gradient descent. Returns the loss (a float) at each step."""
+      losses = []
+      for _ in range(steps):
+          loss = mse_loss(model, xs, ys)          # 1. forward pass
+          for p in model.parameters():
+              p.grad = 0.0                        # 2. zero the old gradients
+          loss.backward()                         # 3. backward pass
+          for p in model.parameters():
+              p.data -= lr * p.grad               # 4. step downhill
+          losses.append(loss.data)
+      return losses
+
+
+  # The tiny dataset from the lecture: four inputs, targets of +1 or -1.
+  xs = [[2.0, 3.0, -1.0], [3.0, -1.0, 0.5], [0.5, 1.0, 1.0], [1.0, 1.0, -1.0]]
+  ys = [1.0, -1.0, -1.0, 1.0]
+  model = MLP(3, [4, 4, 1], seed=1)
+  losses = train(model, xs, ys, steps=150, lr=0.05)
+  print("first loss", round(losses[0], 4), "last loss", round(losses[-1], 4))
+  print("predictions", [round(model(x).data, 3) for x in xs])
+notes:
+  - lines: [1, 45]
+    title: The engine from lesson 1, plus a power rule
+    text: |
+      This is the `Value` class you built last time, given here complete. `__add__`, `__mul__`, `tanh`, and `backward()` are unchanged in substance (the `_op` label was dropped because nothing here draws the graph).
+
+      The new operation is `__pow__` (lines 32 to 37), which makes `x ** k` work for a constant `k`. Its backward rule is the power rule from calculus: the derivative of x^k is k times x^(k-1). The loss below uses `** 2`, so this is the piece that differentiates a squared error.
+
+      Note that `k` is a plain number, not a `Value`. This engine can't differentiate with respect to an exponent, and it doesn't need to. A reviewer should notice that `Value(2) ** Value(3)` would fail here, and decide whether that matters.
+  - lines: [47, 64]
+    title: Operator plumbing, and why the "r" methods exist
+    text: |
+      These one-line methods let you write natural arithmetic. Each is written on one line (`def f(self): return ...`), which Python allows for very short bodies.
+
+      - `__neg__` makes `-x` work, as `x * -1`.
+      - `__sub__` makes `a - b` work, as `a + (-b)`. No new derivative is needed: subtraction is built from operations that already know their gradients.
+      - `__radd__`, `__rmul__`, `__rsub__` are **reflected operators**. In `2 * x`, Python first asks the number `2` to multiply by a Value; `int` doesn't know how, so Python then calls `x.__rmul__(2)`. Without these, `2 * x` and `0 + x` raise `TypeError`.
+
+      `backward()` (lines 53 to 64) is the topological sort and reverse sweep from lesson 1, unchanged. Building new operations from old ones, rather than writing new backward rules, is a good design habit: fewer places for a derivative to be wrong.
+  - lines: [67, 78]
+    title: "A neuron: tanh(w . x + b)"
+    text: |
+      `__init__` creates one weight per input with a **list comprehension**; the `_` in `for _ in range(n_in)` is a conventional name for "a loop variable I don't use". `rng.uniform(-1, 1)` draws from the generator that was passed in, so the whole network is reproducible from one seed.
+
+      Defining `__call__` makes an object callable like a function: `neuron(x)` runs this method.
+
+      Line 74 is dense. `zip(self.w, x)` pairs each weight with its input. `(wi * xi for ...)` is a **generator expression**, a lazy version of a list comprehension that produces values one at a time. `sum(..., self.b)` adds them up starting from the bias instead of from 0. So `act` is b + w1*x1 + w2*x2 + w3*x3, as a single `Value` with the full graph behind it. Mathematically that's the affine map w . x + b, and tanh squashes it into (-1, 1).
+
+      `parameters()` returns the weights and the bias as one list. `self.w + [self.b]` concatenates lists, which is why the bias is wrapped in brackets.
+  - lines: [81, 90]
+    title: A layer, and flattening with a nested comprehension
+    text: |
+      A layer is just `n_out` neurons that all read the same input. Calling it returns one output per neuron.
+
+      Line 87 is a convenience: if the layer has exactly one neuron, it returns that single `Value` rather than a one-item list, so the network's final output is a number you can subtract a target from. It's the kind of special case worth a comment in production code, because it means the return type depends on the size.
+
+      Line 90 is a **nested list comprehension**: `[p for n in self.neurons for p in n.parameters()]` reads left to right like two nested `for` loops, "for each neuron n, for each parameter p of n, keep p". The result is one flat list, which is what the training loop needs.
+  - lines: [93, 106]
+    title: The MLP chains layers and counts its parameters
+    text: |
+      `dims = [n_in] + sizes` turns `MLP(3, [4, 4, 1])` into `[3, 4, 4, 1]`, and line 97 builds a layer for each consecutive pair: 3 to 4, 4 to 4, 4 to 1. One `random.Random(seed)` is created and shared by every layer, so the seed fixes every initial weight.
+
+      `__call__` feeds the input through each layer in turn, reusing the name `x` for each layer's output. That loop is function composition: f3(f2(f1(x))).
+
+      `parameters()` flattens all layers the same way `Layer` did. The test checks the count: each neuron has one weight per input plus a bias, so 4*(3+1) + 4*(4+1) + 1*(4+1) = 16 + 20 + 5 = **41**. If an AI-written version forgets a bias or a layer, this count is the quickest thing to catch it.
+  - lines: [109, 112]
+    title: The loss is one Value at the top of the graph
+    text: |
+      `preds` runs the model on every example. Then `(p - y) ** 2` builds each squared error, and `sum(..., Value(0.0))` adds them into a single `Value`.
+
+      The explicit start value `Value(0.0)` guarantees the result is a `Value` even for an empty dataset (plain `sum([])` returns the integer `0`, which has no `backward()`). For a nonempty dataset `__radd__` would also handle a start of `0`, but being explicit removes the doubt.
+
+      Because the loss is one node at the top of one graph, `loss.backward()` computes the derivative of the total error with respect to all 41 parameters in a single sweep. This is a sum of squares, not a mean; the scale only changes the effective learning rate.
+  - lines: [115, 126]
+    title: "The training loop: forward, zero, backward, step"
+    text: |
+      Each step rebuilds the graph from scratch (line 119), because the parameter values changed last step.
+
+      Lines 120 and 121 **zero the gradients**. Recall that every backward rule uses `+=`. That is correct within one backward pass, but across steps it means last step's gradient would still be sitting in `p.grad` and get added to. Forgetting this line is the most famous bug in the lecture: the network still sort of trains, so nothing crashes, but each step uses the sum of all past gradients.
+
+      Line 124 is gradient descent: move each parameter a little in the direction that decreases the loss, `p.data -= lr * p.grad`. If a weight's gradient is 0.8 and `lr` is 0.05, it moves by -0.04. It updates `.data` directly, not through `Value` arithmetic, so the update itself isn't recorded in any graph.
+
+      `losses.append(loss.data)` stores a plain float, not the `Value`. Keeping the `Value` would keep the whole graph for every step alive in memory.
+  - lines: [129, 135]
+    title: Run it and read the result
+    text: |
+      Four examples with three features each, and targets of +1 or -1. The network starts with a loss around 6 (predictions near random) and ends near 0.005, with predictions close to `[1, -1, -1, 1]`.
+
+      A low training loss on four examples proves the machinery works, not that the model generalizes: with 41 parameters and 4 data points, it can memorize. Keep that distinction in mind whenever someone reports a training loss as a result.
+review:
+  - id: wt-mlp-zero-after-backward
+    type: code-reading
+    prompt: An AI assistant reorders the loop as below, saying it "clears gradients right after they're used". What happens to the loss over 150 steps?
+    code: |
+      for _ in range(steps):
+          loss = mse_loss(model, xs, ys)
+          loss.backward()
+          for p in model.parameters():
+              p.grad = 0.0
+          for p in model.parameters():
+              p.data -= lr * p.grad
+          losses.append(loss.data)
+    options:
+      - id: a
+        text: It trains normally, since the gradients are still zeroed every step
+        rationale: "They are zeroed, but at the wrong moment: after they are computed and before they are used."
+      - id: b
+        text: The loss never changes, because every update subtracts `lr * 0`
+        correct: true
+        rationale: Right. The gradients are wiped between `backward()` and the update, so no parameter ever moves. The loss list is 150 copies of the first value.
+      - id: c
+        text: The loss grows, because gradients accumulate
+        rationale: Accumulation is the bug when you never zero. Here they are zeroed too eagerly.
+    explanation: Order is the whole content of the training loop. Zeroing must happen before `backward()`, and the update must read the gradients `backward()` just produced. The exercise's "loss should go down" check would catch this one immediately.
+  - id: wt-mlp-param-count
+    type: predict-output
+    prompt: "How many parameters does `MLP(2, [8, 1])` have, that is, what is `len(MLP(2, [8, 1]).parameters())`?"
+    options:
+      - id: a
+        text: "17"
+        rationale: That counts the weights (2*8 + 8*1 = 24) wrongly and leaves out the biases.
+      - id: b
+        text: "24"
+        rationale: That's the weights only. Every neuron also has a bias.
+      - id: c
+        text: "33"
+        correct: true
+        rationale: Yes. The hidden layer has 8 neurons with 2 weights and a bias each (24), and the output neuron has 8 weights and a bias (9). 24 + 9 = 33.
+    explanation: Each neuron contributes (inputs + 1) parameters. Counting parameters by hand is a fast sanity check on any model definition, AI-written or not.
+  - id: wt-mlp-lr-zero-test
+    type: scenario
+    prompt: The hidden tests call `train(probe, ..., steps=1, lr=0.0)` twice and require identical gradients both times. What bug is that test designed to catch?
+    options:
+      - id: a
+        text: A learning rate that is too large
+        rationale: With `lr=0.0` the learning rate can't be the issue. The parameters don't move at all.
+      - id: b
+        text: Gradients that are not zeroed before `backward()`
+        correct: true
+        rationale: Exactly. With no parameter change, the true gradients are the same both times. If they're not zeroed, the second call sees double the first.
+      - id: c
+        text: A random seed that isn't fixed
+        rationale: The model was built once with a seed, and training involves no randomness here.
+    explanation: Setting the learning rate to zero isolates the gradient computation from the update. It's a cheap, targeted test, and the same trick works for debugging real training code.
+direct:
+  task: |
+    You want `train` to support **weight decay** (L2 regularization), a standard way to discourage large weights and reduce overfitting. With decay rate `wd`, each update becomes `p.data -= lr * (p.grad + wd * p.data)`, which is the gradient of loss + (wd / 2) times the sum of squared parameters.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add an optional weight_decay parameter to train (keyword argument, default 0.0). In the update step, use p.data -= lr * (p.grad + weight_decay * p.data). Apply it to every parameter, including biases (note this choice in the docstring).
+
+    Do not change the order of the loop (forward, zero gradients, backward, update), the return value (a list of float losses, one per step), or mse_loss. With weight_decay=0.0, results must be identical to the current code.
+
+    Add test asserts: with weight_decay=0.0 the losses equal those of the current version for seed 1; with weight_decay=0.1 the sum of squared parameters after 150 steps is smaller than with 0.0; and a negative weight_decay raises ValueError.
+  checklist:
+    - The default of 0.0 reproduces the old behavior exactly
+    - Decay is added to the update, not to the loss passed to `backward()` (or, if it is, the gradient is still correct)
+    - Gradients are still zeroed before `backward()`, and the loop order is unchanged
+    - The docstring explains the new parameter and that biases are decayed too
+    - Tests compare against the old behavior and check that decay actually shrinks the weights

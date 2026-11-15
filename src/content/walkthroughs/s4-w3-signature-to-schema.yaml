@@ -1,0 +1,179 @@
+id: s4-w3-signature-to-schema
+summary: |
+  When you write `@mcp.tool()` above a Python function, the SDK reads the function and builds the tool definition the model sees: a name, a description, and a JSON Schema for the inputs. This program is a miniature of that step. It reads the function's type hints, defaults, and docstring and turns them into the same kind of dictionary.
+
+  It's split into a small helper that translates one type hint (`str`, `Literal[...]`, `Optional[...]`) into a schema fragment, and a main function that walks the parameters and decides which are required. Reading it explains two practical rules for writing tools: every parameter needs a type hint, and the first paragraph of your docstring is what the model reads.
+code: |
+  import inspect
+  import types
+  import typing
+  from typing import Literal, Optional
+
+  PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
+
+
+  def _json_type(tp):
+      """Return (json_schema, is_optional) for one type hint."""
+      origin = typing.get_origin(tp)
+      if origin is typing.Union or origin is types.UnionType:
+          # Optional[X] is Union[X, None]: describe X, and remember it was optional.
+          inner = [arg for arg in typing.get_args(tp) if arg is not type(None)]
+          return _json_type(inner[0])[0], True
+      if origin is Literal:
+          return {"type": "string", "enum": list(typing.get_args(tp))}, False
+      return {"type": PY_TO_JSON[tp]}, False
+
+
+  def schema_from_function(fn):
+      """Build an MCP-style tool definition from a function, like MCPServer's decorator does."""
+      hints = typing.get_type_hints(fn)
+      doc = inspect.getdoc(fn) or ""
+      description = doc.split("\n\n")[0].strip()
+
+      properties, required = {}, []
+      for name, param in inspect.signature(fn).parameters.items():
+          if name not in hints:
+              raise TypeError(f"parameter {name!r} has no type hint")
+          prop, optional = _json_type(hints[name])
+          if param.default is not inspect.Parameter.empty:
+              if param.default is not None:
+                  prop["default"] = param.default
+          elif not optional:
+              required.append(name)
+          properties[name] = prop
+
+      return {"name": fn.__name__, "description": description,
+              "inputSchema": {"type": "object", "properties": properties, "required": required}}
+
+
+  def search_issues(query: str, limit: int = 10, status: Optional[Literal["open", "done"]] = None):
+      """Find issues whose title or description contains the query.
+
+      Matching is a case-insensitive substring, not semantic search."""
+
+
+  print(schema_from_function(search_issues))
+notes:
+  - lines: [1, 6]
+    title: Introspection imports and the type table
+    text: |
+      `inspect` and `typing` let a program look at other code: a function's parameters, defaults, docstring, and type hints. This is called **introspection**. `types` is needed for one detail below (the newer `X | None` syntax).
+
+      `PY_TO_JSON` maps Python's basic types to JSON Schema's type names. Notice the keys are the type objects themselves (`str`, not `"str"`); a dictionary can use almost anything as a key.
+  - lines: [9, 18]
+    title: Translating one type hint
+    text: |
+      `typing.get_origin(tp)` answers "what kind of generic type is this?". For `Optional[str]` it's `Union`; for `Literal["open", "done"]` it's `Literal`; for plain `str` it's `None`. `typing.get_args(tp)` gives the parts inside the brackets.
+
+      `Optional[X]` is shorthand for `Union[X, None]`, and the newer spelling `X | None` has origin `types.UnionType`, which is why line 12 checks both. The list comprehension on line 14 removes `NoneType` (that's what `type(None)` is) and keeps `X`. The function then **calls itself** on `X` (recursion) and returns the result together with `True` for "optional".
+
+      `Literal` becomes a string with an `enum`, the list of allowed values. Everything else is looked up in `PY_TO_JSON`.
+
+      The function returns a **tuple** of two things, `(schema, is_optional)`, which the caller **unpacks** into two names. Two limits a reviewer should know: an unsupported hint such as `list[str]` raises `KeyError` here, and `Union[int, str]` would quietly keep only `int`. The real SDK handles both through Pydantic.
+  - lines: [21, 25]
+    title: Name hints and description
+    text: |
+      `typing.get_type_hints(fn)` returns a dictionary from parameter name to type, such as `{"query": str, "limit": int, ...}`. A parameter with no hint is simply absent from it.
+
+      `inspect.getdoc(fn)` returns the docstring with its indentation cleaned up, or `None` if there isn't one; `or ""` turns `None` into an empty string so `.split` always works. Splitting on `"\n\n"` (a blank line) and taking item `[0]` keeps the first paragraph.
+
+      For `search_issues`, the description is "Find issues whose title or description contains the query." The second paragraph, about substring matching, is left out. That's the practical rule: **put what the model most needs in the first paragraph**.
+  - lines: [27, 30]
+    title: Walk the parameters, and refuse untyped ones
+    text: |
+      `properties, required = {}, []` is **multiple assignment**: two new, separate containers in one line.
+
+      `inspect.signature(fn).parameters` is an ordered mapping from name to a `Parameter` object, which carries the default value. `.items()` gives `(name, param)` pairs, so the loop sees parameters in the order they were written.
+
+      A missing hint raises `TypeError` with an f-string naming the parameter (`!r` adds quotes). Failing loudly is the right choice: without a type, the schema would have nothing to validate against, and the model would have nothing to go on. An AI-written version might default unknown types to `"string"`, which hides the mistake until a model sends text to a function expecting a number.
+  - lines: [31, 37]
+    title: Required, optional, and defaults
+    text: |
+      Each parameter gets its schema fragment from the helper. Then three cases:
+
+      - **Has a default** (`param.default` is not the special marker `inspect.Parameter.empty`): it's optional. The default is recorded in the schema, except `None`, which only means "not given".
+      - **No default and not Optional**: it's required.
+      - **No default but Optional**: neither, so it's optional with no recorded default.
+
+      For `search_issues`: `query` is required; `limit` gets `"default": 10`; `status` is optional with an enum and no default recorded. So `required` is `["query"]`.
+
+      Line 34 adds a key to the dictionary the helper returned. That's safe only because `_json_type` builds a fresh dictionary on every call. If it returned a shared dictionary from a table, one tool's default would leak into every other parameter of that type, which is a classic aliasing bug to look for in review.
+  - lines: [39, 40]
+    title: The tool definition
+    text: |
+      The result has the three fields a `tools/list` response reports for each tool. `fn.__name__` is the function's own name, so renaming the Python function renames the tool the model sees. That's convenient, but it means a rename is a breaking change for anything that calls the tool by name.
+  - lines: [43, 49]
+    title: An example tool
+    text: |
+      `search_issues` has a body that is only a docstring, which is valid Python (it returns `None`). It exists to be described.
+
+      The signature shows all three cases: `query: str` (required), `limit: int = 10` (a default), and `status: Optional[Literal["open", "done"]] = None` (an optional enum). Press **Run this code** to see the schema it produces.
+review:
+  - id: wt-schema-default-none
+    type: code-reading
+    prompt: An AI assistant simplifies lines 32 to 36 to the version below. What changes in the output for `search_issues`?
+    code: |
+      if param.default is inspect.Parameter.empty:
+          required.append(name)
+      else:
+          prop["default"] = param.default
+    options:
+      - id: a
+        text: Nothing; it's an equivalent rewrite
+        rationale: Two behaviors changed. Look at what happens to `status` and to an Optional parameter with no default.
+      - id: b
+        text: '`status` now gets `"default": None`, and an Optional parameter with no default would become required'
+        correct: true
+        rationale: Right. The rewrite dropped both the "None is not a real default" rule and the "Optional is never required" rule.
+      - id: c
+        text: '`limit` is no longer recorded with its default'
+        rationale: '`limit` still has a non-empty default, so it still gets `"default": 10`.'
+    explanation: Shorter branching often loses edge cases. The tests here only cover `status` with a default of `None`, so the "Optional with no default" regression would slip through unless you add a test for it.
+  - id: wt-schema-first-paragraph
+    type: predict-output
+    prompt: |
+      A tool's docstring, as `inspect.getdoc` returns it, is `"Close an issue.\nOnly done issues can be closed.\n\nReturns the updated issue."` What description does the model see?
+    options:
+      - id: a
+        text: Just "Close an issue."
+        rationale: The split is on a blank line, not on a single line break.
+      - id: b
+        text: 'Both lines before the blank line: "Close an issue." and "Only done issues can be closed."'
+        correct: true
+        rationale: Yes. Both lines are in the first paragraph, which ends at the blank line.
+      - id: c
+        text: All three lines
+        rationale: The part after the blank line is a second paragraph and is dropped.
+    explanation: This is why a tool's key constraints belong in its opening paragraph, written for the model. Anything after the first blank line is invisible to it in this scheme.
+  - id: wt-schema-untyped-raise
+    type: scenario
+    prompt: Why does `schema_from_function` raise `TypeError` for an untyped parameter instead of treating it as a string?
+    options:
+      - id: a
+        text: Python can't call functions with untyped parameters
+        rationale: It can; type hints are optional in Python.
+      - id: b
+        text: So the mistake surfaces when the tool is defined, instead of later when the model sends the wrong kind of value
+        correct: true
+        rationale: Exactly. An unvalidated parameter gives the model no guidance and lets bad input through to your code.
+      - id: c
+        text: JSON Schema doesn't allow string types
+        rationale: It does; "string" is a basic JSON Schema type.
+    explanation: Fail at definition time, not at call time. When you review a tool server, check every parameter has a specific type (an enum beats a free string when the values are known).
+direct:
+  task: |
+    You want tools to carry per-parameter descriptions for the model. Support `Annotated[X, "description text"]`: the schema for that parameter should be X's schema plus a `"description"` key.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Extend _json_type in this file to support typing.Annotated. For Annotated[X, "some text"], produce X's schema plus "description": "some text" (use the first string in the metadata; ignore non-string metadata). Annotated may wrap Optional or Literal, for example Annotated[Optional[str], "..."]; the optional flag must still come through.
+
+    Note that typing.get_type_hints strips Annotated unless you call it with include_extras=True, so change that call too.
+
+    Do not change anything else: required/default rules, the first-paragraph description, the TypeError for untyped parameters. Add tests for: Annotated[str, "..."], Annotated[Optional[int], "..."] (optional, not required), Annotated with a Literal, and the existing search_issues output unchanged.
+  checklist:
+    - get_type_hints is called with include_extras=True, or descriptions silently disappear
+    - The optional flag passes through Annotated so Annotated[Optional[X], ...] is never required
+    - Plain hints produce exactly the same schema as before
+    - The description is added to a fresh dictionary, not a shared one
+    - New tests cover each Annotated case, and the existing tests still pass

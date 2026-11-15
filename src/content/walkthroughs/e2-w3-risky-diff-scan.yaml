@@ -1,0 +1,211 @@
+id: e2-w3-risky-diff-scan
+summary: |
+  This program reads a unified diff and flags the patterns a reviewer should look at first in an agent's change: files outside the spec's scope, new dependencies, edits to the agent's own configuration, removed safeguards, swallowed errors, dangerous calls, and strings that look like secrets. It returns sorted, de-duplicated `(path, kind)` pairs.
+
+  It doesn't approve or reject anything; it routes attention. The design follows from that: the rules are lists of strings at the top (easy to read and tune), findings are collected in a set (so one file with three dangerous lines is still one finding to look at), and every check is a plain substring test that you can predict by reading. Expect false positives, and remember what it can't see at all: a subtle logic error.
+code: |
+  DEP_FILES = ("requirements.txt", "pyproject.toml", "package.json", "poetry.lock", "package-lock.json", "uv.lock")
+  CONFIG_PREFIXES = (".github/workflows/", ".claude/", ".mcp.json")
+  SAFEGUARD_WORDS = ("raise ", "assert ", "permission", "authorize", "is_authenticated", "expire", "validate")
+  DANGER_ADDED = ("shell=True", "eval(", "verify=False", "rm -rf", "chmod 777")
+  SECRET_MARKERS = ("AKIA", "sk-", "BEGIN PRIVATE KEY", "ghp_")
+
+
+  def scan(diff_text, allowed_paths):
+      """Return sorted, de-duplicated (path, kind) findings for a unified diff.
+
+      allowed_paths: the files the spec says may change. Kinds: out-of-scope, dependency,
+      agent-config (file level); removed-safeguard, swallowed-error, dangerous-call,
+      possible-secret (line level). Lines of a deleted file ("+++ /dev/null") are skipped.
+      """
+      findings, path = set(), None
+      lines = diff_text.splitlines()
+      for i, line in enumerate(lines):
+          if line.startswith("+++ "):
+              target = line[4:].strip()
+              if target == "/dev/null":
+                  path = None  # a deleted file
+                  continue
+              path = target[2:] if target.startswith("b/") else target
+              if path not in allowed_paths:
+                  findings.add((path, "out-of-scope"))
+              if path.split("/")[-1] in DEP_FILES:
+                  findings.add((path, "dependency"))
+              if path.startswith(CONFIG_PREFIXES):
+                  findings.add((path, "agent-config"))
+              continue
+
+          if path is None or line.startswith("---"):
+              continue
+          if line.startswith("-"):
+              if any(word in line for word in SAFEGUARD_WORDS):
+                  findings.add((path, "removed-safeguard"))
+          elif line.startswith("+"):
+              text = line[1:]
+              s = text.strip()
+              if any(d in text for d in DANGER_ADDED):
+                  findings.add((path, "dangerous-call"))
+              if any(m in text for m in SECRET_MARKERS):
+                  findings.add((path, "possible-secret"))
+              if s == "except:" or s.startswith("except Exception"):
+                  nxt = lines[i + 1] if i + 1 < len(lines) else ""
+                  if nxt.startswith("+") and nxt[1:].strip() == "pass":
+                      findings.add((path, "swallowed-error"))
+      return sorted(findings)
+
+
+  DIFF = """--- a/pricing.py
+  +++ b/pricing.py
+  @@ -60,8 +60,6 @@
+  -    if expires is not None and today > expires:
+  -        raise PricingError(f"promo code {code!r} expired")
+       return promo["percent"]
+  --- a/requirements.txt
+  +++ b/requirements.txt
+  @@ -1 +1,2 @@
+   pytest
+  +fastround==0.1.2
+  --- a/utils/net.py
+  +++ b/utils/net.py
+  @@ -3,3 +3,6 @@
+  +    try:
+  +        resp = requests.get(url, verify=False)
+  +    except Exception:
+  +        pass
+  --- a/.claude/settings.json
+  +++ b/.claude/settings.json
+  @@ -2,1 +2,1 @@
+  -    "deny": ["Edit(/tests/**)"]
+  +    "deny": []
+  """
+  for f in scan(DIFF, allowed_paths={"pricing.py"}):
+      print(f)
+notes:
+  - lines: [1, 5]
+    title: The rules, as five tuples of strings
+    text: |
+      Each **tuple** is one category of risk. Keeping them as data at the top means a reviewer can audit the policy without reading any logic, and a team can tune it (add `"Cargo.toml"`, drop `"assert "`) in one place.
+
+      Note the trailing spaces in `"raise "` and `"assert "`. They're deliberate: they stop `raise` from matching inside a word like `raised_amount`. Small details like this are exactly what an assistant "tidying up" the list might strip.
+  - lines: [8, 17]
+    title: A set for findings, one pass over the lines
+    text: |
+      `findings` is a **set**, so adding the same `(path, kind)` twice keeps one copy. That's the de-duplication the spec asks for, for free. `path` tracks which file the current lines belong to.
+
+      `enumerate(lines)` gives each line with its index; the index is needed later to peek at the next line.
+  - lines: [18, 23]
+    title: File headers, including deleted files
+    text: |
+      A line starting with `+++ ` names the file the following lines belong to. `line[4:]` drops the four-character prefix.
+
+      For a deleted file, the target is `/dev/null`. The code sets `path = None` and skips ahead, which means the deleted file's removed lines are ignored by the `path is None` check below. That matches the spec, but it's a real gap: deleting a whole file that contained safeguards produces no finding at all, not even out-of-scope. The second review question explores it.
+
+      Line 23 is a **conditional expression**: strip the `b/` prefix git adds if it's there, otherwise use the target as is. Slicing (`[2:]`) removes exactly two characters, which is what you want here.
+  - lines: [24, 30]
+    title: File-level checks
+    text: |
+      Three checks run once per file:
+
+      - `path not in allowed_paths`: anything the spec didn't list is out of scope. `allowed_paths` is a set, so the lookup is fast.
+      - `path.split("/")[-1] in DEP_FILES`: compare the file *name* (last component), so `services/api/package.json` counts too.
+      - `path.startswith(CONFIG_PREFIXES)`: **str.startswith accepts a tuple** and returns true if any prefix matches. `.mcp.json` works as a "prefix" because it's the whole file name at the repo root.
+
+      The `continue` on line 30 ends processing of the header line. An agent editing `.claude/settings.json` gets flagged even when the edit looks harmless, because an agent loosening its own guardrails is a decision a person should make.
+  - lines: [32, 36]
+    title: Removed lines that look like safeguards
+    text: |
+      Lines before the first header, and `---` headers themselves, are skipped. Then for removed lines, `any(word in line for word in SAFEGUARD_WORDS)` is a **generator expression** inside `any`: true if any safeguard word appears in the line.
+
+      In the sample, the deleted expiry check (`if expires is not None and today > expires:`) contains `expire`, so `pricing.py` gets `removed-safeguard`. This is the most important finding in the sample: the promo fix "worked" by deleting a business rule.
+
+      Expect false positives. Moving a `raise` into a helper function shows up as a removed `raise`. The finding means "look here", not "this is wrong".
+  - lines: [37, 43]
+    title: Added lines that look dangerous
+    text: |
+      For added lines, `line[1:]` drops the `+`. Two substring checks follow, each independent (two `if`s, not `if`/`elif`), so one line can be both a dangerous call and a secret.
+
+      In the sample, `requests.get(url, verify=False)` disables TLS certificate checking, which makes the connection open to interception. Markers like `sk-` and `AKIA` are prefixes of common API key formats; a hit is "possibly a secret", and the right response is to check, and to rotate the key if it's real.
+  - lines: [44, 48]
+    title: Swallowed errors need two lines
+    text: |
+      `except Exception:` followed by `pass` catches every error and throws it away, so failures become silent wrong results. Detecting it needs two lines, so the code peeks at `lines[i + 1]`, with a **conditional expression** guarding the end of the list.
+
+      The check requires both lines to be *added*. An existing `pass` that happens to follow a newly added `except` line (a context line, starting with a space) doesn't count. `sorted(findings)` turns the set into a list ordered by path, then kind.
+  - lines: [51, 76]
+    title: The sample diff and its findings
+    text: |
+      The sample is the lab's ticket done badly. With `allowed_paths={"pricing.py"}`, the output is:
+
+      - `.claude/settings.json`: `agent-config`, `out-of-scope` (it emptied its own deny list)
+      - `pricing.py`: `removed-safeguard`
+      - `requirements.txt`: `dependency`, `out-of-scope`
+      - `utils/net.py`: `dangerous-call`, `out-of-scope`, `swallowed-error`
+
+      Every one of these needs a person to look. None of them proves the change is wrong, and a change with no findings can still be wrong: if the agent had miscalculated the discount, this scan would print nothing. That's what tests and careful reading are for.
+review:
+  - id: wt-risky-lstrip
+    type: code-reading
+    prompt: "An AI assistant replaces line 23 with `path = target.lstrip(\"b/\")`. The sample still passes every check. What path does it record for the header `+++ b/billing/models.py`?"
+    code: |
+      path = target.lstrip("b/")
+    options:
+      - id: a
+        text: "`billing/models.py`"
+        rationale: That's what the author meant. But `lstrip` doesn't remove a prefix; it removes any leading characters that are in the set {"b", "/"}.
+      - id: b
+        text: "`illing/models.py`"
+        correct: true
+        rationale: Right. `lstrip("b/")` strips "b", "/", and then the "b" of "billing". The file would be reported out of scope even if `billing/models.py` was allowed, and a path check against it would never match.
+      - id: c
+        text: "`models.py`"
+        rationale: "`lstrip` stops at the first character not in the set, which is the \"i\"."
+    explanation: "`str.lstrip(chars)` strips a set of characters, not a prefix; `str.removeprefix(\"b/\")` (Python 3.9+) or a slice after a `startswith` check is what you want. The sample's paths happen not to start with \"b\", which is how a bug like this passes the tests."
+  - id: wt-risky-deleted
+    type: predict-output
+    prompt: "What does `scan(\"--- a/auth.py\\n+++ /dev/null\\n@@ -1,2 +0,0 @@\\n-    if not user.is_authenticated:\\n-        raise PermissionError\\n\", allowed_paths={\"pricing.py\"})` return?"
+    options:
+      - id: a
+        text: "`[(\"auth.py\", \"out-of-scope\"), (\"auth.py\", \"removed-safeguard\")]`"
+        rationale: That's what you'd want. But the header is `+++ /dev/null`, so `path` becomes None, and every following line is skipped.
+      - id: b
+        text: "`[]`"
+        correct: true
+        rationale: Right. Deleting an entire authentication module produces no findings at all. The scan only sees files through their `+++` header, and a deleted file doesn't have a useful one.
+      - id: c
+        text: "`[(\"/dev/null\", \"out-of-scope\")]`"
+        rationale: The code checks for `/dev/null` before the scope check and skips it.
+    explanation: Know the blind spots of every automated check you rely on. A deleted file is one of the most dangerous changes an agent can make, and this scan is silent on it. The fix is to read the path from the `--- a/` line when the target is `/dev/null`.
+  - id: wt-risky-route
+    type: scenario
+    prompt: Your CI runs this scan on every agent pull request. What's the best way to use its output?
+    options:
+      - id: a
+        text: Fail the build on any finding, so nothing risky can merge
+        rationale: With this many false positives (a refactored `raise`, a legitimate dependency bump), people will learn to override the failure without reading it.
+      - id: b
+        text: Post the findings as review comments and require a person to acknowledge the high-risk kinds before merging
+        correct: true
+        rationale: Right. It routes attention to the lines that matter and leaves the judgment to a reviewer. You might hard-block a few kinds (like `agent-config` or `possible-secret`) where a false positive is cheap to clear.
+      - id: c
+        text: Skip human review when the scan finds nothing
+        rationale: A clean scan says nothing about logic errors, which are the most common kind of wrong change.
+    explanation: Automated checks are most useful when their output is proportionate to their precision. A noisy check that blocks everything gets ignored; a quiet one that's treated as approval gives false confidence.
+direct:
+  task: |
+    Specs rarely list every file; they say "anything under `src/pricing/`". Make `allowed_paths` accept glob patterns such as `src/pricing/*.py`, while exact file names keep working.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In scan, let allowed_paths contain glob patterns as well as exact paths. A changed file is in scope if it equals an entry or matches one with fnmatch.fnmatchcase (from the standard library fnmatch module; use the case-sensitive version so behavior doesn't depend on the operating system). Add the import at the top.
+
+    Note that in fnmatch, "*" also matches "/", so "src/*.py" matches "src/a/b.py". Document that in the docstring rather than changing it.
+
+    Don't change any other check, the finding kinds, the de-duplication, or the output order. Exact paths must behave exactly as before.
+
+    Add asserts: with allowed_paths={"src/pricing/*.py"}, a change to src/pricing/tax.py is not out-of-scope and a change to src/billing/tax.py is; with allowed_paths={"pricing.py"}, the sample DIFF gives exactly the same findings as before.
+  checklist:
+    - Uses the standard library (fnmatch), with no new dependency
+    - Exact paths in allowed_paths behave exactly as before
+    - Only the out-of-scope check changed; the other six kinds are untouched
+    - The docstring explains glob support and the "*" matches "/" behavior
+    - New asserts cover a matching pattern, a non-matching one, and the unchanged sample

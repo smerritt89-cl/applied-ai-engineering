@@ -1,0 +1,184 @@
+id: s3-w2-pairwise-swap
+summary: |
+  This program processes the verdicts of an LLM judge that compared two systems, X (a new prompt) and Y (the old one), on eight inputs. Each comparison was judged twice with the answers in swapped positions, because LLM judges tend to favor whichever answer they see first. The code translates each verdict from "slot A or B" into "system X or Y", applies the swap rule (a win counts only if both orders agree), and reports three numbers: how often the judge was consistent, how strongly it favored the first slot, and X's corrected win rate.
+
+  The design keeps one small translation function, `to_system`, at the center. Every other function goes through it, so the tricky part (which system was in which slot) is written exactly once. That is also the line to read most carefully when an AI edits this code.
+code: |
+  # Each record is one comparison of system X (new prompt) against system Y (old prompt), judged twice:
+  #   "xy": the judge's answer when X was shown as "A" and Y as "B"
+  #   "yx": the judge's answer when Y was shown as "A" and X as "B"
+  # Answers are "A", "B", or "tie" (the label of the slot it preferred).
+  RECORDS = [
+      {"id": 1, "xy": "A", "yx": "B"},    # X both times
+      {"id": 2, "xy": "A", "yx": "A"},    # whichever came first: inconsistent
+      {"id": 3, "xy": "B", "yx": "A"},    # Y both times
+      {"id": 4, "xy": "A", "yx": "B"},
+      {"id": 5, "xy": "tie", "yx": "tie"},
+      {"id": 6, "xy": "A", "yx": "A"},
+      {"id": 7, "xy": "B", "yx": "B"},    # whichever came second: inconsistent
+      {"id": 8, "xy": "A", "yx": "tie"},
+  ]
+
+
+  def to_system(answer, order):
+      """Map a slot answer to a system. order is "xy" or "yx". Return "X", "Y", or "tie"."""
+      if answer == "tie":
+          return "tie"
+      first, second = ("X", "Y") if order == "xy" else ("Y", "X")
+      return first if answer == "A" else second
+
+
+  def resolve(record):
+      """Final result for one comparison: "X" or "Y" only if both orders prefer the same system,
+      otherwise "tie" (this is the swap rule from Zheng et al., 2023)."""
+      a = to_system(record["xy"], "xy")
+      b = to_system(record["yx"], "yx")
+      return a if a == b and a != "tie" else "tie"
+
+
+  def position_consistency(records):
+      """Fraction of records where both orders map to the same system (counting tie == tie as consistent)."""
+      same = sum(to_system(r["xy"], "xy") == to_system(r["yx"], "yx") for r in records)
+      return same / len(records)
+
+
+  def first_slot_rate(records):
+      """Among all non-tie raw answers (two per record), the fraction that chose slot "A".
+      An unbiased judge comparing equally good systems would be near 0.5."""
+      answers = [r[order] for r in records for order in ("xy", "yx") if r[order] != "tie"]
+      return sum(a == "A" for a in answers) / len(answers)
+
+
+  def win_rate(records):
+      """X's win rate after resolve(): (wins + 0.5 * ties) / number of records."""
+      results = [resolve(r) for r in records]
+      return (results.count("X") + 0.5 * results.count("tie")) / len(records)
+
+
+  print([resolve(r) for r in RECORDS])
+  print(position_consistency(RECORDS), first_slot_rate(RECORDS), win_rate(RECORDS))
+notes:
+  - lines: [1, 4]
+    title: The data format, documented in comments
+    text: |
+      The judge never sees the names X and Y. It sees two answers labeled "A" and "B" and says which slot it prefers. So the same verdict "A" means "X won" in one order and "Y won" in the other.
+
+      These comment lines are the key to reading everything below. When data has a subtle encoding like this, writing it down at the top is the single most useful comment you can leave.
+  - lines: [5, 15]
+    title: Eight recorded comparisons
+    text: |
+      Each record has an `id` and the two raw verdicts. The trailing comments decode a few:
+
+      - Record 1: `xy` says A (that's X), `yx` says B (also X). Consistent, X wins.
+      - Record 2: A both times, which means X the first time and Y the second. The judge simply picked whatever came first.
+      - Record 8: X in one order, a tie in the other. Not consistent, so it won't count as a win.
+
+      With raw slot labels side by side, it's easy to misread record 2 as "A agreed with A". That confusion is exactly what the next function exists to remove.
+  - lines: [16, 22]
+    title: to_system, the one translation step
+    text: |
+      A tie is a tie in either order, so it returns early.
+
+      `first, second = ("X", "Y") if order == "xy" else ("Y", "X")` combines a **conditional expression** with **tuple unpacking**: it picks one of two pairs, then assigns the pair's two items to `first` and `second`. In plain words: "in xy order, slot A holds X and slot B holds Y; in yx order it's the other way round".
+
+      The last line returns whichever system sat in the chosen slot. So `to_system("A", "xy")` is `"X"` and `to_system("A", "yx")` is `"Y"`.
+  - lines: [23, 30]
+    title: resolve, the swap rule
+    text: |
+      Translate both verdicts into systems, then accept a winner only if they agree **and** aren't both ties. Anything else (disagreement, or a win in one order and a tie in the other) becomes a tie.
+
+      This is a conservative rule: it would rather call a real win a tie than credit a win the judge only gave because of position. The docstring cites where it comes from (Zheng et al., 2023, the MT-Bench paper), which tells a reviewer it's a known method, not an invention.
+
+      The `a != "tie"` part looks redundant, since a tie-tie would return `"tie"` either way. It's there to make the intent explicit: a tie is never a "win" for anybody.
+  - lines: [31, 36]
+    title: position_consistency
+    text: |
+      `sum(... for r in records)` adds up a **generator expression** of Booleans. In Python, `True` counts as 1 and `False` as 0, so summing comparisons is a compact way to count how many are true.
+
+      A record is consistent when both orders map to the same result, and per the docstring a tie in both orders counts. Records 1, 3, 4, and 5 qualify, so the result is 4 / 8 = 0.5. Half the time, swapping the order changed the verdict. That alone tells you the raw single-order numbers can't be trusted.
+  - lines: [37, 43]
+    title: first_slot_rate, measuring the bias directly
+    text: |
+      This **list comprehension** has two `for` clauses, which read left to right like nested loops: for each record, for each of its two orders, keep the raw answer if it isn't a tie. That gives 13 answers (eight records times two, minus three ties).
+
+      Eight of the 13 chose slot A, so the rate is 8 / 13, about 0.62. The docstring gives the baseline: a judge with no position preference, comparing systems of equal quality, would land near 0.5. Note that this function deliberately works on raw slot labels, not systems, because slot preference is what it's measuring.
+
+      One edge to watch: if every answer were a tie, `len(answers)` would be 0 and this would raise `ZeroDivisionError`. For a real harness, decide what that case should return.
+  - lines: [44, 49]
+    title: win_rate, after the swap rule
+    text: |
+      Resolve every record, then count: `results.count("X")` uses **list.count**, which counts matching items. Ties count as half a win, which is the usual convention for pairwise win rates.
+
+      Worked value: two X wins, one Y win, five ties, so (2 + 0.5 times 5) / 8 = 4.5 / 8 = 0.5625. If you had run the judge in only the xy order and counted "A" as a win for X, you'd have reported 5 / 8 = 0.625. The difference is the position bias, credited to the new prompt.
+  - lines: [50, 53]
+    title: The printout
+    text: |
+      The first line shows each record's resolved result, so you can spot-check the swap rule by eye. The second prints the three summary numbers. When you report a pairwise eval, report all three: a win rate without the consistency figure hides how much of it might be position.
+review:
+  - id: wt-swap-ignore-order
+    type: code-reading
+    prompt: An AI assistant "simplifies" `to_system` to the version below. Which records does `resolve` now count as wins for X?
+    code: |
+      def to_system(answer, order):
+          if answer == "tie":
+              return "tie"
+          return "X" if answer == "A" else "Y"
+    options:
+      - id: a
+        text: Records 1 and 4, the same as before
+        rationale: Those now resolve to ties, because their two verdicts (A then B) map to X then Y.
+      - id: b
+        text: Records 2 and 6
+        correct: true
+        rationale: "Right. Ignoring the order, A-then-A becomes X-then-X, so the two records where the judge just picked the first slot become X's wins. Records 1 and 4, the real wins, become ties."
+      - id: c
+        text: None, everything becomes a tie
+        rationale: "Records 2 and 6 now agree (X, X), and record 7 agrees on Y."
+    explanation: "The trap here is that the headline win rate is still 0.5625 (two X wins, one Y win, five ties), so a check on the final number alone wouldn't catch it. The function now rewards exactly the inconsistent verdicts the swap was meant to discard. When reviewing, test the translation step on its own: `to_system(\"A\", \"yx\")` must be `\"Y\"`."
+  - id: wt-swap-naive
+    type: predict-output
+    prompt: A teammate skips the swap and reports X's win rate as the fraction of records where the `xy` verdict was `"A"`. What number do they report, and why is it higher than 0.5625?
+    options:
+      - id: a
+        text: 0.625, because this judge favors slot A and X always sat in slot A
+        correct: true
+        rationale: "Right. Records 1, 2, 4, 6, and 8 say A in xy order: 5 of 8. Some of those are position, not quality."
+      - id: b
+        text: 0.5, because the systems are about equal
+        rationale: The xy verdicts alone are tilted toward A, so they don't come out even.
+      - id: c
+        text: 0.5625, the same, because the swap doesn't change anything
+        rationale: The swap turns records 2, 6, and 8 from X wins into ties.
+    explanation: With a judge that prefers slot A, putting the new system in slot A every time inflates its win rate. Running both orders is the check, and its cost is one extra judge call per comparison.
+  - id: wt-swap-design
+    type: scenario
+    prompt: Why does the code route every function through `to_system` instead of comparing `record["xy"]` and `record["yx"]` directly?
+    options:
+      - id: a
+        text: Because comparing raw slot labels gives the wrong answer, and keeping the translation in one place means it can only be wrong in one place
+        correct: true
+        rationale: Exactly. "A" and "A" means X then Y, a disagreement. One small, tested function prevents that mistake everywhere it would otherwise be repeated.
+      - id: b
+        text: Because Python can't compare strings from different keys
+        rationale: It can; the comparison would just mean the wrong thing.
+      - id: c
+        text: To make the code run faster
+        rationale: Speed isn't the point; it adds a function call.
+    explanation: When a piece of logic is easy to get backwards, give it a name, test it directly, and call it everywhere. The one exception, `first_slot_rate`, uses raw labels on purpose, because it measures slots rather than systems.
+direct:
+  task: |
+    Your team wants a stricter consistency figure: ties in both orders shouldn't count as "consistent", since a judge that always says "tie" would otherwise look perfectly consistent. You also want `first_slot_rate` to return `None` instead of crashing when every answer is a tie.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function decisive_consistency(records): the fraction of records where both orders map to the same system AND that system is not "tie". Use to_system for the mapping. Keep position_consistency exactly as it is (tie == tie still counts there), so both figures are available.
+
+    Change first_slot_rate to return None when there are no non-tie answers, instead of dividing by zero. Do not change its result otherwise.
+
+    Do not change to_system, resolve, or win_rate. Add asserts that decisive_consistency(RECORDS) == 3 / 8 (records 1, 3, and 4), that position_consistency(RECORDS) is still 0.5, and that first_slot_rate([{"id": 1, "xy": "tie", "yx": "tie"}]) is None. Print the new figure on the summary line.
+  checklist:
+    - to_system, resolve, and win_rate are unchanged
+    - position_consistency still counts tie-tie as consistent (0.5 on this data)
+    - decisive_consistency uses to_system rather than raw slot labels, and gives 3 / 8
+    - first_slot_rate returns None only when there are no non-tie answers
+    - New asserts cover both functions, and the original checks still pass

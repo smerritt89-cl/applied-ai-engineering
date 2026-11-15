@@ -1,0 +1,173 @@
+id: s3-w4-ci-gate
+summary: |
+  This program is the decision rule at the end of an eval harness: given the baseline's per-question scores, the candidate's scores on the same questions, and the results of a few must-pass regression cases, should the change ship? It returns one of three answers. **block** when a regression case failed or the candidate is clearly worse; **review** when the data can't rule out a drop bigger than the team tolerates, so a person should look; **pass** otherwise. Every answer comes with its reasons.
+
+  The statistics come from a paired bootstrap over questions, the same idea as lesson 7, so the interval reflects how much the result could move with a different sample of questions. The three-way outcome is the design point: a hard gate on a noisy metric either blocks good changes or lets bad ones through, while a "review" band sends the uncertain cases to a human.
+code: |
+  import random
+
+
+  def paired_diff_ci(baseline, candidate, n_resamples=2000, seed=0):
+      """baseline and candidate: dicts question_id -> score, over the SAME questions.
+      Return (mean_diff, lo, hi): the mean of candidate minus baseline per question, and a 95%
+      percentile bootstrap interval from resampling question ids (sorted, with random.Random(seed)).
+      Raise ValueError if the question ids differ."""
+      if set(baseline) != set(candidate):
+          raise ValueError("compare on the same questions")
+      ids = sorted(baseline)
+      diffs = [candidate[q] - baseline[q] for q in ids]
+      n = len(diffs)
+      mean_diff = sum(diffs) / n
+
+      rng = random.Random(seed)
+      means = sorted(sum(rng.choices(diffs, k=n)) / n for _ in range(n_resamples))
+      lo = means[int(0.025 * (n_resamples - 1))]
+      hi = means[int(0.975 * (n_resamples - 1))]
+      return mean_diff, lo, hi
+
+
+  def gate(baseline, candidate, regression_results, tolerance=0.02, seed=0):
+      """Return ("block" | "review" | "pass", reasons).
+        block:  any regression case failed (reason "regression failed: <id>", one per failure, sorted by id)
+                or hi < 0 (reason "clear drop")
+        review: otherwise, if lo < -tolerance (reason "possible drop beyond tolerance")
+        pass:   otherwise (reasons empty)"""
+      failed = sorted(case_id for case_id, ok in regression_results.items() if not ok)
+      mean_diff, lo, hi = paired_diff_ci(baseline, candidate, seed=seed)
+
+      reasons = [f"regression failed: {case_id}" for case_id in failed]
+      if hi < 0:
+          reasons.append("clear drop")
+      if reasons:
+          return "block", reasons
+      if lo < -tolerance:
+          return "review", ["possible drop beyond tolerance"]
+      return "pass", []
+
+
+  base = {f"q{i}": 1.0 if i % 4 else 0.0 for i in range(40)}
+  cand = dict(base, q1=0.0, q2=0.0, q4=1.0)
+  print(paired_diff_ci(base, cand))
+  print(gate(base, cand, {"reg-1": True, "reg-2": True}))
+notes:
+  - lines: [1, 8]
+    title: The interval function's contract
+    text: |
+      One import, `random`, for the seeded resampling. The docstring states three requirements a reviewer should check against the code: the two dicts cover the same questions, resampling is by question (paired), and it's reproducible (sorted ids, seeded generator).
+  - lines: [9, 14]
+    title: Validate, then compute paired differences
+    text: |
+      `set(baseline) != set(candidate)` compares the question ids. If a question is missing from one run, the comparison would quietly be over different sets, so it raises `ValueError` instead.
+
+      `ids = sorted(baseline)` fixes the order. `sorted` on a dict sorts its keys. Without sorting, the order of `diffs` would depend on how the dicts were built, and the same seed could give different resamples.
+
+      Each entry of `diffs` is the candidate's score minus the baseline's on one question: +1 for a fix, minus 1 for a break, 0 for no change. In the demo candidate, q1 and q2 break and q4 is fixed, so `mean_diff` is (minus 2 + 1) / 40 = minus 0.025.
+  - lines: [15, 21]
+    title: The bootstrap in one line
+    text: |
+      `rng.choices(diffs, k=n)` draws `n` differences **with replacement**. Because each difference already pairs the two systems on one question, resampling differences is the same as resampling question ids: the pairing is built in.
+
+      The **generator expression** inside `sorted(...)` computes one resampled mean per round, 2,000 times, and sorts them. The 2.5th and 97.5th percentiles are read by position (index 49 and 1,949 here). Lesson 7's version reads the low end at `int(alpha / 2 * n_boot)`, which is index 50, while this one uses `int(0.025 * (n_resamples - 1))`, which is 49. With 2,000 resamples one position doesn't matter, but a reviewer should notice when two functions in one codebase disagree on a convention.
+
+      For the demo candidate the interval is about (minus 0.10, 0.05): it straddles zero.
+  - lines: [22, 31]
+    title: The gate's rules and its inputs
+    text: |
+      The docstring lists the three outcomes in priority order, with their exact reason strings. That ordering is the policy: regressions and clear drops are checked before the "review" band.
+
+      `failed` uses a **generator expression with a filter** to collect the ids of regression cases that didn't pass, and `sorted` makes the reasons come out in a stable order (r1 before r2) no matter how the dict was built.
+
+      `mean_diff, lo, hi = paired_diff_ci(...)` **unpacks** the returned tuple. `mean_diff` isn't used in the decision; only the interval ends are. That's deliberate: the mean alone can't tell a real drop from noise.
+  - lines: [32, 36]
+    title: Block on hard failures
+    text: |
+      One reason per failed regression case, then "clear drop" if the whole interval is below zero (`hi < 0`), meaning even the optimistic end shows the candidate is worse.
+
+      `if reasons:` is true when the list has anything in it. Both kinds of failure are collected before returning, so a run that fails a regression case **and** drops clearly reports both. Regression failures block even when the metric improves: a candidate that fixes 10 questions but breaks a must-pass case does not ship.
+  - lines: [37, 39]
+    title: Review the uncertain middle, pass the rest
+    text: |
+      If nothing blocked, check the pessimistic end. `lo < -tolerance` means the data are consistent with a drop bigger than 2 points, but haven't shown one. That's a "review": a person reads the questions that changed and decides.
+
+      For the demo candidate, `lo` is about minus 0.10, well below minus 0.02, so it's a review. With only 40 questions, intervals are wide, and many honest changes will land here. That's the cost of a small eval set, and the gate makes it visible instead of hiding it.
+  - lines: [40, 45]
+    title: The demo
+    text: |
+      The baseline scores 1.0 on every question except multiples of 4 (`1.0 if i % 4 else 0.0`, since `i % 4` is 0 and therefore falsy for those). `dict(base, q1=0.0, q2=0.0, q4=1.0)` copies the baseline and overrides three entries with **keyword arguments**, a compact way to build a variant without changing the original.
+
+      It prints the interval, then the gate's decision: `('review', ['possible drop beyond tolerance'])`.
+review:
+  - id: wt-ci-gate-order
+    type: code-reading
+    prompt: An AI assistant "streamlines" `gate` so it checks the review band first, as below. The noisy demo candidate is run again, but this time regression case `reg-2` fails. What does the gate return?
+    code: |
+      def gate(baseline, candidate, regression_results, tolerance=0.02, seed=0):
+          mean_diff, lo, hi = paired_diff_ci(baseline, candidate, seed=seed)
+          if lo < -tolerance:
+              return "review", ["possible drop beyond tolerance"]
+          failed = sorted(c for c, ok in regression_results.items() if not ok)
+          reasons = [f"regression failed: {c}" for c in failed]
+          if hi < 0:
+              reasons.append("clear drop")
+          if reasons:
+              return "block", reasons
+          return "pass", []
+    options:
+      - id: a
+        text: "`(\"block\", [\"regression failed: reg-2\"])`, the same as the original"
+        rationale: The review check now runs first and returns before the regression results are even looked at.
+      - id: b
+        text: "`(\"review\", [\"possible drop beyond tolerance\"])`"
+        correct: true
+        rationale: "Right. `lo` is about minus 0.10, so it returns \"review\" immediately. A failed must-pass case is downgraded to a judgment call, and the reason list doesn't even mention it."
+      - id: c
+        text: "`(\"pass\", [])`"
+        rationale: The review band still catches the noisy drop; it's the regression that gets lost.
+    explanation: In a multi-outcome gate, the order of the checks is the policy. Early returns make that order easy to get wrong in a refactor. When reviewing, test a case that triggers two rules at once and confirm the stricter one wins.
+  - id: wt-ci-gate-tolerance
+    type: predict-output
+    prompt: "What does `gate(base, cand, {\"reg-1\": True}, tolerance=0.15)` return for the demo candidate (interval about minus 0.10 to 0.05)?"
+    options:
+      - id: a
+        text: "`(\"pass\", [])`"
+        correct: true
+        rationale: "Right. No regressions failed, `hi` isn't below zero, and `lo` (about minus 0.10) is above minus 0.15."
+      - id: b
+        text: "`(\"review\", [\"possible drop beyond tolerance\"])`"
+        rationale: That's the result at the default tolerance of 0.02.
+      - id: c
+        text: "`(\"block\", [\"clear drop\"])`"
+        rationale: The interval includes zero, so this isn't a clear drop.
+    explanation: Tolerance is a product decision about how much loss is acceptable. Loosening it to make a red build green is a change worth questioning in review; the right fix for too many reviews is usually more questions, not a looser tolerance.
+  - id: wt-ci-gate-why-review
+    type: scenario
+    prompt: Why have a "review" outcome at all, instead of blocking whenever `lo < -tolerance`?
+    options:
+      - id: a
+        text: Because with a small eval set, many harmless changes have wide intervals, and hard-blocking all of them trains the team to bypass the gate
+        correct: true
+        rationale: Exactly. "Review" sends uncertain cases to a person who can read the changed answers, and keeps hard blocks for clear problems.
+      - id: b
+        text: Because the bootstrap can't compute intervals below zero
+        rationale: It can; `hi < 0` is exactly that case.
+      - id: c
+        text: Because regression cases need a human to grade them
+        rationale: Regression results arrive as True or False; they block on their own.
+    explanation: A gate's job is to make the right action cheap. Clear failures stop the build, clear passes ship, and the ambiguous middle gets human attention, which is where it's worth spending.
+direct:
+  task: |
+    Reviewers keep asking which questions changed when the gate says "review". Add the ids of questions the candidate broke (score went down) to the review reason, so the person knows where to start reading.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In gate, when the result is "review", make the reasons list ["possible drop beyond tolerance", "broke: <ids>"] where <ids> is a comma-separated list of question ids whose candidate score is lower than the baseline score, sorted by the number after "q" (so q2 comes before q10). If no question went down, omit the second reason.
+
+    Do not change the "block" or "pass" results or their reasons, the order of the checks (regressions and clear drop before review), the tolerance logic, or paired_diff_ci.
+
+    Update the docstring. Add asserts that the demo candidate returns ("review", ["possible drop beyond tolerance", "broke: q1, q2"]), and that the existing block and pass cases give exactly the results they gave before.
+  checklist:
+    - The block and pass outcomes and their reason strings are unchanged
+    - Regressions and clear drops are still checked before the review band
+    - The broken-question list compares candidate to baseline per question, not the means
+    - Sorting is numeric, as asked, and an empty list adds no reason
+    - New asserts cover the new reason, and the original checks still pass

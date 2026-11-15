@@ -1,0 +1,187 @@
+id: s1-w2-fewshot-selector
+summary: |
+  This program picks few-shot examples for a prompt. It keeps a pool of labeled status updates, scores each one by how many words it shares with the incoming update, and returns the best `k` examples, with one guarantee: every label gets at least one example before any label gets a second. Then it formats the chosen examples in `<examples>` tags, ready to paste into a prompt.
+
+  The guarantee is the point. Research in the lesson found that models learn the **set of possible labels** and the answer format from examples more than the individual pairings. If the examples you pick happen to be all "blocked", the model sees only one label and over-predicts it. So the selection runs in two passes: first cover the labels, then fill the remaining slots by similarity.
+code: |
+  POOL = [
+      {"text": "Vendor API is down and we cannot test payments", "label": "blocked"},
+      {"text": "Design review done, build starts Monday as planned", "label": "on_track"},
+      {"text": "QA found 14 bugs, launch may slip a week", "label": "at_risk"},
+      {"text": "Waiting on legal approval before we can send the contract", "label": "blocked"},
+      {"text": "Sprint goals met, demo scheduled for Friday", "label": "on_track"},
+      {"text": "Two engineers out sick, payments work is behind", "label": "at_risk"},
+  ]
+
+
+  def similarity(a, b):
+      """Number of distinct lowercase words (split on whitespace) shared by a and b."""
+      return len(set(a.lower().split()) & set(b.lower().split()))
+
+
+  def select_examples(pool, query, k):
+      """Return k examples from pool for this query.
+
+      1. Rank the pool by similarity to the query, highest first; break ties by pool order.
+      2. Walk the ranking and take the first example of each label not yet chosen.
+      3. Then fill any remaining slots from the ranking, skipping ones already chosen.
+      4. Return the first k chosen, in the order chosen.
+      """
+      # Rank positions (0, 1, 2, ...) rather than the examples themselves:
+      # a position doubles as the tie-breaker and is easy to compare later.
+      ranked = sorted(
+          range(len(pool)),
+          key=lambda i: (-similarity(pool[i]["text"], query), i),
+      )
+
+      chosen = []
+      labels_seen = set()
+      for i in ranked:  # pass 1: the best-matching example of each label
+          label = pool[i]["label"]
+          if label not in labels_seen:
+              chosen.append(i)
+              labels_seen.add(label)
+
+      for i in ranked:  # pass 2: fill the rest, most similar first
+          if i not in chosen:
+              chosen.append(i)
+
+      return [pool[i] for i in chosen[:k]]
+
+
+  def format_examples(examples):
+      """Wrap each example as <example><update>TEXT</update><label>LABEL</label></example>
+      and the whole list in <examples>...</examples>, with no extra whitespace."""
+      body = "".join(
+          f"<example><update>{e['text']}</update><label>{e['label']}</label></example>"
+          for e in examples
+      )
+      return f"<examples>{body}</examples>"
+
+
+  chosen = select_examples(POOL, "payments vendor API timeout", 3)
+  if chosen:
+      print([e["label"] for e in chosen])
+      print(format_examples(chosen))
+notes:
+  - lines: [1, 8]
+    title: The example pool, a list of dicts
+    text: |
+      `POOL` is a **list** (square brackets) of **dicts** (curly braces). Each dict has the same two keys, `"text"` and `"label"`, so you can read `POOL[0]["label"]` and get `"blocked"`. A list of same-shaped dicts is the most common way to hold small labeled data in Python, and it's exactly what you'd load from a JSON file.
+
+      Look at the pool the way you'd look at a test set: two examples per label, a mix of lengths, and no shared opening phrase. That variety is deliberate. If every example started with "Status:", the model's answers would tend to copy it (the lesson calls this **format leakage**).
+  - lines: [11, 13]
+    title: A crude similarity score using sets
+    text: |
+      Read the return line from the inside out. `a.lower().split()` lowercases the text and splits it on whitespace into a list of words. `set(...)` turns that list into a **set**: an unordered collection with no duplicates. `&` between two sets is **intersection**, the words they have in common, and `len` counts them.
+
+      Worked value: the query `"payments vendor API timeout"` shares `vendor`, `api`, and `payments` with the first pool entry, so the score is 3. It shares only `payments` with the last entry, so that scores 1. Everything else scores 0.
+
+      This is deliberately crude. Punctuation sticks to words (`"blocked."` and `"blocked"` don't match), and synonyms count for nothing. Studio 2 swaps in embeddings. Keeping similarity in its own small function is what makes that swap a one-function change.
+  - lines: [16, 23]
+    title: The selection rules, written down first
+    text: |
+      `select_examples` takes the pool, the new update (`query`), and how many examples you want (`k`). The docstring lists the four rules as numbered steps. That's worth copying in your own specs: a rule like "ties by pool order" is the kind of detail that, left unstated, an AI assistant will decide for you, and the tests will then disagree with it.
+  - lines: [24, 29]
+    title: Ranking with sorted, key=, and a lambda
+    text: |
+      `sorted(...)` returns a new sorted list. Here it sorts `range(len(pool))`, the positions 0 through 5, rather than the dicts. The comment says why: a position is a cheap, unique handle that also serves as the tie-breaker.
+
+      `key=` tells `sorted` what to compare. `lambda i: ...` is a **lambda**, a one-line function with no name: "given a position `i`, return this value." The value is a **tuple**, `(-score, i)`. Python compares tuples item by item, so it sorts by the first item and only looks at the second to break a tie. Negating the score turns the normal low-to-high sort into highest-similarity-first.
+
+      For the demo query the keys are `(-3, 0)`, `(0, 1)`, `(0, 2)`, `(0, 3)`, `(0, 4)`, `(-1, 5)`, so the ranking is `[0, 5, 1, 2, 3, 4]`.
+  - lines: [31, 37]
+    title: Pass 1, one example per label
+    text: |
+      `chosen` collects positions in the order they're picked. `labels_seen` is a set used as a quick "have I already got one of these?" check; `label not in labels_seen` is fast and reads like English.
+
+      Walking `[0, 5, 1, 2, 3, 4]`: position 0 is blocked (new, take it), 5 is at_risk (new, take it), 1 is on_track (new, take it), and the rest are labels already seen. After this pass, `chosen` is `[0, 5, 1]`. Each label is represented by its best match, in the order of how well it matched.
+  - lines: [39, 43]
+    title: Pass 2, fill by similarity, then trim to k
+    text: |
+      The second loop walks the same ranking and adds every position not already chosen, giving `[0, 5, 1, 2, 3, 4]`. Then `chosen[:k]` is a **slice**: the first `k` items. With `k=3` you get the three label-covering picks; with `k=4` the fourth is position 2, "QA found 14 bugs", the first leftover in ranking order.
+
+      The final line is a **list comprehension** that turns positions back into the example dicts.
+
+      If `k` is smaller than the number of labels, the slice simply cuts off the weakest labels. That's a real limitation worth knowing: with `k=2` and three labels, one label is missing from the prompt. A careful reviewer would ask whether the caller should be warned, or whether `k` should never go below the label count.
+  - lines: [46, 53]
+    title: Formatting with a generator and join
+    text: |
+      `"".join(...)` glues a sequence of strings together with nothing between them. The thing inside the parentheses, `f"..." for e in examples`, is a **generator expression**: like a list comprehension without the square brackets, producing one formatted string per example on demand.
+
+      Each piece is an **f-string**. Note the quotes: the f-string uses double quotes, so the dict keys inside it use single quotes (`e['text']`). Mixing them up is a syntax error in older Python versions.
+
+      The result is `<examples><example><update>...</update><label>blocked</label></example>...</examples>`, the structure the lesson recommends. One thing this function does not do is escape the text. That's fine for a pool you wrote yourself; if the pool were built from user submissions, you'd run each value through an escape function like the one in lesson 4.
+  - lines: [56, 59]
+    title: The demo, guarded
+    text: |
+      `if chosen:` checks that the function returned a non-empty list before printing (while you're still writing it, it returns `None`, and `None` counts as false). Run it and you'll see `['blocked', 'at_risk', 'on_track']`, then the formatted block.
+review:
+  - id: wt-fewshot-naive-topk
+    type: code-reading
+    prompt: An AI assistant "simplifies" `select_examples` to the version below. For the query `"waiting on vendor API approval"` with `k=3`, which labels come back?
+    code: |
+      def select_examples(pool, query, k):
+          ranked = sorted(pool, key=lambda e: -similarity(e["text"], query))
+          return ranked[:k]
+    options:
+      - id: a
+        text: '`["blocked", "on_track", "at_risk"]`, all three labels'
+        rationale: That's what the two-pass version returns. This version has no label-coverage step.
+      - id: b
+        text: '`["blocked", "blocked", "on_track"]`, with no at_risk example'
+        correct: true
+        rationale: Right. Both blocked examples score highest (3 and 2), and the rest tie at 0, so the stable sort fills the last slot with the first remaining entry, an on_track. The model never sees at_risk.
+      - id: c
+        text: It raises an error because dicts can't be sorted
+        rationale: '`sorted` with a `key=` compares the keys (numbers), not the dicts, so it works.'
+    explanation: The simplified version returns the most similar examples, which sounds right and even passes the demo query. It fails exactly when similar inputs share a label, which is common in real data. When you review a "simplification", check which stated rule (here, rule 2) it quietly dropped.
+  - id: wt-fewshot-why-cover
+    type: scenario
+    prompt: Why does the code guarantee one example of every label before adding a second example of any label?
+    options:
+      - id: a
+        text: Models mostly ignore examples, so the choice doesn't matter much
+        rationale: The research says the opposite about labels and format. Models lean heavily on examples for which labels exist and how to answer.
+      - id: b
+        text: Examples show the model which labels exist. A label missing from the examples is one the model is less likely to predict
+        correct: true
+        rationale: Exactly. Min and colleagues found that the label set and format shown in examples matter more than the exact pairings, so coverage is the property to protect.
+      - id: c
+        text: It makes the prompt shorter
+        rationale: The number of examples is fixed by `k` either way.
+    explanation: Few-shot examples act as a template. Balance the labels, vary the surface features, and treat the example pool with the same care as a test set.
+  - id: wt-fewshot-punctuation
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      print(similarity("Launch is blocked.", "blocked by vendor"))
+    options:
+      - id: a
+        text: '`1`'
+        rationale: It would be 1 if punctuation were stripped. `split()` keeps the period, so the word is `"blocked."`.
+      - id: b
+        text: '`0`'
+        correct: true
+        rationale: Right. After lowercasing and splitting, the words are `launch`, `is`, `blocked.` and `blocked`, `by`, `vendor`. No exact matches.
+      - id: c
+        text: '`2`'
+        rationale: Only one word could plausibly match, and even that one doesn't.
+    explanation: Word overlap is a crude measure, which is why it lives in its own small function. When an AI writes a similarity helper, test it on inputs with punctuation and capital letters, the way real status updates look.
+direct:
+  task: |
+    You're going to evaluate the classifier on a test set, and some test updates also sit in the example pool. If the exact update being classified is offered as its own example, the model just copies the answer, and your accuracy number is inflated.
+
+    Write the prompt you'd give a coding assistant to make `select_examples` skip examples that match the query.
+  prompt: |
+    In select_examples, exclude any pool example whose text is the same as the query, ignoring case and leading or trailing whitespace. Exclude it before ranking, so it can't be chosen in either pass.
+
+    Do not change similarity or format_examples, and keep all four existing rules (ranking, ties by pool order, label coverage first, then fill by similarity). If excluding leaves fewer than k examples, return what's left rather than raising.
+
+    Update the docstring with the new rule. Add test asserts for: a query identical to a pool text never returns that text; the same query in different case is also excluded; label coverage still holds for the remaining examples; and the existing tests still pass.
+  checklist:
+    - The exclusion compares normalized text (case and surrounding whitespace), not object identity
+    - Excluded examples can't sneak back in through pass 2
+    - Ranking, tie-breaking, and label coverage behave exactly as before for non-matching queries
+    - similarity and format_examples are untouched
+    - The docstring names the new rule, and new tests cover exact and case-different matches

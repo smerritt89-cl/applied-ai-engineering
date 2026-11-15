@@ -2,6 +2,17 @@
 
 **Goes with:** Studio 4, week 2, lessons 4 and 5. **Time:** about 75 minutes.
 
+## Review track
+
+Reading and directing code is the default way through this lab (see `labs/README.md`):
+
+1. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from
+   VS Code's Testing panel.
+2. Do [CHANGE.md](CHANGE.md): have a coding assistant add a tool-error budget to `work.py`, review
+   the change, and check it with `pytest studio-4/02-research-agent/test_change.py -q`.
+
+The write track (implementing `starter.py` yourself) is the Goal and Steps below.
+
 ## Goal
 
 Build a small research agent the way you would before letting one near real work: two

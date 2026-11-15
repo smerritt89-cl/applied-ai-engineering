@@ -1,0 +1,209 @@
+id: e2-w3-test-tamper-scan
+summary: |
+  This program scans a unified diff (the text `git diff` prints) for the ways an agent can make failing tests "pass" without fixing anything: deleting an assert, deleting a whole test, adding a skip, or changing the expected value in an assert. It only looks at test files, and reports each finding as `(path, kind, line)` in diff order, so a reviewer can jump straight to the suspicious lines.
+
+  The structure is a single pass over the diff lines with one piece of state, the current file path, plus two small helpers that name the two judgment calls (is this a test file? is this pair of lines a changed expectation?). It uses a `while` loop with a manual index instead of a `for` loop because one finding, the changed expectation, consumes two lines at once.
+code: |
+  def _is_test_file(path):
+      """A test file lives under tests/ or has a name starting with test_."""
+      return "tests/" in path or path.split("/")[-1].startswith("test_")
+
+
+  def _is_changed_expected(old, new):
+      """True if two assert lines compare the same thing with == but expect a different value."""
+      if "==" not in old or "==" not in new:
+          return False
+      left_old, right_old = old.split("==", 1)
+      left_new, right_new = new.split("==", 1)
+      return left_old.strip() == left_new.strip() and right_old.strip() != right_new.strip()
+
+
+  def tamper_findings(diff_text):
+      """Scan a unified diff and report risky changes to TEST files as (path, kind, line_text)."""
+      findings, path = [], None
+      lines = diff_text.splitlines()
+      i = 0
+      while i < len(lines):
+          line = lines[i]
+          if line.startswith("+++ b/"):
+              path = line[6:].strip()  # the file the following lines belong to
+          elif line.startswith(("---", "diff ")) or path is None or not _is_test_file(path):
+              pass  # headers, and anything outside test files, are not this scan's business
+          elif line.startswith("-"):
+              text = line[1:]
+              s = text.strip()
+              if s.startswith("def test_"):
+                  findings.append((path, "removed-test", text))
+              elif s.startswith("assert"):
+                  nxt = lines[i + 1] if i + 1 < len(lines) else ""
+                  added = nxt[1:].strip()
+                  if nxt.startswith("+") and not nxt.startswith("+++") and added.startswith("assert") \
+                          and _is_changed_expected(s, added):
+                      findings.append((path, "changed-expected", nxt[1:]))
+                      i += 2  # the added line is part of this finding; skip it
+                      continue
+                  findings.append((path, "removed-assert", text))
+          elif line.startswith("+"):
+              text = line[1:]
+              if "pytest.mark.skip" in text or "pytest.skip(" in text or "xfail" in text:
+                  findings.append((path, "added-skip", text))
+          i += 1
+      return findings
+
+
+  DIFF = """diff --git a/pricing.py b/pricing.py
+  --- a/pricing.py
+  +++ b/pricing.py
+  @@ -40,3 +40,3 @@
+  -    return int(round(amount_cents * percent / 100))
+  +    return (amount_cents * percent + 50) // 100
+  diff --git a/tests/test_pricing.py b/tests/test_pricing.py
+  --- a/tests/test_pricing.py
+  +++ b/tests/test_pricing.py
+  @@ -20,6 +20,7 @@
+   def test_bulk_discount_starts_at_ten_units():
+  -    assert line_total_cents(LineItem("PEN", 10, 100)) == 950
+  +    assert line_total_cents(LineItem("PEN", 10, 100)) == 1000
+  @@ -30,4 +31,5 @@
+  +@pytest.mark.skip(reason="flaky")
+   def test_promo_code_is_case_insensitive_and_trimmed():
+  @@ -60,5 +62,2 @@
+  -def test_rejects_negative_price():
+  -    with pytest.raises(PricingError):
+  -        assert line_total_cents(LineItem("PEN", 1, -5))
+  """
+  for f in tamper_findings(DIFF):
+      print(f)
+notes:
+  - lines: [1, 3]
+    title: What counts as a test file
+    text: |
+      A one-line helper that names a judgment call. `path.split("/")[-1]` takes the last path component, the file name (index `-1` means "last item"). So `tests/test_pricing.py` and `app/test_utils.py` count; `pricing.py` doesn't.
+
+      Pulling this into a named function means the rule lives in one place. If your repo keeps tests in `spec/` or names them `*_test.py`, you change one line and the whole scan follows. An AI-written version often inlines a check like this in several places, and then a later edit updates only one of them.
+  - lines: [6, 12]
+    title: Is this a changed expectation?
+    text: |
+      `old.split("==", 1)` splits at the **first** `==` only (the `1` is the maximum number of splits) and returns two parts, which **tuple unpacking** assigns to `left_old, right_old`. For the sample, the left side is `assert line_total_cents(LineItem("PEN", 10, 100))` in both lines and the right sides are `950` and `1000`.
+
+      Same left side, different right side: the code under test didn't change, but the expected answer did. That's the signature of an agent editing a test to match buggy output.
+
+      The early `return False` when either line lacks `==` avoids a `ValueError` from unpacking a one-item list. Guard first, then do the work: a pattern worth looking for in review.
+  - lines: [15, 19]
+    title: State, and why this is a while loop
+    text: |
+      `findings, path = [], None` sets up the output list and the current file. `path` stays `None` until the first `+++ b/` header, so stray lines before any file header are ignored.
+
+      `i = 0` and `while i < len(lines):` step through the lines by index. A `for` loop would always move forward exactly one line, but a changed expectation spans two lines (the removed assert and the added one), and the scan needs to skip the second so it isn't processed again. A manual index makes that possible.
+  - lines: [20, 25]
+    title: Track the current file; skip what doesn't matter
+    text: |
+      `+++ b/tests/test_pricing.py` says "the lines that follow belong to this file", so `line[6:]` (everything after the six-character prefix) becomes the current path.
+
+      The `elif` on line 24 bundles every reason to ignore a line: diff headers (`str.startswith` accepts a **tuple** of prefixes), lines before any file, and lines in non-test files. `pass` is Python's "do nothing" statement; the line then falls through to `i += 1` at the bottom.
+
+      Order matters here. The `---` header check has to run before the generic `-` branch below, or `--- a/tests/test_pricing.py` would look like a removed line.
+  - lines: [26, 30]
+    title: Removed lines, and removed tests
+    text: |
+      For a removed line, `line[1:]` drops the leading `-`, and `.strip()` removes the indentation so the checks can use `startswith`. The finding keeps the unstripped `text`, so the reviewer sees the line as it was.
+
+      A removed `def test_` line means a whole test was deleted. In the sample, `test_rejects_negative_price` disappears, along with its body.
+  - lines: [31, 39]
+    title: Removed asserts, and the pairing check
+    text: |
+      For a removed assert, the code peeks at the next line. `lines[i + 1] if i + 1 < len(lines) else ""` is a **conditional expression** that avoids an `IndexError` on the last line.
+
+      The long `if` (continued onto the next line with a trailing **backslash**) asks: is the next line an added assert, and do the two form a changed expectation? If so, it records the *added* line, moves the index past both lines, and `continue`s to the next loop iteration, skipping the `i += 1` at the bottom.
+
+      Otherwise it's a plain removed assert. In the sample, `assert line_total_cents(LineItem("PEN", 1, -5))` is reported this way: it was deleted along with its test, and the next line is the end of the diff.
+  - lines: [40, 45]
+    title: Added skips, and moving on
+    text: |
+      For an added line, three markers count as a skip: `pytest.mark.skip` (which also covers `skipif`, since it's a substring), `pytest.skip(` (the call form), and `xfail` (expected failure, which makes a failing test count as fine).
+
+      The sample's `@pytest.mark.skip(reason="flaky")` is the classic case: a test that would fail is silenced with a plausible reason. "Flaky" might even be true, which is exactly why a person, not the agent, should decide.
+
+      `i += 1` advances to the next line, and `findings` comes back in diff order.
+  - lines: [48, 70]
+    title: The sample diff
+    text: |
+      A triple-quoted string holding a realistic bad outcome: a correct rounding fix in `pricing.py`, bundled with three ways of hiding the remaining failures. Running the program prints four findings, all for `tests/test_pricing.py`:
+
+      - `changed-expected` for the line ending `== 1000`
+      - `added-skip` for the skip decorator
+      - `removed-test` for `def test_rejects_negative_price():`
+      - `removed-assert` for the assert inside it
+
+      Nothing is reported for `pricing.py`. That's not because the change there is fine to skip in review; it's because this scan has one job. Lesson 8's scan looks at application code.
+review:
+  - id: wt-tamper-fallthrough
+    type: code-reading
+    prompt: An AI assistant tidies the removed-assert branch into the version below, dropping the `i += 2` and `continue`. What does the scan report for the sample's first test-file change now?
+    code: |
+      elif s.startswith("assert"):
+          nxt = lines[i + 1] if i + 1 < len(lines) else ""
+          added = nxt[1:].strip()
+          if nxt.startswith("+") and not nxt.startswith("+++") and added.startswith("assert") \
+                  and _is_changed_expected(s, added):
+              findings.append((path, "changed-expected", nxt[1:]))
+          findings.append((path, "removed-assert", text))
+    options:
+      - id: a
+        text: Just `changed-expected`, as before
+        rationale: Without `continue`, the code keeps going and reaches the `removed-assert` line too.
+      - id: b
+        text: Both `changed-expected` and `removed-assert` for the same pair
+        correct: true
+        rationale: Right. The pair is reported twice, and the exercise's check on the exact list of kinds fails. (The added line is also visited again on the next pass, though it adds nothing new here.)
+      - id: c
+        text: It crashes with IndexError on the next line
+        rationale: The index still only moves forward by one, and the bounds check on `nxt` prevents an IndexError.
+    explanation: In loops with a manual index, `continue` and the index update are load-bearing. A "cleanup" that removes them changes what gets counted. Read control flow changes line by line, even when the diff looks cosmetic.
+  - id: wt-tamper-weakened
+    type: predict-output
+    prompt: "An agent changes `-    assert total == 950` to `+    assert total >= 900`. What does the scan report for that pair?"
+    options:
+      - id: a
+        text: "`changed-expected`"
+        rationale: That kind needs `==` on both lines. The new line has no `==`, so `_is_changed_expected` returns False.
+      - id: b
+        text: "`removed-assert`, for the old line"
+        correct: true
+        rationale: Right. The pairing fails, so the old assert is reported as removed. The weakening is still flagged, just under a less specific kind.
+      - id: c
+        text: Nothing, because an assert was added back
+        rationale: The scan doesn't treat an added assert as cancelling a removed one; only an exact changed-expected pair is merged.
+    explanation: Heuristics have edges. This one still routes your attention to the right line, which is its job, but the kind label is less precise. A reviewer reading the finding should look at both lines.
+  - id: wt-tamper-scope
+    type: scenario
+    prompt: Why does the scan ignore removed asserts in application code such as `app.py`?
+    options:
+      - id: a
+        text: Because asserts in application code never matter
+        rationale: They can matter a lot; an assert can be a safeguard. They're just a different signal.
+      - id: b
+        text: Because this scan answers one question (did the agent weaken the tests?) and application changes are reviewed by a different check
+        correct: true
+        rationale: Right. A focused scan produces fewer false positives, so people keep paying attention to it. Lesson 8's scanner covers removed safeguards in application code.
+      - id: c
+        text: Because git diff doesn't show application code
+        rationale: It shows every changed file; the scan filters them.
+    explanation: Small, single-purpose checks are easier to trust and to tune. When one check tries to catch everything, its findings get ignored.
+direct:
+  task: |
+    Deleting a whole test file is the bluntest way to hide failures, and this scan mishandles it: a deleted file's header is `+++ /dev/null`, which never sets `path`, so its removed lines are either ignored or attributed to the previous file. Make the scan report deleted test files.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In tamper_findings, handle deleted files. A deleted file appears as "--- a/<path>" followed by "+++ /dev/null". When you see "+++ /dev/null", take the path from the preceding "--- a/" line; if it's a test file (use _is_test_file), append one finding (path, "deleted-test-file", "") and do not report the individual removed lines of that file. Non-test deleted files produce no findings.
+
+    Make sure lines after a deleted file are never attributed to the previous file's path. Don't change the existing four kinds or their order in the sample's output, and don't change _is_test_file or _is_changed_expected.
+
+    Update the docstring. Add asserts: deleting tests/test_old.py (with removed asserts and a removed def test_) gives exactly [("tests/test_old.py", "deleted-test-file", "")]; deleting app/old.py gives []; a diff that changes tests/test_a.py and then deletes tests/test_b.py reports each under its own path; and tamper_findings(DIFF) is unchanged.
+  checklist:
+    - A deleted test file produces exactly one finding, with the path from the `--- a/` line
+    - Removed lines of a deleted file are not also reported one by one
+    - Lines after `+++ /dev/null` are never attributed to the previous file
+    - The sample DIFF still gives the same four findings in the same order
+    - The helpers are unchanged, and new asserts cover test and non-test deletions

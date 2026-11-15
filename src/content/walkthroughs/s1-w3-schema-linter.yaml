@@ -1,0 +1,234 @@
+id: s1-w3-schema-linter
+summary: |
+  This program checks a hand-written JSON Schema before you send it to Claude's structured outputs feature. It walks every node in the schema and reports three kinds of problem the lesson describes: an object that isn't closed with `additionalProperties: false`, a keyword the API schema doesn't support (such as `minLength` or `minimum`), and objects nested deeper than a limit. Each message starts with a path like `$.meta.source.speaker`, so you can find the node at once.
+
+  The core is a small **recursive** function: it handles one node, then calls itself on each child. That shape fits the data, because a schema is a tree of nested dictionaries of unknown depth. The linter collects every problem instead of stopping at the first, which is what you want from a check that runs in your test suite: one run, the full list.
+code: |
+  UNSUPPORTED = ("minLength", "maxLength", "minimum", "maximum", "multipleOf")
+
+
+  def lint_schema(schema, max_depth=3):
+      """Return a list of problems in a JSON Schema meant for Claude structured outputs.
+
+      Rules (one message per problem, each starting with the node's path):
+        1. Every object node must set additionalProperties to False.
+        2. No node may use a keyword in UNSUPPORTED.
+        3. No object may be nested more than max_depth objects deep (the root is depth 1).
+      Paths: the root is "$"; a property adds ".name"; array items add "[]";
+      the i-th anyOf branch adds "|i".
+      """
+      problems = []
+
+      def walk(node, path, depth):
+          if not isinstance(node, dict):
+              return
+          if node.get("type") == "object" or "properties" in node:
+              depth += 1
+              if node.get("additionalProperties") is not False:
+                  problems.append(f"{path}: additionalProperties must be false")
+              if depth > max_depth:
+                  problems.append(f"{path}: objects nested more than {max_depth} deep")
+          for kw in UNSUPPORTED:
+              if kw in node:
+                  problems.append(f"{path}: {kw} is not supported in the API schema; enforce it in your validator")
+          for name, sub in node.get("properties", {}).items():
+              walk(sub, f"{path}.{name}", depth)
+          if "items" in node:
+              walk(node["items"], f"{path}[]", depth)
+          for i, sub in enumerate(node.get("anyOf", [])):
+              walk(sub, f"{path}|{i}", depth)
+
+      walk(schema, "$", 0)
+      return problems
+
+
+  GOOD = {
+      "type": "object",
+      "properties": {
+          "items": {
+              "type": "array",
+              "items": {
+                  "type": "object",
+                  "properties": {
+                      "task": {"type": "string", "description": "What will be done"},
+                      "owner": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                  },
+                  "required": ["task", "owner"],
+                  "additionalProperties": False,
+              },
+          }
+      },
+      "required": ["items"],
+      "additionalProperties": False,
+  }
+
+  BAD = {
+      "type": "object",
+      "properties": {
+          "task": {"type": "string", "minLength": 1},
+          "hours": {"type": "integer", "minimum": 0},
+          "meta": {
+              "type": "object",
+              "properties": {
+                  "source": {
+                      "type": "object",
+                      "properties": {
+                          "speaker": {
+                              "type": "object",
+                              "properties": {"name": {"type": "string"}},
+                              "additionalProperties": False,
+                          }
+                      },
+                      "additionalProperties": False,
+                  }
+              },
+              "additionalProperties": False,
+          },
+      },
+      "required": ["task"],
+  }
+
+  print("GOOD:", lint_schema(GOOD))
+  for p in lint_schema(BAD):
+      print("BAD: ", p)
+notes:
+  - lines: [1, 1]
+    title: The banned keywords, as a tuple
+    text: |
+      `UNSUPPORTED` is a **tuple**: a fixed, ordered sequence written with parentheses. A tuple can't be changed after it's created, which signals "this is a constant", and the capital-letter name is Python's convention for the same idea.
+
+      These five keywords are numeric and length bounds. The lesson explains why they're listed: the API's schema subset leaves them out, and Anthropic's SDK helpers move such constraints into the field description and check them when validating the response. A hand-written schema sent straight to the API gets no such help, so the linter's message tells you where the rule belongs instead: in your own validator.
+  - lines: [4, 14]
+    title: The contract, and where results collect
+    text: |
+      The docstring is the spec: three rules, the exact message for each, and the path notation. A precise docstring like this is what lets someone (or an AI assistant) change the function later without guessing what the output must look like. The path format matters because the tests look for messages that start with specific paths.
+
+      `max_depth=3` is a **default argument**: callers can omit it, or pass a different limit for a provider with other rules.
+
+      `problems = []` creates the one list every recursive call will append to. It lives in `lint_schema`, outside the helper below, so all levels of the walk share it.
+  - lines: [16, 18]
+    title: A nested helper that guards its input
+    text: |
+      `def walk(node, path, depth):` is defined **inside** `lint_schema`. A nested function can read variables from the function around it; this is called a **closure**. That's how `walk` reaches `problems` without having it passed in. Calling `problems.append(...)` changes the list in place, which a closure may do freely (only reassigning the name, as in `problems = ...`, would need the `nonlocal` keyword).
+
+      `walk` carries three things down the tree: the current `node` (a dict), its `path` as a string, and the `depth`, meaning how many objects enclose it so far.
+
+      `isinstance(node, dict)` checks the node's type. Schemas sometimes contain non-dict values in places the walker reaches (for example `"items": true` is legal JSON Schema), and this guard makes the function skip them instead of crashing on `.get`.
+  - lines: [19, 24]
+    title: Rules 1 and 3, for object nodes only
+    text: |
+      A node counts as an object if its `type` is `"object"` **or** it has `properties`. The second test catches schemas that leave out `type`, which JSON Schema allows. `node.get("type")` is **dict.get**: it returns `None` for a missing key instead of raising `KeyError`, which matters because many nodes (like an `anyOf` wrapper) have no `type` at all.
+
+      `depth += 1` happens only here, so only objects count toward the depth limit; arrays and strings don't. Worked value for `BAD`: the root becomes depth 1, `meta` 2, `source` 3, and `speaker` 4, which exceeds 3 and is flagged.
+
+      `is not False` is deliberate. A missing key gives `None`, and `None is not False`, so an open object is flagged. The test also flags any other value, such as `true` or `{}`, which the API doesn't accept for this keyword either. A tempting shortcut, `if not node.get("additionalProperties")`, gets this backwards: `not False` is `True`, so it would flag every correctly closed object and let `true` through. `is not False` says exactly "anything except the literal false".
+  - lines: [25, 27]
+    title: Rule 2, on every node
+    text: |
+      This loop runs for every node, objects or not, because bounds usually sit on strings and numbers. `kw in node` tests whether the dict has that key.
+
+      The f-string `f"{path}: {kw} is not supported..."` puts the path first, matching the docstring, so a reviewer can scan the output and jump to each offending field.
+  - lines: [28, 33]
+    title: Recursing into children, extending the path
+    text: |
+      This is where the walk goes deeper. A schema hides child schemas in three places, and each gets its own path suffix:
+
+      - `properties`: `.items()` gives each `(name, sub)` pair, and the child's path is `path + "." + name`, for example `$.meta`. The `{}` default in `node.get("properties", {})` means a node without properties produces an empty loop rather than an error.
+      - `items` (the schema for each element of an array): the child's path gets `[]`, as in `$.rows[]`.
+      - `anyOf` (a list of alternatives, often "a string or null"): `enumerate` yields each branch with its position `i`, giving paths like `$|0` and `$|1`.
+
+      Every recursive call passes the **current** `depth`, already increased if this node was an object. That's what makes depth mean "objects above me".
+
+      Two of the exercise's tests exist because these branches are easy to forget: a walker that only follows `properties` misses an open object inside an array, or inside one arm of an `anyOf`. When you review AI-written tree-walking code, list every place a child can hide and check each is visited.
+  - lines: [35, 36]
+    title: Start the walk at the root
+    text: |
+      `walk(schema, "$", 0)` starts at the root with path `"$"` (the conventional symbol for "the whole document") and depth 0. The root object then raises the depth to 1 on its first step, which matches the docstring's "the root object is depth 1".
+
+      When the walk finishes, every problem from every level is in `problems`, and the function returns it. An empty list means the schema is clean.
+  - lines: [39, 87]
+    title: One clean schema, one with four problems
+    text: |
+      `GOOD` is a list of action items: the root object holds an array, whose items are closed objects with a `task` string and a nullable `owner` (written as `anyOf` string or null). It produces no problems.
+
+      `BAD` is built to trip each rule once, plus one extra:
+
+      - The root has no `additionalProperties` (rule 1, path `$`).
+      - `task` has `minLength` and `hours` has `minimum` (rule 2, two messages).
+      - `speaker` is the fourth object down (rule 3).
+
+      That's four problems, which is exactly what the tests expect. Notice what's **not** flagged: `meta`, `source`, and `speaker` are all closed, so rule 1 stays quiet for them. Press **Run this code** to see the list.
+review:
+  - id: wt-lint-keyerror
+    type: code-reading
+    prompt: An AI assistant shortens the object test in `walk` to the version below. What happens when you run `lint_schema(GOOD)`?
+    code: |
+      def walk(node, path, depth):
+          if not isinstance(node, dict):
+              return
+          if node["type"] == "object":
+              depth += 1
+              if node.get("additionalProperties") is not False:
+                  problems.append(f"{path}: additionalProperties must be false")
+              if depth > max_depth:
+                  problems.append(f"{path}: objects nested more than {max_depth} deep")
+          # ...rest unchanged
+    options:
+      - id: a
+        text: It returns `[]`, the same as before
+        rationale: It would if every node had a `type`. The `owner` node is only an `anyOf` wrapper, with no `type` key.
+      - id: b
+        text: It raises `KeyError` when it reaches the `owner` node, which has `anyOf` but no `type`
+        correct: true
+        rationale: Right. Square-bracket lookup raises `KeyError` for a missing key, and the `owner` node holds only an `anyOf` list, with no `type`. The original used `node.get("type")`, which returns `None` instead.
+      - id: c
+        text: It flags `owner` as an open object
+        rationale: It never gets that far; the lookup itself fails.
+    explanation: This variant also drops the `or "properties" in node` test, so even with `.get` it would miss objects that omit `type`. Two small "simplifications", two different bugs. When reviewing code that reads untrusted or loosely structured data, look at every `node[...]` lookup and ask whether that key is guaranteed to exist.
+  - id: wt-lint-depth
+    type: predict-output
+    prompt: What does `lint_schema(GOOD, max_depth=1)` return?
+    options:
+      - id: a
+        text: "`[]`, because `GOOD` has no problems"
+        rationale: It has none at the default depth of 3. Lowering the limit changes what counts as too deep.
+      - id: b
+        text: "`['$.items: objects nested more than 1 deep']`"
+        rationale: "`$.items` is an array, and arrays don't add depth. The first object below the root is inside the array."
+      - id: c
+        text: "`['$.items[]: objects nested more than 1 deep']`"
+        correct: true
+        rationale: Right. The root is depth 1 (allowed). The array passes depth 1 down unchanged, and the object in its items becomes depth 2, which exceeds 1.
+    explanation: Only object nodes increase `depth`, and every child receives the parent's depth. Tracing one path by hand like this is the fastest way to check a recursive function's bookkeeping.
+  - id: wt-lint-collect
+    type: scenario
+    prompt: An AI-written alternative raises a `ValueError` on the first problem it finds instead of collecting a list. You plan to run the linter in your test suite on every schema in the project. Which version should you keep, and why?
+    options:
+      - id: a
+        text: The raising version, because exceptions are more Pythonic than return values
+        rationale: Both are normal Python. The question is what the caller needs.
+      - id: b
+        text: The collecting version, because one run shows every problem, so you fix them all in one pass instead of rerunning after each fix
+        correct: true
+        rationale: Exactly. A test can still fail when the list isn't empty (`assert lint_schema(s) == []`), and pytest will print the full list.
+      - id: c
+        text: The raising version, because it is faster on large schemas
+        rationale: Schemas are small, and speed isn't what you're optimizing for in a lint check.
+    explanation: Validators and linters usually collect, because their output is a to-do list for a person. Pydantic does the same with `e.errors()`. Fail-fast suits code where continuing after the first problem would do damage, such as a tool call with bad arguments.
+direct:
+  task: |
+    The lesson says to describe every field, because descriptions go to the model with the schema. You want the linter to enforce that: every property listed under an object's `properties` should have a non-empty `description`.
+
+    Write the prompt you'd give a coding assistant to add this as rule 4.
+  prompt: |
+    Add a fourth rule to lint_schema: every property under an object's "properties" must have a non-empty "description" string. For a property named name at path P, report exactly f"{P}.{name}: missing description". Treat a missing key, an empty string, and a string of only whitespace as missing.
+
+    Apply it at every level the walker already reaches, including objects inside array items and anyOf branches. Do not change rules 1 to 3, their message text, the path notation, or the order of the existing checks, and update the docstring to list rule 4.
+
+    Add test asserts: GOOD now reports "$.items: missing description" and "$.items[].owner: missing description" (and nothing for task); a property with description "   " is flagged; and BAD still produces its original four messages (plus the new description ones).
+  checklist:
+    - Rules 1 to 3 and their messages are unchanged, so the original four `BAD` messages still appear
+    - The new rule checks properties, not every node (the root and array `items` schemas have no name to describe)
+    - Blank and whitespace-only descriptions count as missing
+    - It works inside array items and `anyOf` branches, not just top-level properties
+    - The docstring lists rule 4, and new tests cover a missing, a blank, and a present description

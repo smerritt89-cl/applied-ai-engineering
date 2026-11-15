@@ -1,0 +1,126 @@
+id: e3-brier-score
+summary: |
+  This program scores probabilistic forecasts with the **Brier score**, the mean squared difference between each stated probability and what actually happened (1 or 0). Lower is better: 0 is perfect, and always saying 50% scores 0.25. It then compares two forecasters against that no-skill baseline.
+
+  There are two small functions: one computes the score, and one compares it to the baseline. The example is built so that both forecasters land on the right side of 50% equally often (five of eight), yet one beats the baseline and the other doesn't. The difference is entirely in how much confidence each one stated on the predictions that missed.
+code: |
+  def brier(forecasts):
+      """forecasts: list of (probability, outcome) with outcome 0 or 1.
+      Return the mean squared error."""
+      return sum((p - o) ** 2 for p, o in forecasts) / len(forecasts)
+
+
+  def beats_baseline(forecasts):
+      """True if the forecaster's Brier score is lower than always forecasting 0.5."""
+      return brier(forecasts) < 0.25
+
+
+  # Eight scored yes-or-no AI predictions, as (stated probability, what happened)
+  BOLD = [(0.9, 1), (0.8, 1), (0.7, 0), (0.9, 0), (0.6, 1), (0.95, 1), (0.8, 0), (0.9, 1)]
+  HEDGED = [(0.6, 1), (0.6, 1), (0.5, 0), (0.6, 0), (0.55, 1), (0.7, 1), (0.6, 0), (0.65, 1)]
+
+  for name, f in [("bold", BOLD), ("hedged", HEDGED)]:
+      print(name, brier(f), beats_baseline(f))
+notes:
+  - lines: [1, 3]
+    title: Input as (probability, outcome) pairs
+    text: |
+      `brier` takes a list of **tuples**, each a stated probability and an outcome of 0 or 1. Keeping each forecast and its outcome together in one tuple, rather than two parallel lists, makes it impossible for the two to drift out of alignment when someone adds or removes a row.
+
+      The docstring calls the result "the mean squared error", which is exactly what the Brier score is for binary outcomes.
+  - lines: [4, 4]
+    title: The score in one line
+    text: |
+      `sum((p - o) ** 2 for p, o in forecasts)` is a **generator expression** inside `sum`: for each pair, unpack it into `p` and `o`, square the difference, and add them up. Dividing by `len(forecasts)` gives the mean. `**` is Python's power operator.
+
+      Worked values for the bold forecaster: the squared errors are 0.01, 0.04, 0.49, 0.81, 0.16, 0.0025, 0.64, 0.01. They sum to 2.1625, and dividing by 8 gives about 0.270. Notice where the weight is: the three misses at 0.7, 0.9, and 0.8 contribute 1.94 of the 2.16. Squaring makes a confident miss very expensive.
+
+      Why squared error and not absolute error? The Brier score is a **proper scoring rule**: your expected score is best when you report your true belief. Absolute error is not proper; it rewards pushing every forecast to 0 or 1. A forecaster scored on absolute error has an incentive to overstate confidence, which is the opposite of what you want.
+
+      An empty list would raise `ZeroDivisionError`. That's arguably right (there is no score without forecasts), but it's worth knowing if you call this on filtered data.
+  - lines: [7, 9]
+    title: Compared with the no-skill baseline
+    text: |
+      Always forecasting 0.5 gives a squared error of 0.25 on every question, whatever happens, so its Brier score is exactly 0.25. A forecaster who can't beat that has shown no skill at distinguishing what will happen from what won't.
+
+      The comparison uses `<`, so tying the baseline doesn't count as beating it.
+
+      The constant 0.25 is tied to two choices: the squared-error formula and the 0.5 baseline. Change either and it is wrong. A more robust version would compute the baseline with the same function, `brier([(0.5, o) for _, o in forecasts])`, so the two can never disagree. A stronger baseline still is the **base rate** (always forecasting the fraction of events that occurred), which is the usual reference in a Brier skill score.
+  - lines: [12, 14]
+    title: Two forecasters, same hit rate
+    text: |
+      Both lists hold the same eight questions with the same outcomes (five yes, three no). The bold forecaster states 0.6 to 0.95; the hedged one never goes above 0.7.
+
+      Count which side of 50% each lands on: both are right on the five that happened and wrong on the three that didn't, so a "percent correct" score would call them equal. The Brier score separates them because it uses the stated probability, not just its side.
+  - lines: [16, 17]
+    title: Print both scores
+    text: |
+      The loop unpacks each `(name, list)` pair and prints the score and the comparison. Output: bold scores about 0.270 and does **not** beat the baseline; hedged scores about 0.213 and does.
+
+      So the hedged forecaster, who sounds less impressive, has some real skill, and the bold one does worse than saying 50% every time. When you weigh a pundit's next confident prediction, a track record scored like this is what you want to see, and it is rarely published.
+review:
+  - id: wt-bs-abs
+    type: code-reading
+    prompt: An AI assistant changes `brier` to use absolute error, saying "it's easier to interpret." `beats_baseline` is left unchanged. What do the two `beats_baseline` calls now return?
+    code: |
+      def brier(forecasts):
+          return sum(abs(p - o) for p, o in forecasts) / len(forecasts)
+    options:
+      - id: a
+        text: The same as before, False for bold and True for hedged
+        rationale: The scores change to about 0.41 (bold) and 0.45 (hedged). Neither is below 0.25.
+      - id: b
+        text: True for both, because absolute errors are smaller than squared ones
+        rationale: For errors below 1, absolute values are larger than their squares, not smaller. 0.3 squared is 0.09.
+      - id: c
+        text: False for both, because the hard-coded 0.25 is the baseline for squared error, and always-0.5 now scores 0.5
+        correct: true
+        rationale: Right. The baseline constant no longer matches the formula. And by absolute error the bold forecaster would now look better than the hedged one, because absolute error is not a proper scoring rule and rewards overconfidence.
+    explanation: Two bugs in one edit. The hard-coded constant silently became wrong, and the change of rule reverses which forecaster looks better. Ask for the baseline to be computed with the same function, and keep the proper rule.
+  - id: wt-bs-one-miss
+    type: predict-output
+    prompt: The hedged forecaster changes just one forecast, the miss at `(0.6, 0)`, to `(0.99, 0)`. Roughly what is the new Brier score, and does it still beat the baseline?
+    options:
+      - id: a
+        text: About 0.29, and no
+        correct: true
+        rationale: Right. That one squared error goes from 0.36 to 0.98, adding about 0.62 to the sum. Divided by 8 that is about 0.078, so 0.213 becomes about 0.291, above the 0.25 baseline.
+      - id: b
+        text: About 0.22, and yes, because one forecast out of eight barely matters
+        rationale: Squaring makes one confident miss count heavily. The change adds about 0.08 to the mean.
+      - id: c
+        text: About 0.21, and yes, the score doesn't change
+        rationale: The score uses every stated probability, so changing one changes the score.
+    explanation: One overconfident miss erased all of the hedged forecaster's skill. That is the proper scoring rule doing its job, and it is why a forecaster's single loud call deserves less weight than their whole scored record.
+  - id: wt-bs-design
+    type: scenario
+    prompt: Two AI-forecasting newsletters each claim "we were right 70% of the time." What is the most useful thing to ask for before trusting either?
+    options:
+      - id: a
+        text: Their stated probabilities on every question, so you can compute a Brier score and compare it to a baseline
+        correct: true
+        rationale: Right. Hit rate ignores confidence, and two forecasters with the same hit rate can differ completely in skill, as this exercise shows.
+      - id: b
+        text: Their five best calls, to see how impressive they were
+        rationale: Selected highlights are the opposite of a track record. You need every scored question, including the misses.
+      - id: c
+        text: How many subscribers they have
+        rationale: Popularity says nothing about calibration or skill.
+    explanation: A track record you can score needs every question, the probability stated before the outcome, and the outcome. Without the probabilities, "right 70% of the time" can't be compared to anything.
+direct:
+  task: |
+    You want a fairer comparison than "beats 0.5": a **Brier skill score** against the base rate, so a forecaster gets no credit just for knowing that most events in the set happened.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function skill_score(forecasts) that returns 1 - brier(forecasts) / brier(reference), where reference forecasts the base rate (the mean outcome across forecasts) for every question. Compute the reference with the existing brier function, not a hard-coded number. If the reference score is 0 (all outcomes identical), raise ValueError with a clear message.
+
+    Do not change brier or beats_baseline. Use only plain Python.
+
+    Add test asserts: perfect forecasts give a skill score of 1; forecasting the base rate on every question gives 0; on the lesson's data HEDGED has a higher skill score than BOLD; outcomes that are all 1 raise ValueError. Print both skill scores in the demo.
+  checklist:
+    - brier and beats_baseline are unchanged, and the original asserts still pass
+    - The reference score is computed with brier, not typed in as a constant
+    - The base rate is the mean of the outcomes in the same list
+    - The degenerate case (all outcomes the same) raises a clear error instead of dividing by zero
+    - Tests pin the two anchor values (1 for perfect, 0 for the base rate) and the ordering on the lesson's data

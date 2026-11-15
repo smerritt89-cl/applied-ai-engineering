@@ -1,0 +1,155 @@
+id: e3-regime-triage
+summary: |
+  This program takes a short description of an AI product and returns the regulatory regimes that plausibly apply to it, using a deliberately simplified version of the rules from the lesson: the EU AI Act's general-purpose model duties (and the extra tier for systemic-risk models), its Article 50 transparency duties, its high-risk categories, and the US state frontier laws. It is a conversation starter for counsel, not legal advice.
+
+  The whole thing is one function made of independent rules, each a boolean condition on the product's attributes. That shape is the point: writing each rule as an explicit condition forces you to answer specific questions about your product (Do we have EU users? Do we train or substantially modify a model? What is the use area?) and gives a lawyer something precise to correct.
+code: |
+  HIGH_RISK_AREAS = {"hiring", "credit", "education", "essential_services", "law_enforcement"}
+
+
+  def triage(p):
+      """p is a dict describing a product. Keys:
+        eu_users (bool), trains_gpai (bool), substantially_modifies_gpai (bool),
+        training_flops (float), chats_with_people (bool), generates_media (bool),
+        use_area (str), annual_revenue_usd (float)
+      Return a sorted list of labels for regimes that plausibly apply:
+        "EU GPAI provider"      eu_users and (trains_gpai or substantially_modifies_gpai)
+        "EU systemic risk"      the above, and training_flops > 1e25
+        "EU Art 50 disclosure"  eu_users and (chats_with_people or generates_media)
+        "EU high-risk"          eu_users and use_area in HIGH_RISK_AREAS
+        "US state frontier law" trains_gpai and training_flops > 1e26 and annual_revenue_usd > 5e8
+      """
+      out = []
+      gpai_provider = p["eu_users"] and (p["trains_gpai"] or p["substantially_modifies_gpai"])
+      if gpai_provider:
+          out.append("EU GPAI provider")
+          if p["training_flops"] > 1e25:
+              out.append("EU systemic risk")
+      if p["eu_users"] and (p["chats_with_people"] or p["generates_media"]):
+          out.append("EU Art 50 disclosure")
+      if p["eu_users"] and p["use_area"] in HIGH_RISK_AREAS:
+          out.append("EU high-risk")
+      if p["trains_gpai"] and p["training_flops"] > 1e26 and p["annual_revenue_usd"] > 5e8:
+          out.append("US state frontier law")
+      return sorted(out)
+
+
+  chatbot = dict(eu_users=True, trains_gpai=False, substantially_modifies_gpai=False,
+                 training_flops=0, chats_with_people=True, generates_media=False,
+                 use_area="customer_support", annual_revenue_usd=4e7)
+  print(triage(chatbot))
+notes:
+  - lines: [1, 1]
+    title: The high-risk areas, as a set
+    text: |
+      `HIGH_RISK_AREAS` is a **set** (curly braces with values but no colons). Sets are built for membership tests: `x in some_set` answers quickly and reads like English. Order doesn't matter here, which is another reason a set fits better than a list.
+
+      These five stand in for the lesson's list of high-risk areas (employment, education, credit, essential services, law enforcement). The real list in the Act is longer and more detailed; that is one of the simplifications.
+  - lines: [4, 15]
+    title: The docstring is the rule book
+    text: |
+      The docstring lists every input key with its type, and every output label with its exact condition. In this program the docstring **is** the specification: the code below should be a line-by-line translation of it, and the easiest review is to check each `if` against its line here.
+
+      The input `p` is a plain **dict**. A dataclass would give you named attributes and catch typos earlier, but a dict keeps the demo short and lets the tests build variants with `dict(chatbot, use_area="hiring")`, which copies a dict and overrides one key.
+  - lines: [16, 21]
+    title: The GPAI provider rule, and systemic risk nested inside it
+    text: |
+      `out = []` collects the labels. `gpai_provider` names the condition from the docstring: EU users **and** (trains a general-purpose model **or** substantially modifies one). The parentheses matter. In Python `and` binds more tightly than `or`, so without them `a and b or c` means `(a and b) or c`, and a US-only company that fine-tunes a model would be labeled an EU provider.
+
+      The systemic-risk check is **nested** inside the provider check, matching the docstring's "the above, and training_flops > 1e25". Nesting makes the dependency visible in the code's shape: you can only be a systemic-risk provider if you are a provider first.
+
+      Naming the condition (`gpai_provider`) instead of repeating the expression is a small readability win, and it means a later change to the definition happens in one place.
+  - lines: [22, 25]
+    title: Transparency and high-risk, independent of model training
+    text: |
+      These two rules don't depend on whether you train a model. A chatbot built on someone else's API still owes Article 50 transparency to EU users (telling people they're talking to an AI), and a CV screener built on a third-party model is still in a high-risk area. That matches the lesson's point that the model duties stay with the model provider, but your **system's** duties are yours.
+
+      `p["use_area"] in HIGH_RISK_AREAS` is the set membership test from line 1.
+
+      The rules are separate `if` statements, not `elif`, because a product can be in several regimes at once.
+  - lines: [26, 27]
+    title: The US state frontier rule
+    text: |
+      This rule has no EU condition at all: it applies on compute and revenue. `1e26` is **scientific notation** for 10 to the 26 (training operations) and `5e8` is 500 million (dollars of annual revenue), matching the thresholds the lesson gives for New York's amended RAISE Act.
+
+      Writing thresholds in scientific notation is much safer than typing out zeros. `100000000000000000000000000` is easy to get wrong by one digit, and a reviewer can't check it at a glance.
+  - lines: [28, 28]
+    title: Sorted output for a stable answer
+    text: |
+      `sorted(out)` returns the labels in alphabetical order, so the result doesn't depend on the order the rules happen to be checked. That makes the output predictable for tests and for anyone comparing two products.
+
+      Python sorts strings by character code, where capital letters come before lowercase. So "EU Art 50 disclosure" comes before "EU GPAI provider" (A before G), and "EU GPAI provider" comes before "EU high-risk" because capital G sorts before lowercase h. "US state frontier law" is last.
+  - lines: [31, 34]
+    title: The demo product
+    text: |
+      `dict(eu_users=True, ...)` builds a dict from **keyword arguments**, which reads more cleanly than a literal with quoted keys when the keys are simple names. The chatbot serves EU users through a third-party model and talks to people, so the only label is "EU Art 50 disclosure".
+
+      The tests try three more products: a hiring screener (high-risk only), a large frontier lab (every model-level regime), and the same lab without EU users (only the state law). Running your own product through this function and then asking counsel which conditions are wrong is the intended use.
+review:
+  - id: wt-rt-flatten
+    type: code-reading
+    prompt: An AI assistant flattens the nested check into its own top-level rule, as below, saying "each regime should be independent." What does `triage(us_only)` return for the frontier lab with `eu_users=False`?
+    code: |
+      if gpai_provider:
+          out.append("EU GPAI provider")
+      if p["training_flops"] > 1e25:
+          out.append("EU systemic risk")
+    options:
+      - id: a
+        text: '`["US state frontier law"]`, the same as before'
+        rationale: The flattened rule no longer checks for EU users or provider status, so the lab's 3e26 FLOPs trigger it on their own.
+      - id: b
+        text: '`[]`, because the lab has no EU users'
+        rationale: The state frontier law has no EU condition, so it still applies either way.
+      - id: c
+        text: '`["EU systemic risk", "US state frontier law"]`'
+        correct: true
+        rationale: Right. Systemic risk is a tier of the GPAI provider duties, so it only applies to a provider placing a model on the EU market. Flattening dropped that dependency and labels a US-only company with an EU duty.
+    explanation: The docstring says "the above, and", which is a dependency. Rules that look independent often aren't. The last hidden test (US-only lab) catches this, and it is exactly the kind of case worth adding when you write rules like these.
+  - id: wt-rt-precedence
+    type: predict-output
+    prompt: Suppose line 17 lost its parentheses and became `p["eu_users"] and p["trains_gpai"] or p["substantially_modifies_gpai"]`. For a product with `eu_users=False`, `trains_gpai=False`, and `substantially_modifies_gpai=True`, what is `gpai_provider`?
+    options:
+      - id: a
+        text: False, because there are no EU users
+        rationale: That's what the parenthesized version gives. Without parentheses the grouping changes.
+      - id: b
+        text: True, because Python reads it as `(eu_users and trains_gpai) or substantially_modifies_gpai`
+        correct: true
+        rationale: Right. `and` binds more tightly than `or`, so the modification alone makes the whole expression true, and a non-EU company gets an EU label.
+      - id: c
+        text: It raises a SyntaxError
+        rationale: It is valid Python. It just means something different.
+    explanation: None of the hidden tests set `substantially_modifies_gpai=True` without EU users, so this bug would pass them. When a rule mixes `and` and `or`, check the parentheses against the docstring and add a test for each branch of the `or`.
+  - id: wt-rt-design
+    type: scenario
+    prompt: A product manager runs your product through `triage`, gets `["EU Art 50 disclosure"]`, and proposes telling leadership "we only owe transparency under the AI Act." What is the best response?
+    options:
+      - id: a
+        text: Take the result and the product facts you entered to counsel as a starting point, and ask specifically which conditions or missing rules could change the answer
+        correct: true
+        rationale: Right. The value of the function is that it makes your assumptions explicit and checkable. A lawyer can correct a specific condition much faster than answer "does the AI Act apply to us?"
+      - id: b
+        text: Agree, since the function encodes the rules from the lesson
+        rationale: It encodes a deliberately simplified version. The real tests have more conditions, exemptions, and definitions.
+      - id: c
+        text: Ignore the function, because simplified rules are worse than none
+        rationale: Precise, simplified rules are a useful way to frame the question, as long as nobody mistakes them for the answer.
+    explanation: This is the same checks-and-balances habit as with model output. Treat the function's answer as a claim to verify with someone qualified, and keep a record of what you asked and what changed.
+direct:
+  task: |
+    Counsel points out that systems which only generate media also need machine-readable marking, which you want to track separately from the chatbot disclosure. Add a new label "EU Art 50 marking" for EU products that generate media.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add one rule to triage: if eu_users and generates_media, append "EU Art 50 marking". Keep the existing "EU Art 50 disclosure" rule exactly as it is (it still fires for chats_with_people or generates_media). Add the new label and its condition to the docstring's list.
+
+    Do not change any other rule, threshold, HIGH_RISK_AREAS, the nesting of "EU systemic risk" under the provider check, or the final sorted() call.
+
+    Update the test for the frontier lab to expect the new label in its sorted position, and add asserts: the demo chatbot (generates_media=False) does not get the marking label; dict(chatbot, chats_with_people=False, generates_media=True) gets ["EU Art 50 disclosure", "EU Art 50 marking"]; a non-EU media product gets neither.
+  checklist:
+    - Exactly one new rule was added, with both an EU-users and a media condition
+    - The existing disclosure rule and all other rules are unchanged
+    - The docstring lists the new label and condition
+    - The output is still sorted, and the updated lab test places the label correctly
+    - New tests cover a media-only EU product, a chatbot without media, and a non-EU product

@@ -7,6 +7,18 @@ Lesson: *Tokens, cost, latency, and choosing a model* (s1-w1-l3).
 **Time.** About 60 minutes. **Needs.** The shared lab setup (`labs/README.md`) and an
 Anthropic API key for the live run. Every offline test runs without a key.
 
+## Review track
+
+If you're on the review track (the default), you don't write the harness from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to add a p95 latency budget to `pick_winner`, review its
+   diff, then run `pytest studio-1/02-model-bakeoff/test_change.py -q`.
+
+The sections below are the write track, if you'd rather implement the harness yourself in `starter.py`. The live
+run, hand scoring, and `--rescore` work on either track (on the review track, run `work.py` instead of `starter.py`).
+
 ## What is provided, and what you write
 
 `starter.py` already contains the provider adapters, the command-line interface, and CSV

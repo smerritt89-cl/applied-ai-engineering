@@ -1,0 +1,169 @@
+id: e2-w1-compaction-sim
+summary: |
+  This program simulates a coding agent's context window over one session and reports which of your instructions are still in it at the end. Events arrive in order (CLAUDE.md rules at startup, your chat messages, tool output), their token counts add up, and when the total passes 80% of the window the session "compacts": the conversation is squeezed into a short summary. Memory rules survive because they are re-read from disk; a chat rule survives only if it was recent.
+
+  The function is one loop with two pieces of state: a running token total and a list of chat rules currently in context, each tagged with the position it arrived at. That tag is the design choice that makes the "last 3 events" rule possible to check. It's a toy model, not Claude Code's real algorithm, but it makes the lesson's point concrete: put rules that must survive in CLAUDE.md, not in chat.
+code: |
+  def simulate(events, window, threshold=0.8, summary_tokens=2000):
+      """Simulate a session's context and return the instructions still in context at the end.
+
+      events: list of dicts in order, each with "kind" ("memory", "chat" or "tool"),
+      "tokens", and optionally "rule". Memory events (CLAUDE.md) come first.
+      When the running total passes threshold * window, the session compacts:
+      chat and tool content becomes one summary of summary_tokens, a chat rule
+      survives only if it arrived in the last 3 events, and memory rules are
+      re-read from disk, so they always survive. Returns the surviving rules, sorted.
+      """
+      memory_rules = [e["rule"] for e in events if e["kind"] == "memory" and "rule" in e]
+      memory_tokens = sum(e["tokens"] for e in events if e["kind"] == "memory")
+
+      total = 0
+      live_chat_rules = []  # (event index, rule) for each chat rule still in context
+      for i, e in enumerate(events):
+          total += e["tokens"]
+          if e["kind"] == "chat" and "rule" in e:
+              live_chat_rules.append((i, e["rule"]))
+          if total > threshold * window:
+              # Compact: only chat rules from events i - 2, i - 1 and i make it into the summary.
+              live_chat_rules = [(j, rule) for j, rule in live_chat_rules if j > i - 3]
+              total = memory_tokens + summary_tokens
+
+      return sorted(memory_rules + [rule for _, rule in live_chat_rules])
+
+
+  session = [
+      {"kind": "memory", "tokens": 1500, "rule": "run pytest -q before saying done"},
+      {"kind": "chat", "tokens": 200, "rule": "never use requests_v1"},
+      {"kind": "tool", "tokens": 40000},
+      {"kind": "tool", "tokens": 90000},
+      {"kind": "chat", "tokens": 150, "rule": "keep the public API unchanged"},
+      {"kind": "tool", "tokens": 30000},
+      {"kind": "tool", "tokens": 25000},
+      {"kind": "chat", "tokens": 100, "rule": "prefer small commits"},
+  ]
+  print(simulate(session, window=200000))
+notes:
+  - lines: [1, 10]
+    title: The signature and the docstring
+    text: |
+      `def simulate(events, window, threshold=0.8, summary_tokens=2000):` takes two required inputs and two with **default values**. A caller who writes `simulate(session, window=200000)` gets the 80% threshold and a 2,000-token summary without saying so; a test can still pass different numbers to probe the edges.
+
+      The docstring restates the rules in a few lines. That matters more than it looks: when you later ask an assistant to change this function, the docstring is the spec it reads first. If the code and the docstring disagree after a change, one of them is wrong, and a review should say which.
+  - lines: [11, 12]
+    title: Memory rules are collected up front
+    text: |
+      Line 11 is a **list comprehension** with a filter: "for each event `e`, if it's a memory event and has a rule, keep `e["rule"]`". The `"rule" in e` test checks whether the dict has that key; without it, a memory event with no rule would raise `KeyError`.
+
+      Line 12 uses a **generator expression** inside `sum(...)`: same shape as a list comprehension, but without the square brackets, so Python adds the numbers one at a time without building a list first.
+
+      Why compute these before the loop? Because memory rules never change during the session. They're re-read from disk at every compaction, so the function can treat them as a constant and only track the parts that can be lost. In the sample, `memory_tokens` is 1500.
+  - lines: [14, 15]
+    title: The state the loop carries
+    text: |
+      Two variables change as events arrive: `total`, the running token count, and `live_chat_rules`, a list of **tuples** `(index, rule)`.
+
+      Storing the index alongside the rule is the key design decision. The survival rule is about *when* a rule arrived ("in the last 3 events before compacting"), so the code has to remember positions. A version that stored only the rule text would have no way to tell an early rule from a recent one.
+  - lines: [16, 19]
+    title: Walking the events in order
+    text: |
+      `for i, e in enumerate(events):` uses **`enumerate`**, which hands you each item together with its position: `(0, first event)`, `(1, second event)`, and so on. That gives us the index we need to store.
+
+      Each event's tokens are added (line 17; `+=` means "add to the existing value"). If the event is a chat message carrying a rule, the pair `(i, rule)` is appended. Tool output adds tokens but no rules, which is exactly how a long test run or a big file read pushes your instructions toward the edge of the window.
+  - lines: [20, 23]
+    title: Compaction
+    text: |
+      When `total` goes over `threshold * window` (160,000 tokens for a 200,000 window), two things happen.
+
+      Line 22 rebuilds the rule list with a comprehension that **unpacks** each tuple (`for j, rule in ...`) and keeps a rule only if `j > i - 3`. If compaction happens at event 5, that keeps events 3, 4 and 5. The comment on line 21 spells out the arithmetic, because "greater than i minus 3" is easy to get off by one.
+
+      Line 23 resets the total: what's left in context is the memory files plus the summary.
+
+      Worked trace of the sample: the total crosses 160,000 at event 5 (161,850 tokens). The rule from event 1 (`never use requests_v1`) is dropped; the rule from event 4 survives. Then the total restarts at 3,500, and events 6 and 7 never get near the threshold again, so `prefer small commits` arrives safely.
+  - lines: [25, 25]
+    title: Combine and sort
+    text: |
+      `[rule for _, rule in live_chat_rules]` strips the indexes back off. The underscore `_` is the Python convention for "a value I'm deliberately ignoring". Adding two lists with `+` joins them, and `sorted(...)` returns a new sorted list, so the output is the same no matter what order the rules arrived in. That makes the result easy to compare in a test.
+
+      A subtle point: this returns rules, not events. If the same rule text appeared twice, it would appear twice here too. The exercise doesn't need de-duplication, so the code doesn't add it; an AI-written version that quietly wraps it in `set(...)` would change behavior nobody asked to change.
+  - lines: [28, 38]
+    title: The sample session
+    text: |
+      A list of dicts, one per event, and one call. Run it and you'll see three rules come back: the CLAUDE.md rule, `keep the public API unchanged`, and `prefer small commits`. The missing one, `never use requests_v1`, was given early in chat and then buried under 130,000 tokens of tool output.
+
+      Now imagine that line was a security constraint ("never log customer emails"). That's the practical lesson: anything that must hold for the whole session belongs in CLAUDE.md (or better, in a hook or deny rule), because chat-only instructions can be summarized away.
+review:
+  - id: wt-compact-merge-rules
+    type: code-reading
+    prompt: An AI assistant "simplifies" the function by tracking every rule the same way, memory rules included. What does it return for the sample session?
+    code: |
+      def simulate(events, window, threshold=0.8, summary_tokens=2000):
+          memory_tokens = sum(e["tokens"] for e in events if e["kind"] == "memory")
+          total = 0
+          live_rules = []
+          for i, e in enumerate(events):
+              total += e["tokens"]
+              if "rule" in e:
+                  live_rules.append((i, e["rule"]))
+              if total > threshold * window:
+                  live_rules = [(j, r) for j, r in live_rules if j > i - 3]
+                  total = memory_tokens + summary_tokens
+          return sorted(r for _, r in live_rules)
+    options:
+      - id: a
+        text: The same three rules as the original
+        rationale: The memory rule arrived at index 0. When compaction happens at index 5, `0 > 2` is false, so this version drops it.
+      - id: b
+        text: Only `keep the public API unchanged` and `prefer small commits`
+        correct: true
+        rationale: Right. Treating memory like chat means the CLAUDE.md rule is filtered out at compaction, which is the opposite of the documented behavior the simulation is meant to model.
+      - id: c
+        text: All four rules, because nothing is ever removed
+        rationale: The filter on the compaction line still removes old rules; it just removes the wrong ones now.
+    explanation: The shorter version is tidier and still passes the "no compaction" test, which is why this kind of regression slips through. The whole point of the model is that memory rules are handled differently, so a reviewer should check that the special case is still there.
+  - id: wt-compact-bigger-window
+    type: predict-output
+    prompt: You call `simulate(session, window=400000)`. What comes back?
+    options:
+      - id: a
+        text: The same three rules as with a 200,000 window
+        rationale: The threshold is now 320,000 tokens, and the session only ever reaches 186,950, so compaction never happens.
+      - id: b
+        text: All four rules, sorted
+        correct: true
+        rationale: Right. No compaction means no rule is ever dropped, so `never use requests_v1` survives too.
+      - id: c
+        text: Only the CLAUDE.md rule
+        rationale: Chat rules are only removed during compaction, and there isn't one here.
+    explanation: A bigger context window delays compaction but doesn't change the rule. Long sessions eventually compact, which is one reason to start fresh sessions for new tasks instead of piling everything into one.
+  - id: wt-compact-why-index
+    type: scenario
+    prompt: Why does `live_chat_rules` store `(index, rule)` pairs instead of just the rule text?
+    options:
+      - id: a
+        text: Tuples use less memory than strings
+        rationale: A tuple holding the string actually uses slightly more. Memory isn't the reason.
+      - id: b
+        text: The survival rule depends on when each rule arrived, so the code has to remember positions
+        correct: true
+        rationale: Exactly. "In the last 3 events before compacting" can only be checked if you know each rule's event index.
+      - id: c
+        text: So that `sorted` can order rules by arrival time
+        rationale: The final `sorted` works on the rule text alone; the indexes are stripped off first.
+    explanation: When a rule depends on order or time, the data has to carry that information. Watch for AI-written code that throws it away early and then approximates.
+direct:
+  task: |
+    You want to experiment with how forgetful the summary is. Right now "the last 3 events" is hard-coded inside the comprehension. Make it a parameter, `keep_recent`, so you can try 1, 3 or 10.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In simulate, replace the hard-coded "last 3 events" rule with a new keyword parameter keep_recent=3, placed after summary_tokens. A chat rule survives compaction if it arrived in the last keep_recent events, counting the event that triggered compaction (so keep_recent=3 keeps events i-2, i-1 and i, exactly as now).
+
+    Do not change anything else: memory rules must still always survive, the total must still reset to memory tokens plus summary_tokens, and calls that don't pass keep_recent must return exactly what they return today. Raise ValueError if keep_recent is negative.
+
+    Update the docstring and the comment on the compaction line. Add test asserts for: keep_recent=0 (no chat rule survives a compaction), keep_recent=10 on the sample session (the early rule survives), and the default still matching the current output.
+  checklist:
+    - The default `keep_recent=3` gives exactly the same results as before on the sample session
+    - The comparison is still correct at the boundary (keep_recent=3 keeps three events, not two or four)
+    - Memory rules are still handled separately and always survive
+    - The docstring and the comment now describe keep_recent instead of "3"
+    - New asserts cover keep_recent=0, a large value, and a negative value

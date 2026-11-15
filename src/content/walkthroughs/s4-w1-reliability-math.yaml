@@ -1,0 +1,171 @@
+id: s4-w1-reliability-math
+summary: |
+  These six small functions are the arithmetic behind "should this be an agent?". Four are about reliability: how per-step success compounds over a chain of steps, how reliable each step must be to hit a target, why averages mislead, and what a retry is really worth. Two are about cost: how much input an agent loop sends when it resends its context every step, and what that costs in dollars.
+
+  Each function is one line of math, kept separate so each can be checked on its own against a hand calculation. The printed lines at the bottom turn the formulas into the numbers you would put in a design review.
+code: |
+  import math
+
+
+  def chain_success(p, n):
+      """Probability that n independent steps, each succeeding with p, all succeed."""
+      return p ** n
+
+
+  def required_step_reliability(target, n):
+      """Per-step reliability needed so that n independent steps succeed with probability target."""
+      return target ** (1 / n)
+
+
+  def mixture_success(ps, n):
+      """Expected success over tasks with different per-step reliabilities ps (equally likely)."""
+      return sum(p ** n for p in ps) / len(ps)
+
+
+  def with_retry(p, detect):
+      """Per-step success if a failure is detected with probability detect and retried once.
+      The retry succeeds with probability p."""
+      return p + (1 - p) * detect * p
+
+
+  def loop_input_tokens(base, growth, steps):
+      """Total input tokens over an agent loop that resends its whole context every step.
+      Step 1 sends base tokens; each later step sends growth more than the one before."""
+      # base + (base + growth) + ... + (base + growth * (steps - 1))
+      return steps * base + growth * steps * (steps - 1) // 2
+
+
+  def cost_usd(input_tokens, output_tokens, in_price, out_price):
+      """Cost in dollars; prices are per million tokens."""
+      return input_tokens / 1e6 * in_price + output_tokens / 1e6 * out_price
+
+
+  print(chain_success(0.95, 20), required_step_reliability(0.9, 20))
+  print(mixture_success([1.0, 0.9], 20), with_retry(0.9, 1.0))
+  agent = cost_usd(loop_input_tokens(10_000, 1_500, 20), 20 * 500, 4.00, 20.00)
+  single = cost_usd(12_000, 800, 4.00, 20.00)
+  print(round(agent, 2), round(single, 3), round(agent / single))
+notes:
+  - lines: [1, 6]
+    title: Chained success is a power
+    text: |
+      `import math` comes from the starter. None of these one-line solutions actually needs it (the `**` operator does the powers), so an unused import is harmless here. In a real review, an unused import is worth a glance: sometimes it is left over from code that was removed, which may mean something was removed that shouldn't have been.
+
+      If each step succeeds independently with probability `p`, all `n` succeed with probability `p` times itself `n` times, written `p ** n` (`**` is Python's power operator).
+
+      Worked value: `0.95 ** 20` is about `0.358`. A step that is right 95% of the time, chained 20 times, gets the whole task right only about a third of the time. Note that `chain_success(0.5, 0)` is `1.0`: zero steps can't fail, and `x ** 0` is 1 for any `x`.
+  - lines: [9, 11]
+    title: Inverting the chain
+    text: |
+      To reach an overall `target` over `n` steps, solve `p ** n = target` for `p`: take the `n`-th root, which is `target ** (1 / n)`.
+
+      Worked value: for 90% over 20 steps, you need `0.9 ** (1 / 20)`, about `0.99475`, per step. That is the sobering number: "99.5% per step" sounds very good, and it only just gets a 20-step task to 90%.
+
+      `1 / n` is true division in Python 3 (it gives `0.05`, not `0`). An AI translating old Python 2 code might write `1 // n`, which is **floor division** and gives `0`, making every answer `1.0`.
+  - lines: [14, 16]
+    title: Why averaging reliabilities misleads
+    text: |
+      `sum(p ** n for p in ps)` uses a **generator expression** (like a list comprehension but without building a list) to raise each task's reliability to the `n`-th power, then `/ len(ps)` takes the mean.
+
+      The order matters. For `ps = [1.0, 0.9]` and `n = 20`: the mean of the powers is `(1 + 0.122) / 2`, about `0.561`. The power of the mean is `0.95 ** 20`, about `0.358`. They differ a lot.
+
+      This is **Jensen's inequality** at work: for a convex function like `p ** n`, the average of the outputs is at least the output of the average. In product terms, an agent that is perfect on easy tasks and weak on hard ones has a different (here, better) overall success rate than "95% per step" suggests, and the honest way to report it is per task type.
+  - lines: [19, 22]
+    title: What a retry is worth
+    text: |
+      A step succeeds first time with probability `p`. It fails with `1 - p`; that failure is noticed with probability `detect`; and the retry succeeds with `p`. Adding the two ways to succeed gives `p + (1 - p) * detect * p`.
+
+      Worked values: with `p = 0.9` and perfect detection, `0.9 + 0.1 * 1.0 * 0.9 = 0.99`. With `detect = 0`, it's just `0.9`.
+
+      The design lesson is in the second case: **a retry only helps when you can tell that the step failed**. That is why the course keeps pushing checks (schemas, tests, validators) into workflows. Without detection, retries cost money and buy nothing.
+  - lines: [25, 29]
+    title: Agent loops resend everything
+    text: |
+      Step 1 sends `base` tokens, step 2 sends `base + growth`, and so on up to `base + growth * (steps - 1)`. The comment states that sum so a reviewer can check the formula against it.
+
+      Adding it up: `steps * base` from the base parts, plus `growth * (0 + 1 + ... + (steps - 1))`. That second sum is `steps * (steps - 1) / 2`, the classic triangle-number formula. `//` is floor division; it's exact here because `steps * (steps - 1)` is always even, and it keeps the result an integer.
+
+      Worked value: `10_000` base, `1_500` growth, 20 steps gives `200_000 + 1_500 * 190 = 485_000` tokens. (`10_000` with an underscore is just `10000`; Python lets you group digits for readability.) The `steps * (steps - 1)` term is why the input grows **quadratically**: double the steps and the growth term roughly quadruples.
+  - lines: [32, 34]
+    title: Tokens to dollars
+    text: |
+      Prices are quoted per million tokens, so divide each token count by `1e6` (scientific notation for 1,000,000) and multiply by the price. This function was given in the starter.
+
+      A frequent slip in AI-written cost code is pricing output tokens at the input rate. Output is typically several times more expensive (here $20 versus $4 per million), so keep the two counts and the two prices separate, as this function does.
+  - lines: [37, 41]
+    title: The numbers for the design review
+    text: |
+      The last three lines compare a 20-step agent loop against one well-prepared call:
+
+      - The loop: `485_000` input tokens and `20 * 500 = 10_000` output tokens, about **$2.14**.
+      - The single call: 12,000 input and 800 output tokens, about **$0.064**.
+      - The ratio is about **33 to 1**.
+
+      Put that next to the reliability numbers above and you have the lesson's argument in figures: an agent should earn its cost and its compounded failure rate with capability a single call or a fixed workflow can't provide. Press **Run this code** to see the output.
+review:
+  - id: wt-rel-mean-first
+    type: code-reading
+    prompt: An AI assistant "simplifies" `mixture_success` to the version below. What does it return for `mixture_success([1.0, 0.9], 20)`?
+    code: |
+      def mixture_success(ps, n):
+          avg = sum(ps) / len(ps)
+          return avg ** n
+    options:
+      - id: a
+        text: About 0.561, the same as before
+        rationale: That's the mean of the powers. This version takes the power of the mean, which is different for a convex function.
+      - id: b
+        text: About 0.358, which understates the true expected success
+        correct: true
+        rationale: Right. It computes `0.95 ** 20`. The tests catch it with "average p**n over the tasks, not (average p)**n".
+      - id: c
+        text: It raises an error for lists
+        rationale: It runs fine; it just computes the wrong quantity.
+    explanation: Swapping "average then power" for "power then average" is a classic, plausible-looking error. The test that the mixture beats `chain_success(0.95, 20)` exists to catch exactly this.
+  - id: wt-rel-double-steps
+    type: predict-output
+    prompt: With `base = 10_000` and `growth = 1_500`, roughly how does total loop input change if you go from 20 steps to 40?
+    options:
+      - id: a
+        text: It doubles, to about 970,000
+        rationale: The base part doubles, but the growth part grows with steps squared.
+      - id: b
+        text: It roughly triples, to about 1.57 million
+        correct: true
+        rationale: Yes. `40 * 10_000 + 1_500 * 40 * 39 / 2 = 400_000 + 1_170_000 = 1_570_000`. The growth term goes from 285,000 to 1,170,000, about four times.
+      - id: c
+        text: It stays about the same, because growth is small
+        rationale: Growth is added at every step and compounds through resending; it dominates in long loops.
+    explanation: Long-running agents get expensive fast, and the cause is resending context. That's why the next week covers context engineering and clearing old tool results.
+  - id: wt-rel-retry-detect
+    type: scenario
+    prompt: A team proposes adding automatic retries to every step of an agent to raise its reliability. Based on `with_retry`, what's the first question to ask?
+    options:
+      - id: a
+        text: How many times will it retry?
+        rationale: More retries help only if failures are noticed. That comes first.
+      - id: b
+        text: How will each step know that it failed?
+        correct: true
+        rationale: Exactly. With `detect = 0`, `with_retry(p, 0)` is just `p`. Retries without a failure signal add cost and no reliability.
+      - id: c
+        text: Which model will do the retry?
+        rationale: A reasonable later question, but a retry that never fires doesn't depend on the model.
+    explanation: Detection (a schema check, a test, a validator) is what makes retries worth anything. When you review a design, look for the check before you count the retries.
+direct:
+  task: |
+    You want `with_retry` to model more than one retry: allow up to `retries` attempts after the first, each one triggered only if the previous failure was detected.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a parameter retries=1 to with_retry(p, detect, retries=1). After a failed attempt, the failure is detected with probability detect; if detected, the step is retried, and each retry succeeds with probability p. Allow at most `retries` retries. Return the overall probability of success.
+
+    With retries=1 the result must equal the current formula exactly, so existing callers and the existing test (with_retry(0.9, 1.0) == 0.99) are unaffected. retries=0 must return p. Raise ValueError for a negative retries.
+
+    Update the docstring, and add tests for: retries=0, retries=2 with detect=1.0 (0.999 for p=0.9), detect=0.0 with any retries (stays p), and a negative retries.
+  checklist:
+    - retries=1 gives exactly the same values as before
+    - Each extra retry happens only after a detected failure (detect multiplies in at every level)
+    - retries=0 and detect=0 both return p
+    - Negative retries raises ValueError rather than returning nonsense
+    - The other five functions are untouched, and new tests cover each case

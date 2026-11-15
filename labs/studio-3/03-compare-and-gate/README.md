@@ -3,6 +3,17 @@
 **Goes with:** Studio 3, week 3 (lessons 7 to 9). **Time:** about 60 minutes. **Needs:** the shared lab setup
 (`labs/README.md`). No API key: everything runs on recorded results.
 
+## Review track
+
+If you are on the review track (the default, see `labs/README.md`), read the Goal below, then do this instead of the Steps section:
+
+1. Read [`WALKTHROUGH.md`](WALKTHROUGH.md), a guided tour of `solution.py`, with `work.py` (your copy) open beside it.
+   Run the tests from VS Code's Testing panel; they should all pass.
+2. Do [`CHANGE.md`](CHANGE.md): ask a coding assistant to add a p95 latency ceiling to the gate, then review its change. Check it with
+   `pytest studio-3/03-compare-and-gate/test_change.py -q`.
+
+The Steps section is the write track: implement `starter.py` yourself.
+
 ## Goal
 
 A teammate wants to replace the support-triage system's model and prompt. You have one recorded eval run of each

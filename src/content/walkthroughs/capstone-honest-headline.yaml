@@ -1,0 +1,179 @@
+id: capstone-honest-headline
+summary: |
+  This program writes the two kinds of sentence a capstone write-up needs, in a form the numbers can actually support. `headline` reports a success rate with its 95% Wilson interval and sample size ("Task success: 72% (95% CI 63% to 80%, n=100)"). `verdict` turns a 95% interval on a paired difference (new system minus baseline) into one of four honest labels: better, worse, equivalent within a pre-set tolerance, or no clear difference.
+
+  The three functions build on each other: `wilson` does the statistics, `headline` formats it, and `verdict` applies decision rules to an interval computed elsewhere (by the bootstrap in your eval harness). Keeping the formatting and the decision rules as code, rather than writing them by hand each time, means every number in the report is produced the same way and nobody "rounds up" a result.
+code: |
+  import math
+
+
+  def wilson(k, n, z=1.96):
+      """Wilson score interval for k successes out of n, clamped to [0, 1]. Returns (lo, hi)."""
+      p = k / n
+      denom = 1 + z * z / n
+      center = (p + z * z / (2 * n)) / denom
+      half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+      return max(0.0, center - half), min(1.0, center + half)
+
+
+  def headline(name, k, n):
+      """Return e.g. "Task success: 72% (95% CI 63% to 80%, n=100)".
+      Round the rate and both bounds to whole percents with round()."""
+      lo, hi = wilson(k, n)
+      rate = round(100 * k / n)
+      return f"{name}: {rate}% (95% CI {round(100 * lo)}% to {round(100 * hi)}%, n={n})"
+
+
+  def verdict(lo, hi, tolerance=0.0):
+      """Classify a paired difference (new minus baseline) from its 95% interval [lo, hi].
+        "better"                     if lo > 0
+        "worse"                      if hi < 0
+        "equivalent within tolerance" if tolerance > 0 and -tolerance <= lo and hi <= tolerance
+        "no clear difference"        otherwise
+      """
+      if lo > 0:
+          return "better"
+      if hi < 0:
+          return "worse"
+      if tolerance > 0 and -tolerance <= lo and hi <= tolerance:
+          return "equivalent within tolerance"
+      return "no clear difference"
+
+
+  print(headline("Task success", 72, 100))
+  print(verdict(-0.01, 0.07))
+  print(verdict(-0.02, 0.015, tolerance=0.03))
+notes:
+  - lines: [1, 5]
+    title: Why the Wilson interval
+    text: |
+      `wilson(k, n, z=1.96)` returns a **tuple** `(lo, hi)` for k successes out of n. `z=1.96` is a **default argument**, the normal quantile for 95%.
+
+      The textbook alternative, the **Wald** interval p plus or minus z times sqrt(p(1 minus p) / n), behaves badly exactly where capstones live: small n and rates near 0 or 1. At 0 of 20 its standard error is 0, so it reports the interval [0, 0], as if you had proven the rate is zero. Brown, Cai, and DasGupta (2001) recommend Wilson instead; it comes from inverting the score test, and it never collapses to a point.
+  - lines: [6, 9]
+    title: The formula, with the center shifted toward one half
+    text: |
+      Reading the pieces:
+
+      - `p = k / n` is the observed rate.
+      - `denom = 1 + z * z / n` shrinks the interval toward 1/2, more strongly when n is small.
+      - `center` is (p + z squared / 2n) / denom. Note the center is **not** p: for 72 of 100 it is about 0.712, pulled slightly toward 0.5. That shift is what lets the interval behave sensibly near 0 and 1.
+      - `half` is the half-width, z times sqrt(p(1 minus p) / n + z squared / 4n squared), divided by the same denom. The extra z squared / 4n squared term is what keeps the width positive when p is exactly 0 or 1.
+
+      This version divides `center` and `half` by `denom` separately; other implementations divide once at the end. The algebra is the same. When reviewing, check that the denominator is applied to both pieces, not just one.
+
+      `z * z` is used instead of `z ** 2`; they're equivalent here, and either is fine.
+
+      There is no guard for `n = 0`, so `k / n` raises `ZeroDivisionError`. That is a defensible choice (a rate from zero trials should never reach a report), but if you call this on filtered subsets, some of which may be empty, decide explicitly what should happen.
+  - lines: [10, 10]
+    title: Clamp to [0, 1]
+    text: |
+      `max(0.0, center - half), min(1.0, center + half)` returns the two ends, clamped. In exact arithmetic the Wilson interval already lies inside [0, 1], but floating point can overshoot: at 0 of 20, `center - half` comes out at about minus 1.4e-17 instead of exactly 0. The clamp turns that into a clean 0, which matters because the second hidden test checks `lo == 0` exactly, and because a negative rate in a report looks like a bug.
+
+      Worked values: `wilson(72, 100)` is about (0.625, 0.799), and `wilson(0, 20)` is (0.0, 0.161). Zero failures in 20 tries still leaves room for a true failure rate up to about 16%.
+  - lines: [13, 18]
+    title: The headline, formatted in one place
+    text: |
+      `headline` calls `wilson`, then builds the sentence with an **f-string**: a string prefixed with `f`, where anything in `{braces}` is evaluated and inserted. Expressions such as `round(100 * lo)` can go straight inside the braces.
+
+      Python's `round()` with no second argument returns an integer, and it rounds halves to the nearest **even** number (`round(0.5)` is 0, `round(2.5)` is 2). That rarely matters here, but it surprises people. What matters more is not using `int()`, which **truncates**: the lower bound 62.51 would print as 62% instead of 63%, quietly making every interval look a bit wider at the bottom and a bit narrower at the top.
+
+      Putting n in the headline is the most important design choice in this function. "72%" with n = 100 and "72%" with n = 25 are very different claims, and the interval only means something when the reader can see both.
+  - lines: [21, 27]
+    title: Four labels, defined before you look at the data
+    text: |
+      `verdict(lo, hi, tolerance=0.0)` takes a 95% interval on a **paired difference**, new minus baseline, on the same eval cases. The docstring defines the four outcomes. Note that the tolerance defaults to 0, which means "no equivalence margin was set in advance", and in that case the function can never say "equivalent".
+
+      That default encodes a real rule of good practice: the margin for "close enough" must be chosen before the comparison, not after you see a small difference you'd like to call a tie.
+  - lines: [28, 34]
+    title: The order of the checks is part of the logic
+    text: |
+      The checks run top to bottom and each `return` ends the function, so the first match wins.
+
+      - `lo > 0`: the whole interval is above zero, so the new system is better.
+      - `hi < 0`: the whole interval is below zero, so it is worse.
+      - `tolerance > 0 and -tolerance <= lo and hi <= tolerance`: a tolerance was set and the whole interval lies inside it, so any difference is too small to matter.
+      - Otherwise, the data can't tell.
+
+      Order matters because the categories can overlap. An interval like (0.01, 0.02) with a tolerance of 0.03 is both "better" and "within tolerance". Checking "better" first reports the more informative result. An AI that reorders these branches for neatness can change the answer without breaking any code.
+  - lines: [37, 39]
+    title: Three sentences for the write-up
+    text: |
+      The demo prints the headline for 72 of 100, then two verdicts:
+
+      - (-0.01, 0.07) with no tolerance is "no clear difference". The point estimate might be +3 points, but an interval that includes zero is not a win.
+      - (-0.02, 0.015) with a 3-point tolerance is "equivalent within tolerance": the new system may be cheaper or faster, and you can say it is no worse by more than 3 points.
+
+      These are the sentences your results section should contain, generated rather than typed.
+review:
+  - id: wt-hh-order
+    type: code-reading
+    prompt: An AI assistant reorders `verdict` to check equivalence first, "so the special case is handled up front." What does `verdict(0.01, 0.02, tolerance=0.03)` return now?
+    code: |
+      def verdict(lo, hi, tolerance=0.0):
+          if tolerance > 0 and -tolerance <= lo and hi <= tolerance:
+              return "equivalent within tolerance"
+          if lo > 0:
+              return "better"
+          if hi < 0:
+              return "worse"
+          return "no clear difference"
+    options:
+      - id: a
+        text: '"better", because the interval is entirely above zero'
+        rationale: That's what the original returns. In this version the equivalence check runs first and returns before the "better" check is reached.
+      - id: b
+        text: '"no clear difference"'
+        rationale: Both of the first two checks would match here; the function never reaches the last line.
+      - id: c
+        text: '"equivalent within tolerance"'
+        correct: true
+        rationale: Right. The interval lies inside plus or minus 0.03, so the first branch matches and returns. A real (if small) improvement gets reported as a tie.
+    explanation: When branches can overlap, their order is part of the specification. None of the hidden tests pass an interval that is both above zero and within tolerance, so this edit would pass them. That's the test to add.
+  - id: wt-hh-int
+    type: predict-output
+    prompt: If `headline` used `int(100 * lo)` and `int(100 * hi)` instead of `round(...)`, what would `headline("Task success", 72, 100)` print?
+    options:
+      - id: a
+        text: '"Task success: 72% (95% CI 63% to 80%, n=100)", the same'
+        rationale: Only if both bounds happened to have fractional parts below .5. Here the lower bound is 62.51.
+      - id: b
+        text: '"Task success: 72% (95% CI 62% to 79%, n=100)"'
+        correct: true
+        rationale: Right. `int` truncates, so 62.51 becomes 62 and 79.86 becomes 79. Both bounds move down, and the test that checks the exact string fails.
+      - id: c
+        text: It raises TypeError, because int() can't take a float
+        rationale: int() accepts floats and drops the fractional part.
+    explanation: Truncation and rounding differ by at most one unit, which is exactly why the difference survives casual review. Exact-string tests on formatted output catch it.
+  - id: wt-hh-tolerance
+    type: scenario
+    prompt: Your new, cheaper pipeline gives a paired difference interval of (-0.02, 0.015). You didn't set a tolerance before running the comparison. A teammate suggests "let's use 3 points, that's reasonable." What should the write-up say?
+    options:
+      - id: a
+        text: No clear difference at n cases, with the interval stated, and a note that equivalence was not tested because no margin was set in advance
+        correct: true
+        rationale: Right. That is what `verdict` returns with the default tolerance, and it is the honest result. Set the margin before the next comparison.
+      - id: b
+        text: Equivalent within a 3-point tolerance
+        rationale: Choosing the margin after seeing that it fits is the problem. Any interval can be called equivalent with a wide enough margin.
+      - id: c
+        text: The new pipeline is better, since the upper end is positive
+        rationale: The interval includes zero and negative values, so it doesn't show an improvement.
+    explanation: Equivalence claims are only meaningful against a margin fixed before the data. The default `tolerance=0.0` makes the code enforce that, which is a good example of putting a methodological rule into the function signature.
+direct:
+  task: |
+    Your write-up also needs a sentence for the difference itself, for example "New minus baseline: +3.0 points (95% CI -1.0 to +7.0), no clear difference." Add a function that formats that from an interval and point estimate.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function difference_sentence(est, lo, hi, tolerance=0.0) that returns f"New minus baseline: {est:+.1f} points (95% CI {lo:+.1f} to {hi:+.1f}), {label}." where est, lo, and hi are given as fractions and printed in percentage points (multiply by 100), and label is verdict(lo, hi, tolerance). Use the + format flag so positive values show a plus sign.
+
+    Do not change wilson, headline, or verdict: keep the check order in verdict, the clamp in wilson, and round() in headline.
+
+    Add test asserts: difference_sentence(0.03, -0.01, 0.07) == "New minus baseline: +3.0 points (95% CI -1.0 to +7.0), no clear difference."; a case that is "better"; and a case with tolerance=0.03 that is "equivalent within tolerance". Print one example in the demo.
+  checklist:
+    - wilson, headline, and verdict are unchanged, including verdict's check order
+    - The label comes from calling verdict, not from re-implementing its rules
+    - Values are converted from fractions to points exactly once
+    - The sign is always shown (+3.0, -1.0), and tests pin the exact strings
+    - The tolerance is passed through, so equivalence still requires a margin set by the caller

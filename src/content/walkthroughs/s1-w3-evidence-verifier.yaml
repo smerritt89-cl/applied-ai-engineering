@@ -1,0 +1,205 @@
+id: s1-w3-evidence-verifier
+summary: |
+  This program checks a model's extracted action items against the meeting they came from. Every item already passed schema validation, so the shapes are right; the question now is whether the values are supported. For each item it asks four mechanical questions: is there an evidence quote, does that quote really appear in the transcript, is the owner someone who was at the meeting, and is the due date after the meeting? It returns only the items that fail something, with the reasons.
+
+  It's built as two functions. `normalize` makes text comparable by flattening whitespace, so a quote that differs from the transcript only by a line break or a double space still counts as found. `verify_items` runs the checks in a fixed order and collects every problem per item, because a reviewer deciding what to do with an item needs all of its problems at once. The checks are cheap and certain, which is why they come first in the lesson's pipeline, ahead of any second-model judge.
+code: |
+  from datetime import date
+
+
+  def normalize(text):
+      """Collapse every run of whitespace to one space and strip the ends."""
+      return " ".join(text.split())
+
+
+  def verify_items(items, transcript, attendees, meeting_date):
+      """Check extracted items against the transcript.
+
+      Each item is a dict with: task, owner (str or None), due_date (ISO string or None), evidence.
+      Problems, in this order: "no evidence", "evidence not in transcript",
+      "unknown owner", "due date before meeting".
+      Return a list of {"index": i, "task": ..., "problems": [...]} for items with at least one problem.
+      """
+      source = normalize(transcript)
+      flagged = []
+      for i, item in enumerate(items):
+          problems = []
+
+          evidence = normalize(item.get("evidence") or "")
+          if not evidence:
+              problems.append("no evidence")
+          elif evidence not in source:
+              problems.append("evidence not in transcript")
+
+          owner = item.get("owner")
+          if owner is not None and owner not in attendees:
+              problems.append("unknown owner")
+
+          due = item.get("due_date")
+          if due is not None and date.fromisoformat(due) < meeting_date:
+              problems.append("due date before meeting")
+
+          if problems:
+              flagged.append({"index": i, "task": item["task"], "problems": problems})
+      return flagged
+
+
+  TRANSCRIPT = """Priya: Thanks, everyone. First, the Q4 budget. I'll send the revised budget to finance by November 20.
+  Sam: I can update the roadmap slide, but I need the final numbers first.
+  Lee: Someone should book the offsite venue.
+  Ana: I'll call the vendor about the delayed shipment tomorrow.
+  Priya: Great. Let's also confirm the launch date with marketing."""
+
+  ATTENDEES = {"Priya", "Sam", "Lee", "Ana"}
+  MEETING_DATE = date(2026, 11, 11)
+
+  # What a model returned. Every item is schema-valid.
+  ITEMS = [
+      {"task": "Send revised budget to finance", "owner": "Priya", "due_date": "2026-11-20",
+       "evidence": "I'll send the revised budget to finance by November 20."},
+      {"task": "Update the roadmap slide", "owner": "Sam", "due_date": None,
+       "evidence": "I will update the roadmap slide"},
+      {"task": "Book the offsite venue", "owner": "Lee", "due_date": None,
+       "evidence": "Someone should book the offsite venue."},
+      {"task": "Call the vendor about the shipment", "owner": "Jordan", "due_date": None,
+       "evidence": "I'll call the vendor  about the delayed\nshipment tomorrow."},
+      {"task": "Confirm launch date with marketing", "owner": "Priya", "due_date": "2026-11-01",
+       "evidence": "Let's also confirm the launch date with marketing."},
+      {"task": "Circulate meeting notes", "owner": None, "due_date": None, "evidence": ""},
+  ]
+
+  flags = verify_items(ITEMS, TRANSCRIPT, ATTENDEES, MEETING_DATE)
+  for f in flags:
+      print(f["index"], f["task"], "->", ", ".join(f["problems"]))
+notes:
+  - lines: [1, 1]
+    title: One import, for real dates
+    text: |
+      `date` is the standard library's calendar-date type. The verifier needs it to turn the model's due-date strings into dates it can compare, and to hold the meeting date (line 48). Comparing real dates rather than strings is what makes "earlier than" mean what you think it means.
+  - lines: [4, 6]
+    title: "`normalize`: flatten whitespace in one line"
+    text: |
+      `text.split()` with **no argument** splits on any run of whitespace (spaces, tabs, newlines) and drops empty pieces, including those at the ends. `" ".join(...)` then glues the words back with single spaces.
+
+      Worked value: `"  a \n b\t c "` splits into `["a", "b", "c"]`, which joins to `"a b c"`.
+
+      This is the standard idiom, and it beats the alternatives an AI often writes. `text.replace("  ", " ")` only halves runs of spaces and ignores newlines; `text.split(" ")` (with an argument) keeps empty strings and doesn't touch tabs or newlines. When you see hand-rolled whitespace handling in review, check it against a string with a newline and a double space.
+  - lines: [9, 18]
+    title: The contract, and normalizing the transcript once
+    text: |
+      The docstring states the item shape, the four problem labels, their order, and the return shape. The order matters: the tests compare each item's problem list exactly, so `["unknown owner", "no evidence"]` would fail.
+
+      `source = normalize(transcript)` runs **before** the loop. The transcript is the same for every item, so normalizing it once is both faster and clearer than redoing it per item. Both sides of the comparison must be normalized the same way, or a quote spanning a line break could never match.
+
+      `flagged = []` will hold one result per problem item. Items with no problems are left out entirely, so an empty list means "everything checked out".
+  - lines: [19, 26]
+    title: Check 1, evidence exists and is really in the transcript
+    text: |
+      `enumerate(items)` gives each item together with its position `i`, so the result can say "item 3" rather than repeating the whole item. `problems = []` starts a fresh list for each item.
+
+      `item.get("evidence") or ""` handles two cases in one expression: **dict.get** returns `None` if the key is missing, and `x or ""` turns `None` (or any other "falsy" value) into an empty string, so `normalize` always receives a string.
+
+      The **if/elif** pair is the crucial design. `if not evidence` catches an empty or whitespace-only quote first. Only otherwise (`elif`) does it test `evidence not in source`, a **substring** check: is this exact sequence of characters somewhere in the transcript?
+
+      Why the order matters: in Python the empty string is a substring of every string (`"" in "anything"` is `True`). A verifier that only did the substring check would pass item 5, whose evidence is `""`, as perfectly supported. That's the most common bug in AI-written versions of this function.
+
+      Item 1 shows what the substring check catches: the model quoted "I will update the roadmap slide", but Sam said "I can update". A paraphrase isn't evidence, and an exact-match rule refuses it.
+  - lines: [28, 30]
+    title: Check 2, the owner was in the meeting
+    text: |
+      `owner not in attendees` is a membership test on a **set** (built on line 47). Sets answer "is this in here?" quickly no matter how large they get, which is the right container for a list of names you only look things up in.
+
+      The `owner is not None and` part lets a null owner through. That's deliberate: the schema says `null` means "no one was named", which is an honest answer, not an error. Python's `and` **short-circuits**: if the left side is false, the right side isn't evaluated at all.
+
+      Item 3 shows why this check exists. Its quote matches after normalization, so check 1 passes, but the model assigned it to Jordan, who wasn't there. A real quote with an invented owner is a classic confident-but-wrong output.
+  - lines: [32, 38]
+    title: Check 3, the due date is after the meeting, then record the result
+    text: |
+      `date.fromisoformat(due)` turns a string like `"2026-11-01"` into a `date`, and `<` compares dates chronologically. Item 4's due date, 1 November, is before the 11 November meeting, so nobody could have promised it in that meeting.
+
+      Again `due is not None and ...` short-circuits, so items without a date are never parsed. This code trusts that a non-null due date is a valid ISO string, which is reasonable here because schema validation ran first; if this function might ever see unvalidated data, `fromisoformat` would raise `ValueError` and you'd want a `try/except`.
+
+      Finally, `if problems:` is true only for a non-empty list (an empty list is "falsy"), and the item is recorded as a small dict with its index, its task (for a readable report), and the problems in check order. `return flagged` sits outside the loop, after every item has been seen. An indentation slip that put it inside the loop would return after the first item, a bug that is easy to miss when reading AI-written code.
+  - lines: [41, 48]
+    title: The meeting, as data
+    text: |
+      `TRANSCRIPT` is a **triple-quoted string**, which can span several lines; the line breaks are part of the string. This is exactly why normalization matters: item 3's quote contains a newline and a double space that the transcript doesn't.
+
+      `ATTENDEES` uses curly braces with plain values, which makes a **set** (curly braces with `key: value` pairs would make a dict). `MEETING_DATE` is a real `date`, matching what `fromisoformat` produces, so the comparison on line 33 compares like with like.
+  - lines: [50, 67]
+    title: Six schema-valid items, and the one no rule can catch
+    text: |
+      Each item in `ITEMS` is designed to trip one check, or none: item 0 is fully supported, item 1 paraphrases, item 3 has an unknown owner, item 4 is due before the meeting, and item 5 has an empty quote.
+
+      The loop prints one line per flagged item, joining its problems with commas. Press **Run this code** and you'll see items 1, 3, 4, and 5.
+
+      Now look at item 2, which passes. Lee really said "Someone should book the offsite venue", Lee was in the meeting, and there's no date to check. But "someone should" isn't Lee committing to anything. The verifier is right to pass it, because no mechanical rule can tell a suggestion from a commitment. These checks prove the evidence **exists**; whether it **supports** the claim needs judgment, from a narrow second-model check or a person, as the rest of the lesson explains.
+review:
+  - id: wt-evidence-empty
+    type: code-reading
+    prompt: An AI assistant simplifies the evidence check to the version below. Which items does `verify_items` flag now?
+    code: |
+      evidence = normalize(item.get("evidence") or "")
+      if evidence not in source:
+          problems.append("evidence not in transcript")
+    options:
+      - id: a
+        text: Items 1, 3, 4, and 5, the same as before
+        rationale: Item 5 was flagged only by the `if not evidence` branch, which this version removed.
+      - id: b
+        text: Items 1, 3, and 4; item 5 with its empty quote now passes
+        correct: true
+        rationale: Right. The empty string is a substring of every string, so `"" not in source` is `False` and item 5 looks fully supported.
+      - id: c
+        text: Items 1, 3, 4, and 5, but item 5 now says "evidence not in transcript"
+        rationale: That would require `""` not to be found in the transcript, but Python finds the empty string everywhere.
+    explanation: This regression is invisible on most data, because most items have a quote. It shows up only on the item that has nothing to support it, which is exactly the item you most need to catch. When reviewing a substring or "contains" check, always ask what happens with an empty input.
+  - id: wt-evidence-no-normalize
+    type: predict-output
+    prompt: |
+      Suppose the evidence line were written as `evidence = item.get("evidence") or ""` (no `normalize`), while `source` is still normalized. What problems are reported for item 3, whose quote is `"I'll call the vendor  about the delayed\nshipment tomorrow."`?
+    options:
+      - id: a
+        text: "`['unknown owner']`, the same as before"
+        rationale: The quote has a double space and a newline. The normalized transcript has neither, so the exact match now fails.
+      - id: b
+        text: "`['evidence not in transcript']` only"
+        rationale: The owner check is independent and still runs, so Jordan is still flagged.
+      - id: c
+        text: "`['evidence not in transcript', 'unknown owner']`"
+        correct: true
+        rationale: Right. The unnormalized quote no longer matches, and the owner check still flags Jordan, in that order.
+    explanation: Normalization has to be applied to both sides of the comparison. Applying it to only one side produces false alarms on real quotes that wrapped across lines, which trains reviewers to ignore the flag. That's a quiet way for a verifier to stop working.
+  - id: wt-evidence-item2
+    type: scenario
+    prompt: |
+      A teammate proposes adding a rule to catch item 2: flag any evidence containing the word "someone". What's the best response?
+    options:
+      - id: a
+        text: Add it; more rules always make the verifier safer
+        rationale: Keyword rules on meaning are brittle. "Someone asked me to book it, so I'll do it" is a real commitment and would be flagged; "We could maybe book the venue" isn't and would pass.
+      - id: b
+        text: Keep the mechanical checks for what they can prove, and send items that pass them to a narrow judgment step (a second-model check on this one question, or a person), measured against labeled examples
+        correct: true
+        rationale: Right. These checks prove the quote exists; whether it shows a commitment is judgment. Put judgment where it belongs, and measure how often it's right.
+      - id: c
+        text: Remove the evidence check, since it can't catch item 2 anyway
+        rationale: It still catches paraphrases and empty quotes cheaply and with certainty. A check that misses one kind of error is still worth keeping for the errors it does catch.
+    explanation: Cheap, certain checks go first; expensive, fallible ones go next; people handle the rest. Don't stretch a mechanical rule to cover a judgment it can't make.
+direct:
+  task: |
+    Owner names don't always match the attendee list exactly: the model writes `"priya"` or `"Priya "` and gets flagged as an unknown owner. You want the owner check to ignore case and surrounding spaces, while still flagging names that really aren't attendees.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In verify_items, make the owner check case-insensitive and ignore leading and trailing whitespace: "priya", "PRIYA", and " Priya " should all match the attendee "Priya". Build a lowercased set of attendee names once, before the loop, and compare owner.strip().lower() against it.
+
+    Do not change anything else: the evidence and due-date checks, the problem labels, their order, the return shape, and the rule that owner None is allowed must all stay as they are. Do not change the attendees argument or mutate the caller's set.
+
+    Add test asserts: owners "priya" and " Sam " are not flagged; owner "Jordan" is still flagged as "unknown owner"; owner None is still not flagged; and the original exercise checks (items 1, 3, 4, 5 flagged, with the same problem lists) still pass.
+  checklist:
+    - Only the owner check changed; evidence and due-date logic, labels, and order are untouched
+    - The lowercased attendee set is built once, outside the loop, and the caller's set is not modified
+    - A null owner is still allowed, and the code doesn't call `.strip()` on `None`
+    - A genuinely unknown name is still flagged
+    - New tests cover different case, extra spaces, and an unknown name, and the original checks still pass

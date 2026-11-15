@@ -1,0 +1,172 @@
+id: s3-w3-cost-frontier
+summary: |
+  This program turns a model bake-off into a decision. Six configurations (a model plus its settings, such as effort level) ran the same 300 tasks. The code computes each one's cost per successful task, finds the **Pareto frontier** (the configurations that no other one beats on both quality and cost), and then picks the cheapest-per-success option that meets a minimum pass rate and a latency budget.
+
+  It separates the steps on purpose. The frontier answers "which options are even worth considering?" without any business rules. `pick` then applies your constraints, written as explicit arguments, so the decision is reproducible and anyone can see which threshold drove it.
+code: |
+  # Results of one fair bake-off: same 300 tasks, same graders, each configuration tuned
+  # with the same budget on a separate dev set. total_cost_usd comes from measured usage
+  # (thinking tokens and retries included); the self-hosted row includes amortized GPU cost.
+  RESULTS = [
+      {"name": "large model, default effort", "passes": 270, "n": 300, "total_cost_usd": 4.50, "p95_s": 9.0},
+      {"name": "mid model, low effort", "passes": 264, "n": 300, "total_cost_usd": 1.20, "p95_s": 4.0},
+      {"name": "mid model, high effort", "passes": 268, "n": 300, "total_cost_usd": 2.40, "p95_s": 7.5},
+      {"name": "other provider, large", "passes": 258, "n": 300, "total_cost_usd": 3.00, "p95_s": 8.0},
+      {"name": "small model", "passes": 222, "n": 300, "total_cost_usd": 0.15, "p95_s": 1.5},
+      {"name": "open-weight, self-hosted", "passes": 246, "n": 300, "total_cost_usd": 0.60, "p95_s": 6.5},
+  ]
+
+
+  def pass_rate(row):
+      return row["passes"] / row["n"]
+
+
+  def cost_per_success(row):
+      """Total cost divided by number of passes. Return float('inf') if there are no passes."""
+      if row["passes"] == 0:
+          return float("inf")
+      return row["total_cost_usd"] / row["passes"]
+
+
+  def dominates(x, y):
+      """True if x is at least as good as y on both pass rate and cost, and strictly better on one."""
+      at_least_as_good = pass_rate(x) >= pass_rate(y) and x["total_cost_usd"] <= y["total_cost_usd"]
+      strictly_better = pass_rate(x) > pass_rate(y) or x["total_cost_usd"] < y["total_cost_usd"]
+      return at_least_as_good and strictly_better
+
+
+  def pareto_front(rows):
+      """Names of rows NOT dominated. Row X dominates row Y if X's pass rate is >= Y's and
+      X's total cost is <= Y's, with at least one of the two strictly better.
+      Return the names sorted by total cost, cheapest first."""
+      front = [y for y in rows if not any(dominates(x, y) for x in rows)]
+      return [r["name"] for r in sorted(front, key=lambda r: r["total_cost_usd"])]
+
+
+  def pick(rows, min_pass_rate, max_p95_s):
+      """Among rows with pass rate >= min_pass_rate and p95_s <= max_p95_s, return the name
+      with the lowest cost per success. Return None if nothing qualifies."""
+      ok = [r for r in rows if pass_rate(r) >= min_pass_rate and r["p95_s"] <= max_p95_s]
+      if not ok:
+          return None
+      return min(ok, key=cost_per_success)["name"]
+
+
+  for r in RESULTS:
+      cps = cost_per_success(r)
+      print(f"{r['name']:28} pass {pass_rate(r):.3f}  cost/success {cps:.5f}")
+  print("frontier:", pareto_front(RESULTS))
+  print("pick:", pick(RESULTS, 0.85, 8.0))
+notes:
+  - lines: [1, 11]
+    title: Fair bake-off data
+    text: |
+      Each row is one **configuration**, not a bare model name: "mid model, low effort" and "mid model, high effort" are the same model with different settings, and they behave very differently on cost.
+
+      The comment records what makes the comparison fair: the same tasks and graders, equal tuning effort, costs from measured usage (including thinking tokens and retries), and amortized GPU cost for the self-hosted row. Without that, a cost column is just a list-price guess. When you review an AI-generated comparison, look for this provenance first.
+  - lines: [12, 23]
+    title: Two small helpers
+    text: |
+      `pass_rate` is pulled into its own function because three places need it. Writing `row["passes"] / row["n"]` once means it can't be computed two different ways.
+
+      `cost_per_success` divides total cost by passes, not by tasks. A cheap configuration that fails half the time has to be run (or followed up by a human) more often, so cost per *success* is closer to what a working result really costs. The large model: $4.50 / 270, about 1.7 cents per success.
+
+      The zero check comes first and returns `float("inf")`, Python's infinity. A configuration that never succeeds has infinite cost per success, and infinity still sorts correctly (it's larger than every real number), so `min` will never pick it. Dividing first would raise `ZeroDivisionError`.
+  - lines: [24, 30]
+    title: dominates, the definition written once
+    text: |
+      X **dominates** Y when X is at least as good on both axes (pass rate at least as high, cost at most as high) and strictly better on at least one. Two named Booleans make the two halves of that definition readable on their own.
+
+      The "strictly better" half is not decoration. A row is always "at least as good" as itself, so without it every row would dominate itself and the frontier would come out empty. It also keeps two identical rows from knocking each other off.
+
+      Example: the mid model at low effort (0.88, $1.20) dominates "other provider, large" (0.86, $3.00): better pass rate, lower cost.
+  - lines: [31, 38]
+    title: pareto_front, keep what nothing beats
+    text: |
+      The **list comprehension** keeps each row `y` for which no row `x` dominates it. `any(...)` returns True as soon as one dominating row is found.
+
+      Then `sorted(front, key=lambda r: r["total_cost_usd"])` orders the survivors cheapest first, using a **lambda** as the sort key, and a final comprehension pulls out the names.
+
+      On this data, five of six rows are on the frontier. Only "other provider, large" is dominated. The frontier is a menu, not an answer: moving right along it, each step buys some quality for more money.
+
+      Checking every row against every other is fine for a handful of rows; for thousands, you'd sort first. That's the kind of performance note worth making only when it matters.
+  - lines: [39, 47]
+    title: pick, constraints first, then cheapest per success
+    text: |
+      First filter to the rows that meet both hard constraints: pass rate at least `min_pass_rate` and 95th-percentile latency at most `max_p95_s`. Returning `None` when nothing qualifies forces the caller to handle "no acceptable option" instead of silently getting the closest one.
+
+      `min(ok, key=cost_per_success)` finds the row with the smallest cost per success. Note that `key=` takes the function itself (no parentheses): `min` calls it on each row.
+
+      With a minimum of 0.85 and 8 seconds, three rows qualify (both mid-model rows and the other provider), and the low-effort mid model wins at about 0.45 cents per success. The large model, at 0.90, is excluded by latency (9 s), not by quality.
+  - lines: [48, 53]
+    title: The report
+    text: |
+      The f-string pads each name to 28 characters and shows the pass rate to three decimals. `{cps:.5f}` shows the cost per success to five decimals, since these are fractions of a cent.
+
+      The lesson's caution applies to the printout: 264 versus 268 passes (mid model, low versus high effort) is a 4-task gap on 300. Before paying twice as much for high effort, run the paired comparison from lesson 7. A difference this small is usually inside the noise.
+review:
+  - id: wt-frontier-no-strict
+    type: code-reading
+    prompt: An AI assistant "simplifies" `dominates` to the version below. What does `pareto_front(RESULTS)` return now?
+    code: |
+      def dominates(x, y):
+          return pass_rate(x) >= pass_rate(y) and x["total_cost_usd"] <= y["total_cost_usd"]
+    options:
+      - id: a
+        text: The same five names as before
+        rationale: The "strictly better" half was what stopped a row from dominating itself.
+      - id: b
+        text: An empty list
+        correct: true
+        rationale: "Right. `pareto_front` compares every row with every row, itself included. Every row is now \"at least as good\" as itself, so every row counts as dominated."
+      - id: c
+        text: All six names, including the other provider
+        rationale: The other provider is still dominated, and now so is everything else.
+    explanation: Self-comparison is a classic edge in "compare everything to everything" code. You could also fix it by skipping `x is y`, but then two identical rows would knock each other out. The strict condition handles both cases, which is why it's in the definition.
+  - id: wt-frontier-tighter
+    type: predict-output
+    prompt: "What does `pick(RESULTS, 0.89, 8.0)` return?"
+    options:
+      - id: a
+        text: "\"large model, default effort\", the only one at 0.90"
+        rationale: "It passes the quality bar, but its p95 latency is 9.0 s, over the 8.0 s budget."
+      - id: b
+        text: "\"mid model, high effort\""
+        correct: true
+        rationale: "Right. At 268 / 300 (about 0.893) and 7.5 s, it's the only row that clears both constraints."
+      - id: c
+        text: None
+        rationale: One row qualifies.
+    explanation: Constraints often decide more than the optimization does. Raising the quality bar by one point changed the answer and doubled the cost per success, which is a trade-off worth stating explicitly in a model-selection write-up.
+  - id: wt-frontier-cps
+    type: scenario
+    prompt: Why rank qualifying options by cost per success rather than by total cost?
+    options:
+      - id: a
+        text: Because a cheaper configuration that fails more often costs more per useful result, once you count the retries or human follow-ups the failures cause
+        correct: true
+        rationale: Exactly. Cost per success folds quality into the cost figure, which is what the business actually pays for.
+      - id: b
+        text: Because total cost is not available for self-hosted models
+        rationale: It's in the data, including amortized GPU cost.
+      - id: c
+        text: Because cost per success is always lower than total cost
+        rationale: It is numerically, but that's not a reason to rank by it.
+    explanation: On this data every configuration ran the same 300 tasks, so the two rankings happen to agree within the qualifying set. They diverge when pass rates differ a lot, or when configurations ran different numbers of tasks.
+direct:
+  task: |
+    Finance wants latency treated as a third axis of the frontier, not just a constraint in `pick`: a configuration that is slightly more expensive but much faster shouldn't drop off the menu.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function pareto_front_3d(rows) that works like pareto_front but with three axes: higher pass rate is better, lower total_cost_usd is better, and lower p95_s is better. X dominates Y if X is at least as good on all three and strictly better on at least one. Return names sorted by total cost, cheapest first.
+
+    Do not change dominates, pareto_front, pick, or cost_per_success; write a separate dominates_3d helper. Make sure a row can't dominate itself.
+
+    Add asserts that every name in pareto_front(RESULTS) is also in pareto_front_3d(RESULTS), that the result has no duplicates, and that "other provider, large" is still excluded (the mid model at low effort beats it on all three axes). Print the 3D frontier.
+  checklist:
+    - The existing two-axis functions are untouched
+    - Latency is compared in the right direction (lower is better)
+    - The strict condition is there, so no row dominates itself
+    - The 3D frontier is a superset of the 2D one, as the math requires
+    - New asserts check that property and the excluded row

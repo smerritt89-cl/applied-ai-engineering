@@ -2,6 +2,15 @@
 
 **Goes with:** Studio 4, week 1 (lessons 1 to 3). **Time:** about 75 minutes.
 
+## Review track
+
+Start here if you are on the review track (the default). Run `python lab.py review studio-4/01-workflow-patterns` from `labs` to create `work.py`, then:
+
+1. Read [WALKTHROUGH.md](WALKTHROUGH.md), a section-by-section tour of the solution with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+2. Do [CHANGE.md](CHANGE.md): have a coding assistant flag unowned action items in team updates, review its change against the checklist, and run `test_change.py`.
+
+The steps below are the write track, if you want to implement the functions yourself.
+
 ## Goal
 
 Turn raw meeting notes into a status update for the right audience, using three workflow patterns from

@@ -7,6 +7,18 @@ Lesson: *Your first API calls* (s1-w1-l2).
 **Time.** About 45 minutes. **Needs.** Python 3.10+, the shared lab setup
 (`labs/README.md`). An Anthropic API key is optional: every offline test runs without one.
 
+## Review track
+
+If you're on the review track (the default), you don't write the code below from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to add an `on_retry` logging callback to `with_retries`,
+   review its diff, then run `pytest studio-1/01-first-call/test_change.py -q`.
+
+The steps below are the write track, if you'd rather implement it yourself in `starter.py`. The live run at the end
+works on either track (on the review track, run `python studio-1/01-first-call/work.py` instead of `starter.py`).
+
 ## Steps
 
 Work in `starter.py`. After each step, run the tests and watch the failures shrink:

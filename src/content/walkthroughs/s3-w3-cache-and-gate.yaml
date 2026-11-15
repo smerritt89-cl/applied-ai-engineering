@@ -1,0 +1,190 @@
+id: s3-w3-cache-and-gate
+summary: |
+  This program holds two pieces of a regression-testing setup for an LLM feature. `cache_key` turns a model request into a stable fingerprint, so a recorded response can be found again and replayed instead of paying for a new call. `gate` decides whether a candidate (a new prompt or model) may ship, by comparing its per-question results to the current baseline.
+
+  The gate is a **non-inferiority** test: it doesn't ask "is the candidate better?" but "can we rule out that it's meaningfully worse?" It fails if any must-pass question fails, or if the lower end of a confidence interval on the difference drops below a set margin (3 points by default). Every failure comes with a plain-language reason, so whoever sees a red CI run knows why.
+code: |
+  import hashlib
+  import json
+  import math
+
+
+  def cache_key(request, epoch=0):
+      """Stable key for a recorded model response.
+      Serialize {"request": request, "epoch": epoch} with json.dumps(..., sort_keys=True,
+      separators=(",", ":")), encode as UTF-8, and return the SHA-256 hex digest.
+      Same request and epoch -> same key, whatever the dict key order."""
+      blob = json.dumps({"request": request, "epoch": epoch}, sort_keys=True, separators=(",", ":"))
+      return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+  def gate(baseline, candidate, margin=0.03, critical_ids=(), z=1.96):
+      """Non-inferiority gate on per-question 0/1 results.
+
+      baseline, candidate: dicts mapping question id -> 0 or 1.
+      1. If the two dicts don't have exactly the same ids, raise ValueError.
+      2. reasons = []. For each id in critical_ids (in order) that the candidate fails,
+         append "critical failed: <id>".
+      3. d_i = candidate[id] - baseline[id]. mean_d = mean of d; se = sample standard deviation
+         of d (divide by n - 1) over sqrt(n). lower = mean_d - z * se.
+         If lower < -margin, append "possible regression: lower bound <lower rounded to 3> below -<margin>".
+      Return {"passed": not reasons, "reasons": reasons, "mean_diff": mean_d, "lower": lower}.
+      """
+      if set(baseline) != set(candidate):
+          raise ValueError("baseline and candidate must cover the same questions")
+
+      reasons = [f"critical failed: {q}" for q in critical_ids if candidate[q] != 1]
+
+      d = [candidate[q] - baseline[q] for q in baseline]
+      n = len(d)
+      mean_d = sum(d) / n
+      var = sum((x - mean_d) ** 2 for x in d) / (n - 1)
+      lower = mean_d - z * math.sqrt(var / n)
+      if lower < -margin:
+          reasons.append(f"possible regression: lower bound {round(lower, 3)} below -{margin}")
+
+      return {"passed": not reasons, "reasons": reasons, "mean_diff": mean_d, "lower": lower}
+
+
+  def make(ids_lost=(), ids_gained=(), n=200):
+      """Baseline passes q0..q179 and fails q180..q199. Candidate is the same except
+      it fails the ids in ids_lost and passes the ids in ids_gained."""
+      base = {f"q{i}": int(i < 180) for i in range(n)}
+      cand = dict(base)
+      for q in ids_lost:
+          cand[q] = 0
+      for q in ids_gained:
+          cand[q] = 1
+      return base, cand
+
+
+  base, same = make()
+  print(gate(base, same, critical_ids=["q0", "q1"]))
+  base, worse = make(ids_lost=[f"q{i}" for i in range(10, 18)])
+  print(gate(base, worse, critical_ids=["q0", "q1"]))
+notes:
+  - lines: [1, 4]
+    title: Three standard-library imports
+    text: |
+      `hashlib` computes cryptographic hashes such as SHA-256, `json` serializes the request, and `math` provides the square root for the standard error.
+  - lines: [5, 12]
+    title: cache_key, a fingerprint for a request
+    text: |
+      A **hash** turns any input into a fixed-length string (64 hex characters for SHA-256). The same input always gives the same hash, and a tiny change gives a completely different one. That makes it a good cache key: hash the request, look the hash up, replay the stored response if it's there.
+
+      The subtle part is making "the same request" always produce the same bytes:
+
+      - `sort_keys=True` writes dict keys in alphabetical order. Without it, `{"model": ..., "max_tokens": ...}` and the same dict built in another order would hash differently, and you'd pay for a call you already recorded. It also sorts keys in nested dicts, like each message.
+      - `separators=(",", ":")` removes the spaces `json.dumps` adds by default, so formatting can't vary.
+      - `.encode("utf-8")` turns the text into bytes, which is what hash functions take.
+
+      `epoch` is part of what's hashed. If you run each question three times to measure variability, each run (epoch 0, 1, 2) must get its own key, or the second and third runs would just replay the first.
+  - lines: [13, 26]
+    title: The gate's specification
+    text: |
+      The docstring is a numbered spec: what to validate, which failure reasons to produce in which order, the exact statistics, and the return shape. Default arguments set the policy: `margin=0.03` (a 3-point drop is the most we'll tolerate), `critical_ids=()` (no must-pass questions unless given), and `z=1.96` (a 95% two-sided interval, so the lower bound is a 97.5% one-sided bound).
+
+      `critical_ids=()` uses an empty **tuple** as the default rather than an empty list. Tuples can't be changed, which avoids Python's well-known mutable-default-argument trap.
+  - lines: [27, 30]
+    title: Refuse mismatched runs, then check must-pass questions
+    text: |
+      `set(baseline) != set(candidate)` compares the two sets of question ids. If the candidate was run on a different or partial question set, any comparison would be meaningless, so it raises `ValueError` instead of quietly comparing what overlaps.
+
+      The critical check is a **list comprehension with a filter** (`if candidate[q] != 1`) that builds one reason string per failed must-pass question, using an **f-string**. It runs before any statistics, and it's absolute: a candidate that improves the average but now fails a must-pass safety question still fails.
+
+      One edge for a reviewer: a critical id that isn't in the question set raises `KeyError` here. That's arguably correct (a typo in the critical list should be loud), but it's worth knowing.
+  - lines: [31, 38]
+    title: The non-inferiority statistic
+    text: |
+      `d` is the per-question difference: +1 if the candidate fixed a question, minus 1 if it broke one, 0 if nothing changed. Iterating `for q in baseline` pairs the two results by id, so dict order doesn't matter.
+
+      Then the usual steps:
+
+      - `mean_d`: the average change. Losing 2 and gaining 1 of 200 gives minus 0.005.
+      - `var`: the **sample variance**, dividing by `n - 1` rather than `n`. That's the standard correction when estimating spread from a sample, and the exercise's tests check for it.
+      - `lower = mean_d - z * sqrt(var / n)`: the low end of the interval, where `sqrt(var / n)` is the standard error.
+
+      If `lower` is below minus the margin, the data can't rule out a drop bigger than you'd accept, so it adds a reason. With 8 questions lost and none gained, `mean_d` is minus 0.04 and `lower` is about minus 0.067, well past minus 0.03.
+  - lines: [39, 40]
+    title: One return shape, pass or fail
+    text: |
+      `"passed": not reasons` is True exactly when the reasons list is empty, since an empty list is falsy. Returning the reasons and the numbers alongside the verdict means a CI log can print *why* it failed and by how much, rather than a bare red X.
+  - lines: [41, 52]
+    title: make, building controlled scenarios
+    text: |
+      A **dict comprehension** builds the baseline: `int(i < 180)` turns the Boolean into 1 or 0, so q0 to q179 pass and q180 to q199 fail. `dict(base)` makes a **copy**, so changing the candidate doesn't also change the baseline (assigning `cand = base` would make both names point at the same dict, a classic bug).
+
+      Then it flips the questions you name. This helper lets the demo and the tests describe each scenario in one line, like "lose q10 to q17".
+  - lines: [53, 58]
+    title: Two scenarios
+    text: |
+      An identical candidate passes with a lower bound of exactly 0. Losing 8 questions fails with "possible regression: lower bound -0.067 below -0.03".
+
+      Try the lesson's last experiment: lose 3, gain 1, and set `margin=0.01`. The mean drop is 1 point, the lower bound is about minus 0.030, and the gate fails. A tight margin means even a small, honest drop needs more evidence (more questions) before it can ship.
+review:
+  - id: wt-gate-no-epoch
+    type: code-reading
+    prompt: An AI assistant decides `epoch` "isn't part of the request" and simplifies `cache_key` as below. You then run each question three times (epochs 0, 1, 2) to measure how often the model's answer changes. What do you see?
+    code: |
+      def cache_key(request, epoch=0):
+          blob = json.dumps(request, sort_keys=True, separators=(",", ":"))
+          return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    options:
+      - id: a
+        text: Three independent samples per question, as intended
+        rationale: All three epochs now produce the same key, so they can't be stored separately.
+      - id: b
+        text: Epochs 1 and 2 replay epoch 0's recorded response, so the model looks perfectly consistent
+        correct: true
+        rationale: Right. The cache hits on the first recording every time, and run-to-run variability silently disappears from your results.
+      - id: c
+        text: It raises an error because `epoch` is unused
+        rationale: Python allows unused parameters; that's what makes this easy to miss.
+    explanation: This bug doesn't crash and doesn't cost money; it makes your eval look more stable than the model is. When reviewing a cache, ask what must make two keys differ (model, parameters, trial number) and test each one, which is what the exercise's tests do.
+  - id: wt-gate-tight-margin
+    type: predict-output
+    prompt: "The candidate loses 3 questions and gains 1 on the 200-question set. With the default `margin=0.03` it passes. What happens with `margin=0.01`?"
+    options:
+      - id: a
+        text: It still passes, because the mean drop is only 1 point
+        rationale: The gate compares the interval's lower bound, about minus 0.030, not the mean.
+      - id: b
+        text: It fails with "possible regression", because the lower bound (about minus 0.030) is below minus 0.01
+        correct: true
+        rationale: Right. With only 200 questions, the uncertainty alone is about 2 points, so a 1-point margin can't be met by this data.
+      - id: c
+        text: It fails with "critical failed"
+        rationale: No critical ids were given, so that check adds nothing.
+    explanation: The margin is a product decision (how much worse could we tolerate?), and the question count decides whether you can demonstrate it. A tight margin with a small eval set will block nearly every change.
+  - id: wt-gate-why-lower
+    type: scenario
+    prompt: Why does the gate test the lower confidence bound against `-margin`, instead of simply failing whenever `mean_diff < 0`?
+    options:
+      - id: a
+        text: Because a small negative mean is often noise, so "fail on any drop" would block harmless changes at random; the lower bound says how bad the change could plausibly be, and the margin says how bad is acceptable
+        correct: true
+        rationale: "Exactly. It also works the other way: a candidate with a mean of exactly 0 on a tiny, noisy set can still fail, because the data can't rule out a real drop."
+      - id: b
+        text: Because `mean_diff` is always zero for paired data
+        rationale: It's zero only when nothing changed.
+      - id: c
+        text: Because the lower bound is always larger than the mean
+        rationale: It's always smaller (or equal), which is why it's the cautious number to check.
+    explanation: A non-inferiority gate asks the question that matters for shipping, "can we rule out a meaningful regression?", and answers it with the uncertainty included. That's the checks-and-balances version of "the score went down a bit".
+direct:
+  task: |
+    Your CI log should also say which questions the candidate broke, so a reviewer can read those traces first. Add the list of regressed question ids (baseline passed, candidate failed) to the gate's result, without changing the verdict logic.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In gate, add two keys to the returned dict: "regressed", a sorted list of question ids where baseline is 1 and candidate is 0, and "fixed", a sorted list where baseline is 0 and candidate is 1. Sort them by the number after "q" (so q9 comes before q10), not alphabetically.
+
+    Do not change "passed", "reasons", "mean_diff", or "lower", the order of the reasons, the ValueError on mismatched ids, or cache_key. The verdict must not depend on the new lists.
+
+    Update the docstring. Add asserts that for make(ids_lost=["q20", "q21"], ids_gained=["q190"]) regressed == ["q20", "q21"] and fixed == ["q190"], that an identical candidate gives two empty lists, and that the existing scenarios still pass or fail exactly as before.
+  checklist:
+    - The pass/fail logic and reason strings are unchanged
+    - regressed and fixed are computed from the same paired ids as d
+    - Sorting is numeric (q9 before q10), as requested
+    - The docstring documents the new keys
+    - New asserts cover both lists, and the original checks still pass

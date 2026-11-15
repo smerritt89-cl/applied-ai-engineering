@@ -1,0 +1,153 @@
+id: s4-w5-changed-this-week
+summary: |
+  A weekly status agent needs to know what changed in the tracker: what was opened, what was closed, what else moved, and what is sitting open with nobody on it. This function works that out from issue records shaped like GitHub's API output, with plain comparisons and no model involved.
+
+  That's the point of the exercise. Counting and classifying are jobs code does perfectly and models do approximately, so this logic belongs in your tool server or workflow code, under unit tests. The model gets the finished lists and does what it is good at: writing the update.
+code: |
+  def changes_this_week(items, start, end):
+      """Classify a week's tracker changes. The week is start <= t < end.
+
+      items are dicts shaped like GitHub issue JSON; timestamps are ISO strings
+      in one format and time zone, so they compare correctly as strings.
+      Returns sorted lists of issue numbers; pull requests are excluded.
+      """
+      def in_week(t):
+          return t is not None and start <= t < end
+
+      issues = [i for i in items if "pull_request" not in i]
+
+      opened = sorted(i["number"] for i in issues if in_week(i["created_at"]))
+      closed = sorted(i["number"] for i in issues if in_week(i.get("closed_at")))
+      already_counted = set(opened) | set(closed)
+      updated = sorted(i["number"] for i in issues
+                       if in_week(i["updated_at"]) and i["number"] not in already_counted)
+      unassigned_open = sorted(i["number"] for i in issues
+                               if i["state"] == "open" and not i.get("assignee"))
+
+      return {"opened": opened, "closed": closed, "updated": updated,
+              "unassigned_open": unassigned_open}
+
+
+  W0, W1 = "2026-11-09T00:00:00Z", "2026-11-16T00:00:00Z"
+  items = [
+      {"number": 1, "title": "Export timeout", "state": "open", "created_at": "2026-10-01T10:00:00Z",
+       "closed_at": None, "updated_at": "2026-11-10T09:00:00Z", "assignee": {"login": "priya"}},
+      {"number": 2, "title": "SSO", "state": "closed", "created_at": "2026-10-20T10:00:00Z",
+       "closed_at": "2026-11-11T16:00:00Z", "updated_at": "2026-11-11T16:00:00Z", "assignee": {"login": "marcus"}},
+      {"number": 3, "title": "Bump deps", "state": "open", "created_at": "2026-11-12T08:00:00Z",
+       "closed_at": None, "updated_at": "2026-11-12T08:00:00Z", "assignee": None, "pull_request": {"url": "..."}},
+  ]
+  print(changes_this_week(items, W0, W1))
+notes:
+  - lines: [1, 7]
+    title: The contract, in the docstring
+    text: |
+      The docstring states the three rules a reader most needs: the week includes its start and excludes its end, timestamps are compared as strings (and why that's safe), and pull requests are left out.
+
+      Comparing ISO timestamps as strings works only because every one has the same format and the same time zone (`Z`, meaning UTC): `"2026-11-09T00:00:00Z"` sorts before `"2026-11-10T09:00:00Z"` character by character, just as the times do. Mix in `"2026-11-09T09:00:00+05:00"` and string order no longer matches time order. In your project you'd parse with `datetime` and decide which time zone defines "this week".
+  - lines: [8, 9]
+    title: A small helper inside the function
+    text: |
+      `in_week` is a **nested function**: defined inside `changes_this_week`, so it can use `start` and `end` without having them passed in (it **closes over** them). It exists so the week rule is written once and used four times.
+
+      `start <= t < end` is a **chained comparison**, Python shorthand for `start <= t and t < end`. That one line encodes the half-open week: an issue created at exactly `2026-11-09T00:00:00Z` counts, and one updated at exactly `2026-11-16T00:00:00Z` belongs to next week. The tests check both edges.
+
+      `t is not None and ...` comes first because an open issue has no `closed_at`. Comparing `None` with a string raises `TypeError`, and `and` **short-circuits**, so the comparison never runs for `None`.
+  - lines: [11, 11]
+    title: Leave out pull requests
+    text: |
+      GitHub's issues endpoint also returns pull requests, marked by a `pull_request` key. This **list comprehension** keeps only items without that key, so every later list automatically excludes them. Filtering once, up front, is safer than remembering to filter in each of the four lists.
+  - lines: [13, 14]
+    title: Opened and closed
+    text: |
+      Each is `sorted(...)` around a **generator expression**: collect the numbers of matching issues, then sort ascending so the output is predictable.
+
+      `i.get("closed_at")` uses **dict.get**, which returns `None` if the key is missing, and `in_week` already handles `None`. `created_at` uses plain indexing because every issue has one; if it were missing, a loud `KeyError` would be the right outcome.
+
+      An issue can be in both lists. In the tests, issue 5 was created and closed in the same week, so it appears in each. That's deliberate: "opened this week" and "closed this week" are separate facts.
+  - lines: [15, 17]
+    title: Updated, but not already reported
+    text: |
+      "Updated" means something changed this week other than the issue being opened or closed, so it excludes anything already in those lists. `set(opened) | set(closed)` builds that exclusion set with the `|` (**set union**) operator, and `not in` on a set is a fast lookup.
+
+      Note issue 7 in the tests: it was closed *last* week but commented on this week, so it counts as updated. An AI-written version that excludes every closed issue (`i["state"] != "closed"`) would drop it, which is wrong, since its closing wasn't this week's news.
+  - lines: [18, 19]
+    title: Open and unassigned
+    text: |
+      This list ignores the week entirely: it's about the current state. `not i.get("assignee")` is true for a missing key, for `None`, and for an empty value, which covers the ways an API might say "nobody".
+
+      This is the list a PM actually acts on, which is a good reason to compute it exactly rather than ask a model to spot unowned work in a long issue dump.
+  - lines: [21, 22]
+    title: The result
+    text: |
+      A dictionary with four lists of issue numbers. Returning numbers rather than whole issue records keeps the result small and unambiguous; the code that writes the prompt can look up titles if the model needs them.
+  - lines: [25, 34]
+    title: A three-item example
+    text: |
+      Issue 1 was updated this week (not opened or closed), issue 2 was closed this week, and item 3 is a pull request, so it is excluded everywhere even though it is open and unassigned. The output is `opened: []`, `closed: [2]`, `updated: [1]`, `unassigned_open: []`. Press **Run this code** to confirm.
+review:
+  - id: wt-week-inclusive-end
+    type: code-reading
+    prompt: 'An AI assistant changes the helper as below, saying "the week should include its last moment". In the tests, issue 6 is open, unassigned, and was updated at exactly `2026-11-16T00:00:00Z`. What happens?'
+    code: |
+      def in_week(t):
+          return t is not None and start <= t <= end
+    options:
+      - id: a
+        text: Nothing changes, because no timestamp is exactly at the end
+        rationale: Issue 6's update is exactly at the end boundary.
+      - id: b
+        text: Issue 6 appears in this week's updated list, and it will also appear in next week's report
+        correct: true
+        rationale: Right. With an inclusive end, a change at midnight belongs to two weeks. Half-open intervals give every moment exactly one week.
+      - id: c
+        text: Issue 6 disappears from unassigned_open
+        rationale: unassigned_open doesn't use the week at all.
+    explanation: Half-open intervals (`start <= t < end`) tile time without gaps or overlaps, so consecutive reports never double count. The test "end is exclusive" exists to catch this.
+  - id: wt-week-closed-filter
+    type: predict-output
+    prompt: 'Suppose the updated list were written as `... if in_week(i["updated_at"]) and i["state"] != "closed"`. Which test issue would be wrongly missing from `updated`?'
+    options:
+      - id: a
+        text: Issue 1, the open issue updated this week
+        rationale: It's open, so it would still be included.
+      - id: b
+        text: Issue 7, closed last week but updated this week
+        correct: true
+        rationale: Yes. Its closing happened last week, so this week's update is news. The state filter removes it anyway.
+      - id: c
+        text: Issue 5, opened and closed this week
+        rationale: Issue 5 is correctly excluded either way, since it is already in opened and closed.
+    explanation: Current state and this week's events are different questions. The function excludes items by what happened this week, not by what they look like now.
+  - id: wt-week-why-code
+    type: scenario
+    prompt: Why compute these lists in code rather than give the model the raw issue JSON and ask it which issues changed this week?
+    options:
+      - id: a
+        text: Models can't read JSON
+        rationale: They read JSON well. The issue is exactness and verifiability, not format.
+      - id: b
+        text: Code gets boundaries, exclusions, and counts exactly right every time and can be unit tested; the model then writes from verified facts
+        correct: true
+        rationale: Exactly. A model may miscount or misplace a midnight edge, and you'd have no test to catch it.
+      - id: c
+        text: It's always cheaper to avoid model calls
+        rationale: Cost helps, but the main reason is correctness you can check.
+    explanation: Split deterministic work from judgment. When reviewing an agent design, look for places where the model is asked to do bookkeeping, and move that into tested code.
+direct:
+  task: |
+    Your team wants issues that have been open more than 30 days with no update this week flagged as "stale", so the weekly update can nudge owners.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a "stale" list to changes_this_week's result: issue numbers (sorted ascending, pull requests excluded) that are currently open, were created more than 30 days before start, and were not updated this week (updated_at not in [start, end)).
+
+    Parse timestamps with datetime.fromisoformat for the 30-day calculation (the strings end in "Z"; handle that explicitly), but keep the existing string comparisons for the other four lists so their behavior is unchanged.
+
+    Do not change the existing keys or their contents. Update the docstring, and add tests for: an issue exactly 30 days old (not stale), one 31 days old and not updated (stale), one 31 days old but updated this week (not stale), a closed old issue (not stale), and a pull request (excluded).
+  checklist:
+    - The four existing lists are unchanged, and the existing test still passes
+    - Pull requests are excluded from stale too
+    - The 30-day boundary is tested on both sides, and measured from start, not from today
+    - The "Z" suffix is handled explicitly when parsing, not by string slicing that would break on other offsets
+    - An issue updated this week is never stale

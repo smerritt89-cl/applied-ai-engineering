@@ -2,6 +2,17 @@
 
 **Goes with:** Studio 3, week 4 (lessons 11 and 12). **Time:** about 75 minutes.
 
+## Review track
+
+If you are on the review track (the default, see `labs/README.md`), read the Goal below, then do this instead of the Steps section:
+
+1. Read [`WALKTHROUGH.md`](WALKTHROUGH.md), a guided tour of `solution.py`, with `work.py` (your copy) open beside it.
+   Run the tests from VS Code's Testing panel; they should all pass.
+2. Do [`CHANGE.md`](CHANGE.md): ask a coding assistant to make the evaluation record a judge failure instead of crashing, then review its change. Check it with
+   `pytest studio-3/04-rag-eval/test_change.py -q`.
+
+The Steps section is the write track: implement `starter.py` yourself.
+
 ## Goal
 
 Score a small RAG system the way you will score your own in the Studio 3 project, and turn the numbers into a

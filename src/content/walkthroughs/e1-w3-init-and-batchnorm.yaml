@@ -1,0 +1,160 @@
+id: e1-w3-init-and-batchnorm
+summary: |
+  This program implements the two fixes from the lecture for activations that are the wrong size: choosing the initial weight scale so that each layer's outputs have roughly unit variance (Kaiming initialization), and Batch Normalization, which forces each feature to zero mean and unit variance across the batch and then lets the network learn its own scale and shift. A third helper keeps the running averages BatchNorm needs at inference time.
+
+  The functions work on plain lists, one feature vector per row, so every number is visible. The exploration loop at the bottom is the experiment from the lesson: draw weights at three different scales and measure how many tanh units end up saturated (stuck near plus or minus 1, where their gradient is almost zero).
+code: |
+  import math
+  import random
+
+
+  def kaiming_std(fan_in, gain=1.0):
+      """The weight standard deviation that keeps activations at unit scale: gain / sqrt(fan_in)."""
+      return gain / math.sqrt(fan_in)
+
+
+  def batchnorm_train(batch, gamma, beta, eps=1e-5):
+      """Training-mode BatchNorm over a batch of feature vectors (a list of n lists of length d).
+
+      Per feature j: subtract the batch mean, divide by the batch standard deviation (biased
+      variance, divided by n), then scale by gamma[j] and shift by beta[j]. Returns (out, mean, var).
+      """
+      n, d = len(batch), len(batch[0])
+      mean = [sum(row[j] for row in batch) / n for j in range(d)]
+      var = [sum((row[j] - mean[j]) ** 2 for row in batch) / n for j in range(d)]
+      out = [
+          [gamma[j] * (row[j] - mean[j]) / math.sqrt(var[j] + eps) + beta[j] for j in range(d)]
+          for row in batch
+      ]
+      return out, mean, var
+
+
+  def update_running(running, stat, momentum=0.1):
+      """Exponential moving average, per feature: (1 - momentum) * running + momentum * stat."""
+      return [(1 - momentum) * r + momentum * s for r, s in zip(running, stat)]
+
+
+  # Explore: how does the weight scale change the spread of pre-activations?
+  rng = random.Random(0)
+  fan_in, n = 100, 200
+  x = [[rng.gauss(0, 1) for _ in range(fan_in)] for _ in range(n)]
+  for w_std in (1.0, 0.1, kaiming_std(fan_in)):
+      w = [rng.gauss(0, w_std) for _ in range(fan_in)]
+      h = [sum(a * b for a, b in zip(row, w)) for row in x]
+      sat = sum(1 for v in h if abs(math.tanh(v)) > 0.97) / n
+      print(f"w_std={w_std:.3f}  preact std={math.sqrt(sum(v * v for v in h) / n):.2f}  saturated={sat:.0%}")
+notes:
+  - lines: [1, 7]
+    title: "Kaiming scale: gain over the square root of fan-in"
+    text: |
+      A pre-activation is h = sum of w_i x_i over `fan_in` inputs. If the w_i and x_i are independent with mean 0, then Var(h) = fan_in times Var(w) times Var(x). To keep Var(h) equal to Var(x), set Var(w) = 1 / fan_in, so the standard deviation is 1 over the square root of fan_in. With fan_in = 100, that is **0.1**.
+
+      `gain` compensates for what the nonlinearity does to the variance. The lecture uses 5/3 for tanh (which squashes values toward zero), and for ReLU the usual gain is the square root of 2 (which zeroes half the inputs). The default `gain=1.0` is the purely linear case.
+
+      This is a one-line function, but naming it matters: `kaiming_std(fan_in)` in a model file states the intent, where a bare `0.1` would leave a reader guessing whether it was derived or tuned.
+  - lines: [10, 15]
+    title: The BatchNorm interface
+    text: |
+      `batch` is n rows (examples) of d features. `gamma` and `beta` are length-d lists of learned parameters: a per-feature scale and shift. `eps=1e-5` is a small constant added to the variance before the square root so that a feature with zero variance doesn't cause a division by zero; 1e-5 is also PyTorch's default.
+
+      Returning `mean` and `var` along with `out` is a design choice: the caller needs the batch statistics to update the running averages (line 28), and returning them avoids computing them twice.
+  - lines: [16, 18]
+    title: Per-feature mean and biased variance
+    text: |
+      `n, d = len(batch), len(batch[0])` reads the shape with tuple unpacking. Each statistic is a **list comprehension** over features j, containing a **generator expression** over rows: "for each column j, sum `row[j]` over all rows".
+
+      Worked value for the test batch `[[1, 10], [2, 20], [3, 30], [6, 60]]`, feature 0: the values are 1, 2, 3, 6, so the mean is 3 and the squared deviations are 4, 1, 0, 9. Their sum is 14, so the biased variance is 14 / 4 = **3.5**.
+
+      Biased means dividing by n, not n - 1. That is what BatchNorm uses when it normalizes, because it wants the normalized batch itself to have variance exactly 1, not to estimate a population. (PyTorch's `BatchNorm1d` does use the unbiased estimate when it updates its running variance, a detail worth knowing when you compare numbers.)
+  - lines: [19, 23]
+    title: Normalize, then scale and shift
+    text: |
+      This is a **nested list comprehension** spread over several lines for readability: the inner list builds one output row across features, and the outer `for row in batch` repeats it for every row. Python allows line breaks freely inside brackets.
+
+      For each entry: subtract the feature's mean, divide by its standard deviation, multiply by `gamma[j]`, add `beta[j]`. For row 0, feature 0: (1 - 3) / sqrt(3.5) is about -1.069, then times 1 plus 0.
+
+      Two properties fall out, and the tests check both:
+
+      - **gamma and beta restore expressiveness.** Normalizing alone would force every feature to mean 0 and variance 1. The learned scale and shift let the network undo that if it helps, so BatchNorm never reduces what the layer can represent.
+      - **A bias before BatchNorm is redundant.** Adding a constant c to a feature adds c to its mean too, and the subtraction cancels it. That is why layers followed by BatchNorm are usually built with `bias=False`.
+  - lines: [26, 28]
+    title: Running statistics for inference
+    text: |
+      At inference you may have a single example, so there is no batch to take a mean over. BatchNorm therefore keeps an **exponential moving average** of the batch statistics during training and uses those instead.
+
+      `zip(running, stat)` pairs each feature's running value with its new batch value. With `momentum=0.1`, the update keeps 90% of the old value and blends in 10% of the new one. Worked values from the test: running `[0.0, 1.0]` and batch stats `[10.0, 3.0]` give `[1.0, 1.2]`.
+
+      Watch the convention when reviewing code that crosses frameworks: here and in PyTorch, `momentum` is the weight on the **new** statistic, while Keras defines it as the weight on the old one (default 0.99). Swapping conventions makes the running stats barely move, or swing wildly, and nothing errors.
+  - lines: [31, 39]
+    title: "The experiment: weight scale versus saturation"
+    text: |
+      Line 34 creates 200 random input vectors with 100 standard normal features each. For each weight scale, line 36 draws one weight vector and line 37 computes a pre-activation for every input. Line 38 counts the fraction of tanh outputs beyond 0.97 in absolute value, which are effectively saturated.
+
+      The **f-string** on line 39 uses format specs: `:.3f` (three decimals), `:.2f` (two), and `:.0%` (a fraction shown as a whole-number percentage). The std is computed as the root mean square, which assumes a mean near 0; that holds here because inputs and weights are centered.
+
+      Typical output: at `w_std=1.0` the pre-activations have a spread around 7.5 (the expected value is the square root of 100, which is 10) and most units saturate. At 0.1 the spread is near 1 and almost none do. Note that `kaiming_std(100)` is also 0.1, so the last two rows use the same scale and differ only because they drew different random weights. That gap is a useful reminder of how much a single random draw can vary.
+review:
+  - id: wt-bn-unbiased
+    type: code-reading
+    prompt: An AI assistant changes the variance line to the version below, explaining that "n - 1 gives the unbiased estimator". What changes in the output of `batchnorm_train`?
+    code: |
+      var = [sum((row[j] - mean[j]) ** 2 for row in batch) / (n - 1) for j in range(d)]
+    options:
+      - id: a
+        text: Nothing important; the outputs still have mean 0 and variance 1
+        rationale: The mean stays 0, but the variance doesn't. Dividing by a larger variance shrinks the outputs.
+      - id: b
+        text: Each normalized feature now has batch variance (n - 1) / n instead of 1, which is 0.75 for a batch of 4
+        correct: true
+        rationale: Right. For feature 0 the variance becomes 14 / 3 instead of 3.5, so every output is scaled by the square root of 3.5 / 4.667. The training forward pass no longer matches BatchNorm.
+      - id: c
+        text: It raises ZeroDivisionError for every batch
+        rationale: Only for a batch of one, where n - 1 is 0. For larger batches it runs fine, which is why the bug is easy to miss.
+    explanation: The unbiased estimator is the right tool for estimating a population variance and the wrong one for normalizing a batch to unit variance. The effect is small for large batches, so it won't show up as an obviously broken model, only as numbers that disagree with the framework's.
+  - id: wt-bn-ema
+    type: predict-output
+    prompt: "You call `r = update_running(r, [10.0], momentum=0.1)` three times in a row, starting from `r = [0.0]`. What is `r` at the end?"
+    options:
+      - id: a
+        text: "`[3.0]`"
+        rationale: That assumes each update adds 10% of 10, which ignores that the old value is also scaled by 0.9.
+      - id: b
+        text: "`[2.71]`"
+        correct: true
+        rationale: Yes. 0 to 1.0, then 0.9 * 1.0 + 1.0 = 1.9, then 0.9 * 1.9 + 1.0 = 2.71. In general it is 10 * (1 - 0.9^k).
+      - id: c
+        text: "`[10.0]`"
+        rationale: The average approaches 10 geometrically but only gets there in the limit.
+    explanation: The moving average closes about 10% of the remaining gap per step, so it needs on the order of tens of steps to settle. Early in training, the running statistics lag behind the batch statistics, which is one reason a model evaluated after very few steps can behave oddly.
+  - id: wt-bn-bias
+    type: scenario
+    prompt: The tests check that shifting every input by 100 leaves the output of `batchnorm_train` unchanged. What practical design rule does that property justify?
+    options:
+      - id: a
+        text: Inputs should always be shifted by a constant before BatchNorm
+        rationale: The shift has no effect, so adding one achieves nothing.
+      - id: b
+        text: A linear layer followed by BatchNorm doesn't need its own bias; beta plays that role
+        correct: true
+        rationale: Exactly. The layer's bias is a constant per feature, and BatchNorm subtracts it right back out. Its gradient is zero, so it is a wasted parameter.
+      - id: c
+        text: BatchNorm makes learning rates irrelevant
+        rationale: BatchNorm makes training less sensitive to some choices, but it doesn't remove the need to tune the learning rate.
+    explanation: When reading a model definition, a `Linear(..., bias=False)` right before a `BatchNorm` is this property applied, not an oversight. An AI "fixing" it by adding the bias back costs parameters and changes nothing else.
+direct:
+  task: |
+    At inference time BatchNorm uses the running statistics instead of the batch statistics. You want a `batchnorm_eval(batch, gamma, beta, running_mean, running_var, eps=1e-5)` function that does that, so the module covers both modes.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function batchnorm_eval(batch, gamma, beta, running_mean, running_var, eps=1e-5) that normalizes each row with the given running_mean[j] and running_var[j] instead of statistics computed from the batch, then applies gamma[j] and beta[j] exactly as batchnorm_train does. It returns only the output rows (no statistics). It must work for a batch of a single row.
+
+    Do not change batchnorm_train, update_running, or kaiming_std, and do not compute any statistics from the batch inside batchnorm_eval.
+
+    Add test asserts: if running_mean and running_var equal the batch's own mean and biased variance, batchnorm_eval matches batchnorm_train; a single-row batch works; and the output for one row doesn't depend on which other rows are in the batch.
+  checklist:
+    - "`batchnorm_eval` never computes a mean or variance from its input"
+    - The eps placement (inside the square root) matches `batchnorm_train`
+    - A batch of one row works and gives the same result as that row inside a larger batch
+    - "`batchnorm_train` and `update_running` are untouched"
+    - A test ties eval mode to train mode when the statistics match

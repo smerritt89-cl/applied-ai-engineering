@@ -1,0 +1,187 @@
+id: s3-w3-bootstrap-paired
+summary: |
+  This program answers the question every eval comparison eventually faces: system A passed 164 of 200 questions and system B passed 156, so is A actually better, or is that four-point gap just noise? It computes three things: a bootstrap confidence interval for each pass rate, a **paired** bootstrap interval for the difference, and McNemar's exact test, which looks only at the questions where the two systems disagreed.
+
+  The functions are written to be repeatable and honest about pairing. Every resample uses a seeded random generator, so the same inputs always give the same interval. And the difference is computed by resampling *questions*, keeping both systems' scores on a question together, because the two systems were tested on the same questions and that shared difficulty is information you shouldn't throw away.
+code: |
+  import math
+  import random
+
+
+  def bootstrap_ci(values, stat, n_boot=2000, alpha=0.05, seed=0):
+      """Percentile bootstrap CI for stat(values).
+      Draw n_boot resamples of len(values) items WITH replacement (use random.Random(seed)),
+      compute stat on each, sort, and return (lo, hi) at the alpha/2 and 1 - alpha/2 positions:
+      lo = sorted_stats[int(alpha / 2 * n_boot)], hi = sorted_stats[int((1 - alpha / 2) * n_boot) - 1]."""
+      rng = random.Random(seed)
+      n = len(values)
+      stats = []
+      for _ in range(n_boot):
+          resample = [values[rng.randrange(n)] for _ in range(n)]
+          stats.append(stat(resample))
+      stats.sort()
+      return stats[int(alpha / 2 * n_boot)], stats[int((1 - alpha / 2) * n_boot) - 1]
+
+
+  def paired_bootstrap_diff(a, b, n_boot=2000, alpha=0.05, seed=0):
+      """a[i], b[i] are 0/1 scores of systems A and B on question i.
+      Return (observed mean(a) - mean(b), lo, hi). Resample QUESTION INDICES, so each
+      resampled question keeps both of its scores together."""
+      rng = random.Random(seed)
+      n = len(a)
+      observed = mean(a) - mean(b)
+      diffs = []
+      for _ in range(n_boot):
+          idx = [rng.randrange(n) for _ in range(n)]
+          diffs.append(sum(a[i] - b[i] for i in idx) / n)
+      diffs.sort()
+      return observed, diffs[int(alpha / 2 * n_boot)], diffs[int((1 - alpha / 2) * n_boot) - 1]
+
+
+  def mcnemar_exact(a, b):
+      """Return (n_ab, n_ba, p): n_ab = questions A passed and B failed, n_ba the reverse,
+      p = two-sided exact binomial p-value: min(1, 2 * P(X <= min(n_ab, n_ba))) with
+      X ~ Binomial(n_ab + n_ba, 0.5). If there are no discordant questions, p = 1.0."""
+      n_ab = sum(1 for x, y in zip(a, b) if x == 1 and y == 0)
+      n_ba = sum(1 for x, y in zip(a, b) if x == 0 and y == 1)
+      n = n_ab + n_ba
+      if n == 0:
+          return n_ab, n_ba, 1.0
+      k = min(n_ab, n_ba)
+      tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
+      return n_ab, n_ba, min(1.0, 2 * tail)
+
+
+  def mean(xs):
+      return sum(xs) / len(xs)
+
+
+  # 200 questions: both right 140, only A right 24, only B right 16, both wrong 20.
+  pairs = [(1, 1)] * 140 + [(1, 0)] * 24 + [(0, 1)] * 16 + [(0, 0)] * 20
+  random.Random(7).shuffle(pairs)
+  A = [p[0] for p in pairs]
+  B = [p[1] for p in pairs]
+
+  print("A pass rate", mean(A), "CI", bootstrap_ci(A, mean))
+  print("B pass rate", mean(B), "CI", bootstrap_ci(B, mean))
+  print("A - B", paired_bootstrap_diff(A, B))
+  print("McNemar", mcnemar_exact(A, B))
+notes:
+  - lines: [1, 2]
+    title: Two standard-library imports
+    text: |
+      `math` supplies `math.comb` (the binomial coefficient, "n choose k") for the exact test. `random` supplies the resampling. Nothing here needs NumPy or SciPy, which is part of the point: these methods are simple enough to write and check yourself.
+  - lines: [3, 17]
+    title: bootstrap_ci, resample and read off the percentiles
+    text: |
+      The bootstrap treats your 200 results as a stand-in for the population. Each resample draws 200 items **with replacement** (some questions appear twice, some not at all), computes the statistic, and records it. Do that 2,000 times and the spread of those numbers approximates the uncertainty in your one real measurement.
+
+      - `random.Random(seed)` creates a private, seeded generator. Same seed, same 2,000 resamples, same interval: a teammate rerunning your analysis gets your exact numbers. Using the global `random` instead would make the interval change on every run.
+      - `rng.randrange(n)` picks a random index from 0 to n minus 1. The **list comprehension** builds one resample; `_` is the conventional name for a loop variable you don't use.
+      - `stat` is a function passed in (here, `mean`), so the same code can bootstrap a median or anything else.
+
+      After sorting, the 2.5th and 97.5th percentiles are read off by position: with 2,000 stats, index 50 and index 1,949. For A that gives about (0.765, 0.87), close to the textbook normal-approximation interval of 0.767 to 0.873.
+  - lines: [18, 32]
+    title: paired_bootstrap_diff, resample questions, not scores
+    text: |
+      The crucial line is `idx = [rng.randrange(n) for _ in range(n)]`: one list of question indices per resample, used for **both** systems. Question 37 brings A's score and B's score along together.
+
+      Why it matters: many questions are easy for both systems (140 here) or hard for both (20). Those questions move A and B up and down together, so they add no noise to the *difference*. Resampling A and B separately would treat that shared difficulty as noise and give an interval about a third wider. On this data the paired interval is roughly (minus 0.02, 0.10); an unpaired one is closer to (minus 0.04, 0.12).
+
+      `sum(a[i] - b[i] for i in idx) / n` is the mean per-question difference in one resample. The function returns a three-item **tuple**: the observed difference (0.04) and the interval. The interval includes zero, so this data can't tell you A is better.
+  - lines: [33, 46]
+    title: mcnemar_exact, only disagreements count
+    text: |
+      McNemar's test ignores every question where the systems agree. It counts the disagreements in each direction (24 where only A was right, 16 where only B was) and asks: if the systems were equally good, each disagreement would be a fair coin flip, so how surprising is a 24 to 16 split?
+
+      - The counts use `zip(a, b)` to walk both lists in step, and a **generator expression** inside `sum` that adds 1 for each match.
+      - If there are no disagreements, there's no evidence of a difference, so the p-value is 1.0. Returning early also avoids computing a tail over zero coin flips.
+      - `math.comb(n, i)` counts the ways to get exactly `i` heads in `n` flips. Summing for `i` from 0 to 16 and dividing by 2 to the 40 gives the probability of a split at least as lopsided in B's direction. Doubling makes it two-sided, and `min(1.0, ...)` caps it.
+
+      Here p is about 0.268: a 24 to 16 split happens by chance about a quarter of the time, which agrees with the bootstrap interval including zero. Note this computes exactly, with integers, rather than with a normal approximation that is poor for small counts.
+  - lines: [47, 51]
+    title: A helper defined after its users
+    text: |
+      `mean` appears below the functions that call it. That's fine in Python: a function body runs only when the function is called, and by then the whole file has been read and `mean` exists. It would fail only if something called `paired_bootstrap_diff` before this line ran.
+  - lines: [52, 57]
+    title: Building paired data with a known answer
+    text: |
+      The data are built from the four cells of the comparison table: both right 140, only A right 24, only B right 16, both wrong 20. So A passes 140 + 24 = 164 and B passes 140 + 16 = 156.
+
+      `random.Random(7).shuffle(pairs)` mixes the order (with its own seed, so it's repeatable). Then two list comprehensions split each `(a, b)` pair into the separate `A` and `B` lists, keeping the pairing by position.
+
+      Building test data with a known structure like this is how you check statistical code: you know the right answer before you run it.
+  - lines: [58, 62]
+    title: The report
+    text: |
+      The four lines show the full picture: each system's pass rate with its interval, the paired difference with its interval, and the McNemar counts and p-value. Notice that A's and B's individual intervals overlap a lot. That's not the right test (it ignores the pairing), but the paired interval and McNemar agree here anyway: no detectable difference.
+
+      Try the lesson's edit: change the discordant cells to 12 and 4. McNemar's p drops to about 0.077, and the paired interval shrinks, because there are fewer disagreements to be noisy about.
+review:
+  - id: wt-boot-unpaired
+    type: code-reading
+    prompt: An AI assistant rewrites the resampling loop of `paired_bootstrap_diff` as below. What happens to the interval?
+    code: |
+      for _ in range(n_boot):
+          ia = [rng.randrange(n) for _ in range(n)]
+          ib = [rng.randrange(n) for _ in range(n)]
+          diffs.append(sum(a[i] for i in ia) / n - sum(b[i] for i in ib) / n)
+    options:
+      - id: a
+        text: Nothing; it's centered on the same 0.04 with the same width
+        rationale: It's centered near 0.04, but it is wider. Resampling A and B separately breaks the pairing.
+      - id: b
+        text: It gets noticeably wider, roughly (minus 0.04, 0.12) on this data
+        correct: true
+        rationale: Right. Independent resamples treat the 160 questions where both systems agree as a source of noise in the difference, so the interval widens by about a third.
+      - id: c
+        text: It gets narrower, because there are now two sets of random indices
+        rationale: More randomness in the resampling makes the spread larger, not smaller.
+    explanation: An unpaired interval isn't wrong in the sense of crashing; it's needlessly weak. With real eval sets, the paired version can detect a difference the unpaired one misses. When you review a comparison, check that both systems are resampled with the same indices.
+  - id: wt-boot-mcnemar-agree
+    type: predict-output
+    prompt: You add 100 more questions that both systems get right. What happens to McNemar's p-value?
+    options:
+      - id: a
+        text: It stays about 0.268
+        correct: true
+        rationale: Right. Questions both systems got right aren't disagreements, so `n_ab` and `n_ba` are still 24 and 16.
+      - id: b
+        text: It goes down, because there's more data
+        rationale: More data only helps McNemar if it adds disagreements.
+      - id: c
+        text: It goes up, because the systems now look more similar
+        rationale: The test doesn't look at agreements at all.
+    explanation: The paired bootstrap interval would narrow a little (the mean difference is now over 300 questions), but McNemar is unchanged. This is why McNemar is described as testing the discordant pairs, and why "we ran more questions" only helps if the new questions can separate the systems.
+  - id: wt-boot-seed
+    type: scenario
+    prompt: Why does each function create `random.Random(seed)` instead of calling `random.randrange` directly?
+    options:
+      - id: a
+        text: So the same data and seed always give the same interval, and a reviewer can reproduce it exactly
+        correct: true
+        rationale: Exactly. A gate or a report whose numbers change on every rerun is hard to trust and impossible to debug.
+      - id: b
+        text: Because the global random module can't draw with replacement
+        rationale: It can; `random.randrange` works fine. The issue is repeatability.
+      - id: c
+        text: To make the interval narrower
+        rationale: The seed doesn't change the expected width, only which resamples are drawn.
+    explanation: Accepting randomness as an input (here, a seed) is the same testability pattern as passing in a fake client. The exercise's tests check it directly by calling `bootstrap_ci` twice with `seed=1`.
+direct:
+  task: |
+    For the weekly eval report, your team wants a single verdict line instead of three numbers: "A better", "B better", or "no detectable difference", based on whether the paired interval excludes zero. You also want it to print the McNemar p-value as supporting evidence.
+
+    Write the prompt you'd give a coding assistant to add that.
+  prompt: |
+    Add a function compare(a, b, n_boot=2000, alpha=0.05, seed=0) that calls paired_bootstrap_diff and mcnemar_exact and returns a dict: {"diff": observed, "lo": lo, "hi": hi, "p": p, "verdict": v}. v is "A better" if lo > 0, "B better" if hi < 0, and "no detectable difference" otherwise.
+
+    Do not change bootstrap_ci, paired_bootstrap_diff, or mcnemar_exact, and keep resampling paired (same indices for both systems). Pass seed through so results are repeatable.
+
+    Print compare(A, B) at the end. Add asserts that compare(A, B)["verdict"] == "no detectable difference", that compare([1] * 30 + [0] * 170, [0] * 200)["verdict"] == "A better", that swapping the arguments gives "B better", and that compare(A, B) == compare(A, B) (same seed, same result).
+  checklist:
+    - The three existing functions are untouched, and resampling is still paired
+    - The verdict comes from the interval, not from the p-value or the raw difference
+    - Both directions are handled, including "B better"
+    - The seed is passed through, and a repeat call gives an identical result
+    - New asserts cover all three verdicts, and the original checks still pass

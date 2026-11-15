@@ -17,6 +17,19 @@ The work is split into two layers on purpose. The tracker logic and every input 
 MCP imports, so you can test them offline and reuse them anywhere. The MCP layer (`build_server`) is thin: it
 declares tools, resources, and a prompt, and translates validation errors into tool errors the model can read.
 
+## Review track
+
+Start here unless you chose the write track. Run `python lab.py review studio-4/03-mcp-server` (or
+`python lab.py review all`) to copy `solution.py` to `work.py`, then:
+
+1. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's
+   Testing panel.
+2. Do [CHANGE.md](CHANGE.md): have a coding assistant add a label filter to `list_issues` in `work.py`, review
+   its diff, and check it with `pytest studio-4/03-mcp-server/test_change.py -q`.
+
+The Setup and Steps sections below are the write track, plus the Inspector and host instructions, which apply
+to both tracks.
+
 ## Setup
 
 The offline tests need only the shared lab environment. The MCP layer needs the official Python SDK, version 2

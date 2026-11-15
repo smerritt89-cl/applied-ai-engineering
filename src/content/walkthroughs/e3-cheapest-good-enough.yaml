@@ -1,0 +1,162 @@
+id: e3-cheapest-good-enough
+summary: |
+  This program picks a model for a task the way you would want a careful team to: among the models whose pass rate is **provably** above a quality bar, choose the cheapest. "Provably" here means the lower end of a 95% Wilson score interval on the pass rate, not the observed pass rate itself, so a model tested on ten items can't win on a lucky streak.
+
+  There are two functions: one that turns (passed, n) into a conservative lower bound, and one that applies the decision rule. Separating them keeps the statistics in one place where you can check it against known values, and keeps the business rule (bar, cost) readable on its own.
+code: |
+  import math
+
+
+  def wilson_lower(passed, n, z=1.96):
+      """Lower end of the Wilson score interval for a binomial proportion."""
+      if n == 0:
+          return 0.0
+      p = passed / n
+      denom = 1 + z * z / n
+      centre = p + z * z / (2 * n)
+      margin = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+      return max(0.0, (centre - margin) / denom)
+
+
+  def choose(results, cost_per_task, bar):
+      """results: {model: (passed, n)}. Return the cheapest model whose Wilson lower
+      bound is at least bar. If none qualifies, return None."""
+      qualified = [m for m, (p, n) in results.items() if wilson_lower(p, n) >= bar]
+      if not qualified:
+          return None
+      return min(qualified, key=lambda m: cost_per_task[m])
+
+
+  RESULTS = {
+      "flagship": (47, 50),
+      "mid": (44, 50),
+      "small": (9, 10),
+      "open-8b": (38, 50),
+  }
+  COST = {"flagship": 0.060, "mid": 0.012, "small": 0.002, "open-8b": 0.004}
+
+  for m, (p, n) in RESULTS.items():
+      lb = wilson_lower(p, n)
+      print(m, p, "/", n, "lower bound:", round(lb, 3))
+  print("choice at bar 0.75:", choose(RESULTS, COST, 0.75))
+notes:
+  - lines: [1, 5]
+    title: The question the first function answers
+    text: |
+      `wilson_lower(passed, n, z=1.96)` returns the lower end of the **Wilson score interval** for a binomial proportion. `z=1.96` is a **default argument**: the normal quantile for a two-sided 95% interval, which the caller can change (2.576 for 99%, say).
+
+      Why Wilson and not the textbook interval p plus or minus z times the standard error (the **Wald** interval)? Wald is centered on the observed rate and uses the observed rate to estimate its own variance. That breaks down for small n and for rates near 0 or 1: with 10 passes out of 10, Wald's standard error is 0 and it claims the true rate is exactly 100%. Wilson inverts the score test instead, so it never collapses to a point and it stays inside [0, 1].
+  - lines: [6, 7]
+    title: A guard for no data
+    text: |
+      If a model hasn't been tested at all, the lower bound is 0. Without this guard, `passed / n` on the next line would raise `ZeroDivisionError`.
+
+      Returning 0 is the conservative choice: a model with no evidence can never clear a positive bar. An AI-written version might return `None` instead, which then breaks the `>=` comparison in `choose` with a `TypeError`.
+  - lines: [8, 12]
+    title: The Wilson formula, piece by piece
+    text: |
+      The closed form is: (p + z squared / 2n, minus z times the square root of [p(1 minus p) / n + z squared / 4n squared]) divided by (1 + z squared / n). The code names each piece.
+
+      - `denom` is 1 + z squared / n. It shrinks the interval toward 1/2 more strongly when n is small.
+      - `centre` is the numerator's center, p + z squared / 2n. Note it is **not** yet divided by `denom`; that happens once, in the last line.
+      - `margin` is z times the square-root term. The extra z squared / 4n squared inside the root is what keeps the interval from collapsing when p is 0 or 1.
+
+      Worked value for 9 of 10: p = 0.9, `denom` = 1.384, `centre` = 1.092, `margin` = 0.267, so the lower bound is (1.092 minus 0.267) / 1.384, about 0.596. The observed 90% is consistent with a true rate as low as about 60%.
+
+      `max(0.0, ...)` clamps the result at 0. Mathematically the Wilson lower bound is never negative, but at 0 passes floating-point rounding can produce a value like minus 1e-17, and a negative pass rate would look like a bug downstream.
+  - lines: [15, 18]
+    title: Filter to the models that are proven good enough
+    text: |
+      The docstring describes `results` as a **dict** mapping each model name to a `(passed, n)` tuple. `results.items()` yields (key, value) pairs, and `for m, (p, n) in results.items()` uses **nested unpacking** to split each pair into the name `m` and the two counts in one step.
+
+      The whole line is a **list comprehension with a filter**: keep `m` only `if wilson_lower(p, n) >= bar`. The result is the list of qualifying model names.
+
+      This is where the decision is made on the lower bound instead of the point estimate. With the lesson's data at a bar of 0.75: flagship (0.838) and mid (0.762) qualify; small (0.596) and open-8b (0.626) do not.
+  - lines: [19, 21]
+    title: Cheapest among the qualifiers
+    text: |
+      If nothing qualifies, return `None` explicitly. That check comes first because `min()` of an empty list raises `ValueError`, and "nothing is good enough" is a legitimate answer the caller should handle, not a crash.
+
+      `min(qualified, key=lambda m: cost_per_task[m])` finds the minimum by a **key function**. A **lambda** is a small unnamed function; this one maps a model name to its cost. So `min` compares costs but returns the name. Without `key=`, `min` would compare the names as strings and return the alphabetically first model, which would look like a real answer.
+
+      At bar 0.75 the qualifiers are flagship ($0.060) and mid ($0.012), so the answer is `"mid"`.
+  - lines: [24, 30]
+    title: The evidence and the price list
+    text: |
+      `RESULTS` and `COST` are two dicts keyed by the same model names. Keeping them separate mirrors reality: eval results and prices come from different places and change on different schedules.
+
+      Look at "small": 9 of 10 is the second-highest observed rate, and it is the cheapest model by far. It loses only because ten items is too little evidence. With the same 90% rate it would need about 50 items to reach a lower bound near 0.79. That is the lesson's point: the lower bound tells you which model is worth buying more test data for.
+  - lines: [32, 35]
+    title: Print the bounds, then the choice
+    text: |
+      The loop prints each model's raw count and lower bound, rounded to three places with `round(lb, 3)`, then the choice at a bar of 0.75. Printing the bounds alongside the decision is good practice: a reader can see why "small" lost without rerunning anything.
+review:
+  - id: wt-cge-wald
+    type: code-reading
+    prompt: An AI assistant replaces `wilson_lower` with the shorter textbook formula below. With "small" changed to 10 passes out of 10, what does `choose(RESULTS, COST, 0.95)` return?
+    code: |
+      def wilson_lower(passed, n, z=1.96):
+          if n == 0:
+              return 0.0
+          p = passed / n
+          return max(0.0, p - z * math.sqrt(p * (1 - p) / n))
+    options:
+      - id: a
+        text: "`None`, because nothing clears 0.95 with this little data"
+        rationale: That is what the Wilson version returns (10 of 10 gives a Wilson lower bound of about 0.72). This version is not Wilson.
+      - id: b
+        text: "`\"flagship\"`, because it has the most evidence"
+        rationale: The Wald lower bound for flagship is about 0.874, below 0.95.
+      - id: c
+        text: "`\"small\"`, because at 10 of 10 the standard error is 0, so the lower bound is exactly 1.0"
+        correct: true
+        rationale: Right. With p = 1, p(1 minus p) is 0, so the margin vanishes and ten lucky items look like certainty. The cheapest model wins on almost no evidence.
+    explanation: The Wald interval is what most people remember from a first statistics course, and it is what an AI is likely to write if you only say "confidence interval". It fails exactly where this decision is most tempting, on small samples with perfect or near-perfect scores. Name the method you want, and keep a test with a known Wilson value.
+  - id: wt-cge-min-key
+    type: predict-output
+    prompt: If line 21 were `return min(qualified)` (no `key=`), what would `choose(RESULTS, COST, 0.75)` return?
+    options:
+      - id: a
+        text: "`\"mid\"`, the same as before"
+        rationale: It would only match by coincidence of spelling. Without `key=`, `min` compares strings.
+      - id: b
+        text: "`\"flagship\"`, because \"f\" comes before \"m\" alphabetically"
+        correct: true
+        rationale: Right. The qualifiers are flagship and mid, and `min` on strings picks the alphabetically first, which happens to be the most expensive model.
+      - id: c
+        text: It raises `TypeError` because strings can't be compared
+        rationale: Python compares strings lexicographically without complaint, which is why this bug is quiet.
+    explanation: A missing `key=` produces a valid-looking model name, so nothing crashes. The hidden test at bar 0.75 would catch it, which is a reason to test cases where the right answer is not also the alphabetical first.
+  - id: wt-cge-design
+    type: scenario
+    prompt: Your team is choosing between "mid" and "small" for a high-volume task. Small scored 9/10 and costs a sixth as much. What does this code's design suggest you do?
+    options:
+      - id: a
+        text: Pick small, since 90% beats mid's 88%
+        rationale: That compares point estimates. Small's lower bound is about 0.60, so the data don't show it clears the bar.
+      - id: b
+        text: Reject small permanently, since it failed the bar
+        rationale: It didn't fail; it is unproven. Rejecting it throws away a possible large saving.
+      - id: c
+        text: Use mid for now, and run about 40 more eval items on small, because a pass rate near 90% on 50 items would clear the bar
+        correct: true
+        rationale: Right. The lower bound tells you where evidence is cheap to buy and valuable. At 45 of 50, small's lower bound would be about 0.79.
+    explanation: Deciding on lower bounds turns "which model is best?" into "which model is proven good enough, and where would more data change the answer?" That second question is where most of the money is in model selection.
+direct:
+  task: |
+    Real decisions often have a latency limit as well as a quality bar. Extend `choose` so it can also exclude models whose typical latency is above a limit.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add two optional parameters to choose: latency_ms (a dict of model name to typical latency in milliseconds) and max_latency_ms (a number). When both are given, a model qualifies only if its Wilson lower bound is at least bar AND its latency is at most max_latency_ms. A model missing from latency_ms does not qualify. When either is None (the default), behave exactly as now.
+
+    Do not change wilson_lower at all, and keep choosing the cheapest qualifier with min(..., key=...) and returning None when nothing qualifies. Update the docstring.
+
+    Add test asserts: with the latency arguments omitted, choose(RESULTS, COST, 0.75) is still "mid"; with latency {"flagship": 900, "mid": 2500} and max_latency_ms=1000 at bar 0.75 the answer is "flagship"; with max_latency_ms=100 the answer is None.
+  checklist:
+    - wilson_lower is unchanged
+    - Calls without the new arguments behave exactly as before (old tests still pass)
+    - The latency filter is combined with the quality filter, not applied instead of it
+    - A model with no latency data is excluded rather than causing a KeyError
+    - The "nothing qualifies" case still returns None
+    - New tests cover a latency filter that changes the answer and one that leaves none

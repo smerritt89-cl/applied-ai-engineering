@@ -1,0 +1,194 @@
+id: e1-w3-manual-backward
+summary: |
+  This program runs a two-layer network (linear, tanh, linear, softmax cross-entropy) forward on a small batch and then computes every parameter gradient by hand, with no autograd. Each step of `backward` is one rule of matrix calculus applied to one line of `forward`, in reverse order.
+
+  It's written with plain lists and two helpers (`matmul` and `transpose`) so the matrix algebra stays visible. `forward` returns a **cache** of the intermediate values that the backward pass needs, which is exactly what PyTorch does behind the scenes. The exercise then checks every single gradient entry against central differences of the loss, which is how you'd verify any hand-derived or AI-derived gradient.
+code: |
+  import math
+  import random
+
+
+  def matmul(A, B):
+      return [[sum(a * b for a, b in zip(row, col)) for col in zip(*B)] for row in A]
+
+
+  def transpose(A):
+      return [list(r) for r in zip(*A)]
+
+
+  def forward(X, Y, W1, b1, W2, b2):
+      """Linear -> tanh -> linear -> mean cross-entropy. Returns (loss, cache)."""
+      hpre = [[v + b for v, b in zip(row, b1)] for row in matmul(X, W1)]
+      h = [[math.tanh(v) for v in row] for row in hpre]
+      logits = [[v + b for v, b in zip(row, b2)] for row in matmul(h, W2)]
+      probs = []
+      for row in logits:
+          m = max(row)
+          e = [math.exp(v - m) for v in row]
+          s = sum(e)
+          probs.append([v / s for v in e])
+      n = len(X)
+      loss = -sum(math.log(probs[i][Y[i]]) for i in range(n)) / n
+      return loss, {"X": X, "Y": Y, "h": h, "probs": probs, "W2": W2}
+
+
+  def backward(cache):
+      """Return (dW1, db1, dW2, db2), each with the shape of its parameter."""
+      X, Y, h, probs, W2 = cache["X"], cache["Y"], cache["h"], cache["probs"], cache["W2"]
+      n = len(X)
+      # 1. Mean cross-entropy through softmax: (probs - one_hot(Y)) / N, row by row.
+      dlogits = [[(p - (1.0 if j == Y[i] else 0.0)) / n for j, p in enumerate(row)]
+                 for i, row in enumerate(probs)]
+      # 2. Second linear layer: logits = h @ W2 + b2.
+      dW2 = matmul(transpose(h), dlogits)
+      db2 = [sum(col) for col in zip(*dlogits)]
+      dh = matmul(dlogits, transpose(W2))
+      # 3. tanh, using its OUTPUT: d tanh(x)/dx = 1 - tanh(x)**2.
+      dhpre = [[(1 - hv * hv) * g for hv, g in zip(hrow, grow)] for hrow, grow in zip(h, dh)]
+      # 4. First linear layer: hpre = X @ W1 + b1.
+      dW1 = matmul(transpose(X), dhpre)
+      db1 = [sum(col) for col in zip(*dhpre)]
+      return dW1, db1, dW2, db2
+
+
+  rng = random.Random(1)
+  X = [[rng.gauss(0, 1) for _ in range(3)] for _ in range(4)]
+  Y = [0, 2, 1, 2]
+  W1 = [[rng.gauss(0, 0.5) for _ in range(5)] for _ in range(3)]
+  b1 = [0.0] * 5
+  W2 = [[rng.gauss(0, 0.5) for _ in range(3)] for _ in range(5)]
+  b2 = [0.0] * 3
+  loss, cache = forward(X, Y, W1, b1, W2, b2)
+  print("loss", round(loss, 4), "(log 3 =", round(math.log(3), 4), ")")
+  grads = backward(cache)
+  print("db2", [round(g, 4) for g in grads[3]], "sum", round(sum(grads[3]), 12))
+notes:
+  - lines: [1, 10]
+    title: Matrix multiply and transpose on lists of lists
+    text: |
+      A matrix is a list of rows. `zip(*B)` is the key trick: the `*` **unpacks** the rows of B as separate arguments to `zip`, which then groups the first entries of every row, then the second entries, and so on. In other words, `zip(*B)` iterates over the **columns** of B.
+
+      So `matmul` reads as the definition of matrix multiplication: entry (i, k) is the dot product of row i of A with column k of B. For A = `[[1, 2]]` and B = `[[3], [4]]`, the single entry is 1*3 + 2*4 = 11.
+
+      `transpose` uses the same trick and converts each column tuple back to a list. These helpers are slow compared to a real library, and that's fine: the point is that every operation is inspectable.
+  - lines: [13, 26]
+    title: The forward pass, and what it caches
+    text: |
+      Shapes, with N examples, D inputs, H hidden units, and C classes: X is N x D, W1 is D x H, h is N x H, W2 is H x C, and logits and probs are N x C.
+
+      Line 15 computes X W1 and adds the bias b1 to every row; adding a length-H vector to each row is what tensor libraries call **broadcasting**. Line 16 applies tanh. Line 17 is the second linear layer. Lines 18 to 23 are a stable softmax per row (subtract the max, as in earlier lessons), and line 25 is the mean cross-entropy: the average of minus the log of the probability given to each correct class.
+
+      The returned **dict** is the cache. It holds only what `backward` needs: the inputs, the targets, the tanh outputs `h`, the probabilities, and `W2`. Notice that `hpre` and `W1` aren't cached, because the backward pass can be written without them. Deciding what to keep is a real memory trade-off in large models.
+  - lines: [29, 32]
+    title: Unpacking the cache
+    text: |
+      Line 31 pulls five values out of the dict in one statement with **tuple unpacking**. It's verbose, but it makes the dependencies of `backward` explicit, so a reader can see at a glance that the backward pass needs nothing it wasn't given.
+
+      `n = len(X)` is the batch size. It appears in the first gradient because the loss is a **mean** over the batch.
+  - lines: [33, 35]
+    title: Step 1, the gradient of mean cross-entropy
+    text: |
+      From the previous lesson, the gradient of one example's cross-entropy with respect to its logits is softmax minus one-hot. Averaging over N examples divides each row by N.
+
+      The comprehension uses `enumerate` twice: the outer one gives the example index `i` (to look up its target `Y[i]`), and the inner one gives the class index `j`. The **conditional expression** `1.0 if j == Y[i] else 0.0` is the one-hot vector, written inline without building it separately.
+
+      Each row of `dlogits` sums to 0 (probabilities summing to 1, minus a single 1, divided by N). That property carries into `db2` below, and a test checks it.
+  - lines: [36, 39]
+    title: Step 2, backward through a linear layer
+    text: |
+      For logits = h W2 + b2, write entry (i, k) as the sum over j of h[i][j] times W2[j][k], plus b2[k]. Then:
+
+      - The partial of the loss with respect to W2[j][k] is the sum over examples i of h[i][j] times dlogits[i][k], which is entry (j, k) of h-transpose times dlogits. That is line 37.
+      - b2[k] was added to every row, so its gradient sums dlogits[i][k] over all rows: the **column sums** on line 38.
+      - The partial with respect to h[i][j] is the sum over k of dlogits[i][k] times W2[j][k], which is dlogits times W2-transpose, line 39.
+
+      A useful review rule: **a gradient always has the shape of the thing it is the gradient of.** W2 is H x C, and h-transpose (H x N) times dlogits (N x C) is H x C, so the shapes confirm the formula. When an AI-written backward pass has a transpose in the wrong place, the shapes usually stop matching, or they match by coincidence when dimensions are equal, which is why the tests use N, D, H, C = 4, 3, 5, 6, all different.
+  - lines: [40, 41]
+    title: Step 3, through tanh using its output
+    text: |
+      tanh is applied entry by entry, so its backward pass is also entry by entry: multiply the incoming gradient by the local derivative 1 - tanh(x)^2. Since `h` already holds tanh(x), the local derivative is `1 - hv * hv`, with no need to recompute anything.
+
+      The double `zip` walks the rows of `h` and `dh` together, then the entries within each pair of rows. This is the step where an AI version might use the pre-activation in the formula, writing `1 - hpre ** 2`. That isn't the derivative of anything here, and it isn't in the cache, which is a hint that it's wrong.
+  - lines: [42, 45]
+    title: Step 4, the first linear layer, and the return value
+    text: |
+      Exactly the same rule as step 2, now with X as the input: dW1 is X-transpose times dhpre (D x H, the shape of W1), and db1 is the column sums of dhpre.
+
+      There is no `dX`, because X is data rather than a parameter. If X came from an embedding table (as in the lecture's full exercise), you would also compute dX = dhpre times W1-transpose and route it back into the rows of the table that were looked up.
+
+      The function returns a tuple in a documented order. Returning a dict keyed by name would be safer against mix-ups; a tuple keeps the exercise close to the lecture.
+  - lines: [48, 58]
+    title: A run you can sanity-check
+    text: |
+      A seeded generator builds a batch of 4 examples, 3 classes, and small random weights. Two checks are visible in the output:
+
+      - The loss is about 1.02, close to log(3), about 1.10. With small weights the logits are near 0 and the softmax is near uniform, so the initial loss should be close to log(C). A first loss far above that indicates overconfident initialization.
+      - `db2` sums to 0 (printed as `-0.0` because of floating-point rounding), as step 1 predicted.
+
+      These checks are necessary but not sufficient. The real verification is the exercise's per-entry gradient check, which compares every analytic value against a central-difference estimate using a relative error.
+review:
+  - id: wt-backward-missing-n
+    type: code-reading
+    prompt: An AI assistant writes step 1 without the division, as below. Everything else is unchanged. What is wrong with the gradients?
+    code: |
+      dlogits = [[p - (1.0 if j == Y[i] else 0.0) for j, p in enumerate(row)]
+                 for i, row in enumerate(probs)]
+    options:
+      - id: a
+        text: Nothing, because the direction of every gradient is the same
+        rationale: The direction is the same, but the gradients are supposed to be the exact derivatives of the loss, and these aren't.
+      - id: b
+        text: Every gradient is exactly N times too large, so the gradient check fails, and in training the effective learning rate is multiplied by the batch size
+        correct: true
+        rationale: Right. The loss is a mean, so every derivative carries a 1/N. Without it, everything downstream is scaled by N, which is 4 here.
+      - id: c
+        text: The shapes of the gradients change
+        rationale: Shapes are unchanged. That's why shape checks alone wouldn't catch this.
+    explanation: A missing constant factor is invisible to shape checks and to the "rows sum to zero" property. Only a numeric gradient check catches it. In real training code, it shows up as a learning rate that behaves differently when you change the batch size.
+  - id: wt-backward-bias-sum
+    type: mcq
+    prompt: Why is `db2` the column sums of `dlogits`?
+    options:
+      - id: a
+        text: Because b2 is added to every row of the batch, so each b2[k] affects every example's logit k, and the chain rule sums those contributions
+        correct: true
+        rationale: Yes. One parameter used N times gets the sum of N gradient contributions, the same "sum over paths" rule as micrograd's `+=`.
+      - id: b
+        text: Because biases always have gradient equal to the average of the outputs
+        rationale: It's a sum, not an average, and it's of the upstream gradients, not the outputs. The 1/N is already inside `dlogits`.
+      - id: c
+        text: To reduce memory use
+        rationale: The sum is mathematically required, not an optimization.
+    explanation: Broadcasting in the forward pass becomes a sum in the backward pass. That rule covers biases, positional embeddings added to every example, and any other parameter that is reused across a dimension.
+  - id: wt-backward-init-loss
+    type: scenario
+    prompt: You run a newly written model with 27 classes and the first logged loss is 25. What does that most likely indicate?
+    options:
+      - id: a
+        text: The model is learning unusually fast
+        rationale: The first loss is measured before any learning has happened.
+      - id: b
+        text: The output layer starts out confidently wrong, with large logits, instead of near-uniform; the initialization needs scaling down
+        correct: true
+        rationale: Right. A healthy initial loss for 27 classes is about log(27), roughly 3.3. A much larger value means large, random logits that assign tiny probability to the correct class.
+      - id: c
+        text: The gradient computation is wrong
+        rationale: The loss comes from the forward pass alone. A wrong gradient shows up later, as training that doesn't reduce the loss.
+    explanation: Knowing the expected loss at step 0 (log of the number of classes) is a free check. The demo shows it, with 1.02 against log(3), about 1.10.
+direct:
+  task: |
+    In the lecture's full network, X comes from an embedding table, so the backward pass also needs the gradient with respect to the inputs. You want `backward` to optionally return `dX`.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add an optional keyword argument return_dX=False to backward. When it is True, also compute dX = dhpre @ W1^T (an N x D list of lists) and return (dW1, db1, dW2, db2, dX). When it is False, return exactly the same 4-tuple as now.
+
+    W1 is not in the cache, so add "W1" to the dict returned by forward. Don't change anything else in forward, and don't change the formulas for the four existing gradients.
+
+    Add tests: dX has shape N x D; every entry of dX matches a central-difference estimate of the loss with respect to that entry of X (relative error below 1e-5, same as the existing checks); and the default call still returns 4 values identical to before.
+  checklist:
+    - The default return value is unchanged, so existing callers don't break
+    - "`dX` uses `dhpre` and the transpose of `W1`, and its shape is N x D"
+    - "`forward` only gained the `W1` cache entry; the loss computation is untouched"
+    - The four existing gradient formulas are unchanged
+    - A central-difference check covers every entry of `dX`

@@ -1,0 +1,176 @@
+id: s3-w4-review-queue
+summary: |
+  This program builds the weekly list of production traces a domain expert should read. It mixes two kinds of trace on purpose. **Targeted** slices go looking for trouble: every thumbs-down from a user, every trace the LLM judge failed, and the slowest outliers. A **random** slice is drawn uniformly from everything else. Each entry carries the reason it was picked.
+
+  The reason labels are what make the second function honest. Targeted slices are full of failures by design, so a pass rate computed over the whole queue would make the product look much worse than it is. Only the random slice estimates production quality, so `random_slice_pass_rate` uses that slice and nothing else.
+code: |
+  import random
+
+
+  def build_review_queue(traces, n_random, n_outliers, seed=0):
+      """traces: list of dicts with keys id, feedback ("down", "up", or None), latency_s, judge_pass (bool).
+      Return a list of (trace_id, reason) with:
+        1. every trace with feedback == "down", reason "feedback"
+        2. every trace the judge failed (judge_pass is False) not already included, reason "judge_fail"
+        3. the n_outliers slowest traces not already included, reason "outlier"
+        4. n_random traces chosen uniformly from ALL traces not already included, reason "random"
+           (use random.Random(seed).sample on the remaining traces, sorted by id first, so runs are reproducible)
+      No trace appears twice. If fewer traces remain than requested, take what's left."""
+      queue, seen = [], set()
+
+      def add(trace, reason):
+          if trace["id"] not in seen:
+              seen.add(trace["id"])
+              queue.append((trace["id"], reason))
+
+      def remaining():
+          return [t for t in traces if t["id"] not in seen]
+
+      for t in traces:
+          if t["feedback"] == "down":
+              add(t, "feedback")
+      for t in traces:
+          if not t["judge_pass"]:
+              add(t, "judge_fail")
+
+      slowest = sorted(remaining(), key=lambda t: -t["latency_s"])
+      for t in slowest[:n_outliers]:
+          add(t, "outlier")
+
+      pool = sorted(remaining(), key=lambda t: t["id"])
+      k = min(n_random, len(pool))
+      for t in random.Random(seed).sample(pool, k):
+          add(t, "random")
+      return queue
+
+
+  def random_slice_pass_rate(queue, labels):
+      """labels maps trace_id -> True (pass) / False (fail) from the expert.
+      Return the pass rate over the RANDOM slice only (None if it is empty)."""
+      random_ids = [trace_id for trace_id, reason in queue if reason == "random"]
+      if not random_ids:
+          return None
+      return sum(1 for trace_id in random_ids if labels[trace_id]) / len(random_ids)
+
+
+  traces = [
+      {"id": f"t{i:02d}", "feedback": ("down" if i in (3, 17) else "up" if i % 7 == 0 else None),
+       "latency_s": 2.0 + (i % 5) + (9 if i == 11 else 0), "judge_pass": i not in (5, 17)}
+      for i in range(30)
+  ]
+  q = build_review_queue(traces, n_random=5, n_outliers=2)
+  for item in q:
+      print(item)
+notes:
+  - lines: [1, 12]
+    title: The contract, in priority order
+    text: |
+      The docstring is a numbered recipe, and the numbers are priorities. A trace that is both a thumbs-down and a judge failure gets the first reason, "feedback", and is never added twice. Step 4 also pins down how to make the random draw reproducible: sort the remaining traces by id, then sample with a seeded generator.
+
+      When you review AI-written code against a spec like this, check each numbered step maps to a block of code, in the same order.
+  - lines: [13, 22]
+    title: Shared state and two inner functions
+    text: |
+      `queue, seen = [], set()` starts an empty result list and an empty **set** of ids already used. A set answers "have I seen this id?" instantly, however large it gets.
+
+      `add` and `remaining` are **nested functions**: defined inside `build_review_queue`, they can read its variables (`queue`, `seen`, `traces`) directly. Putting the "skip if already seen" rule inside `add` means every step gets de-duplication for free, and nobody can forget it in one branch. `remaining()` is a function rather than a variable because its answer changes as traces are added.
+  - lines: [23, 29]
+    title: Steps 1 and 2, the targeted slices
+    text: |
+      Two plain loops in priority order: every thumbs-down first, then every judge failure. `not t["judge_pass"]` is true when the judge said fail.
+
+      With this data, `t03` and `t17` are thumbs-downs. `t05` and `t17` failed the judge, but `t17` is already in, so `add` skips it and only `t05` gets the reason "judge_fail". That's why the tests expect exactly one judge_fail entry.
+  - lines: [30, 33]
+    title: Step 3, latency outliers
+    text: |
+      `sorted(..., key=lambda t: -t["latency_s"])` sorts slowest first by negating the latency in the **lambda** sort key. `slowest[:n_outliers]` is a **slice** that takes the first two (or all, if fewer remain).
+
+      `t11` is far slower than the rest (12 seconds). Several traces tie for second at 6 seconds. Python's sort is **stable**: tied items keep their original order, so `t04` comes before `t09`. That's deterministic, but it's an implicit tie-break; if it mattered, you'd add the id to the key.
+  - lines: [34, 39]
+    title: Step 4, a reproducible random slice
+    text: |
+      The pool is everything not yet chosen, sorted by id so the sample doesn't depend on the order traces happened to arrive in.
+
+      `random.Random(seed).sample(pool, k)` draws `k` distinct traces uniformly at random, without replacement, using a private seeded generator: same seed and same traces, same queue. `k = min(n_random, len(pool))` handles the docstring's "take what's left" rule; `sample` raises `ValueError` if you ask for more items than exist.
+
+      Sampling from the *remaining* pool matters. Sampling from all traces would sometimes draw a trace that's already in the queue, `add` would silently skip it, and the random slice would come back smaller than requested.
+  - lines: [40, 48]
+    title: random_slice_pass_rate, the only honest estimate
+    text: |
+      The **list comprehension** unpacks each `(trace_id, reason)` **tuple** and keeps the ids whose reason is "random". If there are none, it returns `None` rather than 0.0 or an error, because "no estimate" is different from "0% pass".
+
+      The last line counts the ids the expert labeled as passing and divides by the slice size.
+
+      Why only this slice: the targeted slices were *selected* because they looked bad. In the demo, if the expert fails `t03`, `t05`, and `t17`, the whole queue passes 7 of 10 (70%), while the random slice passes 5 of 5. Reporting the 70% as "production quality" would badly understate it. The targeted slices are for finding failure modes, not for measuring rates.
+  - lines: [49, 57]
+    title: Synthetic traces and the demo
+    text: |
+      The traces are built with a list comprehension and a few **conditional expressions**: `f"t{i:02d}"` pads the number to two digits (`t03`), thumbs-down on 3 and 17, thumbs-up on multiples of 7, a latency pattern with one big outlier at 11, and judge failures on 5 and 17.
+
+      The printout shows the queue in order: the two feedback traces, then `t05`, then the outliers `t11` and `t04`, then five random picks.
+review:
+  - id: wt-queue-sample-all
+    type: code-reading
+    prompt: An AI assistant shortens step 4 to the version below. With `seed=1`, what can go wrong?
+    code: |
+      for t in random.Random(seed).sample(traces, n_random):
+          add(t, "random")
+    options:
+      - id: a
+        text: Nothing; `add` already prevents duplicates
+        rationale: It prevents duplicates by skipping them, which is exactly the problem.
+      - id: b
+        text: The random slice can silently come back with fewer than 5 traces
+        correct: true
+        rationale: "Right. With seed 1 this draws `t04`, which is already in the queue as an outlier, so `add` skips it and only 4 random traces are added. Nothing errors."
+      - id: c
+        text: It raises an error because `traces` isn't sorted
+        rationale: "`sample` works on any list. Not sorting only weakens reproducibility if the input order changes."
+    explanation: The de-duplication in `add` is a safety net, and safety nets can hide bugs. The exercise's test that counts exactly five random entries is what catches this. When reviewing, check that the pool you sample from excludes what's already been chosen.
+  - id: wt-queue-whole-rate
+    type: predict-output
+    prompt: The expert labels `t03`, `t05`, and `t17` as failures and everything else in the demo queue as passing. What pass rate do you get over the whole queue, and over the random slice?
+    options:
+      - id: a
+        text: 70% over the whole queue, 100% over the random slice
+        correct: true
+        rationale: Right. 7 of the 10 queued traces pass, but all three failures came from targeted slices, so the 5 random traces all pass.
+      - id: b
+        text: 70% for both
+        rationale: The failures are all in the targeted slices, not the random one.
+      - id: c
+        text: 90% over the whole queue
+        rationale: Three of ten fail, so the whole-queue rate is 70%.
+    explanation: Targeted slices are enriched with failures by design. That makes them good for discovering what's broken and bad for estimating how often it breaks. Five random traces is also a very small sample, so in practice you'd want a larger random slice, or to pool several weeks, before quoting a rate.
+  - id: wt-queue-nested
+    type: scenario
+    prompt: Why is the "skip if already seen" check written once inside `add`, instead of in each of the four steps?
+    options:
+      - id: a
+        text: So every step gets de-duplication automatically, and a new step added later can't forget it
+        correct: true
+        rationale: Exactly. One rule, one place. Each step just says "add this trace for this reason".
+      - id: b
+        text: Because nested functions run faster
+        rationale: Speed isn't the reason.
+      - id: c
+        text: Because Python doesn't allow the same check in more than one loop
+        rationale: It does; repeating it is just easier to get wrong.
+    explanation: Putting an invariant (here, "no trace twice") in one helper is a pattern worth asking for in AI-written code. It also means the remaining-pool logic and the queue can never disagree about what's been chosen.
+direct:
+  task: |
+    The expert can only read 12 traces a week. You want a `budget` argument: fill the queue in priority order and stop when it's full, but always keep at least `n_random` slots for the random slice so the quality estimate never disappears.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add an optional budget=None argument to build_review_queue. When budget is None, behavior must be exactly as now. When it is set, the targeted steps (feedback, judge_fail, outlier, in that priority order) may use at most budget - n_random slots in total, and the random step still adds min(n_random, remaining) traces. If budget < n_random, raise ValueError.
+
+    Keep the reason labels, the de-duplication in add, the id-sorted pool, and the seeded sampling unchanged. Do not change random_slice_pass_rate.
+
+    Update the docstring. Add asserts that with budget=4 and n_random=2 on the demo traces the queue has 4 entries, the first two are the feedback traces t03 and t17, and exactly 2 have reason "random"; and that budget=None gives the same queue as before.
+  checklist:
+    - budget=None reproduces the current queue exactly
+    - Targeted slices are cut in priority order, not shuffled or skipped
+    - The random slice always keeps its reserved slots
+    - Invalid budgets raise ValueError instead of silently producing a short queue
+    - New asserts cover the cut-off and the unchanged default

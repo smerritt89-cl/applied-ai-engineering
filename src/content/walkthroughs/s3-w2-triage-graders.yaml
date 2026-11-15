@@ -1,0 +1,213 @@
+id: s3-w2-triage-graders
+summary: |
+  This program grades the output of a support-ticket triage feature. The model is supposed to return a JSON object with a category, an order id (or null), and a short reply to the customer. The grader parses that output and runs five named checks: did it parse, does it have exactly the right shape, is the category right, is the order id right, and does the reply avoid promises the company can't make.
+
+  Each check is a separate True or False rather than one overall score, so a failing case tells you *what* went wrong. The grader is also deliberately strict about format: it does not repair fenced or malformed JSON, because the product code that consumes this output won't repair it either.
+code: |
+  import json
+  import re
+
+  CATEGORIES = {"refund", "exchange", "warranty", "cancellation", "other"}
+  ORDER_ID = re.compile(r"TP-\d{6}")
+  PROMISES = re.compile(r"\b(guarantee\w*|full refund|no questions asked)\b", re.IGNORECASE)
+
+
+  def parse_output(text):
+      """Return the parsed object if text is a JSON object (a dict), else None. No repairs."""
+      try:
+          obj = json.loads(text)
+      except json.JSONDecodeError:
+          return None
+      return obj if isinstance(obj, dict) else None
+
+
+  def grade(text, expected):
+      """Grade one triage output against the expected values for this case.
+
+      Return a dict of named checks, each True or False:
+        parsed       text is a JSON object
+        schema       keys are exactly {"category", "order_id", "reply"}, reply is a non-empty string,
+                     and order_id is a string or None
+        category     category, stripped and lowercased, equals expected["category"]
+        order_id     order_id equals expected["order_id"] (None when the ticket has none);
+                     a non-None value must also FULLY match ORDER_ID
+        no_promises  the reply contains none of the PROMISES phrases
+      If the text doesn't parse, every check is False.
+      """
+      names = ["parsed", "schema", "category", "order_id", "no_promises"]
+      obj = parse_output(text)
+      if obj is None:
+          return {name: False for name in names}
+
+      reply = obj.get("reply")
+      oid = obj.get("order_id")
+      cat = obj.get("category")
+
+      schema = (
+          set(obj) == {"category", "order_id", "reply"}
+          and isinstance(reply, str) and reply.strip() != ""
+          and (oid is None or isinstance(oid, str))
+      )
+      category = isinstance(cat, str) and cat.strip().lower() == expected["category"]
+      if oid is None:
+          order_ok = expected["order_id"] is None
+      else:
+          order_ok = (isinstance(oid, str) and ORDER_ID.fullmatch(oid) is not None
+                      and oid == expected["order_id"])
+      no_promises = not (isinstance(reply, str) and PROMISES.search(reply))
+
+      return {"parsed": True, "schema": schema, "category": category,
+              "order_id": order_ok, "no_promises": no_promises}
+
+
+  CASES = [
+      ('{"category": "refund", "order_id": "TP-482913", "reply": "Refunds take 5 to 7 business days."}',
+       {"category": "refund", "order_id": "TP-482913"}),
+      ('{"category": "Refund ", "order_id": "TP-482913", "reply": "We guarantee it arrives Friday."}',
+       {"category": "refund", "order_id": "TP-482913"}),
+      ('{"category": "exchange", "order_id": "TP-4829137", "reply": "Exchanges ship free."}',
+       {"category": "exchange", "order_id": "TP-482913"}),
+      ('```json\\n{"category": "other", "order_id": null, "reply": "Let me check."}\\n```',
+       {"category": "other", "order_id": None}),
+      ('{"category": "warranty", "order_id": null, "reply": "", "priority": "high"}',
+       {"category": "warranty", "order_id": None}),
+  ]
+
+  for text, expected in CASES:
+      print(grade(text, expected))
+notes:
+  - lines: [1, 6]
+    title: Imports and compiled patterns
+    text: |
+      `json` parses JSON text; `re` is Python's regular-expression module.
+
+      `re.compile(...)` turns a pattern into a reusable object, compiled once at the top instead of on every call. The `r"..."` prefix makes a **raw string**, so backslashes reach the regex engine untouched: `\d{6}` means "exactly six digits".
+
+      `PROMISES` uses `\b` (a word boundary) so "guarantee" matches as a word but not inside some longer unrelated word, and `guarantee\w*` also catches "guaranteed" and "guarantees". `re.IGNORECASE` makes "FULL REFUND" match too.
+
+      `CATEGORIES` is defined but never used by `grade`, which compares against the expected category instead. A reviewer should notice unused definitions like this: either a check is missing (is the category a legal value?) or the line should go.
+  - lines: [7, 15]
+    title: parse_output, strict on purpose
+    text: |
+      `try` / `except json.JSONDecodeError` is Python's error handling: try to parse, and if the text isn't valid JSON, return `None` instead of crashing. Catching the *specific* error matters. A bare `except:` would also swallow unrelated bugs and make them look like bad model output.
+
+      `isinstance(obj, dict)` checks the type. `json.loads("[1, 2]")` succeeds but gives a list, and the product expects an object, so that's `None` too.
+
+      The docstring's "No repairs" is a design decision. A model that wraps its JSON in a Markdown fence (```json ... ```) is producing output your production parser will reject. If the grader quietly strips the fence, your eval says 100% while users see errors.
+  - lines: [16, 30]
+    title: The grading contract
+    text: |
+      The docstring lists the five checks and exactly what each means, laid out like a table. This is the spec a reviewer should compare the code against, line by line. Two details worth noticing: `category` is normalized (stripped and lowercased) before comparing, but `order_id` is not; and an unparsed output fails *every* check.
+  - lines: [31, 38]
+    title: Fail everything if it doesn't parse, then pull out the fields
+    text: |
+      `{name: False for name in names}` is a **dict comprehension**: it builds `{"parsed": False, "schema": False, ...}` from the list of names, so the unparsed result always has the same five keys as a parsed one. Code that reads the results never has to special-case a missing key.
+
+      `obj.get("reply")` is **dict.get**: it returns the value, or `None` if the key is missing, instead of raising `KeyError`. That's the right tool here because the model may have left a field out, and the schema check below is where a missing field should be reported.
+  - lines: [39, 45]
+    title: Schema and category
+    text: |
+      `schema` is one Boolean built from three conditions joined by `and`, wrapped in parentheses so it can span lines:
+
+      - `set(obj) == {...}`: `set(obj)` gives the object's keys, and the comparison requires exactly these three. An extra `"priority"` key, as in the last case, fails.
+      - `reply` must be a string with something in it after `strip()` removes surrounding whitespace.
+      - `order_id` must be `None` or a string, not, say, a number.
+
+      `category` normalizes before comparing: `"Refund "` becomes `"refund"`. That is safe normalization, because a stray space or capital doesn't change what the product would do with the value. `isinstance(cat, str)` comes first so that a missing or non-string category gives `False` instead of crashing on `.strip()`. This **short-circuit** behavior of `and` (it stops at the first false part) is what makes the guard work.
+  - lines: [46, 50]
+    title: Order id, with a full-match format check
+    text: |
+      Two cases. If the model returned no order id, that's right only when the ticket had none. Otherwise, the id must be a string, must **fully** match the pattern, and must equal the expected id.
+
+      `ORDER_ID.fullmatch(oid)` requires the whole string to match. `ORDER_ID.search("TP-4829137")` would find `TP-482913` inside it and report a match, which is the trap the third case is built around.
+
+      To be precise: in this exercise the equality test alone would also reject `TP-4829137`. The format check earns its place when you reuse the check without a gold value (for example, monitoring production outputs, where you can only ask "is this a well-formed id?") or when the expected label itself has a typo.
+  - lines: [51, 54]
+    title: No forbidden promises, and the result
+    text: |
+      `PROMISES.search(reply)` returns a match object if any forbidden phrase appears anywhere in the reply, or `None`. `not (...)` flips that into "passes when nothing was found". The `isinstance(reply, str)` guard means a missing reply counts as making no promises; the schema check already reports the missing reply, so it isn't double-counted here.
+
+      The returned dict always has the same five keys in the same order, which is what lets you tally pass rates per check across hundreds of cases.
+  - lines: [55, 71]
+    title: Cases chosen because they should fail
+    text: |
+      Each case pairs a raw model output (a string) with the expected values. Only the first is fully correct; each of the others trips exactly one or two checks:
+
+      - Case 2: a safe-to-normalize category (`"Refund "`) and a forbidden "guarantee".
+      - Case 3: a seven-digit order id.
+      - Case 4: JSON inside a Markdown fence, which should fail to parse.
+      - Case 5: an extra key and an empty reply, so `schema` fails while `category` and `order_id` (both correctly null) pass.
+
+      This is how you test a grader: feed it outputs you *know* are bad and confirm it says so. A grader that passes everything is easy to write and useless.
+review:
+  - id: wt-triage-repair
+    type: code-reading
+    prompt: An AI assistant makes the grader "more robust" by stripping Markdown fences before parsing, as below. What does `grade` now return for case 4?
+    code: |
+      def parse_output(text):
+          text = text.strip().removeprefix("```json").removesuffix("```").strip()
+          text = text.replace("\\n", "")
+          try:
+              obj = json.loads(text)
+          except json.JSONDecodeError:
+              return None
+          return obj if isinstance(obj, dict) else None
+    options:
+      - id: a
+        text: All five checks False, the same as before
+        rationale: The fence is now removed before parsing, so the JSON inside parses.
+      - id: b
+        text: All five checks True
+        correct: true
+        rationale: Right. The inner object is valid and correct, so every check passes. The eval now reports a case as perfect that your production parser would reject.
+      - id: c
+        text: It raises an exception because removeprefix doesn't exist
+        rationale: "`str.removeprefix` and `removesuffix` exist in Python 3.9 and later."
+    explanation: A grader should be exactly as strict as the code that consumes the output. If you want to know how often the model fences its JSON, measure it as its own failure mode; don't hide it inside a repair step.
+  - id: wt-triage-search
+    type: mcq
+    prompt: "Suppose `grade` had no gold order id to compare against (production monitoring) and checked only the format. Why does `fullmatch` matter then?"
+    options:
+      - id: a
+        text: "`search(\"TP-4829137\")` would find a six-digit match inside the seven-digit string and wrongly pass it"
+        correct: true
+        rationale: "Right. `search` looks for the pattern anywhere in the string. `fullmatch` requires the whole string to be the pattern."
+      - id: b
+        text: "`search` is case-sensitive and `fullmatch` is not"
+        rationale: Both use the same flags; the difference is where in the string the match may occur.
+      - id: c
+        text: There is no difference for this pattern
+        rationale: There is, as the seven-digit id shows.
+    explanation: When you review a regex-based check, ask whether it should match part of the text (like a forbidden phrase in a reply) or all of it (like an id). The two cases in this grader use the two different methods for exactly that reason.
+  - id: wt-triage-all-false
+    type: scenario
+    prompt: Why does `grade` return all five checks as False when the output doesn't parse, rather than leaving `category` or `no_promises` out?
+    options:
+      - id: a
+        text: So every result has the same keys, and an unparsed output can never count as passing any check
+        correct: true
+        rationale: Exactly. Consistent keys make tallying easy, and False is the honest answer when nothing could be checked.
+      - id: b
+        text: Because Python dicts must always have five keys
+        rationale: Dicts can have any number of keys. This is a design choice.
+      - id: c
+        text: Because the text might still contain a promise
+        rationale: That isn't why `no_promises` is False here; nothing was checked at all.
+    explanation: An output you couldn't parse is worse than one with a wrong category, so it should never score better on any line of the report. Watch for AI-written graders that quietly skip checks on bad input, which makes per-check pass rates look better than the product is.
+direct:
+  task: |
+    You notice the grader never checks that the category is one of the five legal values in `CATEGORIES`. A model that answers `"refunds"` fails the `category` check, but so does a legal but wrong category, and you can't tell the two apart in the report.
+
+    Write the prompt you'd give a coding assistant to add a separate check.
+  prompt: |
+    Add a sixth check to grade, named "category_valid": True when the category, stripped and lowercased, is in CATEGORIES. Put it right after "category" in the returned dict, and include it in the names list so an unparsed output still returns every check as False.
+
+    Do not change any existing check: parse_output stays strict (no repairs), category still compares to expected["category"], and order_id still uses fullmatch. A non-string category gives category_valid False without raising.
+
+    Update the docstring table, and add asserts that: case 0 has category_valid True; '{"category": "refunds", "order_id": null, "reply": "Hi"}' with expected category "refund" fails both category and category_valid; and the unparsed case 4 still returns all checks False.
+  checklist:
+    - The five existing checks behave exactly as before on every case
+    - category_valid is in the names list, so unparsed outputs still get every key
+    - A non-string category is handled without an exception
+    - parse_output was not loosened along the way
+    - The docstring and the new asserts match the new key

@@ -1,0 +1,159 @@
+id: e3-speedup-bootstrap
+summary: |
+  This program estimates how much faster a team works with AI from a small randomized pilot, and then asks how much that estimate could move by chance. The estimate compares geometric means of task times (a ratio on the log scale). The uncertainty comes from a **percentile bootstrap**: resample each arm with replacement thousands of times, recompute the estimate each time, and read off the middle 95% of the results.
+
+  The estimator and the bootstrap are separate functions, and the bootstrap simply calls the estimator. That design means the bootstrap works for any statistic you plug in, and it guarantees the interval describes the same quantity as the headline number. The punchline of the demo: a 12% point estimate whose interval runs from about 29% slower to 75% faster.
+code: |
+  import math
+  import random
+
+  # Minutes per task in a small trial: tasks were randomly assigned to AI-allowed or AI-forbidden.
+  AI = [42, 95, 30, 120, 60, 75, 25, 200, 55, 80, 38, 150]
+  NO_AI = [50, 80, 45, 100, 90, 70, 40, 180, 50, 110, 35, 210]
+
+
+  def speedup(ai, no_ai):
+      """Speedup from AI as a fraction, using geometric means of task times
+      (task lengths vary a lot, so compare on a log scale):
+      exp(mean(log no_ai) - mean(log ai)) - 1.  Positive means faster with AI."""
+      mean_log_ai = sum(math.log(x) for x in ai) / len(ai)
+      mean_log_no = sum(math.log(x) for x in no_ai) / len(no_ai)
+      return math.exp(mean_log_no - mean_log_ai) - 1
+
+
+  def bootstrap_interval(ai, no_ai, reps=2000, seed=0):
+      """95% percentile bootstrap interval for speedup(). Resample each group
+      with replacement, independently. Return (low, high)."""
+      rng = random.Random(seed)
+      stats = []
+      for _ in range(reps):
+          ai_sample = [rng.choice(ai) for _ in ai]
+          no_sample = [rng.choice(no_ai) for _ in no_ai]
+          stats.append(speedup(ai_sample, no_sample))
+      stats.sort()
+      return stats[int(0.025 * reps)], stats[int(0.975 * reps) - 1]
+
+
+  est = speedup(AI, NO_AI)
+  print("estimated speedup:", f"{est:.0%}")
+  print("95% interval:", bootstrap_interval(AI, NO_AI))
+notes:
+  - lines: [1, 6]
+    title: Imports and the pilot data
+    text: |
+      `math` supplies `math.log` and `math.exp`; `random` supplies the resampling. Both are standard library.
+
+      `AI` and `NO_AI` are minutes per task for two **independent** groups of tasks, randomly assigned to an arm. The comment saying so matters: it tells you the right resampling scheme (resample each arm on its own), and it tells you that position 0 in one list has nothing to do with position 0 in the other. Task times range from 25 to 210 minutes, a factor of about eight, which is why the estimator works on the log scale.
+  - lines: [9, 12]
+    title: Why geometric means
+    text: |
+      The docstring defines the statistic exactly: exp(mean(log no_ai) minus mean(log ai)) minus 1. exp of a mean of logs is the **geometric mean**, so this is (geometric mean without AI) / (geometric mean with AI) minus 1, a ratio expressed as a fraction.
+
+      Why not just compare average minutes? With long-tailed task times, an arithmetic mean is dominated by the few longest tasks. Working on the log scale treats a task going from 20 to 10 minutes the same as one going from 200 to 100: both are a halving. Here the arithmetic comparison would give about 9%, the geometric one about 12%. Neither is wrong, but they answer different questions, and the docstring says which one this is.
+  - lines: [13, 15]
+    title: The estimator in three lines
+    text: |
+      `sum(math.log(x) for x in ai)` uses a **generator expression** (the part inside `sum(...)` with no brackets): it produces each log in turn and `sum` adds them up, without building a list. Dividing by `len(ai)` gives the mean log time for that arm.
+
+      Subtracting the two mean logs gives the log of the ratio of geometric means; `math.exp` turns it back into a ratio, and `- 1` turns "1.12 times as fast" into "0.12 faster". With the pilot data the result is about 0.124.
+
+      Note the direction: `mean_log_no - mean_log_ai`. Swapping them gives a different number (about minus 0.11, since 1 / 1.124 is about 0.89), not just a sign flip, and it would label a speedup as a slowdown. The docstring's "Positive means faster with AI" is the contract to check against.
+  - lines: [18, 22]
+    title: A private, seeded random generator
+    text: |
+      `rng = random.Random(seed)` creates a **separate random number generator** with its own seed, instead of using the module-level functions like `random.choice`. Two reasons. First, the same seed always gives the same interval, so results are reproducible and testable. Second, it doesn't disturb (or get disturbed by) any other code that uses the global `random` state. Calling `random.seed(0)` instead would also be reproducible, but would silently reset randomness for everything else in the program.
+
+      `stats = []` will hold one recomputed speedup per bootstrap replicate.
+  - lines: [23, 26]
+    title: Resample each arm, independently, with replacement
+    text: |
+      This loop is the bootstrap. Each pass builds a new AI sample of the same size as the original by drawing `rng.choice(ai)` once per original element. `[rng.choice(ai) for _ in ai]` is a **list comprehension** where the loop variable is ignored (`_`); iterating over `ai` is just a tidy way to repeat `len(ai)` times. The same is done for the no-AI arm, separately.
+
+      **With replacement** is essential: some tasks appear twice in a resample, some not at all, which is how the bootstrap mimics drawing a fresh sample from the population. Drawing **without** replacement (for example `rng.sample(ai, len(ai))`) just shuffles the list, every resample has the same geometric mean, and the interval collapses to a single point.
+
+      **Independently** matters too. Because the tasks in the two arms are different tasks, the resampling must not pair them by position. Drawing one set of indices and using it for both lists would treat the data as matched pairs, which they are not, and would produce a misleadingly narrow interval.
+  - lines: [27, 28]
+    title: Read off the percentiles
+    text: |
+      `stats.sort()` sorts the list **in place** (it changes `stats` and returns `None`; `sorted(stats)` would return a new list instead). Then the code indexes the sorted list at the 2.5th and 97.5th percentiles: with 2000 replicates, `int(0.025 * 2000)` is 50 and `int(0.975 * 2000) - 1` is 1949. Fifty replicates fall below the low end and fifty above the high end, so the pair brackets the middle 1900, which is 95%.
+
+      `int(...)` truncates toward zero, turning the product into a valid list index. The `- 1` on the upper index keeps the two tails symmetric (indexes 0 to 49 below, 1950 to 1999 above). This is a simple percentile rule; libraries interpolate between neighbors, which changes the third decimal place, not the conclusion.
+
+      The function returns a **tuple** `(low, high)`.
+  - lines: [31, 33]
+    title: The headline and its interval
+    text: |
+      `f"{est:.0%}"` is an **f-string** with a format specifier: `.0%` multiplies by 100 and shows it as a percentage with no decimals, so 0.124 prints as `12%`.
+
+      The interval prints as about (minus 0.29, 0.75): from 29% slower to 75% faster. That range includes zero comfortably. With a dozen tasks per arm and task times varying eightfold, this pilot cannot distinguish a real speedup from none. The honest headline is "no detectable effect at this sample size", and the useful next step is to use exactly this bootstrap on a dry run to decide how many tasks a real trial needs.
+review:
+  - id: wt-sb-sample
+    type: code-reading
+    prompt: An AI assistant replaces the resampling lines with the version below, saying `rng.sample` "is the standard way to draw a random sample." What interval does `bootstrap_interval(AI, NO_AI)` return?
+    code: |
+      ai_sample = rng.sample(ai, len(ai))
+      no_sample = rng.sample(no_ai, len(no_ai))
+    options:
+      - id: a
+        text: About the same interval, roughly (-0.29, 0.75)
+        rationale: That needs resampling with replacement. `rng.sample` draws without replacement.
+      - id: b
+        text: A wider interval, because sampling without replacement adds noise
+        rationale: It removes all the variation instead. Every replicate contains exactly the original values.
+      - id: c
+        text: A zero-width interval at the point estimate, about (0.124, 0.124)
+        correct: true
+        rationale: Right. Drawing all n items without replacement just reorders them, and the geometric mean doesn't depend on order, so every replicate gives the same speedup.
+    explanation: This is a believable edit (the name `sample` sounds right) and it produces an interval that looks very confident. The hidden test that the point estimate sits strictly inside the interval catches it. When reviewing any bootstrap, find the line that draws the resample and confirm it is with replacement.
+  - id: wt-sb-paired
+    type: code-reading
+    prompt: A second AI edit draws one set of positions and uses it for both arms, as below. The interval comes out at about (-0.01, 0.30), much narrower. Is that an improvement?
+    code: |
+      idx = [rng.randrange(len(ai)) for _ in ai]
+      ai_sample = [ai[i] for i in idx]
+      no_sample = [no_ai[i] for i in idx]
+    options:
+      - id: a
+        text: Yes, pairing reduces variance, so the narrower interval is more accurate
+        rationale: Pairing reduces variance only when the pairs are real, for example the same task done both ways. Here they are not.
+      - id: b
+        text: No, it treats position i in both lists as the same task, but the arms contain different, randomly assigned tasks, so the narrower interval is an artifact of an arbitrary ordering
+        correct: true
+        rationale: Right. Reorder either list and this interval changes, which shows it is measuring the ordering, not the effect. The independent-groups design calls for independent resampling.
+      - id: c
+        text: No, because it raises IndexError when the arms differ in length
+        rationale: That would be a problem if the lengths differed, but here both arms have 12 tasks, so it runs. The deeper problem is statistical.
+    explanation: The resampling scheme must match how the data were collected. A paired bootstrap on unpaired data is a quiet way to overstate confidence, and an AI asked to "tighten the interval" might suggest it. Check the comment on the data (line 4) against the resampling code.
+  - id: wt-sb-design
+    type: scenario
+    prompt: A stakeholder sees "estimated speedup 12%" and asks to put it in the quarterly update. What should the update say, based on this analysis?
+    options:
+      - id: a
+        text: AI made the team 12% faster
+        rationale: That is the point estimate alone. The interval shows the data are consistent with no speedup or even a slowdown.
+      - id: b
+        text: The pilot was too small to detect an effect either way (estimate 12%, 95% interval about 29% slower to 75% faster), and a follow-up needs more tasks per arm
+        correct: true
+        rationale: Right. It reports what was measured, how uncertain it is, and what would resolve it.
+      - id: c
+        text: AI had no effect on speed
+        rationale: An interval that includes zero means the data can't rule out no effect. It doesn't show there was no effect; the interval also includes large speedups.
+    explanation: '"Not significant" and "no effect" are different claims. The interval is the clearest way to say what a small pilot can and cannot support.'
+direct:
+  task: |
+    Before running a real trial, you want to know how many tasks per arm you'd need for the interval to exclude zero if the true speedup is about 12%. Add a simple planning helper that reuses the bootstrap.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function interval_width_at(ai, no_ai, n, reps=1000, seed=0) that simulates a trial with n tasks per arm: draw n values with replacement from each arm (using random.Random(seed)), compute bootstrap_interval on that simulated trial with the same seed, and return high minus low. Loop over n in [12, 24, 48, 96] in the demo and print the widths.
+
+    Do not change speedup or bootstrap_interval: keep independent resampling with replacement, the seeded random.Random, and the percentile indexes. Use only the standard library.
+
+    Add test asserts: interval_width_at(AI, NO_AI, 96) is smaller than interval_width_at(AI, NO_AI, 12); the same arguments return the same width twice.
+  checklist:
+    - speedup and bootstrap_interval are unchanged
+    - Simulated trials draw with replacement, separately for each arm
+    - The helper reuses bootstrap_interval rather than reimplementing it
+    - Results are reproducible from the seed, and a test checks that
+    - Widths shrink as n grows, roughly like one over the square root of n, and a test checks the direction
+    - The demo stays fast enough to run in the browser (keep reps modest)

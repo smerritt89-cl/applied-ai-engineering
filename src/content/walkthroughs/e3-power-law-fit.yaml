@@ -1,0 +1,155 @@
+id: e3-power-law-fit
+summary: |
+  This program fits a scaling law of the form loss = a times compute to the power b, using four small training runs, and then uses the fitted curve to predict the loss of a run a thousand times bigger than any of them. The trick is that a power law becomes a straight line once you take logs of both sides, so the whole fit is ordinary least squares on (log x, log y), written out in plain Python.
+
+  It is split into a fitting function and a one-line prediction function. That split matters for review: the fit is where the statistics live, and the prediction is where the claim lives. Most of the interesting questions about a scaling forecast are about the gap between the two, which is how far past the data the prediction reaches.
+code: |
+  import math
+
+
+  def fit_power_law(xs, ys):
+      """Fit y = a * x**b by ordinary least squares on (log x, log y).
+      Return (a, b)."""
+      lx = [math.log(x) for x in xs]
+      ly = [math.log(y) for y in ys]
+      n = len(lx)
+      mean_x = sum(lx) / n
+      mean_y = sum(ly) / n
+      cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(lx, ly))
+      var = sum((x - mean_x) ** 2 for x in lx)
+      b = cov / var
+      log_a = mean_y - b * mean_x
+      return math.exp(log_a), b
+
+
+  def predict(a, b, x):
+      return a * x ** b
+
+
+  # Synthetic (compute, loss) points from small runs. Loss here is "reducible loss",
+  # the part above an irreducible floor, which is what follows a clean power law.
+  compute = [1e18, 1e19, 1e20, 1e21]
+  loss = [2.0, 1.26, 0.80, 0.50]
+
+  a, b = fit_power_law(compute, loss)
+  print("a =", a, "b =", b)
+  print("predicted at 1e24:", round(predict(a, b, 1e24), 3))
+notes:
+  - lines: [1, 1]
+    title: One import, from the standard library
+    text: |
+      `math` supplies `math.log` (the natural log) and `math.exp` (e to a power). There is no numpy here on purpose: a straight-line fit on four points is a few sums, and writing them out lets you see exactly which statistic is being computed.
+
+      When you review an AI-written version, it will probably reach for `numpy.polyfit` or `scipy.stats.linregress`. Those are fine, but check what they are fitted on. `polyfit(xs, ys, 1)` on the raw values fits a straight line in linear space, which is a different model from a power law.
+  - lines: [4, 6]
+    title: The model, stated in the docstring
+    text: |
+      `def fit_power_law(xs, ys):` takes two lists of the same length, the x values (compute) and the y values (loss). The **docstring** (the triple-quoted text) states the model and the method: y = a times x to the b, fitted by ordinary least squares on the logs.
+
+      The math behind it: take the log of both sides and you get log y = log a + b log x. That is a line with slope `b` and intercept `log a`, in the variables (log x, log y). So fitting a power law is the same as fitting a line on a log-log plot.
+
+      One consequence worth knowing as a statistician: least squares on the logs minimizes squared error in log space, which means **relative** error, and it assumes the noise is multiplicative. That is the usual choice for scaling laws, but it is a modeling decision, not a neutral one.
+  - lines: [7, 9]
+    title: Move to log space
+    text: |
+      `[math.log(x) for x in xs]` is a **list comprehension**: it builds a new list by applying `math.log` to each element. Read it as "the log of x, for each x in xs". The same is done for the y values, and `n = len(lx)` counts the points.
+
+      Worked values: the compute points 1e18 to 1e21 become about 41.45, 43.75, 46.05, 48.35. They are evenly spaced, 2.30 apart, because each point is 10 times the last and ln 10 is about 2.30. The losses 2.0, 1.26, 0.80, 0.50 become about 0.693, 0.231, minus 0.223, minus 0.693, which are also nearly evenly spaced. Even spacing in both is what a straight line on a log-log plot looks like.
+
+      `math.log` raises `ValueError` for zero or negative input. That is why the lesson fits **reducible** loss (loss above an irreducible floor), which is always positive, rather than raw loss.
+  - lines: [10, 14]
+    title: The least-squares slope
+    text: |
+      This is the textbook slope estimate, written in its centered form: b = sum of (x minus mean x)(y minus mean y), divided by sum of (x minus mean x) squared. In the code, `cov` is the numerator (n times the sample covariance) and `var` is the denominator (n times the sample variance of x). The factors of n cancel, so they are left out.
+
+      `zip(lx, ly)` pairs the two lists element by element, so `for x, y in zip(lx, ly)` walks through matched (log x, log y) pairs. The expression inside `sum(...)` with no square brackets is a **generator expression**: like a list comprehension, but it hands values to `sum` one at a time instead of building a list first.
+
+      Here `b` comes out at about minus 0.2003. Read it as an elasticity: a 10x increase in compute multiplies loss by 10 to the minus 0.2, about 0.63.
+
+      What to check in an AI version: the centering. A tempting shortcut, `sum(x * y) / sum(x * x)`, is the slope of a line **forced through the origin**. With log compute values near 45, that gives a slope of about minus 0.0006, which is nonsense for this data.
+  - lines: [15, 16]
+    title: Intercept, then back to the original scale
+    text: |
+      The least-squares line always passes through the point of means, so the intercept is mean y minus b times mean x. That is `log_a`.
+
+      `return math.exp(log_a), b` returns a **tuple** of two values, which the caller unpacks with `a, b = ...`. The `math.exp` undoes the log, so `a` is on the original scale (about 8084 here). The function returns `a` rather than `log_a` because the docstring promises the parameters of y = a times x to the b. An AI edit that returns `log_a` would still produce a number and would only show up as a badly wrong prediction.
+  - lines: [19, 20]
+    title: Prediction is one line, and that is the point
+    text: |
+      `x ** b` is Python's power operator. `predict` just evaluates the fitted curve at a new x.
+
+      The function is tiny, but it is where the claim lives. Nothing in it knows or checks whether `x` is inside the range of the data. Calling it at 1e24 is an extrapolation three orders of magnitude past the largest run, and the code will answer with the same confidence it would give at 1e20.
+  - lines: [23, 30]
+    title: Fit four runs, predict a thousand times further out
+    text: |
+      The demo fits the four synthetic runs and prints `a`, `b`, and the prediction at 1e24. The answer is about 0.126.
+
+      You can check that by hand: each decade multiplies loss by about 0.63, and three more decades past 0.50 gives 0.50 times 0.63 cubed, about 0.125. The fit is doing nothing more than continuing the straight line.
+
+      That is the honest summary of any scaling forecast: the data constrain the slope inside the range you measured, and the prediction assumes the slope holds outside it. Four points cannot tell you whether the line bends. Labs reduce this risk with many more points and checks at intermediate scales, but the assumption never goes away.
+review:
+  - id: wt-plf-uncentered
+    type: code-reading
+    prompt: An AI assistant "simplifies" the slope calculation to the version below (the rest of the function is unchanged). What happens to the fitted slope `b` on the lesson's data?
+    code: |
+      b = sum(x * y for x, y in zip(lx, ly)) / sum(x * x for x in lx)
+    options:
+      - id: a
+        text: Nothing changes, because the centered and uncentered formulas are algebraically equal
+        rationale: They are only equal when the line goes through the origin, or when the means are zero. Here mean log compute is about 45.
+      - id: b
+        text: The slope collapses to about -0.0006, because this is the slope of a line forced through the origin
+        correct: true
+        rationale: Right. Without subtracting the means, the formula fits log y = b log x with no intercept. With x values near 45 and y values near 0, the best such line is almost flat.
+      - id: c
+        text: It raises ZeroDivisionError
+        rationale: The denominator is a sum of squares of values around 45, so it is large, not zero.
+    explanation: The centered form is what makes this an ordinary least-squares slope with an intercept. The first hidden test (y = 5 times x to the minus 1, with x = 1, 10, 100) would catch this regression, which is a good reason to keep a test with a known exact answer next to the realistic one.
+  - id: wt-plf-more-decades
+    type: predict-output
+    prompt: Keep the fit as it is and call `predict(a, b, 1e27)` instead of `1e24`. About what does it return?
+    options:
+      - id: a
+        text: About 0.03, because each decade multiplies loss by about 0.63
+        correct: true
+        rationale: Right. Six decades past 0.50 is 0.50 times 0.63 to the sixth power, about 0.031. The code continues the line without complaint.
+      - id: b
+        text: An error, because 1e27 is outside the range of the data
+        rationale: Nothing in `predict` checks the range. That is the point the lesson makes about extrapolation.
+      - id: c
+        text: About 0.125, because the curve has flattened out by then
+        rationale: A pure power law never flattens on a log-log plot. Flattening would need a different model, such as one with an explicit floor.
+    explanation: The code will extrapolate as far as you ask. Whether the answer means anything depends on evidence the code does not have, such as runs at intermediate scales. When you see a forecast, ask how many decades separate the largest measured run from the prediction.
+  - id: wt-plf-why-logs
+    type: scenario
+    prompt: A colleague asks why the code takes logs instead of fitting the curve directly with a nonlinear optimizer. Which answer is most accurate?
+    options:
+      - id: a
+        text: Logs make the numbers smaller so Python doesn't overflow
+        rationale: The values here are well within float range. Overflow is not the reason.
+      - id: b
+        text: The two approaches always give identical answers, so it is just a style choice
+        rationale: They minimize different things (squared error on the log scale versus the raw scale), so with noisy data they give different fits.
+      - id: c
+        text: Taking logs turns the power law into a straight line, so ordinary least squares solves it exactly in closed form, and it measures error in relative rather than absolute terms
+        correct: true
+        rationale: Right. The closed form needs no starting guess or iterations, and relative error suits data that spans several orders of magnitude.
+    explanation: This is a modeling choice with consequences. Least squares on raw loss values would let the largest losses (from the smallest runs) dominate the fit. On the log scale every run counts by its relative error.
+direct:
+  task: |
+    You want the fit to report how well the straight line fits the data, not just its parameters. Add an R squared value (computed in log space) so a reader can see at a glance whether the points really do lie on a line.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a new function fit_power_law_with_r2(xs, ys) that returns (a, b, r2), where r2 is the coefficient of determination of the straight-line fit in log space: 1 minus (residual sum of squares) / (total sum of squares), both computed on log y.
+
+    Do not change fit_power_law or predict: keep their signatures, return values, and the centered least-squares formula exactly as they are. Reuse fit_power_law inside the new function rather than duplicating the slope math. Use only the math module.
+
+    Add test asserts: for y = 5 * x ** -1 at x = 1, 10, 100, r2 is 1 within 1e-12; for points that do not lie on a line (for example xs = [1, 10, 100, 1000], ys = [1, 3, 1, 3]), r2 is well below 1. Print r2 in the demo.
+  checklist:
+    - fit_power_law and predict are unchanged, including the centered slope formula
+    - R squared is computed on log y, not on raw y
+    - The new function reuses fit_power_law instead of copying its math
+    - An exact power law gives r2 of 1, and a non-linear set of points gives a clearly lower value
+    - No new dependency (numpy, scipy) was added for a few sums
+    - The demo prints r2, and the existing hidden checks still pass

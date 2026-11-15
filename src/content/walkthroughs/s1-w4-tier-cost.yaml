@@ -1,0 +1,159 @@
+id: s1-w4-tier-cost
+summary: |
+  This program does the two calculations behind a model choice for the project's extraction stage. First it prices the work: the dollar cost of one extraction call on each Claude tier, and the monthly cost at a given meeting volume, with an option for the Batch API's half price. Then it applies a decision rule: among the models whose measured recall meets your bar, pick the cheapest, and if none meets it, say so by returning `None`.
+
+  The split mirrors how the decision should be made. The cost functions are pure arithmetic on a price table you can update when prices change. The decision function takes eval results as input rather than computing or assuming them, so the evidence (recall on your own labeled transcripts) drives the choice and the code just applies the rule consistently.
+code: |
+  # USD per million tokens (input, output), from the Claude pricing page on 2026-11-11.
+  # Prices change: check the page before you rely on these.
+  PRICES = {
+      "claude-opus-5-5": (4.00, 20.00),
+      "claude-sonnet-5-5": (2.00, 10.00),
+      "claude-haiku-5-5": (0.10, 0.50),
+  }
+
+
+  def call_cost(model, input_tokens, output_tokens, batch=False):
+      """Dollar cost of one request. The Batch API halves both prices.
+      Raise KeyError for a model that is not in PRICES."""
+      price_in, price_out = PRICES[model]
+      cost = (input_tokens * price_in + output_tokens * price_out) / 1_000_000
+      return cost / 2 if batch else cost
+
+
+  def monthly_cost(model, meetings, input_tokens, output_tokens, batch=False):
+      """Cost of processing this many meetings, one extraction call each."""
+      return meetings * call_cost(model, input_tokens, output_tokens, batch)
+
+
+  def cheapest_meeting_bar(eval_results, min_recall):
+      """eval_results maps model -> {"recall": float, "cost_per_meeting": float}.
+      Return the cheapest model whose recall is at least min_recall, or None."""
+      passing = [(r["cost_per_meeting"], m) for m, r in eval_results.items() if r["recall"] >= min_recall]
+      return min(passing)[1] if passing else None
+
+
+  for m in PRICES:
+      print(m, round(call_cost(m, 14_000, 1_500), 5), round(monthly_cost(m, 200, 14_000, 1_500), 2))
+notes:
+  - lines: [1, 7]
+    title: A dated price table
+    text: |
+      `PRICES` is a dict from model name to a **tuple** of two numbers, `(input price, output price)`, in US dollars per million tokens. A tuple suits a fixed pair whose positions have meaning.
+
+      The comments are part of the design: they name the source and the date, and warn that prices change. A price table without a date is a number nobody can check. When an AI writes cost code for you, look for where its prices came from; models often produce plausible prices from memory that are out of date or simply invented.
+
+      These are the lesson's prices for prompts up to 100,000 tokens. Longer prompts and other features can be priced differently, so this table is only right for the case it describes.
+  - lines: [10, 15]
+    title: "`call_cost`: per-million arithmetic, and failing loudly"
+    text: |
+      `price_in, price_out = PRICES[model]` is **tuple unpacking**: the two values in the tuple go into two names at once.
+
+      The square-bracket lookup is deliberate. For a model that isn't in the table, `PRICES[model]` raises `KeyError`, which is what the docstring promises. The "safer-looking" `PRICES.get(model, (0, 0))` would make an unknown or misspelled model cost $0, and a budget built on that would be wrong without any warning. Silent defaults are a classic way for cost code to lie.
+
+      The cost line multiplies tokens by the per-million price and divides by `1_000_000` once. (Underscores in a number are just visual separators; `1_000_000` is one million.) Worked value for Opus with 14,000 input and 1,500 output tokens: 14,000 times 4 is 56,000, plus 1,500 times 20 is 30,000, so 86,000 divided by a million is **$0.086**.
+
+      `cost / 2 if batch else cost` is a **conditional expression**. Halving the total is the same as halving both prices, because the formula is linear.
+  - lines: [18, 20]
+    title: "`monthly_cost`: reuse, don't re-derive"
+    text: |
+      One line: the number of meetings times the cost of one call. It **calls** `call_cost` rather than repeating the formula, and passes `batch` through.
+
+      That reuse is the design point. With one formula in one place, a price change or a correction (say, adding cached-input pricing) is made once, and the monthly number can't drift from the per-call number. AI-written code often duplicates formulas across functions; when it does, check that every copy agrees, then ask for the duplication to be removed.
+
+      Worked value: 200 meetings at $0.086 is **$17.20** a month on Opus.
+  - lines: [23, 26]
+    title: Keep only the models that clear the bar
+    text: |
+      `eval_results.items()` yields `(model, result)` pairs, and the **list comprehension** keeps a pair only `if r["recall"] >= min_recall`. For each kept model it builds a tuple `(cost, model)`, with cost **first**.
+
+      Putting cost first is what lets the next line find the cheapest with a plain `min`. With the exercise's numbers and a bar of 0.90, Haiku (0.78) is filtered out, and `passing` is `[(0.086, "claude-opus-5-5"), (0.043, "claude-sonnet-5-5")]`.
+
+      Note the order of operations: **filter on quality first, then minimize cost**. Reversing it (pick the cheapest, then check whether it's good enough) would just return Haiku and fail.
+  - lines: [27, 27]
+    title: The cheapest passer, or an honest None
+    text: |
+      Python compares tuples element by element, so `min(passing)` returns the tuple with the lowest cost (and, on a tie, the alphabetically first model name, which at least makes the result repeatable). `[1]` takes the model name out of the tuple.
+
+      `if passing else None` handles the case where no model meets the bar. An empty list counts as false, so the function returns `None`, and calling `min` on an empty list (which would raise `ValueError`) never happens.
+
+      Returning `None` rather than "the best of the failures" is the important design choice. If no model reaches 0.95 recall, the decision is no longer which model to use; it's whether to lower the bar, improve the prompt, or add human review. The code shouldn't make that call quietly.
+  - lines: [30, 31]
+    title: Print the estimate for every tier
+    text: |
+      The loop prints each model's per-call cost (rounded to five decimal places) and monthly cost at 200 meetings. Looping over `PRICES` means a new model added to the table shows up here with no other change.
+
+      Press **Run this code**: roughly $0.086, $0.043, and $0.00215 per call, or about $17.20, $8.60, and $0.43 a month. Keep the lesson's cautions in mind: thinking tokens are billed as output (and Opus 5.5 always thinks), so real output usage can be far above 1,500 tokens. Replace these guesses with usage measured from real responses before you trust the totals.
+review:
+  - id: wt-tier-get-default
+    type: code-reading
+    prompt: |
+      An AI assistant changes the first line of `call_cost` "so it never crashes". What does `monthly_cost("claude-sonet-5-5", 200, 14_000, 1_500)` return (note the typo in the model name)?
+    code: |
+      price_in, price_out = PRICES.get(model, (0, 0))
+    options:
+      - id: a
+        text: "`0.0`, with no error"
+        correct: true
+        rationale: Right. The misspelled name falls back to prices of zero, so every call costs nothing and the monthly budget comes out at $0.
+      - id: b
+        text: It raises `KeyError`, as before
+        rationale: That was the original behavior. `dict.get` with a default never raises for a missing key.
+      - id: c
+        text: About `8.6`, because the name is close to Sonnet's
+        rationale: Python dict lookups are exact. There's no fuzzy matching.
+    explanation: '"Never crashes" is not the goal for cost code; "never wrong without telling you" is. A crash on an unknown model points straight at the typo. A silent zero ends up in a spreadsheet. The exercise includes a test for exactly this.'
+  - id: wt-tier-fallback
+    type: code-reading
+    prompt: An AI assistant adds a fallback so the function "always recommends something". With the exercise's results and `min_recall=0.95`, what does this return?
+    code: |
+      def cheapest_meeting_bar(eval_results, min_recall):
+          passing = [(r["cost_per_meeting"], m) for m, r in eval_results.items() if r["recall"] >= min_recall]
+          if passing:
+              return min(passing)[1]
+          return max(eval_results, key=lambda m: eval_results[m]["recall"])
+    options:
+      - id: a
+        text: "`None`"
+        rationale: The new last line replaced the `None` return.
+      - id: b
+        text: "`\"claude-opus-5-5\"`, the highest-recall model, even though it misses the bar"
+        correct: true
+        rationale: "Right. No model reaches 0.95, so `passing` is empty. `max` with `key=` then picks the model whose recall is largest. The `lambda` is a small unnamed function: given a model name, return its recall."
+      - id: c
+        text: "`\"claude-haiku-5-5\"`, the cheapest model"
+        rationale: The fallback ranks by recall, not by cost.
+    explanation: The fallback turns "nothing meets the requirement" into a confident-looking recommendation, which hides the one fact the decision-maker most needs. When a function can legitimately have no answer, returning `None` (and making the caller handle it) is the honest design.
+  - id: wt-tier-decide
+    type: scenario
+    prompt: |
+      Your eval shows Opus at 0.94 recall ($17.20 a month) and Sonnet at 0.91 ($8.60 a month). The agreed bar is 0.90, so the rule picks Sonnet. A stakeholder says "just use Opus, it's more accurate." What's the best response?
+    options:
+      - id: a
+        text: Use Opus; always pick the most accurate model
+        rationale: That ignores the bar you set. It also ignores whether a 3-point gap is real on your sample size.
+      - id: b
+        text: Use Sonnet; the rule chose it, so the discussion is over
+        rationale: The rule applies the bar, but the bar itself is a requirement people can revisit with evidence.
+      - id: c
+        text: Treat it as a question about the bar. If missed items are costly enough that 0.91 isn't acceptable, raise the bar (the rule then picks Opus); first check that the gap holds up on enough labeled transcripts
+        correct: true
+        rationale: Right. At these volumes the cost difference is small next to a reviewer's time, so the real question is the requirement and whether the measured difference is real.
+    explanation: The code makes the decision rule explicit, which moves the argument to where it belongs (what recall you need, and whether your eval set is large enough to tell 0.91 from 0.94). Cost is a constraint here, not the deciding factor.
+direct:
+  task: |
+    The lesson compares models on recall **and** precision. You want `cheapest_meeting_bar` to accept an optional precision bar too, so a model that finds every item but also invents many isn't chosen.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add an optional parameter min_precision=None to cheapest_meeting_bar. When it is None, behavior must be exactly as now (results without a "precision" key still work). When it is set, a model qualifies only if its recall is at least min_recall AND its "precision" is at least min_precision; a model with no "precision" key does not qualify in that case.
+
+    Keep everything else the same: still return the cheapest qualifying model by cost_per_meeting, still return None when none qualifies, and do not change call_cost, monthly_cost, or PRICES. Update the docstring.
+
+    Add test asserts: the three original checks still pass with no precision argument; with min_recall=0.90 and min_precision=0.85, where Sonnet's precision is 0.80 and Opus's is 0.90, the result is Opus; a precision bar no model meets returns None; and a result missing "precision" is excluded when a precision bar is given.
+  checklist:
+    - With no precision bar, results are identical to before, including for inputs without a `precision` key
+    - Both bars use `>=`, matching the existing recall check
+    - Missing precision data excludes a model only when a precision bar is set, and never raises `KeyError`
+    - Still returns `None`, not a fallback model, when nothing qualifies
+    - The docstring and new tests cover the new parameter, and the cost functions are untouched

@@ -1,0 +1,168 @@
+id: e2-w1-benchmark-uncertainty
+summary: |
+  This program answers a question you'll face whenever someone shows you a leaderboard or a quick comparison: agent B solved 57 of 89 tasks and agent A solved 52, so is B actually better? It computes a Wilson confidence interval for each pass rate, counts the tasks where the two agents disagreed, and runs an exact sign test on those disagreements.
+
+  The three functions are kept separate because they answer different questions. `wilson` asks "how precisely do we know one agent's rate?". `discordant` and `sign_test_p` ask "on the same tasks, is one agent winning more often than chance would explain?". The second question is the right one for a head-to-head comparison, because tasks both agents solved (or both failed) tell you nothing about which is better.
+code: |
+  import math
+
+
+  def wilson(k, n, z=1.96):
+      """Wilson score interval for k successes in n trials. Return (low, high) as floats.
+
+      z = 1.96 gives a 95% interval. Unlike the textbook p +/- z * sqrt(p(1-p)/n),
+      it stays sensible at 0 or n successes and on small samples.
+      """
+      p = k / n
+      d = 1 + z * z / n
+      centre = (p + z * z / (2 * n)) / d
+      half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+      return max(0.0, centre - half), min(1.0, centre + half)
+
+
+  def discordant(a, b):
+      """a and b are lists of booleans: did each agent solve task i (same task order)?
+      Return (a_only, b_only): tasks only A solved, tasks only B solved."""
+      a_only = sum(1 for x, y in zip(a, b) if x and not y)
+      b_only = sum(1 for x, y in zip(a, b) if y and not x)
+      return a_only, b_only
+
+
+  def sign_test_p(a_only, b_only):
+      """Two-sided exact sign test on the discordant tasks (ties ignored).
+      p = min(1, 2 * P(X <= min(a_only, b_only))) with X ~ Binomial(a_only + b_only, 0.5)."""
+      n = a_only + b_only
+      if n == 0:
+          return 1.0
+      k = min(a_only, b_only)
+      tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
+      return min(1.0, 2 * tail)
+
+
+  # 89 tasks. B solves 5 more tasks than A overall.
+  A = [True] * 52 + [False] * 37
+  B = [True] * 44 + [False] * 8 + [True] * 13 + [False] * 24
+  print("A", sum(A), wilson(sum(A), len(A)))
+  print("B", sum(B), wilson(sum(B), len(B)))
+  a_only, b_only = discordant(A, B)
+  print("only A:", a_only, "only B:", b_only, "p =", round(sign_test_p(a_only, b_only), 3))
+notes:
+  - lines: [1, 9]
+    title: One import, and a docstring that names the alternative
+    text: |
+      `math` supplies `sqrt` and `comb` (the "n choose k" count). Nothing else is needed; this is all arithmetic.
+
+      The docstring does something worth copying: it names the formula you might expect (the textbook "Wald" interval, p plus or minus z times the standard error) and says why this one is used instead. When an assistant later edits this code, that sentence is what stops it from "simplifying" back to the familiar formula.
+  - lines: [10, 13]
+    title: The Wilson formula, piece by piece
+    text: |
+      `p` is the observed pass rate: 52 / 89 is about 0.584. The other three lines are the Wilson formula, split into named parts so each can be checked against a reference:
+
+      - `d` is the shared denominator, `1 + z²/n`.
+      - `centre` is where the interval is centred. It's pulled slightly toward 0.5 compared with `p`, which is what keeps it sensible on small samples.
+      - `half` is the half-width.
+
+      `z * z` is used rather than `z ** 2`; both work. Splitting a long formula into named intermediate values is a readability choice, and it's also how you'd debug it: print `centre` and `half` and compare with a worked example.
+  - lines: [14, 14]
+    title: Return a tuple, clamped to [0, 1]
+    text: |
+      `return low, high` returns a **tuple**, and the caller can unpack it with `lo, hi = wilson(52, 89)`.
+
+      The `max(0.0, ...)` and `min(1.0, ...)` are a small cleanup. With 0 successes out of 10, the exact answer for the lower bound is 0, but floating-point arithmetic gives about `-2.8e-17`, a tiny negative rate that would look odd in a report. Clamping costs nothing and keeps the output in the range a rate can take.
+
+      Worked values: `wilson(52, 89)` is about `(0.480, 0.681)` and `wilson(57, 89)` is about `(0.537, 0.732)`. The intervals overlap heavily, which is the first hint that a 5-task gap isn't decisive.
+  - lines: [17, 22]
+    title: Counting disagreements with zip
+    text: |
+      `zip(a, b)` walks two lists in step, giving pairs `(a[0], b[0])`, `(a[1], b[1])`, and so on. Each line is a **generator expression** inside `sum`: "add 1 for each pair where A solved it and B didn't". Because `True` and `False` are already booleans, `x and not y` reads almost like English.
+
+      This is a **paired** comparison: it only works because both lists use the same task order. A row-by-row match on the same tasks is far more informative than comparing two totals.
+
+      A trap to know about: `zip` silently stops at the shorter list. If one agent's results were missing the last ten tasks, this would quietly compare 79 tasks and give no warning. An AI-written version almost never guards against that; the "direct" task below adds the guard.
+  - lines: [25, 33]
+    title: The exact sign test
+    text: |
+      Only the discordant tasks carry information about which agent is better. If the agents were equally good, each disagreement would be a coin flip: equally likely to favor A or B. The sign test asks how surprising the observed split is under that coin-flip assumption.
+
+      `math.comb(n, i)` counts the ways to get exactly `i` heads in `n` flips, and summing for `i` from 0 to `k` and dividing by `2 ** n` gives the probability of a split at least as lopsided as ours, on one side. Doubling it makes the test **two-sided** (we'd be just as interested if A were the one winning). `min(1.0, ...)` caps it, because doubling can exceed 1 when the split is even.
+
+      The early `return 1.0` for `n == 0` handles "the agents never disagreed": no evidence either way. Without it, the code would still return 1.0 here, but saying so explicitly makes the edge case visible to a reader.
+  - lines: [36, 42]
+    title: The demonstration, and how to read it
+    text: |
+      `[True] * 52 + [False] * 37` builds a list by repeating and joining (52 trues, then 37 falses). The B list is arranged so that 8 tasks are solved only by A and 13 only by B.
+
+      Line 41 **unpacks** the tuple from `discordant` into two names. The output shows `only A: 8 only B: 13 p = 0.383`. A p-value of 0.38 means a split this lopsided would happen by chance alone more than a third of the time if the agents were equally good. That's nowhere near the usual 0.05 bar.
+
+      The practical reading: B's headline gain of 5.6 points is consistent with noise. Before you switch tools, rerun with more tasks, or treat the two as equivalent and decide on cost or rework instead.
+review:
+  - id: wt-bench-wald
+    type: code-reading
+    prompt: An AI assistant replaces `wilson` with the familiar textbook interval below. What does `wilson(0, 10)` return now?
+    code: |
+      def wilson(k, n, z=1.96):
+          p = k / n
+          half = z * math.sqrt(p * (1 - p) / n)
+          return p - half, p + half
+    options:
+      - id: a
+        text: About `(0.0, 0.278)`, the same as before
+        rationale: That's the Wilson answer. This formula has no `z²/n` correction terms.
+      - id: b
+        text: "`(0.0, 0.0)`: it claims the true rate is exactly zero"
+        correct: true
+        rationale: Right. With p = 0, `p * (1 - p)` is 0, so the half-width is 0. Ten failures would "prove" the agent can never succeed, which is absurd.
+      - id: c
+        text: It raises `ZeroDivisionError`
+        rationale: Nothing divides by p here, and n is 10, so there's no division by zero.
+    explanation: The textbook interval collapses at 0 or n successes and is too narrow on small samples, exactly the situation of a five-task trial. The exercise's check that the upper bound stays above 0.2 exists to catch this substitution.
+  - id: wt-bench-more-tasks
+    type: scenario
+    prompt: You rerun both agents on 400 tasks and get 40 tasks only A solved and 70 only B solved. Without computing it, what do you expect from `sign_test_p(40, 70)`?
+    options:
+      - id: a
+        text: About the same p-value as before, because the ratio is similar
+        rationale: The ratio matters, but so does the number of disagreements. More discordant tasks make the same lopsidedness much less likely to be chance.
+      - id: b
+        text: A much smaller p-value, likely below 0.05
+        correct: true
+        rationale: Right. 70 versus 40 out of 110 disagreements is far harder to explain as coin flips than 13 versus 8 out of 21. (It comes out around 0.006.)
+      - id: c
+        text: Exactly 1.0, because both agents solved many tasks
+        rationale: Tasks both agents solved are ignored by the sign test; only the 110 disagreements matter.
+    explanation: Evidence grows with the number of disagreements, not with the headline percentages. That's the argument for running more tasks before deciding, rather than staring harder at a small comparison.
+  - id: wt-bench-zip
+    type: predict-output
+    prompt: "A data export dropped the last result for agent B. What does `discordant([True, False, True], [False, False])` return?"
+    options:
+      - id: a
+        text: It raises an error because the lists differ in length
+        rationale: That would be the safer behavior, but `zip` doesn't check lengths unless you ask it to with `strict=True`.
+      - id: b
+        text: "`(1, 0)`: zip stops after two pairs and the third task is silently ignored"
+        correct: true
+        rationale: Right. Only the pairs `(True, False)` and `(False, False)` are compared. The missing task disappears without a warning.
+      - id: c
+        text: "`(2, 0)`, counting the unmatched True as a win for A"
+        rationale: zip never produces a pair for the unmatched item, so it isn't counted at all.
+    explanation: Silent truncation is a classic data bug in comparisons. Paired analyses should check that both sides cover the same tasks before computing anything.
+direct:
+  task: |
+    Make the comparison safe to run on real exported results. `discordant` should refuse lists of different lengths instead of silently truncating, and `wilson` should give a clear error for `n = 0` instead of a `ZeroDivisionError`.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Make two input checks, and change nothing else:
+
+    1. In discordant, raise ValueError with a message that includes both lengths if a and b have different lengths. You can use zip(a, b, strict=True) or an explicit length check, but the error must be a ValueError.
+    2. In wilson, raise ValueError("n must be positive") if n <= 0, and ValueError if k is outside 0..n.
+
+    Do not change the formulas, the clamping to [0, 1], sign_test_p, or the demo at the bottom. The existing checks must still pass with the same numbers.
+
+    Add asserts that: discordant([True], [True, False]) raises ValueError; wilson(0, 0) raises ValueError; wilson(11, 10) raises ValueError; and wilson(52, 89) still returns about (0.4806, 0.6811).
+  checklist:
+    - The Wilson formula and the sign test are unchanged (compare the lines, not just the test results)
+    - Mismatched lengths raise ValueError, not a different exception type and not a printed warning
+    - "`wilson` rejects n <= 0 and k outside 0..n with ValueError"
+    - The demo still prints the same intervals and p = 0.383
+    - New asserts cover each new error, plus one unchanged value

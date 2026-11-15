@@ -1,0 +1,171 @@
+id: s1-parse-response
+summary: |
+  This program takes one API response, shaped like the JSON the Messages API returns, and boils it down to the three things your application actually needs: the text the model wrote, whether that text is a finished answer, and what the call cost. It is the function you want wrapped around every model call, so those three decisions are made in one place instead of being re-invented (slightly differently) wherever someone calls the model.
+
+  The response is a plain Python dictionary here, so you can run it without an API key. The shape is the real one, though: a list of content blocks of different types, a `stop_reason` that says why generation ended, and a `usage` object of token counts. Each of the three outputs is computed by a short, separate step, which is what makes each one easy to check.
+code: |
+  PRICES = {  # USD per million tokens, claude-haiku-5-5, snapshot 2026-11-11
+      "input": 0.10, "output": 0.50, "cache_write": 0.125, "cache_read": 0.01,
+  }
+
+  COMPLETE_STOP_REASONS = ("end_turn", "stop_sequence")
+
+
+  def summarize_response(resp, prices=PRICES):
+      """Return a dict with:
+        text:     all text blocks joined in order (ignore other block types)
+        complete: True only if stop_reason is "end_turn" or "stop_sequence"
+        cost_usd: cost from resp["usage"], where each usage field may be missing
+                  (treat missing as 0). Cache writes use prices["cache_write"],
+                  cache reads prices["cache_read"].
+      """
+      text = "".join(
+          block["text"] for block in resp["content"] if block.get("type") == "text"
+      )
+
+      complete = resp["stop_reason"] in COMPLETE_STOP_REASONS
+
+      usage = resp.get("usage", {})
+      cost_usd = (
+          usage.get("input_tokens", 0) * prices["input"]
+          + usage.get("output_tokens", 0) * prices["output"]
+          + usage.get("cache_creation_input_tokens", 0) * prices["cache_write"]
+          + usage.get("cache_read_input_tokens", 0) * prices["cache_read"]
+      ) / 1_000_000
+
+      return {"text": text, "complete": complete, "cost_usd": cost_usd}
+
+
+  sample = {
+      "stop_reason": "end_turn",
+      "content": [
+          {"type": "thinking", "thinking": ""},
+          {"type": "text", "text": "Churn rose 0.9 points, "},
+          {"type": "text", "text": "a 29% relative increase."},
+      ],
+      "usage": {"input_tokens": 1200, "output_tokens": 300, "cache_read_input_tokens": 8000},
+  }
+  print(summarize_response(sample))
+notes:
+  - lines: [1, 5]
+    title: Prices and the "finished" list, as named constants
+    text: |
+      `PRICES` is a **dictionary** (a `dict`): a lookup table from a name such as `"input"` to a number. The numbers are US dollars per million tokens, and the comment records which model they belong to and the date they were copied. Prices change, so a dated comment tells the next reader how stale the numbers might be. In production you would load them from configuration rather than typing them into code.
+
+      `COMPLETE_STOP_REASONS` is a **tuple**, a fixed, read-only sequence, written with parentheses. Giving the list of "this answer is finished" stop reasons a name at the top of the file turns a policy decision into something a reviewer can see and question, instead of a string buried inside a function. Names in ALL_CAPS are Python's convention for "constant: don't change this at runtime".
+  - lines: [8, 15]
+    title: The function signature and its contract
+    text: |
+      `def summarize_response(resp, prices=PRICES):` takes the response and a price table. `prices=PRICES` is a **default argument**: callers who pass nothing get the Haiku prices, while a test (or a caller using a different model) can pass its own table. That keeps the function honest about which prices it used.
+
+      The **docstring** (the triple-quoted text) is the contract: what comes back, and the rules for each piece. Note the phrase "each usage field may be missing (treat missing as 0)". That one sentence is why the cost step below looks the way it does. When you review AI-written code, read the docstring first and then check that every rule in it is actually implemented; drift between the two is a common defect.
+  - lines: [16, 18]
+    title: Join only the text blocks, in order
+    text: |
+      A response's `content` is a list of **blocks**, and not every block is text. Models that think before answering can return a `thinking` block first; tool calls arrive as `tool_use` blocks. The sample has a thinking block followed by two text blocks.
+
+      The expression inside `"".join(...)` is a **generator expression**: like a list comprehension, but without the square brackets, so it hands items to `join` one at a time instead of building a list first. Read it as "for each block in the content, if its type is text, take its text". `"".join` glues the pieces together with nothing between them, giving `"Churn rose 0.9 points, a 29% relative increase."`
+
+      `block.get("type")` uses **`dict.get`**, which returns `None` instead of crashing when a key is missing. The filter runs before `block["text"]` is touched, so a thinking block (which has no `"text"` key) is never asked for one. A common AI shortcut is `resp["content"][0]["text"]`: it works on simple responses and raises `KeyError` the first time a thinking block comes first.
+  - lines: [20, 20]
+    title: Decide whether the answer is finished
+    text: |
+      `x in COMPLETE_STOP_REASONS` is a **membership test**: `True` if `x` is one of the items in the tuple. So `complete` is `True` for `end_turn` (the model finished) and `stop_sequence` (one of your own stop strings fired), and `False` for everything else.
+
+      That "everything else" is the design choice. It is an **allow-list**: name the good cases, and treat anything unexpected as not usable. `max_tokens` (truncated), `refusal` (declined, yet still HTTP 200), `tool_use`, `pause_turn`, and any stop reason added to the API next year all come out `False` automatically. The opposite style, `!= "max_tokens"`, is a **deny-list**, and it silently marks a refusal as a complete answer. When an AI writes this check, look for which style it chose.
+  - lines: [22, 28]
+    title: Price every kind of token, tolerating missing fields
+    text: |
+      `resp.get("usage", {})` falls back to an empty dict if `usage` is absent, and each `usage.get("...", 0)` falls back to 0 for a missing field. The refusal in the tests reports only input and output tokens; most responses carry no cache fields at all. Indexing with `usage["cache_read_input_tokens"]` would raise `KeyError` on exactly those responses.
+
+      The four token kinds are priced separately because they cost different amounts: here a cached read is a tenth of the input price, and a cache write costs a premium over it. In the API's `usage` object, cache reads and writes are reported in their own fields, apart from `input_tokens`, which is why the code adds all four rather than subtracting anything.
+
+      Worked value for the sample: 1,200 x 0.10 + 300 x 0.50 + 8,000 x 0.01 = 120 + 150 + 80 = 350, divided by 1,000,000 is $0.00035. The parentheses let the sum span several lines, and `1_000_000` uses **underscores in a number literal**, which Python ignores; they are only there so you can count the zeros.
+  - lines: [30, 30]
+    title: Return one small, predictable dictionary
+    text: |
+      The function returns a dict with exactly three keys, every time. A caller can log `cost_usd` for every call, show `text` only when `complete` is `True`, and route the rest (truncations, refusals) to whatever handling your product needs.
+
+      Returning the same shape for every input, including a refusal with empty text, is what makes the function safe to put in front of everything. Code that returns `None` for odd cases forces every caller to check for `None`, and the one that forgets crashes later, far from the cause.
+  - lines: [33, 42]
+    title: A sample response to run it on
+    text: |
+      The sample is a hand-built dictionary in the API's shape: a thinking block to skip, two text blocks to join, and a usage object with a cache read but no cache write. Pressing **Run this code** prints:
+
+      ```python
+      {'text': 'Churn rose 0.9 points, a 29% relative increase.', 'complete': True, 'cost_usd': 0.00035}
+      ```
+
+      Notice the thinking block contributed nothing to the text, and the missing `cache_creation_input_tokens` field was treated as 0 rather than crashing. The hidden checks add a truncated response, a refusal, and a response with a million cache-write tokens.
+review:
+  - id: wt-parse-denylist
+    type: code-reading
+    prompt: An AI assistant rewrites the completeness check as shown. What does `summarize_response` now return as `complete` for a response with `stop_reason` of `"refusal"` and no content?
+    code: |
+      complete = resp["stop_reason"] != "max_tokens"
+    options:
+      - id: a
+        text: "`False`, because a refusal has no text"
+        rationale: The check only looks at `stop_reason`, never at the text. Empty text does not change the result.
+      - id: b
+        text: "`True`, so the caller treats an empty refusal as a finished answer"
+        correct: true
+        rationale: Right. Anything that isn't `max_tokens` now counts as complete, including `refusal`, `tool_use`, and `model_context_window_exceeded`.
+      - id: c
+        text: It raises an error, because `"refusal"` is not a known stop reason
+        rationale: Comparing two strings never raises. The code happily returns `True`.
+    explanation: This is the deny-list trap. A refusal arrives as HTTP 200, so no exception handler catches it; this check is the only place it gets noticed. Naming the good cases (an allow-list) means new or rare stop reasons fail safe.
+  - id: wt-parse-first-block
+    type: predict-output
+    prompt: To "simplify", an AI replaces the text step with the line below. What happens when you run it on the `sample` response?
+    code: |
+      text = resp["content"][0]["text"]
+    options:
+      - id: a
+        text: "It returns `\"Churn rose 0.9 points, \"`, just the first sentence"
+        rationale: That would be the first text block, but `[0]` is the first block of any type, and here that is the thinking block.
+      - id: b
+        text: It returns an empty string, the thinking block's content
+        rationale: The thinking block keeps its content under the key `"thinking"`, not `"text"`.
+      - id: c
+        text: It raises `KeyError`
+        correct: true
+        rationale: |
+          Right. Block 0 is `{"type": "thinking", "thinking": ""}`, which has no `"text"` key. Even on a response without thinking, it would silently drop every text block after the first.
+    explanation: Two bugs in one line, one loud and one silent. Code that assumes the answer is in the first block is one of the most common mistakes in AI-written API code, because it works on the simplest examples in the docs.
+  - id: wt-parse-truncated-scenario
+    type: scenario
+    prompt: Your teammate says that `max_tokens` responses "are usually fine", and asks you to add `"max_tokens"` to `COMPLETE_STOP_REASONS` so fewer answers get flagged. The feature returns JSON for a dashboard. What do you do?
+    options:
+      - id: a
+        text: Agree, since most truncations only lose the last sentence
+        rationale: For JSON, losing the end usually means a missing closing brace, so the output doesn't parse. Even for prose, the user sees a cut-off answer presented as finished.
+      - id: b
+        text: Keep `max_tokens` incomplete, and fix the cause by raising `max_tokens` (or asking for shorter output), while logging how often truncation happens
+        correct: true
+        rationale: Right. Truncation is a signal that the token ceiling is too low for the task. Count it, fix the ceiling, and keep the check strict.
+      - id: c
+        text: Keep the check, and retry every truncated response with the identical request
+        rationale: The same request with the same ceiling will usually truncate again, and you pay twice.
+    explanation: Checks and balances means a "success" response still gets verified before anyone relies on it. The stop reason is the cheapest check you have; weakening it to make a metric look better hides the problem rather than fixing it.
+direct:
+  task: |
+    Downstream code needs to know *why* an answer is not complete, so it can show "the answer was cut off" for a truncation but route a refusal to a review queue.
+
+    Write the prompt you'd give a coding assistant to add a `status` field to the returned dictionary.
+  prompt: |
+    In summarize_response, add a fourth key, "status", to the returned dict:
+    - "complete" when stop_reason is "end_turn" or "stop_sequence"
+    - "truncated" when stop_reason is "max_tokens" or "model_context_window_exceeded"
+    - "refused" when stop_reason is "refusal"
+    - "other" for any other stop_reason (for example "tool_use" or "pause_turn")
+
+    Do not change the existing "text", "complete", and "cost_usd" keys or how they are computed; "complete" must still be True only for end_turn and stop_sequence. Define the truncated stop reasons as a named constant next to COMPLETE_STOP_REASONS. Update the docstring to describe "status".
+
+    Add test asserts for each of the four status values, including one stop_reason the code has never seen, such as "something_new", which must give "other".
+  checklist:
+    - "`text`, `complete`, and `cost_usd` are computed exactly as before (diff those lines: they should be untouched)"
+    - An unknown stop reason gives `"other"` and `complete` stays `False`, so the allow-list still fails safe
+    - "`model_context_window_exceeded` is grouped with truncation, not with \"other\""
+    - The new stop-reason groups are named constants, not strings scattered through the function
+    - The docstring describes `status`, and new asserts cover all four values

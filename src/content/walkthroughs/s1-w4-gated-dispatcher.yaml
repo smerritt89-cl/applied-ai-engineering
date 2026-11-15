@@ -1,0 +1,253 @@
+id: s1-w4-gated-dispatcher
+summary: |
+  This program is the checkpoint between "the model asked to call a tool" and "the tool actually ran". The model proposes a tool name and arguments; `dispatch` decides what happens. It rejects tools that don't exist, checks the arguments against the tool's JSON Schema, runs business checks no schema can express (is this email really a teammate?), asks a person to approve anything that writes, and only then runs the tool. Every outcome comes back in the same shape, `{"content": ..., "is_error": ...}`, ready to send to the model as a tool result.
+
+  The order of those steps is the design. Cheap, certain checks run first, so a person is never asked to approve a call that would fail anyway. Read-only tools skip approval entirely, so people aren't trained to click "yes" without reading. And failures are reported, not raised, with messages the model can act on, so the agent loop keeps going instead of crashing.
+code: |
+  import datetime
+  import json
+
+  TEAM_EMAILS = {"priya.raman@example.com", "marcus.lee@example.com", "dana.whitfield@example.com"}
+  TASKS = []
+
+
+  def lookup_teammate(args):
+      return json.dumps([e for e in sorted(TEAM_EMAILS) if e.startswith(args["name"].lower())])
+
+
+  def create_task(args):
+      TASKS.append(dict(args))
+      return json.dumps({"created": len(TASKS)})
+
+
+  REGISTRY = {
+      "lookup_teammate": {
+          "kind": "read",
+          "fn": lookup_teammate,
+          "schema": {"type": "object", "properties": {"name": {"type": "string"}},
+                     "required": ["name"], "additionalProperties": False},
+      },
+      "create_task": {
+          "kind": "write",
+          "fn": create_task,
+          "schema": {"type": "object",
+                     "properties": {"title": {"type": "string"}, "owner_email": {"type": "string"},
+                                    "due_date": {"type": "string"},
+                                    "priority": {"type": "string", "enum": ["low", "normal", "high"]}},
+                     "required": ["title", "owner_email", "due_date", "priority"],
+                     "additionalProperties": False},
+      },
+  }
+
+  TYPES = {"string": str, "integer": int, "boolean": bool, "object": dict, "array": list}
+
+
+  def semantic_errors(name, args):
+      """Checks no schema can express. Given to you; dispatch() calls it."""
+      if name != "create_task":
+          return []
+      errors = []
+      if args["owner_email"] not in TEAM_EMAILS:
+          errors.append("owner_email is not a teammate; call lookup_teammate first")
+      try:
+          datetime.date.fromisoformat(args["due_date"])
+      except ValueError:
+          errors.append("due_date must be YYYY-MM-DD")
+      if not args["title"].strip():
+          errors.append("title is empty")
+      return errors
+
+
+  def schema_errors(schema, args):
+      """Return a list of problems with args under a small JSON Schema subset:
+      type object, required, additionalProperties false, property types, enum."""
+      if not isinstance(args, dict):
+          return ["input must be an object"]
+      props = schema.get("properties", {})
+      errors = [f"missing required field '{k}'" for k in schema.get("required", []) if k not in args]
+      if schema.get("additionalProperties") is False:
+          errors += [f"unexpected field '{k}'" for k in args if k not in props]
+      for key, value in args.items():
+          spec = props.get(key)
+          if spec is None:
+              continue
+          expected = TYPES[spec["type"]]
+          if not isinstance(value, expected) or (expected is int and isinstance(value, bool)):
+              errors.append(f"'{key}' must be of type {spec['type']}")
+          elif "enum" in spec and value not in spec["enum"]:
+              errors.append(f"'{key}' must be one of {spec['enum']}")
+      return errors
+
+
+  def dispatch(name, args, approve):
+      """Run one tool call. Return {"content": str, "is_error": bool}.
+      Order: unknown tool? -> schema errors -> semantic errors -> approval (writes only) -> run."""
+      tool = REGISTRY.get(name)
+      if tool is None:
+          return {"content": f"Unknown tool '{name}'. Available: {', '.join(sorted(REGISTRY))}", "is_error": True}
+      errors = schema_errors(tool["schema"], args) or semantic_errors(name, args)
+      if errors:
+          return {"content": "Invalid input: " + "; ".join(errors), "is_error": True}
+      if tool["kind"] == "write" and not approve(name, args):
+          return {"content": "Declined by the user. Do not retry this call.", "is_error": True}
+      return {"content": tool["fn"](args), "is_error": False}
+
+
+  def always_yes(name, args):
+      print(f"  (approval asked for {name})")
+      return True
+
+
+  task = {"title": "Send deck", "owner_email": "priya.raman@example.com", "due_date": "2026-11-20", "priority": "high"}
+  for name, args in [
+      ("lookup_teammate", {"name": "priya"}),
+      ("lookup_teammate", {"name": 7}),
+      ("drop_table", {}),
+      ("create_task", dict(task, priority="urgent")),
+      ("create_task", dict(task, owner_email="ceo@rival.example")),
+      ("create_task", task),
+  ]:
+      print(name, "->", dispatch(name, args, always_yes))
+notes:
+  - lines: [1, 14]
+    title: The fake world, and two tools
+    text: |
+      `TEAM_EMAILS` is a **set** of the only valid task owners, and `TASKS` is a list standing in for your task tracker. In a real system these would be a directory service and an API; here they're in memory so you can see every effect.
+
+      Each tool takes one argument, `args`, the dict of inputs the model sent, and returns a **string**, because a tool result goes back to the model as text. `json.dumps` turns a Python value into a JSON string.
+
+      `lookup_teammate` uses a **list comprehension** with a filter: "for each email in sorted order, keep it if it starts with the lowercased name". `create_task` appends a copy of the arguments (`dict(args)` makes a new dict, so later changes to `args` can't alter the stored task) and reports how many tasks now exist. One only reads; the other changes the world. That difference drives everything below.
+  - lines: [17, 36]
+    title: The registry, one entry per tool
+    text: |
+      `REGISTRY` is a dict of dicts. Each tool's entry says three things: its `kind` (`"read"` or `"write"`), the Python function to run under `"fn"`, and the JSON Schema for its input.
+
+      Storing the function itself (`lookup_teammate`, with no parentheses) as a value is a Python feature worth knowing: functions are ordinary objects, so you can put them in a dict and call them later with `tool["fn"](args)`. That's how one `dispatch` can serve any number of tools without a chain of `if name == ...`.
+
+      Labeling risk in data (`"kind": "write"`) rather than in each function means the approval rule lives in exactly one place. Adding a new write tool can't accidentally skip the gate, as long as its entry is labeled.
+
+      `TYPES` maps JSON Schema type names to Python types, so the validator can turn `"string"` into `str` and test values with `isinstance`.
+  - lines: [39, 52]
+    title: "`semantic_errors`: what no schema can know"
+    text: |
+      A schema can say `owner_email` is a string. It can't say the string belongs to a teammate, or that `due_date` is a real calendar date. These checks are business rules, so they're a separate function.
+
+      `datetime.date.fromisoformat(...)` inside **try/except ValueError** is the standard way to ask "does this parse?": if it raises `ValueError`, the date is malformed, and the `except` records a message instead of crashing. `args["title"].strip()` removes surrounding spaces, so a title of `"   "` counts as empty.
+
+      Notice the messages. "owner_email is not a teammate; call lookup_teammate first" tells the model what to do next, not just what went wrong. Error messages in tool results are instructions to the model, so write them that way.
+
+      This function indexes `args["owner_email"]` directly, with no `.get`. That's only safe because `dispatch` runs it **after** the schema check has confirmed every required field is present. Remember that when you get to line 82.
+  - lines: [55, 63]
+    title: "`schema_errors`, part 1: shape, required fields, extras"
+    text: |
+      `isinstance(args, dict)` comes first because everything after assumes a dict. If the model sent something else, there's nothing more to check.
+
+      `schema.get("properties", {})` uses **dict.get** with a default, so a schema without properties doesn't crash.
+
+      The required-fields line is a list comprehension that builds one message per missing field. The extras check runs only when the schema says `additionalProperties` is `False`, and `errors += [...]` adds those messages to the same list. Both collect **every** problem, so the model gets the full list in one round trip instead of fixing one field per retry.
+
+      An unexpected field like `"admin": True` might look harmless, but it's a sign the model is confused about the tool, or is being steered by injected text. Rejecting it is cheaper than finding out later what it meant.
+  - lines: [64, 73]
+    title: "`schema_errors`, part 2: types and enums"
+    text: |
+      The loop looks at each argument. `continue` skips to the next one when the key isn't a known property (that case was already reported as unexpected).
+
+      `isinstance(value, expected)` checks the type. The extra condition handles a Python quirk the exercise calls out: `bool` is a **subclass** of `int`, so `isinstance(True, int)` is `True`. Without `(expected is int and isinstance(value, bool))`, a model that sent `true` for a count would pass. JSON treats booleans and integers as different types, so the validator must too.
+
+      The enum check is an `elif`, so it runs only when the type was right. Worked value: `priority="urgent"` gives `'priority' must be one of ['low', 'normal', 'high']`. Naming the allowed values in the message lets the model correct itself on the next try.
+
+      With `strict: true` on a tool, the lesson notes, the API already constrains inputs to the schema. Checking again here is defense in depth: it costs microseconds and protects you if the flag is ever dropped, the schema is edited, or a call arrives from somewhere else.
+  - lines: [76, 84]
+    title: "`dispatch`: unknown tools, then validation"
+    text: |
+      `REGISTRY.get(name)` returns `None` for a tool that doesn't exist. The error lists the real tool names (`', '.join(sorted(REGISTRY))`, since iterating a dict gives its keys), which is the most useful thing to tell a model that invented `drop_table`.
+
+      Line 82 is compact and deliberate: `schema_errors(...) or semantic_errors(...)`. Python's `or` returns the left side if it's "truthy" (a non-empty list) and only **then** evaluates the right side. So semantic checks run only on schema-valid input, which is what makes their direct `args["owner_email"]` lookups safe.
+
+      Any errors become one `is_error: True` result. The model sees exactly what to fix, and nothing has run.
+  - lines: [85, 87]
+    title: The approval gate, for writes only
+    text: |
+      `tool["kind"] == "write" and not approve(name, args)` uses short-circuit `and` again: for a read tool the left side is `False`, so `approve` is **never called**. The tests enforce this with a callback that fails if it's touched.
+
+      `approve` is a function passed in by the caller, the same dependency-injection pattern as the `rng` argument in lesson 1. In the browser it's a test function; in a real app it might show a dialog with the exact arguments. `dispatch` doesn't care how approval happens, only what the answer is.
+
+      A declined write returns `is_error: True` with "Do not retry this call." The model must learn the action did **not** happen (otherwise it may tell the user the task was created), and the loop should move on rather than asking again.
+
+      Only after all of that does `tool["fn"](args)` run the tool and wrap its result.
+  - lines: [90, 104]
+    title: A demo run through every path
+    text: |
+      `always_yes` is a stand-in approver that prints when it's consulted, so you can see that only the final, valid write asks for approval.
+
+      The loop sends six calls: a good lookup, a lookup with a number for a name, an invented tool, a bad enum value, a non-teammate owner, and a valid task. `dict(task, priority="urgent")` copies `task` and overrides one key, a compact way to make a variant without changing the original.
+
+      Press **Run this code**. Five calls are stopped before anything runs; one asks for approval and creates a task.
+review:
+  - id: wt-dispatch-all-errors
+    type: code-reading
+    prompt: |
+      An AI assistant changes line 82 so the model "sees all errors at once". What happens on `dispatch("create_task", {"title": "Send deck", "owner_email": "priya.raman@example.com", "priority": "high"}, approve)`, which is missing `due_date`?
+    code: |
+      errors = schema_errors(tool["schema"], args) + semantic_errors(name, args)
+    options:
+      - id: a
+        text: It returns an `is_error` result listing the missing `due_date`, the same as before
+        rationale: That's what the original did. With `+`, both functions always run, including the one that assumes every field exists.
+      - id: b
+        text: It raises `KeyError` and crashes the agent loop, because `semantic_errors` reads `args["due_date"]` before anything has checked that it exists
+        correct: true
+        rationale: Right. `+` evaluates both sides, so the semantic check runs on input the schema check already rejected, and its direct lookup fails.
+      - id: c
+        text: It asks the user to approve the call, then fails
+        rationale: The crash happens on line 82, before the approval gate.
+    explanation: The `or` on line 82 isn't just style; it encodes the dependency "semantic checks assume schema-valid input". When reviewing a change that makes code "more thorough", check what each newly reachable step assumes about its input.
+  - id: wt-dispatch-bool
+    type: predict-output
+    prompt: |
+      An AI assistant removes `or (expected is int and isinstance(value, bool))` from the type check as "redundant". What does `schema_errors({"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]}, {"n": True})` return?
+    options:
+      - id: a
+        text: "`[]`"
+        correct: true
+        rationale: Right. In Python, `bool` is a subclass of `int`, so `isinstance(True, int)` is `True` and the boolean passes as an integer.
+      - id: b
+        text: "`[\"'n' must be of type integer\"]`"
+        rationale: That's what the original returns. Without the extra condition, nothing distinguishes `True` from an integer.
+      - id: c
+        text: "It raises `TypeError`"
+        rationale: "`isinstance` accepts any value; nothing here raises."
+    explanation: Code that looks redundant is sometimes the only guard against a language quirk. If a "cleanup" deletes a condition, ask what input that condition was there for, and whether a test covers it. Here one does.
+  - id: wt-dispatch-order
+    type: scenario
+    prompt: |
+      A teammate suggests asking for approval first, before any validation, "so the human is always in control". Why does the code validate first?
+    options:
+      - id: a
+        text: Validation is faster than asking a person, so it saves time
+        rationale: It does, but speed isn't the main reason.
+      - id: b
+        text: So a person is never asked to approve a call that would fail anyway; approvals stay rare and meaningful, and people keep reading them
+        correct: true
+        rationale: Right. If people approve invalid calls that then fail, approvals become noise, and noise trains people to click yes without looking.
+      - id: c
+        text: Because the API requires tool inputs to be validated before approval
+        rationale: The API has no idea your approval step exists; this ordering is your design.
+    explanation: Validate before you ask, gate only writes, and show the exact arguments. Each rule protects the human check from becoming decorative.
+direct:
+  task: |
+    The lesson says a real approval gate should **deny by default**: if the approval callback is broken, nothing is written. Today, if `approve` raises an exception, the exception escapes `dispatch` and crashes the loop; and if it returns `None` (say, a dialog that timed out), that happens to count as "no" only because `not None` is `True`.
+
+    Write the prompt you'd give a coding assistant to make the gate explicitly deny by default.
+  prompt: |
+    In dispatch, make the approval gate deny by default. Treat a write as approved only if approve(name, args) returns exactly True (use "is True"). If approve raises any exception, do not run the tool and return {"content": "Approval failed, so the call was not run. Do not retry this call.", "is_error": True}. Any other return value (False, None, "yes") is a decline and returns the existing declined message.
+
+    Do not change the order of checks, schema_errors, semantic_errors, the registry, the message for normal declines, or the rule that read tools never call approve.
+
+    Add test asserts: an approve that raises returns is_error True and leaves TASKS unchanged; an approve that returns None or "yes" is treated as declined and TASKS is unchanged; an approve that returns True still creates exactly one task; and the original exercise checks still pass.
+  checklist:
+    - Only the approval step changed; validation order and read-tool behavior are untouched
+    - The tool function cannot run on any path where approval wasn't exactly `True`
+    - An exception in `approve` is caught and reported with `is_error: True`, not re-raised and not silently treated as approval
+    - The catch covers only the `approve` call, not the tool's own execution
+    - New tests cover a raising approver, a `None` or truthy-but-not-True return, and a real approval

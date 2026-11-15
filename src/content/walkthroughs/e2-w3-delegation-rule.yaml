@@ -1,0 +1,158 @@
+id: e2-w3-delegation-rule
+summary: |
+  This program encodes a personal delegation rule: given five properties of a task, should you do it yourself, pair with an agent, delegate with a review gate, or delegate outright? The properties are how verifiable the result is, whether it can be undone, where the requirements live, whether learning is a goal, and whether you could tell a correct result from a plausible wrong one.
+
+  The function is four `if` statements checked in order, each returning as soon as it matches. The order is the policy: the most restrictive reasons come first, so a task that fails an early test never reaches a more permissive answer. Writing the rule as code forces you to make the priorities explicit, and running it on your own recent tasks shows where your intuition and your stated rule disagree.
+code: |
+  def delegation_mode(task):
+      """task: dict with
+           verifiable   0-3  (0 none, 1 manual check only, 2 partial tests, 3 strong automated check)
+           reversible   bool (can it be fully undone with git?)
+           context      "repo" | "docs" | "tribal"   (where the requirements live)
+           learning     bool (is building your own skill a goal?)
+           can_evaluate bool (could you tell a correct result from a plausible wrong one?)
+      Return "do it yourself", "pair", "delegate with a gate", or "delegate".
+      The rules are checked in order; the first that applies wins.
+      """
+      # 1. If you can't judge the result, or the point is to learn, the work is yours.
+      if task["learning"] or not task["can_evaluate"]:
+          return "do it yourself"
+      # 2. Weak checks or unwritten requirements: stay in the loop while it's built.
+      if task["verifiable"] <= 1 or task["context"] == "tribal":
+          return "pair"
+      # 3. Hard to undo, or only partly tested: let it run, but review before it lands.
+      if not task["reversible"] or task["verifiable"] == 2:
+          return "delegate with a gate"
+      # 4. Strongly checked, reversible, documented: hand it off.
+      return "delegate"
+
+
+  TASKS = {
+      "flaky test with a reproduction script": dict(verifiable=3, reversible=True, context="repo", learning=False, can_evaluate=True),
+      "enterprise refund rules (in Finance's heads)": dict(verifiable=1, reversible=False, context="tribal", learning=False, can_evaluate=True),
+      "migration that rewrites the orders table": dict(verifiable=3, reversible=False, context="docs", learning=False, can_evaluate=True),
+      "first Rust service (you're learning Rust)": dict(verifiable=2, reversible=True, context="docs", learning=True, can_evaluate=False),
+      "rename a module across 40 files": dict(verifiable=3, reversible=True, context="repo", learning=False, can_evaluate=True),
+  }
+  for name, t in TASKS.items():
+      print(f"{name:48} -> {delegation_mode(t)}")
+notes:
+  - lines: [1, 10]
+    title: The inputs, documented as a mini schema
+    text: |
+      The function takes one argument, a **dict** describing the task. The docstring lists each key, its type, and what its values mean, which is the closest thing plain Python has to a schema without extra tools. (A **dataclass** or a typed dict would make it checkable; here a clear docstring keeps the exercise small.)
+
+      Notice the scale for `verifiable`. "1 manual check only" and "2 partial tests" are different in kind, not just degree: only automated checks can be rerun cheaply every time the agent tries again.
+  - lines: [11, 13]
+    title: "Rule 1: you can't delegate what you can't evaluate"
+    text: |
+      `task["learning"] or not task["can_evaluate"]` combines two conditions with **`or`**: either one is enough. Python evaluates `or` left to right and stops at the first true value (**short-circuit evaluation**).
+
+      This rule comes first because it overrides everything else. If you can't tell a correct result from a plausible wrong one, strong tests and easy rollback don't help, because you can't judge whether the tests themselves are right. And if building your own skill is the goal, delegating defeats the purpose.
+
+      The comment above each `if` states the reason in plain words. Comments that explain *why* are the useful kind; the code already says *what*.
+  - lines: [14, 16]
+    title: "Rule 2: weak checks or tribal knowledge mean pairing"
+    text: |
+      `verifiable <= 1` means "no automated check at all". `context == "tribal"` means the requirements live in people's heads, so the agent will fill the gaps with plausible guesses. In both cases you need to be present while the work happens, correcting course in real time.
+
+      One fragility to notice: `context == "tribal"` is an exact string comparison. A typo or a capital letter (`"Tribal"`) silently fails this check and lets the task fall through to a more permissive answer. The "direct" task below adds validation for exactly this reason.
+  - lines: [17, 19]
+    title: "Rule 3: hard to undo, or partly tested, gets a gate"
+    text: |
+      `not task["reversible"]` uses **`not`** to flip a boolean. A migration that rewrites a table can't be undone with `git revert` once it has run against production data, so even a strongly tested one should stop for a person's review before it lands.
+
+      `verifiable == 2` (partial tests) also lands here: the agent can work on its own, but the untested parts need human eyes before merging.
+  - lines: [20, 21]
+    title: "Rule 4: the default is to delegate"
+    text: |
+      If none of the earlier rules matched, the task is strongly checked, reversible, documented, and you can evaluate it. That's the profile of good delegation: a flaky test with a reproduction script, or a mechanical rename across 40 files.
+
+      Because every earlier branch **returns early**, this final line needs no condition. The structure reads like a checklist: each `if` is a reason not to delegate fully, and you only get here if none applies.
+  - lines: [24, 32]
+    title: Five sample tasks and an aligned printout
+    text: |
+      `dict(verifiable=3, ...)` builds a dict from **keyword arguments**, a compact alternative to `{"verifiable": 3, ...}` when the keys are valid names.
+
+      `f"{name:48} -> ..."` is an **f-string** with a **format spec**: `:48` pads the name to 48 characters, so the arrows line up in a column. The output:
+
+      - flaky test: `delegate`
+      - refund rules: `pair` (tribal, and only manually checkable)
+      - migration: `delegate with a gate` (strong tests, but not reversible)
+      - first Rust service: `do it yourself` (learning, and you can't yet evaluate Rust)
+      - rename: `delegate`
+
+      The real exercise is to add five tasks from your own last two weeks. When the rule says "delegate" for something that went badly, look for the property you scored wrong.
+review:
+  - id: wt-deleg-reorder
+    type: code-reading
+    prompt: An AI assistant reorders the rules so the reversibility check comes first ("safety first"). What does it return for the enterprise refund rules task (verifiable 1, not reversible, tribal)?
+    code: |
+      def delegation_mode(task):
+          if not task["reversible"] or task["verifiable"] == 2:
+              return "delegate with a gate"
+          if task["learning"] or not task["can_evaluate"]:
+              return "do it yourself"
+          if task["verifiable"] <= 1 or task["context"] == "tribal":
+              return "pair"
+          return "delegate"
+    options:
+      - id: a
+        text: "`pair`, as before"
+        rationale: The task isn't reversible, so the first check now matches and returns before the tribal-knowledge rule is ever reached.
+      - id: b
+        text: "`delegate with a gate`"
+        correct: true
+        rationale: Right. Moving a rule earlier makes it override everything after it. A task whose requirements are in Finance's heads would now run unattended until review, where it's too late to supply the missing context.
+      - id: c
+        text: "`do it yourself`"
+        rationale: The task has `can_evaluate=True` and `learning=False`, so rule 1 wouldn't match even if it were reached.
+    explanation: In first-match rule chains, order is policy. "Safety first" sounded reasonable, but it moved a less restrictive answer ahead of a more restrictive one. When an AI reorders conditions, check every sample case, not just one.
+  - id: wt-deleg-predict
+    type: predict-output
+    prompt: "A task is: verifiable 3, reversible, context \"docs\", learning False, can_evaluate True, but the requirements doc is two years out of date. What does `delegation_mode` return, and is it right?"
+    options:
+      - id: a
+        text: "`delegate`, and that's probably wrong: the real context is tribal, so it was scored incorrectly"
+        correct: true
+        rationale: Right. The function can only be as good as its inputs. An out-of-date doc means the true requirements live in people's heads; scoring it "tribal" would give `pair`.
+      - id: b
+        text: "`pair`, because the doc is old"
+        rationale: The function doesn't know the doc is old; it only sees `context="docs"`.
+      - id: c
+        text: "`delegate with a gate`, because docs-based tasks always get a gate"
+        rationale: Rule 3 is about reversibility and partial tests, not about where requirements live.
+    explanation: "The lesson's point: when a delegated task goes badly, the usual cause is context that looked documented but wasn't. Garbage in, confident garbage out, for rules as much as for models."
+  - id: wt-deleg-why-first
+    type: scenario
+    prompt: Why is "can you evaluate the result?" checked before "is it strongly verifiable?"
+    options:
+      - id: a
+        text: Because it's faster to check a boolean than a number
+        rationale: Both are instant. The order is about meaning, not speed.
+      - id: b
+        text: Because strong tests only help if you can judge whether the tests, and the result, are actually right
+        correct: true
+        rationale: Exactly. An agent can pass tests that don't capture what matters, or change the tests. If you can't evaluate the work, a green test run is not evidence you can use.
+      - id: c
+        text: Because Python requires boolean checks before comparisons
+        rationale: Python has no such rule; conditions can go in any order.
+    explanation: Verification is a chain. Automated checks extend your judgment; they don't replace it. That's why "can I evaluate this?" is the first question for any delegated work.
+direct:
+  task: |
+    The function trusts its input completely. `context="Tribal"` (capital T) or a missing key quietly gives the wrong answer or a `KeyError`. Add validation so bad input fails loudly.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add input validation at the top of delegation_mode, before any rule is checked. Raise ValueError with a message naming the problem if: any of the five keys is missing; verifiable is not an int from 0 to 3; reversible, learning or can_evaluate is not a bool; or context is not exactly one of "repo", "docs", "tribal". Do not lowercase or otherwise "fix" the context value; reject it.
+
+    Don't change the four rules, their order, or the return strings. Keep it in one function (a small helper for the checks is fine), standard library only.
+
+    Update the docstring to say invalid input raises ValueError. Add asserts: context="Tribal" raises ValueError; a missing can_evaluate key raises ValueError (not KeyError); verifiable=4 raises ValueError; reversible="yes" raises ValueError; and all five sample tasks give the same answers as before.
+  checklist:
+    - The four rules and their order are unchanged (compare them line by line)
+    - Invalid context values are rejected, not silently normalized
+    - A missing key raises ValueError, not KeyError
+    - "Booleans are checked with isinstance, and `verifiable=True` isn't accepted as 1 by accident (bool is a subclass of int in Python)"
+    - All five sample tasks give the same results as before
+    - New asserts cover each kind of invalid input

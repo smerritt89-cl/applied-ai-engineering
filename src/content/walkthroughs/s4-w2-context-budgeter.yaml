@@ -1,0 +1,215 @@
+id: s4-w2-context-budgeter
+summary: |
+  When an agent has read many documents, its context fills up with old tool results it no longer needs. `trim_context` frees space the careful way: it replaces the oldest tool results with a short placeholder (or a summary), keeps the newest few intact, and stops as soon as the conversation fits the budget. It also returns a report, so you can see what it did.
+
+  The hard part is not the clearing; it's everything it must leave alone. The conversation's structure has to stay valid (same messages, same order, every `tool_use` still paired with its `tool_result`), and the caller's original list must not change. Most of the code's care goes into those guarantees.
+code: |
+  import copy
+  import json
+
+  PLACEHOLDER = "[cleared to save context: about {tokens} tokens from {tool} (id {id}). Call the tool again if you need it.]"
+
+
+  def estimate_tokens(value):
+      """Rough token count: about 4 characters per token (real code would use the
+      provider's token-counting endpoint). Works on strings, dicts, and lists."""
+      if isinstance(value, str):
+          return (len(value) + 3) // 4
+      return estimate_tokens(json.dumps(value, sort_keys=True))
+
+
+  def context_tokens(messages):
+      return sum(estimate_tokens(m["content"]) for m in messages)
+
+
+  def tool_names(messages):
+      """Map tool_use id -> tool name, from assistant messages."""
+      names = {}
+      for m in messages:
+          if m["role"] == "assistant" and isinstance(m["content"], list):
+              for block in m["content"]:
+                  if block.get("type") == "tool_use":
+                      names[block["id"]] = block["name"]
+      return names
+
+
+  def trim_context(messages, budget, keep_recent=2, summarize=None):
+      """Clear the oldest tool results until the context fits the budget.
+
+      Returns (new_messages, report). Never mutates the input, never drops or
+      reorders messages, and only ever changes the content of tool_result blocks.
+      """
+      out = copy.deepcopy(messages)
+      before = context_tokens(out)
+      report = {"tokens_before": before, "tokens_after": before, "cleared": [], "over_budget": False}
+      if before <= budget:
+          return out, report
+
+      names = tool_names(out)
+      results = [block
+                 for m in out if isinstance(m["content"], list)
+                 for block in m["content"] if block.get("type") == "tool_result"]
+      eligible = results[:max(0, len(results) - keep_recent)]  # all but the newest keep_recent
+
+      total = before
+      for block in eligible:
+          if total <= budget:
+              break
+          old = block["content"]
+          if isinstance(old, str) and old.startswith("[cleared"):
+              continue
+          tid = block["tool_use_id"]
+          if summarize is not None:
+              block["content"] = summarize(old)
+          else:
+              block["content"] = PLACEHOLDER.format(
+                  tokens=estimate_tokens(old), tool=names.get(tid, "a tool"), id=tid)
+          report["cleared"].append(tid)
+          total = context_tokens(out)
+
+      report["tokens_after"] = total
+      report["over_budget"] = total > budget
+      return out, report
+
+
+  def demo_history(n, size=400):
+      """A user question, then n rounds of read_doc calls with 400-character results."""
+      msgs = [{"role": "user", "content": "Which launch risks are still open?"}]
+      for i in range(1, n + 1):
+          msgs.append({"role": "assistant", "content": [
+              {"type": "tool_use", "id": f"t{i}", "name": "read_doc", "input": {"doc_id": f"d{i}"}}]})
+          msgs.append({"role": "user", "content": [
+              {"type": "tool_result", "tool_use_id": f"t{i}", "content": str(i) * size}]})
+      return msgs
+
+
+  h = demo_history(4)
+  new, report = trim_context(h, budget=context_tokens(h) - 50)
+  print(report)
+  print(new[2]["content"][0]["content"])
+notes:
+  - lines: [1, 4]
+    title: Imports and the placeholder template
+    text: |
+      `copy` provides `deepcopy`, which you'll need to avoid changing the caller's data. `json` is used to measure non-string content.
+
+      `PLACEHOLDER` is a template string with `{tokens}`, `{tool}`, and `{id}` slots, filled in later with `.format(...)`. Notice what it tells the model: roughly how much was removed, from which tool, under which id, and **how to get it back** ("Call the tool again"). A bare "[removed]" would leave the model unsure whether information was lost for good.
+  - lines: [7, 12]
+    title: A rough token estimate
+    text: |
+      `isinstance(value, str)` checks the value's type. For a string, `(len(value) + 3) // 4` is "characters divided by 4, rounded up": adding 3 before **floor division** (`//`) turns rounding down into rounding up, so a 1-character string counts as 1 token, not 0.
+
+      For anything else (a list of blocks, a dict), the function converts it to JSON text and calls itself on that string. A function that calls itself is **recursive**; here the recursion is only one level deep, because the second call always gets a string.
+
+      The docstring is honest that this is an estimate. Real code would call the provider's token-counting endpoint. An estimate is fine for deciding *when* to trim, as long as you leave some headroom.
+  - lines: [15, 16]
+    title: The whole context's size
+    text: |
+      `sum(estimate_tokens(m["content"]) for m in messages)` passes a **generator expression** to `sum`: it estimates each message's content and adds them up without building an intermediate list.
+
+      A message's content can be a plain string (the user's question) or a list of blocks (tool calls and results). `estimate_tokens` handles both, which is why this line can stay simple.
+  - lines: [19, 27]
+    title: Which tool produced each result?
+    text: |
+      A `tool_result` block carries only a `tool_use_id`, not the tool's name. The name lives in the assistant's earlier `tool_use` block. This helper walks the assistant messages and builds a dictionary from id to name, such as `{"t1": "read_doc"}`, so the placeholder can say which tool to call again.
+
+      `block.get("type")` uses **dict.get**, which returns `None` instead of raising `KeyError` if a block has no `"type"` key. Defensive reads like this matter when the data comes from an API that may add new block kinds later.
+  - lines: [30, 40]
+    title: Copy first, and do nothing if it already fits
+    text: |
+      `copy.deepcopy(messages)` makes a completely independent copy: new lists and new dictionaries all the way down. A plain `messages.copy()` or `list(messages)` would be a **shallow copy**, a new outer list holding the *same* inner dictionaries, so clearing a block in the copy would also change the caller's history. The tests check that the input is untouched.
+
+      The report is built with `tokens_after` equal to `tokens_before`, so the early return on line 40 already reports correctly. If the context is within budget, the function returns the copy unchanged with an empty `cleared` list.
+  - lines: [42, 46]
+    title: Collect the tool results, and protect the newest
+    text: |
+      Lines 43 to 45 are a **nested list comprehension**, read as two loops in order: for each message `m` whose content is a list, for each `block` in it, keep the block if it's a `tool_result`. The result is every tool result, oldest first.
+
+      These are **references** to the dictionaries inside `out`, not copies. Changing `block["content"]` later changes `out` itself, which is exactly what we want (and why the deep copy on line 36 matters).
+
+      Line 46 keeps all but the newest `keep_recent` results eligible for clearing. The `max(0, ...)` is doing real work. The tempting shortcut `results[:-keep_recent]` breaks for `keep_recent=0`, because `-0` is `0` and `results[:0]` is empty, so nothing would ever be cleared. Without `max`, a `keep_recent` larger than the number of results would produce a negative slice end and quietly clear old results it was meant to protect.
+  - lines: [48, 62]
+    title: Clear oldest first, stop as soon as it fits
+    text: |
+      The loop walks the eligible results from oldest to newest. Three rules:
+
+      - **Stop early.** `if total <= budget: break` exits the loop the moment the context fits. The test with a budget just 50 tokens under expects only `t1` cleared; clearing more would throw away information for no reason.
+      - **Skip what's already cleared.** `continue` jumps to the next block. Without this, a second trim would "clear" placeholders again and report them, and the test that runs `trim_context` twice would fail.
+      - **Summarize if you can.** If a `summarize` function was passed, its output replaces the content; otherwise the placeholder is filled in. `names.get(tid, "a tool")` falls back to a generic name if the id has no matching `tool_use`.
+
+      `total = context_tokens(out)` re-measures after each change rather than subtracting an estimate, so the stopping decision always uses the true current size. An AI-written version often clears *every* eligible result in one pass, which passes a "fits the budget" check but fails "stop as soon as you are within budget".
+  - lines: [64, 66]
+    title: An honest report
+    text: |
+      `over_budget` is `True` when even clearing every eligible result wasn't enough, because the protected recent results are large. The function doesn't silently break its `keep_recent` promise to force a fit; it does what it's allowed to and tells you the outcome. The caller (in the lab, the agent loop) decides what to do next, such as stopping or compacting.
+  - lines: [69, 83]
+    title: A demonstration history
+    text: |
+      `demo_history` builds a question followed by `n` rounds of `read_doc` calls. Each round is an assistant message with a `tool_use` block and a user message with the matching `tool_result`, which is how tool results are sent back to Claude. `str(i) * size` repeats a digit 400 times to make a bulky result.
+
+      `f"t{i}"` is an **f-string** that builds ids `t1`, `t2`, and so on. The demo trims to 50 tokens under the current size, which clears only `t1`, then prints the report and the placeholder that replaced it. Press **Run this code** to see them.
+review:
+  - id: wt-ctx-shallow-copy
+    type: code-reading
+    prompt: An AI assistant replaces `copy.deepcopy(messages)` with the line below "to save memory". What changes?
+    code: |
+      out = list(messages)
+    options:
+      - id: a
+        text: Nothing; `list()` already makes a copy
+        rationale: It copies only the outer list. The message dictionaries and their block lists are shared with the caller.
+      - id: b
+        text: Clearing a result now also overwrites the content in the caller's original history
+        correct: true
+        rationale: Right. The blocks collected on lines 43 to 45 are the caller's own dictionaries, so the "do not mutate the input" test fails.
+      - id: c
+        text: The function raises an error because lists can't be copied this way
+        rationale: It runs without error, which is what makes this bug easy to miss.
+    explanation: Shallow versus deep copies are one of the most common sources of "spooky" bugs in Python. If a function promises not to change its input and it edits nested data, look for a deep copy (or code that builds new objects instead of editing).
+  - id: wt-ctx-keep-zero
+    type: predict-output
+    prompt: 'Suppose line 46 were written as `eligible = results[:-keep_recent]`. With 5 results and `keep_recent=0`, how many results are eligible?'
+    options:
+      - id: a
+        text: All 5
+        rationale: That's the intended behavior, but `-0` is just `0`.
+      - id: b
+        text: None, because `results[:0]` is an empty list
+        correct: true
+        rationale: Yes. Slicing up to index 0 gives nothing, so `keep_recent=0` would protect everything instead of nothing.
+      - id: c
+        text: 4, because negative slicing drops one item
+        rationale: '`[:-1]` drops one item; `[:-0]` is `[:0]`.'
+    explanation: Negative indexes are handy until the number can be zero. The tests include `keep_recent=0` for exactly this reason.
+  - id: wt-ctx-placeholder
+    type: scenario
+    prompt: Why does the placeholder name the tool and the id and say "Call the tool again if you need it", instead of just "[removed]"?
+    options:
+      - id: a
+        text: The API rejects tool results shorter than a certain length
+        rationale: There's no such rule. This is about what the model can do next.
+      - id: b
+        text: So the model knows what it lost and how to recover it, instead of guessing or assuming the data never existed
+        correct: true
+        rationale: Exactly. Clearing is safe only because the information is recoverable, and the placeholder is how the model finds out.
+      - id: c
+        text: It makes the estimate of tokens more accurate
+        rationale: The placeholder is short either way; its wording is for the model.
+    explanation: Context management is a conversation with the model. Whatever you remove, leave a note that a reader with no memory could act on.
+direct:
+  task: |
+    Large results should go first. Change the clearing order so that, among eligible results, the largest (by estimated tokens) are cleared first, with ties broken oldest first. That frees the budget with fewer clearings.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    In trim_context, change only the order in which eligible tool results are cleared: largest first by estimate_tokens(content), ties broken by original position (oldest first). Already-cleared results are still skipped, and the newest keep_recent results are still protected (decide which are protected by position before sorting by size).
+
+    Keep everything else the same: no mutation of the input, no dropped or reordered messages, stop as soon as the total is within budget, the placeholder and summarize behavior, and the report fields. report["cleared"] should list ids in the order they were cleared.
+
+    Update the docstring and add tests: a large result in the middle is cleared before a small older one; equal sizes clear oldest first; keep_recent still protects the newest results even when they are the largest.
+  checklist:
+    - The protected set is chosen by position before sorting by size, so the newest results stay protected
+    - The messages themselves are not reordered; only the clearing order changes
+    - The loop still stops as soon as the context fits, and skips already-cleared results
+    - The input is still deep-copied and never mutated
+    - New tests cover largest-first, the tie-break, and keep_recent protection; the existing tests still pass, since their results are all the same size and the tie-break keeps them oldest first

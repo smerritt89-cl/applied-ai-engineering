@@ -1,0 +1,154 @@
+id: s3-w2-kappa-correction
+summary: |
+  This program measures how well an LLM judge agrees with a person, then uses that measurement to correct the judge's pass rate on production data. On a held-out set of 30 examples that a human labeled, it computes the judge's true positive rate (how often it passes what the human passed), true negative rate (how often it fails what the human failed), and Cohen's kappa (agreement beyond what chance would give). It then plugs the two rates into a formula that turns the judge's raw pass rate on 2,000 unlabeled replies into an estimate of the true pass rate.
+
+  The three functions mirror the three questions you'd ask about any judge: how does it err on each side, is it better than a coin flip, and what does its number really mean. The correction refuses to run on a judge that is no better than chance, because then the formula would divide by zero or flip the sign of the answer.
+code: |
+  # 30 held-out examples: a person's label and the frozen judge's verdict for each.
+  HUMAN = ["pass"] * 20 + ["fail"] * 10
+  JUDGE = ["pass"] * 18 + ["fail"] * 2 + ["pass"] * 3 + ["fail"] * 7
+
+
+  def rates(human, judge):
+      """Return (tpr, tnr) with "pass" as the positive class."""
+      pairs = list(zip(human, judge))
+      tp = sum(h == "pass" and j == "pass" for h, j in pairs)
+      tn = sum(h == "fail" and j == "fail" for h, j in pairs)
+      return tp / human.count("pass"), tn / human.count("fail")
+
+
+  def cohen_kappa(human, judge):
+      """(p_o - p_e) / (1 - p_e), with p_e = sum over labels k of P(human = k) * P(judge = k)."""
+      n = len(human)
+      p_o = sum(h == j for h, j in zip(human, judge)) / n
+      labels = set(human) | set(judge)
+      p_e = sum((human.count(k) / n) * (judge.count(k) / n) for k in labels)
+      return (p_o - p_e) / (1 - p_e)
+
+
+  def corrected_pass_rate(observed, tpr, tnr):
+      """Solve observed = tpr * p + (1 - tnr) * (1 - p) for p, clip to [0, 1].
+      Raise ValueError if tpr + tnr <= 1."""
+      denom = tpr + tnr - 1
+      if denom <= 0:
+          raise ValueError("judge must be better than chance: tpr + tnr > 1")
+      p = (observed + tnr - 1) / denom
+      return min(1.0, max(0.0, p))
+
+
+  tpr, tnr = rates(HUMAN, JUDGE)
+  print("TPR", tpr, "TNR", tnr, "kappa", round(cohen_kappa(HUMAN, JUDGE), 3))
+  # The same frozen judge then grades 2,000 unlabeled production replies and passes 1,580 of them.
+  print("observed", 1580 / 2000, "corrected", round(corrected_pass_rate(1580 / 2000, tpr, tnr), 3))
+notes:
+  - lines: [1, 4]
+    title: Thirty labeled examples, built with list arithmetic
+    text: |
+      `["pass"] * 20 + ["fail"] * 10` uses **list repetition and concatenation**: twenty `"pass"` strings followed by ten `"fail"` strings. It's a compact way to write illustrative data where only the counts matter.
+
+      The two lists line up position by position. Reading them together: the human passed the first 20; the judge agreed on 18 and failed 2. The human failed the last 10; the judge passed 3 of those and failed 7.
+  - lines: [5, 12]
+    title: rates, the judge's error on each side
+    text: |
+      `zip(human, judge)` pairs the lists element by element: `("pass", "pass")`, `("pass", "pass")`, and so on. Wrapping it in `list(...)` lets you loop over the pairs twice; a bare `zip` is used up after one pass.
+
+      `sum(h == "pass" and j == "pass" for h, j in pairs)` counts the pairs where both said pass (true positives), using the fact that `True` adds as 1. The function returns a **tuple** of two rates:
+
+      - TPR = 18 / 20 = 0.9: of the replies the human passed, the judge passed 90%.
+      - TNR = 7 / 10 = 0.7: of the replies the human failed, the judge failed only 70%.
+
+      `human.count("pass")` is the denominator because these rates are conditioned on the human's label, treated here as the truth. A common AI mistake is dividing by the judge's count instead, which computes precision, a different quantity.
+  - lines: [13, 21]
+    title: cohen_kappa, agreement beyond chance
+    text: |
+      `p_o` is observed agreement: 25 of 30 pairs match, about 0.833. That sounds good, but two raters who both say "pass" most of the time will agree often just by chance.
+
+      `p_e` is that chance agreement. `set(human) | set(judge)` is **set union**, every label either rater used. For each label, multiply how often the human used it by how often the judge used it, then add up:
+
+      - pass: (20 / 30) times (21 / 30)
+      - fail: (10 / 30) times (9 / 30)
+
+      That's about 0.567. Kappa rescales so that 0 means "no better than chance" and 1 means perfect: (0.833 minus 0.567) / (1 minus 0.567), about 0.615. The key detail is **each rater's own frequencies**: the judge said pass 21 times, not 20. Using the human's frequencies twice is a subtle, plausible bug.
+
+      One edge: if both raters used only one label, `p_e` is 1 and this divides by zero. Kappa is undefined there, and a production version should say so explicitly.
+  - lines: [22, 31]
+    title: corrected_pass_rate, inverting the judge's errors
+    text: |
+      The docstring states the model: the judge's observed pass rate is the true passes it catches (`tpr * p`) plus the true failures it lets through (`(1 - tnr) * (1 - p)`). Solving that linear equation for `p` gives `(observed + tnr - 1) / (tpr + tnr - 1)`.
+
+      The guard comes first. If `tpr + tnr` is 1, the judge's verdict is independent of the truth (a coin flip with extra steps) and the denominator is 0. If it's below 1, the judge is worse than random and the formula would invert. Raising **ValueError** with a message that says why is better than returning a number nobody should use.
+
+      `min(1.0, max(0.0, p))` **clips** the result into the range 0 to 1. Sampling noise can push the raw formula outside that range (for example, observed 0.2 gives a negative value), and a pass rate below 0 is meaningless.
+  - lines: [32, 36]
+    title: The result, and why it moved up
+    text: |
+      `tpr, tnr = rates(...)` unpacks the returned tuple into two names. The judge passes 1,580 of 2,000 production replies, an observed rate of 0.79. The corrected estimate is (0.79 + 0.7 minus 1) / (0.9 + 0.7 minus 1) = 0.49 / 0.6, about 0.817.
+
+      The correction moved the number *up*. When most replies are good, the judge's 10% miss rate on good replies throws away more passes than its 30% false-pass rate on the smaller pool of bad replies adds. The direction depends on the rates and on the true pass rate, which is why you calculate it rather than guess.
+
+      Try the lesson's sensitivity check: with TNR 0.65 the estimate is 0.80, with 0.75 it's about 0.83. A 30-example calibration set can't pin TNR down to 0.05, so this estimate deserves an error bar.
+review:
+  - id: wt-kappa-pe
+    type: code-reading
+    prompt: An AI assistant rewrites the chance-agreement line as below. What happens to kappa on this data?
+    code: |
+      p_e = sum((human.count(k) / n) ** 2 for k in labels)
+    options:
+      - id: a
+        text: It stays at about 0.615
+        rationale: It changes, because the judge's label frequencies (21 passes) differ from the human's (20).
+      - id: b
+        text: It becomes about 0.625, slightly too high
+        correct: true
+        rationale: "Right. Using the human's frequencies for both raters gives p_e = (2/3) squared + (1/3) squared, about 0.556, so kappa = (0.833 minus 0.556) / 0.444, about 0.625."
+      - id: c
+        text: It raises an error because `**` isn't allowed in a generator
+        rationale: Any expression is allowed in a generator expression.
+    explanation: The difference here is small, which is what makes the bug dangerous. It hides on balanced data and grows when the judge is lenient or strict compared to the human, which is exactly when you need kappa to be right. Compare formulas against the docstring term by term.
+  - id: wt-kappa-direction
+    type: mcq
+    prompt: Why is the corrected pass rate (about 0.817) higher than the observed 0.79?
+    options:
+      - id: a
+        text: Because kappa is above 0.5
+        rationale: Kappa isn't used in the correction at all.
+      - id: b
+        text: Because the judge wrongly fails 10% of good replies, and with mostly good replies that loss outweighs the bad replies it wrongly passes
+        correct: true
+        rationale: "Right. At a true rate of 0.817, the judge drops 0.1 times 0.817 (about 0.082) in missed passes and adds 0.3 times 0.183 (about 0.055) in false passes, a net of about minus 0.027."
+      - id: c
+        text: Because the formula always moves the estimate toward 1
+        rationale: It moves toward whichever side the judge's errors are biased against. Observed 0.2 gets clipped to 0.
+    explanation: A judge with a lower TNR than TPR sounds lenient, and it is on bad replies. But the net effect on the headline number depends on how many bad replies there are. That's why you correct with the formula instead of assuming "lenient judge, so the true rate is lower".
+  - id: wt-kappa-guard
+    type: scenario
+    prompt: "A new judge measures TPR 0.55 and TNR 0.40 on the calibration set. Why does `corrected_pass_rate` raise instead of returning a number?"
+    options:
+      - id: a
+        text: Because 0.55 + 0.40 is below 1, so the judge does worse than chance and the formula's answer would be meaningless or inverted
+        correct: true
+        rationale: Exactly. The denominator would be negative, and a "corrected" rate from that judge would point the wrong way.
+      - id: b
+        text: Because TNR must always be above TPR
+        rationale: No such rule; this example's original judge has TNR below TPR and corrects fine.
+      - id: c
+        text: Because Python can't divide by a negative number
+        rationale: It can. The problem is the meaning, not the arithmetic.
+    explanation: Refusing to produce a number is sometimes the right output. Here, the right fix is a better judge (or more calibration data), not a corrected rate.
+direct:
+  task: |
+    You want to report an uncertainty range with the corrected pass rate, as the lesson suggests. A simple first step: recompute the corrected rate with TPR and TNR each moved by plus and minus 0.05, and report the lowest and highest results.
+
+    Write the prompt you'd give a coding assistant to add that.
+  prompt: |
+    Add a function corrected_range(observed, tpr, tnr, delta=0.05) that calls corrected_pass_rate for every combination of tpr in (tpr - delta, tpr, tpr + delta) and tnr in (tnr - delta, tnr, tnr + delta), clipping each rate to [0, 1] first, and returns (low, high): the smallest and largest results.
+
+    Skip any combination where corrected_pass_rate raises ValueError (tpr + tnr <= 1). If every combination raises, let corrected_range raise ValueError too.
+
+    Do not change rates, cohen_kappa, or corrected_pass_rate. Print the range under the corrected estimate. Add asserts that, for observed 0.79, tpr 0.9, tnr 0.7: low <= corrected_pass_rate(0.79, 0.9, 0.7) <= high, and low < high.
+  checklist:
+    - The three original functions are untouched
+    - All nine combinations are tried, with rates clipped to [0, 1]
+    - ValueError combinations are skipped, not silently turned into 0 or 1
+    - The point estimate falls inside the range
+    - The new asserts run and the original checks still pass

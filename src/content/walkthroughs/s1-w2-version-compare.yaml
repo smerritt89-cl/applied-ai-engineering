@@ -1,0 +1,161 @@
+id: s1-w2-version-compare
+summary: |
+  This program compares two versions of a prompt that were run over the same test cases. `compare` works out each version's pass rate and, more importantly, which cases got **fixed** (failed before, pass now) and which **regressed** (passed before, fail now). `verdict` then applies a decision rule written down in advance: any regression means a human should investigate; otherwise ship only if the pass rate rose by at least a minimum gain.
+
+  It is split so that the facts and the judgment live apart. `compare` only measures, and it would give the same report whatever your team's policy is. `verdict` holds the policy, in three lines you can read in a code review and argue about before anyone sees the numbers.
+code: |
+  def compare(old, new):
+      """old and new map case id -> True (passed) or False (failed), over the same ids.
+
+      Return a dict with:
+        old_rate, new_rate: pass rates as floats between 0 and 1
+        fixed: sorted ids that failed in old and pass in new
+        regressed: sorted ids that passed in old and fail in new
+      """
+      ids = sorted(old)
+      return {
+          "old_rate": sum(old[i] for i in ids) / len(ids),
+          "new_rate": sum(new[i] for i in ids) / len(ids),
+          "fixed": [i for i in ids if not old[i] and new[i]],
+          "regressed": [i for i in ids if old[i] and not new[i]],
+      }
+
+
+  def verdict(report, min_gain=0.1):
+      """Return "investigate" if anything regressed.
+
+      Otherwise return "ship" if new_rate - old_rate is at least min_gain,
+      else "no clear gain".
+      """
+      if report["regressed"]:
+          return "investigate"
+      # 0.7 - 0.6 is 0.09999999999999998 in floating point, which would fail
+      # a ">= 0.1" check. Rounding to 9 decimal places removes that noise.
+      gain = round(report["new_rate"] - report["old_rate"], 9)
+      return "ship" if gain >= min_gain else "no clear gain"
+
+
+  v1 = {"double-charge": True, "locked-out": False, "dark-mode": True, "injection": False, "spanish": False}
+  v2 = {"double-charge": True, "locked-out": True, "dark-mode": True, "injection": False, "spanish": True}
+  r = compare(v1, v2)
+  print(r, verdict(r))
+notes:
+  - lines: [1, 8]
+    title: The inputs, as dicts of pass or fail
+    text: |
+      Each version's results arrive as a **dict** that maps a test case id (a short name like `"locked-out"`) to `True` if that case passed or `False` if it failed. This is the shape a test harness naturally produces: one entry per case, keyed by a stable name.
+
+      The docstring states an assumption that the code relies on: both dicts cover **the same ids**. Keep that sentence in mind. It's a promise the caller has to keep, and the code doesn't check it (one of the review questions below explores what happens when it's broken).
+  - lines: [9, 9]
+    title: One sorted list of ids, used for everything
+    text: |
+      `sorted(old)` returns the dict's keys as a sorted list. (Looping over a dict, or passing it to `sorted`, gives you its keys.) Sorting once here means `fixed` and `regressed` come out in alphabetical order, so the report is the same every time you run it, which makes it easy to compare reports and to test.
+
+      Using `old`'s keys as the master list is a choice. It means a case that exists only in `new` is ignored, and a case missing from `new` will crash on `new[i]`. That's acceptable for a small exercise where the docstring promises matching ids; in a real harness you'd check it.
+  - lines: [10, 12]
+    title: Pass rates by summing booleans
+    text: |
+      `sum(old[i] for i in ids)` adds up `True` and `False` values. In Python, `True` behaves as 1 and `False` as 0 in arithmetic, so the sum is the number of passing cases. The thing inside `sum(...)` is a **generator expression**, which produces one value at a time without building a list first.
+
+      Dividing by `len(ids)` gives a fraction. For the demo: v1 passes 2 of 5 cases (`0.4`) and v2 passes 4 of 5 (`0.8`).
+
+      The function returns a **dict literal** built in one expression, `{"key": value, ...}`, which keeps the report's shape visible in one place.
+  - lines: [13, 15]
+    title: Fixes and regressions, case by case
+    text: |
+      `[i for i in ids if not old[i] and new[i]]` is a **list comprehension with a condition**: "every id where the old version failed and the new one passed." The `regressed` line is its mirror image.
+
+      This is the most important part of the program. A pass rate can rise while individual cases get worse. Suppose v3 fixes two cases and breaks one: the rate goes up, and if you only looked at the rate, the broken case would slip through. Tracking both lists is what the lesson means by rerunning everything and comparing per case.
+
+      For the demo, `fixed` is `["locked-out", "spanish"]` and `regressed` is `[]`.
+  - lines: [18, 25]
+    title: The policy, regressions first
+    text: |
+      `verdict` has a **default argument**, `min_gain=0.1`, so callers can write `verdict(r)` for the usual rule or `verdict(r, min_gain=0.2)` for a stricter one.
+
+      The first check is about regressions, and it comes before any arithmetic. `if report["regressed"]:` relies on **truthiness**: an empty list counts as false and a non-empty one as true. So any regression at all returns `"investigate"`, no matter how much the rate improved. Returning early like this keeps the rest of the function simple.
+
+      The order of these checks is the policy. An AI asked to "simplify" this could easily collapse it into one comparison of rates, which reads cleanly and silently drops the rule that matters most.
+  - lines: [26, 29]
+    title: Rounding away floating-point noise
+    text: |
+      Computers store most decimals as binary fractions, so they're slightly off. `0.7 - 0.6` comes out as `0.09999999999999998`, and `0.09999999999999998 >= 0.1` is `False`. Without the fix, a genuine gain of exactly 0.1 (6 of 10 cases passing, then 7 of 10) would be reported as "no clear gain". One of the exercise's tests checks exactly that case.
+
+      `round(x, 9)` rounds to 9 decimal places, which wipes out the tiny error while leaving any real difference untouched. The comment says why it's there, so nobody removes it as clutter.
+
+      The last line is a **conditional expression**: `A if condition else B` picks one of two values in a single line.
+  - lines: [32, 35]
+    title: A demonstration with named cases
+    text: |
+      The demo compares two versions over five support-ticket cases. Run it and you'll see a 0.4 to 0.8 jump, two fixes, no regressions, and the verdict `ship`.
+
+      A word of caution the code can't give you: five cases is a tiny test set. A one-case change could be noise from the model's run-to-run variation. The lesson's advice applies: rerun anything that looks like a marginal win before trusting it.
+review:
+  - id: wt-compare-rate-only
+    type: code-reading
+    prompt: 'An AI assistant rewrites `verdict` as below, saying "the regression check is redundant, since the rate already reflects regressions." With `old = {"a": True, "b": True, "c": True, "d": False, "e": False}` and `new = {"a": True, "b": True, "c": False, "d": True, "e": True}`, what does it return?'
+    code: |
+      def verdict(report, min_gain=0.1):
+          gain = report["new_rate"] - report["old_rate"]
+          return "ship" if gain >= min_gain else "no clear gain"
+    options:
+      - id: a
+        text: '`"investigate"`, because case c regressed'
+        rationale: That's what the original returns. This version never looks at the regressed list.
+      - id: b
+        text: '`"ship"`'
+        correct: true
+        rationale: Right. The rate goes from 0.6 to 0.8 (two fixes, one regression), the gain is about 0.2, and the broken case `c` goes unnoticed.
+      - id: c
+        text: '`"no clear gain"`, because of floating-point error'
+        rationale: Here the error goes the other way (`0.8 - 0.6` is `0.20000000000000007`), so the check passes. The rounding problem only bites on gains of exactly `min_gain`.
+    explanation: The rate does reflect regressions, but only net of fixes. A regression that's outweighed by fixes disappears from the rate, which is exactly when you need a person to look. When an AI calls a check redundant, construct the case where it isn't.
+  - id: wt-compare-float
+    type: predict-output
+    prompt: What does this print?
+    code: |
+      print(0.7 - 0.6 >= 0.1, round(0.7 - 0.6, 9) >= 0.1)
+    options:
+      - id: a
+        text: '`True True`'
+        rationale: That's what exact arithmetic would give. Floating point gets the first one slightly wrong.
+      - id: b
+        text: '`False True`'
+        correct: true
+        rationale: Right. `0.7 - 0.6` is `0.09999999999999998`, just under 0.1. After rounding to 9 places it's `0.1`.
+      - id: c
+        text: '`False False`'
+        rationale: Rounding fixes it. `round(0.09999999999999998, 9)` is `0.1`.
+    explanation: Comparing floats at a threshold is a classic source of off-by-a-hair bugs. Rounding (or comparing counts of cases instead of fractions) avoids it. Watch for this in any AI-written code that compares computed rates or prices with `>=`.
+  - id: wt-compare-missing-id
+    type: mcq
+    prompt: Your new prompt version was run on a test set where one case, `"spanish"`, was accidentally left out. `old` has it and `new` doesn't. What does `compare(old, new)` do?
+    options:
+      - id: a
+        text: It treats the missing case as a failure
+        rationale: Nothing in the code supplies a default. `new[i]` looks the key up directly.
+      - id: b
+        text: It skips the missing case and computes rates over the rest
+        rationale: The id list comes from `old`, so the code does try to look up `"spanish"` in `new`.
+      - id: c
+        text: It raises a `KeyError` for `"spanish"`
+        correct: true
+        rationale: Right. `new["spanish"]` doesn't exist, and looking up a missing key with square brackets raises `KeyError`.
+    explanation: Crashing is the better failure here, because silently treating the case as a fail (or skipping it) would give you a wrong report that looks right. Even better would be an explicit check with a clear message, which is the change in the task below.
+direct:
+  task: |
+    Your test set grows over time, and twice now someone has compared runs over different sets of cases. You want `compare` to refuse mismatched inputs with a clear error, instead of crashing with a bare `KeyError` (or, if `new` has extra cases, silently ignoring them).
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    In compare, before computing anything, check that old and new have exactly the same set of case ids. If they don't, raise ValueError with a message that lists the ids missing from new and the ids missing from old, each sorted. Also raise ValueError if old is empty, since a pass rate over zero cases is meaningless.
+
+    Do not change verdict, the report's keys, or how rates, fixed, and regressed are computed when the ids match.
+
+    Update the docstring to say what is raised and when. Add test asserts for: an id missing from new; an extra id in new; empty inputs; and that matching inputs still give the same report as before.
+  checklist:
+    - The check compares sets of ids in both directions, not just one
+    - The error message names the specific mismatched ids, sorted
+    - Empty input raises ValueError instead of ZeroDivisionError
+    - verdict and the report format are unchanged
+    - The docstring and new tests cover each error case, and the original tests still pass

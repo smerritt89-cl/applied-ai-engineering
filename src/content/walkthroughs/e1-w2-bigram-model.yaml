@@ -1,0 +1,193 @@
+id: e1-w2-bigram-model
+summary: |
+  This is a complete character-level bigram language model with no neural network at all. It counts how often each character follows each other character in a list of names, turns each row of counts into a probability distribution over the next character, scores the model by average negative log-likelihood, and generates new "names" by sampling one character at a time.
+
+  Each stage is its own function with a plain data structure in between (a dict, a table of counts, a table of probabilities), so each can be checked in isolation. That matters because the two classic bugs in this lecture, normalizing columns instead of rows and getting the start and end tokens wrong, both produce numbers that look reasonable. The separate functions make it possible to test the exact properties that catch them.
+code: |
+  import math
+  import random
+
+  WORDS = ["emma", "olivia", "ava", "isabella", "sophia", "mia", "amelia", "harper", "evelyn", "abigail",
+           "ella", "anna", "nora", "liam", "noah", "oliver", "elijah", "lucas", "mason", "logan"]
+
+
+  def build_vocab(words):
+      """Return (stoi, itos): itos[0] is '.', followed by the sorted unique characters."""
+      chars = sorted(set("".join(words)))
+      itos = ["."] + chars
+      stoi = {ch: i for i, ch in enumerate(itos)}
+      return stoi, itos
+
+
+  def count_bigrams(words, stoi):
+      """Return a V x V table N where N[i][j] counts how often token j follows token i."""
+      V = len(stoi)
+      N = [[0] * V for _ in range(V)]
+      for w in words:
+          seq = ["."] + list(w) + ["."]
+          for a, b in zip(seq, seq[1:]):
+              N[stoi[a]][stoi[b]] += 1
+      return N
+
+
+  def to_probs(N, alpha=1.0):
+      """Add alpha to every count, then normalize each ROW to sum to 1."""
+      P = []
+      for row in N:
+          total = sum(row) + alpha * len(row)
+          P.append([(c + alpha) / total for c in row])
+      return P
+
+
+  def avg_nll(words, P, stoi):
+      """Average of -log P[a][b] over every bigram in every (wrapped) word."""
+      total, n = 0.0, 0
+      for w in words:
+          seq = ["."] + list(w) + ["."]
+          for a, b in zip(seq, seq[1:]):
+              total -= math.log(P[stoi[a]][stoi[b]])
+              n += 1
+      return total / n
+
+
+  def sample(P, itos, rng):
+      """Start at '.', draw each next character from the current row, stop at the next '.'."""
+      out, i = [], 0
+      while True:
+          i = rng.choices(range(len(P[i])), weights=P[i], k=1)[0]
+          if i == 0:
+              return "".join(out)
+          out.append(itos[i])
+
+
+  stoi, itos = build_vocab(WORDS)
+  N = count_bigrams(WORDS, stoi)
+  P = to_probs(N, alpha=1.0)
+  print("vocab size", len(itos))
+  print("avg NLL", round(avg_nll(WORDS, P, stoi), 4), "uniform", round(math.log(len(itos)), 4))
+  rng = random.Random(42)
+  print([sample(P, itos, rng) for _ in range(8)])
+notes:
+  - lines: [1, 5]
+    title: Imports and the training data
+    text: |
+      `math` supplies `math.log`; `random` supplies a seeded generator for sampling. `WORDS` is a list of 20 names, written in capitals by the Python convention for a module-level constant.
+
+      The list continues onto line 5 because Python lets a bracketed expression span several lines. Twenty names is far too little data for a good model, which is deliberate: you can see every count, and the samples are visibly name-shaped noise.
+  - lines: [8, 13]
+    title: The vocabulary, with '.' as a boundary token
+    text: |
+      `"".join(words)` glues all names into one string, `set(...)` keeps each distinct character once, and `sorted(...)` puts them in a fixed order. Sorting matters: sets have no guaranteed order, and an unsorted vocabulary could assign different ids on different runs.
+
+      `itos` ("integer to string") is a list where position i holds a character, with `'.'` forced to index 0. `stoi` is the reverse lookup, built by a **dict comprehension** `{ch: i for i, ch in enumerate(itos)}`. `enumerate` yields `(index, item)` pairs.
+
+      The `'.'` token does double duty as "start of name" and "end of name". That is what lets one table model both which letters names begin with (row 0) and which letters they end with (column 0). For these 20 names, the vocabulary is the 18 letters that occur plus `'.'`, so V = 19.
+
+      The function returns a **tuple**, unpacked by the caller as `stoi, itos = build_vocab(WORDS)`.
+  - lines: [16, 24]
+    title: Counting bigrams into a V x V table
+    text: |
+      Line 19 builds a V x V grid of zeros as a list of lists. The comprehension is important. The shorter-looking `[[0] * V] * V` creates V references to the **same** inner list, so incrementing one cell would change that column in every row. That aliasing bug is a common AI-written mistake and doesn't raise any error.
+
+      For each word, line 21 wraps it: `"ava"` becomes `['.', 'a', 'v', 'a', '.']`. Then `zip(seq, seq[1:])` pairs each element with the next one: `('.', 'a')`, `('a', 'v')`, `('v', 'a')`, `('a', '.')`. A word of length L gives L + 1 bigrams, and the 20 names give 122 in total.
+
+      `N[stoi[a]][stoi[b]] += 1` increments row a, column b. So row i of N is a histogram of what follows character i.
+  - lines: [27, 33]
+    title: Rows become conditional distributions
+    text: |
+      Each row is turned into P(next = j | current = i). The formula on line 32 is (N[i][j] + alpha) divided by (row total + alpha times V), which is **add-alpha (Laplace) smoothing**.
+
+      - With `alpha = 0` this is exactly the maximum likelihood estimate: the fraction of times j followed i. The test checks this case directly.
+      - With `alpha = 1` every count gets a pseudo-count of 1, so no probability is ever zero. A zero probability means log(0), which is minus infinity: one unseen bigram in a test name would make its loss infinite.
+
+      Normalizing the **row** is the point: each row must sum to 1 because it is a distribution over the next character. Dividing by a column total instead gives numbers that look like probabilities but aren't conditional on the current character. The hidden test that every row sums to 1 exists because the lecture shows this bug.
+  - lines: [36, 44]
+    title: Scoring with average negative log-likelihood
+    text: |
+      The likelihood of the data is the product of P[a][b] over every bigram. Products of many small numbers underflow, so take logs, which turns the product into a sum. Negating makes it a loss to minimize, and dividing by the count `n` makes it comparable across datasets of different size.
+
+      `total -= math.log(...)` is shorthand for `total = total - math.log(...)`. `total, n = 0.0, 0` initializes two variables at once.
+
+      Two reference points make the number meaningful. A uniform model gives every character 1/V, so its loss is log(V) = log(19), about 2.944. The smoothed model scores about 2.22, so it has learned something. And on its own training data the unsmoothed MLE always scores lowest, because that is what "maximum likelihood" means; a test checks that too. A model that beats the MLE on training data has a bug.
+  - lines: [47, 54]
+    title: Sampling walks a Markov chain
+    text: |
+      `while True:` loops until a `return` exits it. Start at index 0 (the `'.'` start token). Each pass draws the next index from row `P[i]` using `rng.choices`, which picks from `range(len(P[i]))` with the row as weights; `k=1` returns a one-item list and `[0]` unwraps it.
+
+      Drawing 0 means the end token was chosen, so the characters collected so far are joined and returned. Otherwise the character is appended and the drawn index becomes the new current state. Only the current character influences the next one, which is the Markov property, and it's why the samples look like names only locally.
+
+      Two review points. Passing in `rng` makes sampling reproducible (the test seeds it twice and compares). And nothing caps the length: with smoothing, a long name is unlikely but possible. Real generation code always has a maximum length.
+  - lines: [57, 63]
+    title: Run it
+    text: |
+      The demo builds everything, then prints the vocabulary size (19), the model's average NLL next to the uniform baseline, and eight samples from a fixed seed.
+
+      Read the samples as a check, not a metric. They should contain only letters from the vocabulary and no `'.'`, and they should look vaguely name-like. The number to judge the model by is the NLL, and the honest comparison is on names the model didn't train on, which this tiny demo doesn't have.
+review:
+  - id: wt-bigram-columns
+    type: code-reading
+    prompt: An AI assistant rewrites `to_probs` as below. Sampling still runs without error. What is actually wrong?
+    code: |
+      def to_probs(N, alpha=1.0):
+          V = len(N)
+          col_totals = [sum(N[i][j] for i in range(V)) + alpha * V for j in range(V)]
+          return [[(N[i][j] + alpha) / col_totals[j] for j in range(V)] for i in range(V)]
+    options:
+      - id: a
+        text: Nothing; the two normalizations are equivalent because the table is square
+        rationale: Square doesn't mean symmetric. "j follows i" and "i precedes j" give different totals.
+      - id: b
+        text: "Each column sums to 1 instead of each row, so `P[i]` is no longer the distribution of the next character given i. The NLL is wrong, and sampling quietly draws from a different distribution"
+        correct: true
+        rationale: Right. `rng.choices` accepts weights that don't sum to 1 (it normalizes them internally), which is why sampling hides the bug. The rows-sum-to-1 test catches it.
+      - id: c
+        text: It divides by zero for characters that never appear
+        rationale: With alpha > 0 every column total is positive. The bug is in which direction is normalized.
+    explanation: This is the bug the lecture walks through. It survives casual inspection because the numbers are all between 0 and 1 and sampling still produces output. Testing the defining property (each row is a distribution) is what exposes it.
+  - id: wt-bigram-unseen
+    type: predict-output
+    prompt: "No name in `WORDS` contains the bigram 'bo'. With `P0 = to_probs(N, alpha=0.0)`, what does `avg_nll([\"bo\"], P0, stoi)` do?"
+    options:
+      - id: a
+        text: Returns a large but finite number
+        rationale: It would with smoothing. With alpha 0, the probability of 'o' after 'b' is exactly 0.
+      - id: b
+        text: Raises `ValueError` (math domain error), because it calls `math.log(0.0)`
+        correct: true
+        rationale: Yes. Python's `math.log` refuses 0 rather than returning minus infinity. Mathematically the loss is infinite.
+      - id: c
+        text: Returns 0, because unseen bigrams are skipped
+        rationale: Nothing in the code skips anything. Every bigram is scored.
+    explanation: This is the practical reason for smoothing. An unsmoothed model assigns probability zero to anything it hasn't seen, and a single unseen pair makes the loss infinite. In PyTorch the same mistake produces `inf` silently instead of an exception, which is harder to notice.
+  - id: wt-bigram-alias
+    type: scenario
+    prompt: "Why does `count_bigrams` build the table with `[[0] * V for _ in range(V)]` rather than the shorter `[[0] * V] * V`?"
+    options:
+      - id: a
+        text: The comprehension is faster
+        rationale: Speed is about the same. The difference is in what gets created.
+      - id: b
+        text: "`[[0] * V] * V` makes V references to one shared row, so every increment changes all rows at once"
+        correct: true
+        rationale: Exactly. Multiplying a list copies references, not the inner lists. Each `N[a][b] += 1` would then increment column b in every row.
+      - id: c
+        text: "`[[0] * V] * V` produces a V x V x V table"
+        rationale: It produces V rows, but they are all the same object.
+    explanation: List multiplication is safe for immutable items like `0`, and a trap for mutable ones like lists. It's an easy thing for code review to miss and for AI assistants to write, so look for it whenever a grid is built.
+direct:
+  task: |
+    With smoothing, `sample` can in principle produce very long strings, and in a real system an unbounded loop is a risk. You want a `max_len` argument that stops generation after that many characters.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add an optional max_len parameter to sample (keyword argument, default 20). Stop and return the characters drawn so far once the output has max_len characters, even if the end token hasn't been drawn. Raise ValueError if max_len is less than 1.
+
+    Keep everything else the same: start from index 0, draw each next index with rng.choices(range(len(P[i])), weights=P[i], k=1)[0], stop when index 0 is drawn, and never include '.' in the output. With a large max_len, the output for a given seed must be identical to the current version.
+
+    Add test asserts: no sample from 200 draws is longer than max_len=5; with max_len=1000 and seed 7 the result equals the current version's; and max_len=0 raises ValueError.
+  checklist:
+    - The length check is applied to the returned characters, not to the number of draws including the end token
+    - The random draws happen in the same order, so seeded results match the old version when the cap isn't hit
+    - The end token `'.'` still never appears in the output
+    - Invalid `max_len` raises an error instead of returning an empty string silently
+    - New tests cover the cap, unchanged behavior, and the invalid case

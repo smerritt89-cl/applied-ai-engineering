@@ -1,0 +1,205 @@
+id: s1-w3-validate-action-items
+summary: |
+  This program is the checkpoint between "the model replied" and "the rest of my code trusts the reply". It defines what one meeting action item must look like (a Pydantic model called `ActionItem`), cleans up the usual wrapping a model puts around JSON, and then validates six realistic model outputs, printing either the parsed item or every problem found.
+
+  The structure is deliberate. The rules live in one class, so the same definition can generate the JSON Schema you send to the API and check what comes back. The cleanup (`strip_fences`) and the checking (`check`) are separate functions, so each can be tested on its own, and `check` never raises: it always returns a pair you can branch on, with error messages a person (or a retry prompt) can read.
+code: |
+  from datetime import date
+  from typing import Literal
+
+  from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+
+  class ActionItem(BaseModel):
+      """One commitment from a meeting."""
+
+      model_config = ConfigDict(extra="forbid")
+
+      task: str = Field(min_length=1, description="What will be done, as a short imperative phrase")
+      owner: str | None = Field(description="Person responsible, or null if no one was named")
+      due_date: date | None = Field(default=None, description="ISO date, only if a specific date was stated")
+      priority: Literal["high", "medium", "low"] = Field(description="How urgent the item is")
+
+
+  FENCE = "`" * 3
+
+
+  def strip_fences(text):
+      """Remove a Markdown code fence and anything before the first brace."""
+      text = text.strip()
+      if FENCE in text:
+          text = text.split(FENCE)[1]
+          if text.startswith("json"):
+              text = text[len("json"):]
+      start = text.find("{")
+      return text[start:] if start != -1 else text
+
+
+  def check(raw):
+      """Validate one raw model output.
+
+      Return (item, []) if it is valid, or (None, messages) if not.
+      Each message is "<loc>: <msg>", with "(root)" when the loc is empty.
+      """
+      try:
+          return ActionItem.model_validate_json(strip_fences(raw)), []
+      except ValidationError as e:
+          messages = []
+          for err in e.errors():
+              where = ".".join(str(part) for part in err["loc"]) or "(root)"
+              messages.append(f"{where}: {err['msg']}")
+          return None, messages
+
+
+  SAMPLES = [
+      '{"task": "Send revised budget to finance", "owner": "Priya", "due_date": "2026-11-20", "priority": "high"}',
+      'Sure! Here is the action item:\n' + FENCE + 'json\n{"task": "Book the offsite venue", "owner": null, "priority": "medium"}\n' + FENCE,
+      '{"task": "Update the roadmap slide", "owner": "Sam", "priority": "urgent"}',
+      '{"task": "", "owner": "Lee", "priority": "low", "assignee": "Lee"}',
+      '{"task": "Draft the launch FAQ", "priority": "low", "due_date": "next Friday"}',
+      '{"task": "Call the vendor", "owner": "Ana", "priority": "high",}',
+  ]
+
+  for raw in SAMPLES:
+      item, errors = check(raw)
+      print("OK      " + repr(item) if item else "INVALID " + "; ".join(errors))
+notes:
+  - lines: [1, 4]
+    title: Imports, and one that needs installing
+    text: |
+      `date` is the standard library's calendar-date type, and `Literal` (from `typing`) lets you say "this value must be exactly one of these strings". Both ship with Python.
+
+      The last line is different: **Pydantic** is a third-party package (the exercise downloads it into your browser on first run). `BaseModel` is the class you build on, `Field` attaches rules and descriptions to a field, `ConfigDict` holds model-wide settings, and `ValidationError` is the exception Pydantic raises when data doesn't fit.
+
+      Pydantic is the standard choice here: the Anthropic and OpenAI SDKs both accept Pydantic classes directly, as the next lesson shows. If an AI-written version hand-rolls its own validation with a pile of `if` statements instead, ask why.
+  - lines: [7, 10]
+    title: A class that is a contract, closed to extra keys
+    text: |
+      `class ActionItem(BaseModel):` defines a new class that **inherits** from `BaseModel`. You don't write an `__init__` or any checking code; Pydantic reads the field declarations below and builds the validation for you.
+
+      `model_config = ConfigDict(extra="forbid")` is the one model-wide setting. By default Pydantic silently **ignores** keys it doesn't recognize. With `"forbid"`, an unexpected key such as `"assignee"` becomes an error instead.
+
+      Why that matters: when a model renames a field (writes `assignee` instead of `owner`), the default behavior would drop the value and keep going, and you'd never learn the model drifted. Forbidding extras turns silent drift into a visible failure. It also produces `"additionalProperties": false` in the generated schema, which the exercise's tests check.
+  - lines: [12, 15]
+    title: Four fields, each with a type, a rule, and a description
+    text: |
+      Each line is `name: type = Field(...)`. The part after the colon is a **type hint**, and in Pydantic the hints are enforced, not just documentation.
+
+      - `task: str` with `min_length=1`: it must be a string, and an empty string fails.
+      - `owner: str | None` with no default: the `|` means "or", so a name or `null` are both fine, but the key **must be present**. This is the required-but-nullable pattern from the lesson: the model has to address the field, and "no one was named" is a legal answer.
+      - `due_date: date | None` with `default=None`: optional, so it may be left out. Pydantic converts the text `"2026-11-20"` into a real `date` object, and rejects `"next Friday"`.
+      - `priority: Literal["high", "medium", "low"]`: a closed set. `"urgent"` fails.
+
+      A field is required exactly when it has no default. That single rule explains the tests' check that `required` is `task`, `owner`, `priority`. The `description` strings matter too: they travel with the schema to the model, so they are part of your prompt. A common AI-written mistake is `owner: str | None = None`, which looks the same but quietly makes `owner` optional.
+  - lines: [18, 29]
+    title: Cleaning up the wrapper before parsing
+    text: |
+      `FENCE` is the three-backtick Markdown fence, built by repeating a single backtick three times (writing three in a row literally would confuse the lesson page that hosts this exercise). Models often reply with "Sure! Here is..." and then the JSON inside a fenced block.
+
+      `strip_fences` handles that in steps:
+
+      - `text.strip()` removes leading and trailing whitespace.
+      - `text.split(FENCE)[1]` splits the string at every fence and keeps the piece **between** the first two, which is the inside of the code block.
+      - If that piece starts with the label `json`, the slice `text[len("json"):]` cuts it off.
+      - `text.find("{")` returns the position of the first brace, or `-1` if there isn't one. The **conditional expression** `a if cond else b` then keeps everything from the brace onward, or the whole text when there's no brace (so the parser produces a clear error rather than this function guessing).
+
+      This function only cleans; it never decides whether the data is valid. Keeping those jobs apart is what lets you change the cleanup without touching the rules.
+  - lines: [32, 39]
+    title: Validate, and return a pair instead of raising
+    text: |
+      `ActionItem.model_validate_json(...)` parses a JSON string and validates it in one step. On success it returns an `ActionItem` instance with converted values (a real `date`, not a string).
+
+      The call sits inside `try:`. A **try/except** block runs the `try` part and, if a named exception is raised, jumps to the matching `except` instead of crashing. On success, the function returns a **tuple** `(item, [])`: the item and an empty list of errors.
+
+      Returning a pair rather than letting the exception escape means every caller handles both outcomes the same way: `item, errors = check(raw)`. In a pipeline, that's what lets you log the errors, retry with them in the prompt, or route the transcript to a person, without wrapping every call in its own `try`.
+  - lines: [40, 45]
+    title: Turning Pydantic's errors into readable messages
+    text: |
+      `except ValidationError as e:` catches only validation failures and names the exception `e`. Catching just this type (not a bare `except:`) matters: a typo or an unrelated bug in your own code should still crash loudly instead of being reported as "the model's output was invalid".
+
+      `e.errors()` returns a list with one dict per problem, and Pydantic collects **all** of them in one pass. That's why sample 3 reports two errors (empty `task` and extra `assignee`), and sample 4 reports a missing `owner` and a bad `due_date` together.
+
+      Each error has a `loc` (where, as a tuple such as `("due_date",)`) and a `msg` (what). `".".join(str(part) for part in err["loc"])` joins the location parts with dots; the `str(part)` inside is a **generator expression** feeding `join`, and the `str()` is needed because list positions appear as integers. When the JSON doesn't even parse (sample 5's trailing comma), `loc` is empty, the join gives `""`, and `or "(root)"` substitutes a label, because an empty string counts as false in Python.
+
+      The **f-string** `f"{where}: {err['msg']}"` builds the final message. Note the single quotes inside: the f-string itself uses double quotes, so the key needs the other kind.
+  - lines: [48, 59]
+    title: Six realistic outputs, one line each
+    text: |
+      `SAMPLES` is a list of strings shaped like real model replies: a clean one, one wrapped in chat and a fence, a bad enum value, an empty task plus a renamed key, a missing required field plus a date in words, and broken JSON.
+
+      The loop **unpacks** each returned pair into `item` and `errors`, then prints one line. The `print` argument is a conditional expression: if `item` is set, print it; otherwise print every error joined with `"; "`.
+
+      Press **Run this code** and read the six lines against the notes above. Then remember what this does not check: sample 0 could name the wrong owner and still print `OK`. Schema validation proves shape, not truth; lesson 9 adds the checks for that.
+review:
+  - id: wt-actionitem-owner-default
+    type: code-reading
+    prompt: |
+      An AI assistant "tidies" the model so all the nullable fields look alike. What changes when you validate sample 4 (`{"task": "Draft the launch FAQ", "priority": "low", "due_date": "next Friday"}`)?
+    code: |
+      class ActionItem(BaseModel):
+          model_config = ConfigDict(extra="forbid")
+
+          task: str = Field(min_length=1, description="What will be done")
+          owner: str | None = Field(default=None, description="Person responsible, or null")
+          due_date: date | None = Field(default=None, description="ISO date, if stated")
+          priority: Literal["high", "medium", "low"] = Field(description="How urgent")
+    options:
+      - id: a
+        text: Nothing changes; it still reports a missing owner and a bad due date
+        rationale: The missing-owner error came from `owner` having no default. Adding `default=None` removes it.
+      - id: b
+        text: It now accepts the item, because both nullable fields have defaults
+        rationale: The `due_date` of "next Friday" still isn't a valid date, so the item is still rejected.
+      - id: c
+        text: It still fails on `due_date`, but no longer reports that `owner` is missing, and `owner` drops out of the schema's required list
+        correct: true
+        rationale: Right. A default makes a field optional. The model is no longer forced to address `owner`, so it can skip it without anyone noticing, and the exercise's required-fields test fails.
+    explanation: Required-but-nullable and optional look almost identical in code. The difference is one `default=None`, and it changes the contract the model sees. When reviewing, generate the schema with `ActionItem.model_json_schema()` and read the `required` list rather than trusting the class at a glance.
+  - id: wt-actionitem-extra
+    type: mcq
+    prompt: |
+      You delete the line `model_config = ConfigDict(extra="forbid")`. What does `check` return for sample 3 (`{"task": "", "owner": "Lee", "priority": "low", "assignee": "Lee"}`)?
+    options:
+      - id: a
+        text: "`(None, ['task: ...'])`: only the empty task is reported, and `assignee` is silently dropped"
+        correct: true
+        rationale: Right. Pydantic's default is to ignore unknown keys, so the renamed field disappears without an error. The empty task still fails `min_length=1`.
+      - id: b
+        text: The same two errors as before
+        rationale: The `assignee` error exists only because extras are forbidden.
+      - id: c
+        text: A valid item, because removing the config disables validation
+        rationale: The config line controls only how extra keys are treated. The field rules still apply.
+    explanation: Ignoring unknown keys is convenient and dangerous with model output, because a renamed key is exactly how drift shows up. Forbid extras at the boundary where untrusted data enters.
+  - id: wt-actionitem-bare-except
+    type: scenario
+    prompt: An AI-written version of `check` uses `except Exception:` instead of `except ValidationError as e:` and returns `(None, ["invalid output"])`. Why should you push back in review?
+    options:
+      - id: a
+        text: "`except Exception` is slower"
+        rationale: Speed isn't the issue; the difference is negligible.
+      - id: b
+        text: It hides bugs in your own code as "invalid output", and it throws away the per-field messages you need for logging or a retry prompt
+        correct: true
+        rationale: Exactly. A broad catch makes a typo in `strip_fences` look like the model's fault, and a generic message gives a retry nothing to fix.
+      - id: c
+        text: Python requires the exception to be named with `as e`
+        rationale: The `as e` is optional; you add it when you need the exception object, as here.
+    explanation: Catch the narrowest exception that describes the failure you expect, and keep the detail. Specific error messages are what make retry-with-feedback work, and broad catches are one of the most common ways AI-written code hides real problems.
+direct:
+  task: |
+    Models sometimes return `"High"` or `"MEDIUM"` instead of the lowercase values in your enum, and today those items are rejected. You want `ActionItem` to accept any capitalization of the three priorities and store them lowercase, while still rejecting anything that isn't one of the three.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In the ActionItem Pydantic model, make priority case-insensitive: accept "High", "MEDIUM", " low " and similar, and store the value lowercase and stripped. Do this with a field_validator in "before" mode on priority that lowercases and strips strings before the Literal check runs.
+
+    Do not change the Literal["high", "medium", "low"] type, the other fields, extra="forbid", strip_fences, or check. Values that are not one of the three words after lowercasing (for example "urgent" or "P1") must still be rejected with a priority error.
+
+    Add test asserts: "High" validates and comes back as "high"; " MEDIUM " comes back as "medium"; "urgent" still fails with a message starting "priority:"; and the generated schema's required list is still exactly task, owner, priority.
+  checklist:
+    - The change is confined to `priority`; the other fields, `extra="forbid"`, and `check` are untouched
+    - The `Literal` still lists only the three lowercase values, so the generated schema is unchanged
+    - Non-matching values such as "urgent" are still rejected, with a `priority:` message
+    - Non-string input (for example a number) still fails cleanly instead of crashing the validator
+    - New tests cover mixed case, surrounding spaces, and a still-invalid value, and the original checks still pass

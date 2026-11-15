@@ -2,6 +2,17 @@
 
 **Goes with:** Week 4, lessons 10 and 11. **Time:** about 60 minutes.
 
+## Review track
+
+If you're on the review track (the default), you read and direct this code rather than write it from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to add "in N business days" to `resolve_date`, review its
+   diff, then run `pytest studio-1/05-tool-loop/test_change.py -q`.
+
+The Goal and Steps below are the write track, if you'd rather implement the TODOs yourself in `starter.py`.
+
 ## Goal
 
 Write the manual tool-use loop yourself, with the official `anthropic` SDK, for a

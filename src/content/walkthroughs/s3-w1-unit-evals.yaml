@@ -1,0 +1,216 @@
+id: s3-w1-unit-evals
+summary: |
+  This program runs three small, unit-test-style checks over the action-item extractor's output on five test meetings, and reports a pass rate for each check. Each check looks at one property only: are the owners real attendees, is the quoted evidence actually in the transcript, and does a meeting with nothing to do come back empty.
+
+  The key design choice is that a check can answer "does not apply" (`None`) as well as pass or fail. The pass rate is computed only over the cases where the check applies, and the report says how many that was. That keeps a suite full of empty meetings from making the owner check look perfect, and it makes every percentage honest about its denominator.
+code: |
+  # Outputs from the Studio 1 action-item extractor on five test transcripts.
+  CASES = [
+      {"id": "c1", "attendees": ["Priya", "Sam"], "expect_items": True,
+       "transcript": "Priya: I'll send the budget by Friday. Sam: I'll update the slide.",
+       "items": [{"owner": "Priya", "evidence": "I'll send the budget by Friday."},
+                 {"owner": "Sam", "evidence": "I'll update the slide."}]},
+      {"id": "c2", "attendees": ["Lee"], "expect_items": False,
+       "transcript": "Lee: Great meeting, nothing to follow up on.",
+       "items": []},
+      {"id": "c3", "attendees": ["Ana", "Sam"], "expect_items": True,
+       "transcript": "Ana: I can call the vendor tomorrow.",
+       "items": [{"owner": "Jordan", "evidence": "I can call the vendor tomorrow."}]},
+      {"id": "c4", "attendees": ["Priya"], "expect_items": False,
+       "transcript": "Priya: Status update only, no decisions today.",
+       "items": [{"owner": "Priya", "evidence": "Status update only"}]},
+      {"id": "c5", "attendees": ["Sam"], "expect_items": True,
+       "transcript": "Sam: I will draft the launch email.",
+       "items": [{"owner": "Sam", "evidence": "I'll draft the launch email."}]},
+  ]
+
+
+  # Each check returns True (pass), False (fail), or None (does not apply to this case).
+  def owners_are_attendees(case):
+      if not case["items"]:
+          return None
+      return all(i["owner"] is None or i["owner"] in case["attendees"] for i in case["items"])
+
+
+  def evidence_in_transcript(case):
+      """Every item's evidence must be non-empty and appear word for word in the transcript."""
+      if not case["items"]:
+          return None
+      return all(i["evidence"] and i["evidence"] in case["transcript"] for i in case["items"])
+
+
+  def no_items_when_none_expected(case):
+      if case["expect_items"]:
+          return None
+      return len(case["items"]) == 0
+
+
+  def run_suite(cases, checks):
+      """Return {check_name: {"pass_rate": float, "applicable": int, "failed": [case ids]}}.
+
+      pass_rate is passes / applicable cases (0.0 if none apply). Cases where a
+      check returns None are skipped, so they count toward neither side.
+      """
+      out = {}
+      for check in checks:
+          applicable, passed, failed = 0, 0, []
+          for case in cases:
+              result = check(case)
+              if result is None:
+                  continue
+              applicable += 1
+              if result:
+                  passed += 1
+              else:
+                  failed.append(case["id"])
+          out[check.__name__] = {
+              "pass_rate": passed / applicable if applicable else 0.0,
+              "applicable": applicable,
+              "failed": failed,
+          }
+      return out
+
+
+  CHECKS = [owners_are_attendees, evidence_in_transcript, no_items_when_none_expected]
+  for name, r in run_suite(CASES, CHECKS).items():
+      print(f"{name:30s} {r['pass_rate']:.0%} of {r['applicable']}  failed: {r['failed']}")
+notes:
+  - lines: [1, 19]
+    title: The test cases, as plain data
+    text: |
+      `CASES` is a **list of dicts**: each dict is one test meeting, with the transcript, the attendee list, whether we expect any action items, and what the extractor actually returned (`items`). Each item is itself a dict with an `owner` and the `evidence` sentence it was based on.
+
+      Keeping test cases as data, separate from the checks, means you can add a sixth meeting without touching any logic. Several cases are planted on purpose so you can see each check catch something:
+
+      - `c3`: the owner is "Jordan", who wasn't in the meeting (an invented owner).
+      - `c4`: the meeting has no action items, but the extractor returned one anyway.
+      - `c5`: the evidence says "I'll" while the transcript says "I will", a paraphrase rather than a quote.
+  - lines: [20, 26]
+    title: A check that can say "does not apply"
+    text: |
+      The comment on line 22 states the contract every check follows: return `True`, `False`, or `None`. Writing the contract down matters, because `run_suite` depends on it.
+
+      `if not case["items"]:` uses **truthiness**: an empty list counts as false in Python, so this reads "if there are no items". With no items there is no owner to check, so the honest answer is `None`, not `True`.
+
+      `all(... for i in case["items"])` is a **generator expression** inside `all()`: it walks the items and returns `True` only if the condition holds for every one, stopping at the first failure. The condition allows `owner is None` (an unassigned item is fine) or an owner who is in the attendee list. For `c3`, "Jordan" is not in `["Ana", "Sam"]`, so the check returns `False`.
+  - lines: [27, 33]
+    title: Evidence must be a verbatim quote
+    text: |
+      Same shape as the owner check: `None` when there's nothing to check, otherwise `all(...)` over the items.
+
+      The condition `i["evidence"] and i["evidence"] in case["transcript"]` has two parts joined by `and`:
+
+      - `i["evidence"]` is truthy only if the string is non-empty. Without it, an empty string would pass, because `"" in "any text"` is `True` in Python (the empty string is a substring of everything).
+      - `... in case["transcript"]` is a **substring test**: does this exact text appear somewhere in the transcript?
+
+      For `c5`, "I'll draft the launch email." is not in "Sam: I will draft the launch email.", so it fails. That's the point: a paraphrased quote can't be verified by a reader, so this check treats it as a failure. An AI-written version often drops the non-empty test, and then an extractor that returns blank evidence sails through.
+  - lines: [34, 39]
+    title: The check that only applies to empty meetings
+    text: |
+      This check is the mirror image of the other two: it returns `None` when items *are* expected, and only judges the meetings where the right answer is "nothing to do".
+
+      `len(case["items"]) == 0` is `True` when the list is empty. `c2` passes; `c4` fails because the extractor turned "Status update only" into a task. So this check applies to 2 of the 5 cases, and its pass rate is out of 2, not 5.
+  - lines: [40, 47]
+    title: The runner and its return shape
+    text: |
+      `run_suite` takes the cases and a list of check *functions*. In Python, functions are values like any other, so you can put them in a list and pass them around without calling them.
+
+      The docstring spells out the exact return shape: a dict keyed by check name, where each value has the pass rate, the number of applicable cases, and the ids that failed. Reporting `applicable` next to `pass_rate` is the "honest" part of the title: 100% of 1 case means something very different from 100% of 40.
+  - lines: [48, 59]
+    title: Counting passes, skipping what doesn't apply
+    text: |
+      The outer `for` loops over checks, the inner one over cases. `applicable, passed, failed = 0, 0, []` is **tuple unpacking**: three variables set on one line, and reset for each check.
+
+      For every case, call the check once and keep the result. Then:
+
+      - `if result is None: continue` skips the case entirely. `continue` jumps straight to the next case, so it counts toward neither passes nor the denominator.
+      - Otherwise, count it as applicable, then either count a pass or record the case id as a failure.
+
+      Note `is None`, not `not result`. Both `None` and `False` are falsy, so `if not result: continue` would quietly throw away every failure and report 100%. That is exactly the kind of one-word slip to look for when reviewing AI-written code.
+  - lines: [60, 65]
+    title: Building the result, with a safe division
+    text: |
+      `check.__name__` is the function's own name as a string, for example `"owners_are_attendees"`. Using it as the key means the report labels itself, and a renamed check renames its row automatically.
+
+      `passed / applicable if applicable else 0.0` is a **conditional expression** (Python's one-line if/else). It guards against dividing by zero when a check applied to no case at all. The 0.0 is a convention the exercise chose; the `applicable` count of 0 next to it tells the reader it means "no data", not "everything failed".
+
+      Worked values: the owner check applies to `c1`, `c3`, `c4`, `c5` (4 cases) and fails only `c3`, so its pass rate is 3 / 4 = 0.75.
+  - lines: [66, 70]
+    title: Running the suite and printing a report
+    text: |
+      `.items()` gives you each key and value of the result dict as a pair, which the loop unpacks into `name` and `r`.
+
+      The **f-string** formats each row: `{name:30s}` pads the name to 30 characters so the columns line up, and `{r['pass_rate']:.0%}` shows 0.75 as `75%`. Press **Run this code** to see the three rows, each with its own denominator and the ids to go and read.
+review:
+  - id: wt-unit-evals-not-result
+    type: code-reading
+    prompt: An AI assistant "simplifies" the inner loop of `run_suite` to the version below. What does the report now say for `owners_are_attendees`?
+    code: |
+      for case in cases:
+          result = check(case)
+          if not result:
+              continue
+          applicable += 1
+          passed += 1
+    options:
+      - id: a
+        text: "`75%` of 4, failed: `['c3']`, the same as before"
+        rationale: The original only skipped `None`. This version also skips `False`, so the failure never gets counted.
+      - id: b
+        text: "`100%` of 3, failed: `[]`"
+        correct: true
+        rationale: "Right. `not result` is true for both `None` and `False`, so `c3`'s failure is skipped along with the cases that don't apply. Only the three passes remain."
+      - id: c
+        text: It raises a `ZeroDivisionError`
+        rationale: Three cases still pass, so `applicable` is 3, not 0.
+    explanation: "`None` and `False` mean different things here (\"doesn't apply\" versus \"failed\"), but both are falsy. Any time code uses `None` as a special value, check that the comparison is `is None` and not a truthiness test. A suite that can only report 100% is worse than no suite, because people trust it."
+  - id: wt-unit-evals-denominator
+    type: mcq
+    prompt: You add ten more test meetings, all with no action items expected, and the extractor correctly returns nothing for all of them. What happens to the pass rate of `owners_are_attendees`?
+    options:
+      - id: a
+        text: It stays at 75% of 4
+        correct: true
+        rationale: The check returns `None` for meetings with no items, so the new cases don't enter its numerator or denominator.
+      - id: b
+        text: It rises to about 93% (13 of 14)
+        rationale: That's what you'd get if "no items" counted as a pass, which is the inflation this design avoids.
+      - id: c
+        text: It falls, because there are more cases overall
+        rationale: The denominator is applicable cases, not all cases.
+    explanation: The new meetings do move `no_items_when_none_expected`, from 50% of 2 to 11 of 12. Each check is graded only on the cases it can actually judge.
+  - id: wt-unit-evals-empty-evidence
+    type: scenario
+    prompt: Why does `evidence_in_transcript` test `i["evidence"]` on its own before the `in` test?
+    options:
+      - id: a
+        text: Because `in` raises an error on an empty string
+        rationale: It doesn't. `"" in "text"` simply returns `True`.
+      - id: b
+        text: Because the empty string is a substring of every string, so blank evidence would otherwise pass
+        correct: true
+        rationale: Exactly. Without the guard, an extractor that returns `""` for every quote gets a perfect evidence score.
+      - id: c
+        text: To make the check faster on long transcripts
+        rationale: Speed isn't the reason; correctness is.
+    explanation: Edge cases like empty strings, empty lists, and `None` are where graders most often go wrong, and where an AI-written check is most likely to be too generous. The exercise's tests include an empty-evidence case for exactly this reason.
+direct:
+  task: |
+    Your team wants a stricter owner rule: an item with no owner (`owner` is `None`) should now **fail** `owners_are_attendees`, because unassigned action items tend to be forgotten. You also want `run_suite` to report how many cases a check skipped, so a reader can see the full picture.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Make two changes to this eval script.
+
+    1. In owners_are_attendees, an item whose owner is None should now fail. Keep returning None when the case has no items at all, and keep failing owners who aren't in the attendee list.
+
+    2. In run_suite, add a "skipped" count to each check's result: the number of cases where the check returned None. Keep "pass_rate", "applicable", and "failed" exactly as they are now (pass_rate is still passes / applicable, 0.0 when nothing applies), and keep the "is None" test rather than a truthiness test.
+
+    Update the docstrings to match. Add asserts for: an item with owner None fails; a case with no items still returns None; and skipped + applicable equals the number of cases for every check.
+  checklist:
+    - owners_are_attendees still returns None for a case with no items
+    - An item with owner None now fails, and a non-attendee owner still fails
+    - run_suite still skips with `is None`, not `not result`
+    - pass_rate and applicable are unchanged, and the new skipped count plus applicable equals len(cases)
+    - The print line at the bottom still works (it reads only keys that still exist)
+    - New asserts cover each new rule

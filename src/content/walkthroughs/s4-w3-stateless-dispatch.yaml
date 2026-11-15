@@ -1,0 +1,193 @@
+id: s4-w3-stateless-dispatch
+summary: |
+  This is a tiny MCP server's request handler with one tool, `get_issue`. It takes a single JSON-RPC request (a dictionary) and returns the response dictionary, using nothing but that request. There is no session, no handshake, and no memory of earlier calls, which is what the stateless 2026-07-28 revision requires: every request carries its own protocol version and client capabilities in `_meta`.
+
+  The code is laid out as a series of checks from most general to most specific: is the request well formed, is the version supported, which method is it, which tool, which arguments. The most important design idea is the split between two kinds of failure. A **protocol error** (malformed request, unknown method, unknown tool) is a JSON-RPC `error` the host handles. A **tool execution error** (a bad issue id) is a normal `result` with `isError` true, written for the model to read and recover from.
+code: |
+  SUPPORTED = ["2026-07-28"]
+  VERSION_KEY = "io.modelcontextprotocol/protocolVersion"
+  CAPS_KEY = "io.modelcontextprotocol/clientCapabilities"
+
+  TOOLS = {
+      "get_issue": {
+          "description": "Get one issue by id, such as HAR-101.",
+          "inputSchema": {"type": "object", "properties": {"issue_id": {"type": "string"}},
+                          "required": ["issue_id"]},
+      }
+  }
+  ISSUES = {"HAR-101": "SSO login loops back to the sign-in page"}
+
+
+  def error(req_id, code, message, data=None):
+      err = {"code": code, "message": message}
+      if data is not None:
+          err["data"] = data
+      return {"jsonrpc": "2.0", "id": req_id, "error": err}
+
+
+  def result(req_id, body):
+      return {"jsonrpc": "2.0", "id": req_id, "result": {"resultType": "complete", **body}}
+
+
+  def text_result(req_id, text, is_error):
+      """A tools/call result: one text block, plus whether the tool failed."""
+      return result(req_id, {"content": [{"type": "text", "text": text}], "isError": is_error})
+
+
+  def handle(request):
+      """Return the JSON-RPC response for one request, using nothing but the request."""
+      req_id = request.get("id")
+      params = request.get("params") or {}
+      meta = params.get("_meta") or {}
+
+      # Every request says which protocol version it speaks, and what the client can do.
+      if VERSION_KEY not in meta or CAPS_KEY not in meta:
+          return error(req_id, -32602, "Missing required _meta fields")
+      version = meta[VERSION_KEY]
+      if version not in SUPPORTED:
+          return error(req_id, -32022, "Unsupported protocol version",
+                       {"supported": SUPPORTED, "requested": version})
+
+      method = request.get("method")
+      if method == "tools/list":
+          tools = [{"name": name, **spec} for name, spec in TOOLS.items()]
+          return result(req_id, {"tools": tools})
+
+      if method == "tools/call":
+          name = params.get("name")
+          if name not in TOOLS:
+              return error(req_id, -32602, f"Unknown tool: {name}")  # protocol error
+          issue_id = (params.get("arguments") or {}).get("issue_id")
+          if issue_id not in ISSUES:  # tool execution error: the model can read it and retry
+              known = ", ".join(ISSUES)
+              return text_result(req_id, f"No issue {issue_id!r}. Known ids: {known}.", True)
+          return text_result(req_id, ISSUES[issue_id], False)
+
+      return error(req_id, -32601, f"Method not found: {method}")
+
+
+  req = {"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+         "params": {"_meta": {VERSION_KEY: "2026-07-28", CAPS_KEY: {}}}}
+  print(handle(req))
+notes:
+  - lines: [1, 12]
+    title: The server's fixed facts
+    text: |
+      `SUPPORTED` lists the protocol versions this server speaks. `VERSION_KEY` and `CAPS_KEY` are the `_meta` keys every request must carry. Giving long string keys a name means a typo becomes a `NameError` you notice, not a silent mismatch.
+
+      `TOOLS` describes each tool the way `tools/list` must report it: a `description` the model reads, and an `inputSchema` (JSON Schema) that says `issue_id` is a required string. `ISSUES` is the fake database. In the real lab server these come from an SDK decorator and a data file, but the shapes are the same.
+  - lines: [15, 23]
+    title: Two response builders
+    text: |
+      Every response has `"jsonrpc": "2.0"` and echoes the request's `id`, so the client can match answers to questions. These two helpers mean that rule is written once instead of in every branch.
+
+      `error` builds a JSON-RPC error object and adds `data` only when there is some. `data=None` is a **default argument**, and the check is `is not None` rather than a truthiness test, so an empty dictionary passed deliberately would still be included.
+
+      `result` uses **dictionary unpacking**: `{"resultType": "complete", **body}` makes a new dictionary with `resultType` plus every key from `body`. In this revision every result carries a `resultType`, normally `"complete"`.
+  - lines: [26, 28]
+    title: A helper for tool results
+    text: |
+      A `tools/call` result is a list of content blocks plus an `isError` flag. This helper builds the one-text-block version so the success and failure paths below are each one readable line.
+
+      Naming the boolean parameter `is_error` and passing it explicitly (`True` or `False`) makes each call site say which kind of result it is. That is the distinction reviewers most need to see.
+  - lines: [31, 35]
+    title: Read the request defensively
+    text: |
+      `request.get("id")` uses **dict.get**, which gives `None` rather than raising `KeyError` if the key is missing.
+
+      `request.get("params") or {}` handles two cases at once: `params` missing (`get` returns `None`) and `params` present but `None`. The `or {}` substitutes an empty dictionary in both, so the next line can call `.get` safely. The same trick protects `meta`.
+
+      A handler receives whatever a client sends. Reading it this way means a malformed request produces a clean error response instead of a crash in the server.
+  - lines: [37, 43]
+    title: Version and capabilities on every request
+    text: |
+      Because there is no handshake, each request must say which version it speaks and what the client can do. A request missing either key is malformed, so it gets `-32602`, JSON-RPC's standard "invalid params" code.
+
+      A version the server doesn't support gets `-32022`, the code this revision uses for that case, with `data` saying both what is supported and what was asked. That lets a client fix itself (by retrying with a supported version) rather than just failing.
+
+      Order matters: these checks come before looking at the method, so even `tools/list` from an old client is rejected properly. An AI that ports an older tutorial might put version checking in an `initialize` method that this revision no longer has, so it would never run.
+  - lines: [45, 48]
+    title: tools/list
+    text: |
+      The list comprehension `[{"name": name, **spec} for name, spec in TOOLS.items()]` loops over the registry's key-value pairs (`.items()`) and builds one dictionary per tool: its name plus everything in its spec. The output has exactly the three fields the docstring asks for: `name`, `description`, and `inputSchema`.
+  - lines: [50, 58]
+    title: tools/call, and the two kinds of failure
+    text: |
+      First the tool name. An unknown tool is a **protocol error** (`-32602`): the request asked for something this server doesn't offer, and the host should handle that, not the model.
+
+      Then the argument. `(params.get("arguments") or {}).get("issue_id")` returns `None` if the arguments or the id are missing, and `None not in ISSUES` is true, so a missing id and an unknown id share one path. Both become a **tool execution error**: a normal result with `isError` true and a helpful message listing the known ids. `{issue_id!r}` in the f-string uses `!r` to show the value with quotes (`'HAR-999'`), which makes a blank or odd id visible.
+
+      The test for `HAR-999` checks exactly this split. A common AI mistake is to return a JSON-RPC error for a bad argument, which takes the message away from the model, so it can't see what went wrong and try again with a real id.
+  - lines: [60, 65]
+    title: Unknown methods, and a demo request
+    text: |
+      Anything that isn't `tools/list` or `tools/call` reaches the last line and gets `-32601`, JSON-RPC's standard "method not found". Putting this at the end as the catch-all means every unmatched method is handled, including ones invented in the future.
+
+      The demo sends one `tools/list` request with the required `_meta` and prints the response. Press **Run this code** to see the `resultType` and the tool list.
+review:
+  - id: wt-mcp-bad-arg-error
+    type: code-reading
+    prompt: 'An AI assistant changes the unknown-issue branch to the version below "for consistency, since all other failures are errors". What does a model calling `get_issue` with `HAR-999` experience now?'
+    code: |
+      if issue_id not in ISSUES:
+          return error(req_id, -32602, f"Unknown issue: {issue_id}")
+    options:
+      - id: a
+        text: The same as before; it still learns the id was wrong and can retry
+        rationale: A JSON-RPC error goes to the host, not into the tool result the model reads. Whether the model sees anything depends on the host.
+      - id: b
+        text: The failure becomes a protocol error, so the model may never see a message it can recover from, and the known ids are gone too
+        correct: true
+        rationale: Right. Tool execution errors belong in a result with isError true precisely so the model can read them and try again.
+      - id: c
+        text: The server crashes because -32602 is reserved for missing _meta
+        rationale: The code is reused for several invalid-params cases; nothing crashes.
+    explanation: '"Consistency" here erases a deliberate distinction. Protocol errors are for the host; execution errors are for the model. The test for HAR-999 checks for a result with isError true.'
+  - id: wt-mcp-check-order
+    type: predict-output
+    prompt: |
+      A client sends a request whose method is `resources/frobnicate` and whose `_meta` has both keys, with the version set to `"2025-06-18"`. Which error code comes back?
+    options:
+      - id: a
+        text: -32601, method not found
+        rationale: The method is unknown, but the version check runs first and fails first.
+      - id: b
+        text: -32022, unsupported protocol version
+        correct: true
+        rationale: Yes. The checks run general to specific, and the version check comes before method dispatch.
+      - id: c
+        text: -32602, missing _meta fields
+        rationale: Both keys are present; only the version's value is unsupported.
+    explanation: Reading the order of checks tells you which error wins when a request has several problems. Version first is right, since the server can't be sure what the method means in a version it doesn't speak.
+  - id: wt-mcp-stateless-why
+    type: scenario
+    prompt: What practical benefit does making `handle` depend on nothing but the request give a team running this server?
+    options:
+      - id: a
+        text: Each request can go to any server instance behind a load balancer, since none of them hold session state
+        correct: true
+        rationale: Exactly. Stateless servers scale horizontally, and each request can be tested on its own.
+      - id: b
+        text: It makes tool calls cheaper in tokens
+        rationale: Token cost is about what the model reads, not how the server stores state.
+      - id: c
+        text: It removes the need to validate requests
+        rationale: The opposite. Every request must be validated, because nothing was established earlier.
+    explanation: Stateless also means every request must carry everything needed to answer it, which is why the version and capabilities travel in `_meta` each time.
+direct:
+  task: |
+    You're adding a second tool, `list_issues`, that takes an optional `status` ("open" or "done") and returns matching issue ids. The issues data needs a status for that.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a second tool, list_issues, to this handler. Change ISSUES so each entry is {"title": ..., "status": "open" | "done"}, and update get_issue so it still returns just the title text exactly as now.
+
+    list_issues takes an optional "status" argument, declared in its inputSchema as {"type": "string", "enum": ["open", "done"]} and not required. With no status it returns all issue ids; with a status it returns only those ids, one per line in a single text block, isError False. An invalid status is a tool execution error (result with isError True and a message listing the allowed values), not a JSON-RPC error.
+
+    Do not change the _meta checks, the error codes, the unknown-tool handling, or the response shapes. Add tests for: tools/list now lists both tools, list_issues with no status, with "open", with an invalid status, and get_issue unchanged.
+  checklist:
+    - _meta and version checks still run before any method dispatch
+    - The invalid status comes back as isError True in a result, not as a JSON-RPC error
+    - get_issue's responses are byte-for-byte what they were, despite the new ISSUES shape
+    - The new tool's inputSchema declares status as an optional enum
+    - New tests cover both tools in tools/list and each list_issues case, and the original tests still pass

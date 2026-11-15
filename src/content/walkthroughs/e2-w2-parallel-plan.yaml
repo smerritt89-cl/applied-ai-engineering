@@ -1,0 +1,180 @@
+id: e2-w2-parallel-plan
+summary: |
+  This program plans which agent sessions can run at the same time. Given a list of tasks in priority order, what each task depends on, and which files each will modify, `waves` groups them into rounds ("waves"). Everything in a wave can run in parallel; each wave starts only after the previous one is finished and reviewed.
+
+  It is a greedy algorithm, the same one you'd run by hand on a whiteboard: walk the remaining tasks in priority order and add each one that is ready, doesn't collide with a file already claimed in this wave, and fits your review capacity. Then mark the wave done and repeat. If a pass adds nothing, no progress is possible, which means a dependency cycle (or a dependency on a task that doesn't exist), and the function says so instead of looping forever.
+code: |
+  def waves(tasks, depends_on, touches, max_parallel=3):
+      """Group tasks into waves that can run in parallel.
+
+      tasks: list of task names (in priority order)
+      depends_on: dict task -> list of tasks that must finish first
+      touches: dict task -> set of file paths the task will modify
+      A task joins a wave only if all its dependencies are in EARLIER waves, it shares
+      no file with a task already in the wave, and the wave has fewer than max_parallel
+      tasks (your review capacity). Raises ValueError if no progress is possible.
+      Returns a list of waves, each a list of task names in priority order.
+      """
+      done = set()
+      remaining = list(tasks)
+      out = []
+      while remaining:
+          wave, claimed_files = [], set()
+          for t in remaining:
+              if len(wave) >= max_parallel:
+                  break
+              if not set(depends_on.get(t, [])) <= done:
+                  continue  # a dependency hasn't finished yet
+              files = touches.get(t, set())
+              if files & claimed_files:
+                  continue  # would edit a file another task in this wave is editing
+              wave.append(t)
+              claimed_files |= files
+          if not wave:
+              raise ValueError("dependency cycle or unsatisfiable dependency among: " + ", ".join(remaining))
+          out.append(wave)
+          done |= set(wave)
+          remaining = [t for t in remaining if t not in done]
+      return out
+
+
+  TASKS = ["schema", "api", "ui", "docs", "emails", "metrics"]
+  DEPS = {"api": ["schema"], "ui": ["api"], "emails": ["schema"], "docs": []}
+  TOUCH = {
+      "schema": {"db/models.py", "db/migrations/0042.py"},
+      "api": {"api/rate_limit.py", "api/routes.py"},
+      "ui": {"web/settings.tsx"},
+      "docs": {"docs/api.md"},
+      "emails": {"notify/emails.py", "api/routes.py"},
+      "metrics": {"ops/metrics.py"},
+  }
+  for i, w in enumerate(waves(TASKS, DEPS, TOUCH), start=1):
+      print("wave", i, w)
+notes:
+  - lines: [1, 11]
+    title: Three inputs, three constraints
+    text: |
+      The inputs are plain data: a **list** for priority order, and two **dicts** keyed by task name. `max_parallel=3` is a **default argument** standing for your review capacity, the number of diffs you can review well at once.
+
+      The docstring states the three rules a task must pass to join a wave. Each becomes one `if` in the loop below, in the same order, which makes it easy to check the code against the spec line by line.
+  - lines: [12, 14]
+    title: The state
+    text: |
+      `done` is a **set** of finished tasks. Sets make "is X finished?" fast and, more importantly here, support the subset test used below. `remaining` is a copy of `tasks` (`list(tasks)` copies, so the function never changes the caller's list). `out` collects the waves.
+  - lines: [15, 19]
+    title: One wave per pass, with a capacity limit
+    text: |
+      `while remaining:` keeps going while any task is unscheduled (an empty list counts as false). Each pass starts a fresh wave and a fresh set of files claimed by that wave.
+
+      The capacity check comes first and uses `break`, not `continue`: once the wave is full, no later task can join it, so there's no point looking further. That's a small efficiency, and it also keeps priority order honest: the wave fills with the highest-priority ready tasks.
+  - lines: [20, 21]
+    title: Dependencies must be in earlier waves
+    text: |
+      `set(depends_on.get(t, [])) <= done` uses **`<=` on sets**, which means "is a subset of": every dependency of `t` is already done. `depends_on.get(t, [])` uses **dict.get** with a default, so a task missing from `DEPS` (like `metrics`) simply has no dependencies.
+
+      The crucial detail is *when* `done` is updated: only after a whole wave is built (line 30). So a task can't depend on another task in the same wave. That matches reality: two sessions that run at the same time can't use each other's output.
+  - lines: [22, 26]
+    title: No two tasks in a wave edit the same file
+    text: |
+      `files & claimed_files` is **set intersection**: the files both sets contain. A non-empty set is true, so any overlap skips the task. `claimed_files |= files` is in-place **union**: add this task's files to the wave's claims.
+
+      Why does this matter? Two agent sessions editing `api/routes.py` at once produce a merge conflict, and resolving it costs more than waiting a wave. In the sample, `api` and `emails` both touch `api/routes.py`, so whichever comes first in priority order (`api`) goes first and `emails` waits.
+  - lines: [27, 28]
+    title: Detect "no progress"
+    text: |
+      If a whole pass adds nothing to the wave, the remaining tasks can never become ready: each is waiting for something that will never finish. That happens with a cycle (`a` needs `b` and `b` needs `a`) or a dependency on a task that isn't in the list. Raising `ValueError` with the stuck tasks in the message turns an infinite loop into a clear error.
+
+      Could a file conflict alone cause this? No: when the wave is empty, nothing has claimed any files yet, so a ready task always gets in. An empty wave really does mean a dependency problem.
+
+      `", ".join(remaining)` builds the readable list `"a, b"`.
+  - lines: [29, 32]
+    title: Close the wave and move on
+    text: |
+      The wave is recorded, its tasks are added to `done` all at once (`done |= set(wave)`), and `remaining` is rebuilt without them using a list comprehension that preserves priority order.
+
+      Worked trace of the sample:
+
+      - Wave 1: `schema` (no deps), `api` skipped (needs schema), `ui` skipped, `docs` joins, `emails` skipped, `metrics` joins. Result `["schema", "docs", "metrics"]`.
+      - Wave 2: `api` joins and claims `api/routes.py`; `ui` still waits for `api`; `emails` is ready but collides on `api/routes.py`. Result `["api"]`.
+      - Wave 3: `["ui", "emails"]`.
+  - lines: [35, 46]
+    title: The sample plan
+    text: |
+      `TOUCH` uses **set literals** (curly braces with no colons) for each task's files. The loop at the end uses `enumerate(..., start=1)` to number waves from 1.
+
+      Try the lesson's experiment: change the call to `waves(TASKS, DEPS, TOUCH, max_parallel=6)`. You still get three waves, because dependencies and the shared file bind before review capacity does. That's typical, and it's a useful thing to know before you open six terminals.
+review:
+  - id: wt-waves-done-early
+    type: code-reading
+    prompt: An AI assistant "simplifies" the bookkeeping by marking each task done as soon as it joins a wave. What is the first wave for the sample now?
+    code: |
+      for t in remaining:
+          if len(wave) >= max_parallel:
+              break
+          if not set(depends_on.get(t, [])) <= done:
+              continue
+          files = touches.get(t, set())
+          if files & claimed_files:
+              continue
+          wave.append(t)
+          claimed_files |= files
+          done.add(t)
+    options:
+      - id: a
+        text: "`[\"schema\", \"docs\", \"metrics\"]`, as before"
+        rationale: Once `schema` is added to `done` mid-pass, `api` looks ready immediately, so it joins too.
+      - id: b
+        text: "`[\"schema\", \"api\", \"ui\"]`"
+        correct: true
+        rationale: Right. Each task unlocks the next within the same pass, so the whole dependency chain lands in one wave, which is exactly what the rules forbid.
+      - id: c
+        text: It raises ValueError
+        rationale: Nothing is stuck; the bug makes tasks look ready too early, not too late.
+    explanation: The difference between "done when the wave finishes" and "done when scheduled" is one line, and it breaks the core rule. Tests that check the exact contents of each wave catch it; a test that only checks that every task got scheduled would not.
+  - id: wt-waves-capacity
+    type: predict-output
+    prompt: "How many waves does `waves(TASKS, DEPS, TOUCH, max_parallel=6)` produce?"
+    options:
+      - id: a
+        text: "2"
+        rationale: "`ui` needs `api`, which needs `schema`, so at least three waves are needed whatever the capacity."
+      - id: b
+        text: "3"
+        correct: true
+        rationale: Right. The waves are identical to the default run. Capacity was never the binding constraint.
+      - id: c
+        text: "6"
+        rationale: Raising capacity can only merge waves, never split them.
+    explanation: The longest dependency chain sets a floor on the number of waves. More parallel sessions only help when many tasks are ready at once and don't share files.
+  - id: wt-waves-missing-dep
+    type: scenario
+    prompt: "`DEPS` says `\"emails\": [\"templates\"]`, but there's no task called `templates`. What happens?"
+    options:
+      - id: a
+        text: "`emails` is scheduled in the first wave, since its dependency doesn't exist"
+        rationale: The subset test requires "templates" to be in `done`, and it never will be.
+      - id: b
+        text: The other tasks are scheduled, then ValueError is raised naming `emails`
+        correct: true
+        rationale: Right. Once everything else is done, a pass adds nothing, and the error lists the stuck task. The message says "cycle or unsatisfiable dependency" because it can't tell which.
+      - id: c
+        text: The loop runs forever
+        rationale: The empty-wave check exists precisely to stop that.
+    explanation: A guard that turns "no progress" into an error is cheap insurance in any loop that waits for a condition. The message could be clearer about which dependency is missing, which is the change in the "direct" task.
+direct:
+  task: |
+    When a task depends on something that isn't in `tasks` (a typo, or a task someone forgot to add), the error says "dependency cycle or unsatisfiable dependency". Make that case fail fast with a clear message instead.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    At the start of waves, before any scheduling, check every entry in depends_on: if a task lists a dependency that is not in tasks, raise ValueError with a message naming both, for example "emails depends on templates, which is not in tasks". Check in priority order and report the first problem found. Ignore depends_on entries for tasks that aren't in tasks themselves.
+
+    Keep the existing empty-wave check and its message for real cycles. Don't change the scheduling rules, the wave order, or the return value.
+
+    Update the docstring. Add asserts: a missing dependency raises ValueError whose message contains both names; the two-task cycle still raises ValueError; and the sample still produces [["schema", "docs", "metrics"], ["api"], ["ui", "emails"]].
+  checklist:
+    - The up-front check runs before scheduling and names both the task and the missing dependency
+    - Real cycles still raise ValueError through the existing empty-wave check
+    - The waves for the sample are exactly the same as before
+    - "`done` is still updated only after a wave is complete"
+    - Asserts check the error message content, not just the exception type

@@ -1,0 +1,214 @@
+id: capstone-scope-risk-scorer
+summary: |
+  This program checks a capstone plan against the course's requirements. `scope_problems` reads a scope description and lists what is missing or under-sized (no failure metric, too few eval cases, too little time budgeted for evaluation, and so on). `rank_risks` sorts a risk register by exposure (likelihood times impact) and flags risks that have no owner, or that are serious and have no mitigation.
+
+  Both functions return lists of plain strings in a fixed order, so the output doubles as a to-do list and is easy to test exactly. A small shared helper, `_blank`, decides what counts as "not filled in", so the rule is written once and both functions apply it the same way. The checker confirms that things exist; whether your failure metric is the right one is still a judgment for you and your reviewer.
+code: |
+  def _blank(value):
+      """True for None, empty strings, and whitespace-only strings."""
+      return value is None or not str(value).strip()
+
+
+  def scope_problems(scope):
+      """Return a list of problems with a capstone scope, in this order:
+        "no named user"            scope["user"] is blank
+        "no success metric"        scope["success_metric"] is blank
+        "no failure metric"        scope["failure_metric"] is blank
+        "no baseline"              scope["baseline"] is blank
+        "eval set under 100"       scope["eval_cases"] < 100
+        "held-out under 25%"       scope["held_out"] / scope["eval_cases"] < 0.25
+        "no should-abstain cases"  scope["should_abstain"] == 0
+        "too many tools"           more than 5 tools
+        "eval time under 40%"      scope["eval_hours"] / scope["total_hours"] < 0.40
+      Treat None and whitespace-only strings as blank.
+      """
+      problems = []
+      for key, problem in [
+          ("user", "no named user"),
+          ("success_metric", "no success metric"),
+          ("failure_metric", "no failure metric"),
+          ("baseline", "no baseline"),
+      ]:
+          if _blank(scope.get(key)):
+              problems.append(problem)
+      n = scope.get("eval_cases", 0)
+      if n < 100:
+          problems.append("eval set under 100")
+      if n == 0 or scope.get("held_out", 0) / n < 0.25:
+          problems.append("held-out under 25%")
+      if scope.get("should_abstain", 0) == 0:
+          problems.append("no should-abstain cases")
+      if len(scope.get("tools", [])) > 5:
+          problems.append("too many tools")
+      if scope.get("eval_hours", 0) / scope["total_hours"] < 0.40:
+          problems.append("eval time under 40%")
+      return problems
+
+
+  def rank_risks(risks):
+      """Return (ranked_ids, flags).
+      ranked_ids: risk ids sorted by exposure (likelihood * impact), highest first; break ties by id ascending.
+      flags: list of (id, problem) in ranked order, where problem is
+        "no owner"       if the owner is blank (check this first)
+        "no mitigation"  if exposure >= 12 and the mitigation is blank
+      """
+      def exposure(r):
+          return r["likelihood"] * r["impact"]
+
+      ordered = sorted(risks, key=lambda r: (-exposure(r), r["id"]))
+      flags = []
+      for r in ordered:
+          if _blank(r.get("owner")):
+              flags.append((r["id"], "no owner"))
+          elif exposure(r) >= 12 and _blank(r.get("mitigation")):
+              flags.append((r["id"], "no mitigation"))
+      return [r["id"] for r in ordered], flags
+
+
+  SCOPE = {
+      "user": "Proposal writer at an education-services firm",
+      "success_metric": "Complete, checked compliance matrix in under 1 hour (today about 4)",
+      "failure_metric": "",
+      "baseline": "Single long-context model call, no retrieval or checks",
+      "eval_cases": 80,
+      "held_out": 16,
+      "should_abstain": 0,
+      "tools": ["search_rfp", "search_capabilities", "classify", "export_xlsx", "email_team", "web_search", "calendar"],
+      "eval_hours": 18,
+      "total_hours": 70,
+  }
+
+  RISKS = [
+      {"id": "cost", "risk": "Long RFPs make each run expensive", "likelihood": 2, "impact": 3, "owner": "me", "mitigation": ""},
+      {"id": "inject", "risk": "Instructions hidden in an RFP steer the agent", "likelihood": 3, "impact": 4, "owner": "", "mitigation": "Injection suite in CI"},
+      {"id": "labels", "risk": "Hand labels are inconsistent", "likelihood": 4, "impact": 4, "owner": "me", "mitigation": "Second labeler on 30 cases"},
+      {"id": "license", "risk": "Some RFPs can't be redistributed", "likelihood": 2, "impact": 5, "owner": "me", "mitigation": ""},
+      {"id": "scope", "risk": "Features added without cuts", "likelihood": 4, "impact": 5, "owner": "me", "mitigation": "  "},
+  ]
+
+  print(scope_problems(SCOPE))
+  print(rank_risks(RISKS))
+notes:
+  - lines: [1, 3]
+    title: One definition of "blank"
+    text: |
+      `_blank` returns True for `None`, an empty string, or a string of only spaces. The leading underscore is a Python **convention** for "internal helper, not part of the public interface".
+
+      `str(value).strip()` converts the value to a string and removes whitespace from both ends; an empty result is **falsy**, so `not ...` is True. The `value is None or ...` part comes first and **short-circuits**: if the value is None, Python never evaluates the right side. (`str(None)` would be the string "None", which is not blank, so the order matters.)
+
+      Centralizing this is the design point. The risk register has a mitigation of `"  "` (two spaces) and the tests try a user of `"   "`. If each check wrote its own `== ""`, some would catch whitespace and some wouldn't.
+  - lines: [6, 18]
+    title: The requirements, written as a docstring
+    text: |
+      The docstring lists every problem string with its exact condition, in the order they must appear. As with any rule-based checker, the fastest review is to hold each `if` below against its line here.
+
+      Note the thresholds: at least 100 eval cases, at least 25% held out, at least one case where the system should abstain, at most five tools, and at least 40% of hours on evaluation. These encode this capstone's requirements; a real team would set its own.
+  - lines: [19, 27]
+    title: The four required text fields, as a table
+    text: |
+      `problems = []` starts the result. The `for` loop walks a list of `(key, problem)` **tuples** and unpacks each into two names. For each one, `scope.get(key)` looks the field up; **`dict.get`** returns `None` instead of raising `KeyError` when the key is missing, and `_blank(None)` is True, so a missing field and an empty one are treated the same.
+
+      Driving four identical checks from a small table, rather than writing four nearly identical `if` blocks, makes the order explicit and means a new required field is a one-line addition. The list order matches the docstring order, which is what keeps the output order right.
+  - lines: [28, 32]
+    title: Eval size and held-out share, with a divide-by-zero guard
+    text: |
+      `n = scope.get("eval_cases", 0)` uses `dict.get` with a **default** of 0, so a missing count is treated as no cases.
+
+      The held-out check is `n == 0 or held_out / n < 0.25`. Because `or` short-circuits, when `n` is 0 the division never runs, so there is no `ZeroDivisionError`, and having no eval set at all correctly counts as failing the held-out rule.
+
+      The comparison is strict `<`, so exactly 25% passes, which one of the tests checks (25 of 100). With the sample scope, 16 of 80 is 20%, so it's flagged.
+  - lines: [33, 39]
+    title: Abstain cases, tool count, and eval time
+    text: |
+      `len(scope.get("tools", []))` counts tools, defaulting to an empty list. The sample lists seven tools, more than five, so it's flagged. The lesson's point is that every extra tool is another thing to evaluate.
+
+      The eval-time check divides by `scope["total_hours"]` with square brackets, not `.get`. That is inconsistent with the rest of the function: a missing `total_hours` raises `KeyError`, and a zero raises `ZeroDivisionError`. You could argue that is right (a plan with no hours is not a plan, and failing loudly beats guessing), but it is the kind of inconsistency a reviewer should notice and decide on deliberately. With the sample, 18 of 70 hours is about 26%, under 40%, so it's flagged.
+  - lines: [42, 52]
+    title: Rank by exposure, ties broken by id
+    text: |
+      `exposure` is a **nested function**, defined inside `rank_risks` because nothing else needs it. It returns likelihood times impact, the usual risk-matrix score.
+
+      `sorted(risks, key=lambda r: (-exposure(r), r["id"]))` sorts by a **tuple key**. Python compares tuples element by element: first by the first item, and only if those tie, by the second. Negating exposure makes higher exposure sort first (sorting is ascending by default), and the id breaks ties alphabetically.
+
+      Why not `reverse=True`? Because that would reverse the id order too, sorting ties from z to a. The negation trick lets one key run descending and the other ascending. With the sample risks the exposures are scope 20, labels 16, inject 12, license 10, cost 6.
+  - lines: [53, 59]
+    title: Flags in ranked order, owner checked first
+    text: |
+      The loop walks the **ranked** list, so the flags come out in priority order, which is the order you'd want to fix them in.
+
+      `if ... elif ...` means each risk gets at most one flag, and "no owner" wins. That matches the docstring's "check this first": a risk without an owner has nobody to write the mitigation, so that is the problem to fix first.
+
+      The mitigation check applies only when exposure is at least 12. "scope" (exposure 20) has a mitigation of two spaces, which `_blank` treats as missing, so it's flagged. "license" (10) and "cost" (6) have no mitigation either, but they're below the threshold.
+
+      The function returns a **tuple** of two lists: the ranked ids and the flags.
+  - lines: [62, 84]
+    title: A sample plan with problems on purpose
+    text: |
+      The sample scope is a realistic draft: a named user and a success metric, but no failure metric, 80 eval cases with 16 held out, no abstain cases, seven tools, and 18 of 70 hours on evaluation. It produces six of the nine possible problems.
+
+      The risk register mixes good entries with three kinds of gap: a missing owner (inject), a whitespace-only mitigation (scope), and blank mitigations on lower-exposure risks that shouldn't be flagged (license, cost). Sample data that exercises each branch like this is what makes a demo useful for review.
+review:
+  - id: wt-srs-reverse
+    type: code-reading
+    prompt: An AI assistant rewrites the sort as below, calling it "more readable." The sample `RISKS` still rank correctly. What happens on the tie test, where "b" (2 times 2) is listed before "a" (4 times 1)?
+    code: |
+      ordered = sorted(risks, key=exposure, reverse=True)
+    options:
+      - id: a
+        text: '`["b", "a"]`, because equal keys keep their original order and "b" came first'
+        correct: true
+        rationale: Right. Python's sort is stable, even with `reverse=True`, so tied items stay in input order. The tie-break by id is lost, and the test fails.
+      - id: b
+        text: '`["a", "b"]`, the same as before'
+        rationale: This key has no id in it, so nothing breaks the tie by name.
+      - id: c
+        text: It raises TypeError because the dicts can't be compared
+        rationale: The key returns numbers, so Python never compares the dicts themselves.
+    explanation: The sample data has no ties, so this regression only shows up on the dedicated tie test. When a spec mentions a tie-break, look for it explicitly in the key, and keep a test with a tie in it.
+  - id: wt-srs-if-if
+    type: predict-output
+    prompt: Suppose the `elif` on line 57 became a plain `if`. Which output would change on the sample data?
+    options:
+      - id: a
+        text: The flags would include `("inject", "no mitigation")` too
+        rationale: inject has a mitigation ("Injection suite in CI"), so the second check is false for it either way.
+      - id: b
+        text: Nothing on the sample data, but a high-exposure risk with no owner and no mitigation would now get two flags
+        correct: true
+        rationale: Right. No sample risk is missing both, so the output is the same. The change would only show up on a case none of the tests try.
+      - id: c
+        text: The ranked ids would change order
+        rationale: The flags loop doesn't affect the sort, which happens before it.
+    explanation: The docstring's "check this first" implies one flag per risk with owner taking priority. A test with a risk that has neither owner nor mitigation would pin that down; it's a good one to ask an AI to add.
+  - id: wt-srs-design
+    type: scenario
+    prompt: The checker returns `[]` for your scope. Your reviewer still sends it back, saying your failure metric "measures the wrong thing." What does that tell you about this tool?
+    options:
+      - id: a
+        text: The checker has a bug, since it should have caught the bad metric
+        rationale: It never claimed to judge quality. It checks that a failure metric exists.
+      - id: b
+        text: Add a rule that the failure metric must be at least 20 characters long
+        rationale: That checks length, not meaning, and would teach people to pad text.
+      - id: c
+        text: The checker confirms structure (fields present, sizes and shares above thresholds), and judging whether the metrics are the right ones stays with you and your reviewer
+        correct: true
+        rationale: Right. Automated checks catch omissions cheaply, which frees reviewers to spend their time on judgment.
+    explanation: This is the same split you've seen with model output. Automate the checks that are mechanical, and keep a person on the ones that need judgment.
+direct:
+  task: |
+    Your team wants a warning when the held-out set is so small that results on it will be noisy, even if it meets the 25% share. Add a problem "held-out under 30 cases" when fewer than 30 cases are held out.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In scope_problems, add one new problem string, "held-out under 30 cases", raised when scope.get("held_out", 0) < 30. Place it directly after "held-out under 25%" in the output order, and add it to the docstring list in the same position.
+
+    Do not change _blank, rank_risks, any existing threshold, the existing problem strings, or their order. Keep using dict.get with defaults for the new check.
+
+    Update the existing SCOPE test to expect the new string (16 held out) in the right position. Add asserts: the "good" scope (30 held out) has no problems; dict(good, held_out=29, eval_cases=116) gets only "held-out under 30 cases"; a scope with eval_cases=0 gets both held-out problems without raising.
+  checklist:
+    - Exactly one new check and one new docstring line were added, in the stated position
+    - Existing strings, thresholds, and order are unchanged, and rank_risks is untouched
+    - The new check uses dict.get with a default, like its neighbors
+    - The updated SCOPE test and the new boundary test (29 versus 30) both pass
+    - A zero-case scope still doesn't raise ZeroDivisionError

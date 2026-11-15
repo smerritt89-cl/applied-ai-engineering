@@ -1,0 +1,179 @@
+id: s4-w1-minimal-loop
+summary: |
+  This is an agent loop with nothing hidden: call the model, do what it asks, show it the result, and repeat until it gives a final answer or runs out of budget. Every agent framework you will meet wraps this same shape in more machinery.
+
+  The "model" is a plain Python function passed in as an argument, so the loop can be tested with a scripted fake that never calls an API. That one design choice is what lets you check the loop's control logic (stopping, budgets, bad tool names) cheaply and repeatably before any real model is involved.
+code: |
+  import json
+
+
+  def search_tickets(query):
+      """A stand-in tool: return the tickets for a keyword, as JSON text."""
+      data = {"login": ["T-101 login fails on SSO", "T-140 password reset loop"],
+              "export": ["T-122 CSV export times out"]}
+      return json.dumps(data.get(query, []))
+
+
+  TOOLS = {"search_tickets": search_tickets}
+
+
+  def run_agent(task, model, tools, max_steps=5):
+      """Run a think-act-observe loop with a hard budget on model calls.
+
+      model(history) returns {"type": "final", "text": ...} or
+      {"type": "tool", "name": ..., "args": {...}}. "steps" counts model calls.
+      """
+      history = [{"role": "user", "content": task}]
+
+      for step in range(1, max_steps + 1):
+          reply = model(history)
+          history.append({"role": "assistant", "content": reply})
+
+          if reply["type"] == "final":
+              return {"status": "done", "answer": reply["text"], "steps": step}
+
+          tool = tools.get(reply["name"])
+          if tool is None:
+              available = ", ".join(sorted(tools))
+              result = f"Error: unknown tool '{reply['name']}'. Available tools: {available}"
+          else:
+              result = tool(**reply["args"])
+          history.append({"role": "tool", "content": result})
+
+      return {"status": "budget_exceeded", "answer": None, "steps": max_steps}
+
+
+  def demo_model(history):
+      """A scripted fake model: search once, then answer from what it saw."""
+      if history[-1]["role"] == "user":
+          return {"type": "tool", "name": "search_tickets", "args": {"query": "login"}}
+      return {"type": "final", "text": "Found: " + history[-1]["content"]}
+
+
+  print(run_agent("Find login bugs", demo_model, TOOLS))
+notes:
+  - lines: [1, 11]
+    title: A fake tool and the tool registry
+    text: |
+      `search_tickets` stands in for a real tool. It looks up a keyword in a small dictionary and returns the matches as a string. `data.get(query, [])` is **dict.get with a default**: if the keyword isn't a key, you get an empty list instead of a `KeyError` crash.
+
+      `json.dumps` turns the Python list into JSON text. Tool results are always text by the time a model sees them, so returning a string here mirrors the real thing.
+
+      `TOOLS` is a **registry**: a dictionary from the name the model uses to the Python function that does the work. The model never runs code itself. It names a tool, and your code decides whether that name maps to anything. That gap is where every safety check in this studio will live.
+  - lines: [14, 20]
+    title: The signature, the docstring, and the history
+    text: |
+      `run_agent` takes the task, the `model` (any function that accepts a history and returns a reply), the tool registry, and `max_steps=5`, a **default argument** that caps the number of model calls.
+
+      Passing `model` in, rather than calling an API inside the function, is **dependency injection**. In production you pass a function that calls Claude; in a test you pass a script. The loop doesn't know or care which.
+
+      `history` starts as a list with one dictionary: the user's task. This list is the agent's entire memory. Every call sends the whole list, which is why agent cost grows with every step (you'll compute that in lesson 3).
+  - lines: [22, 24]
+    title: The loop, with the budget built in
+    text: |
+      `for step in range(1, max_steps + 1)` counts `1, 2, ... max_steps`. `range` stops before its second argument, so the `+ 1` is what makes the last step equal to `max_steps`. Starting at 1 means `step` is already the number of model calls made so far, which is what the return value needs.
+
+      Using a `for` loop instead of `while True` makes the budget impossible to forget: the loop cannot run more than `max_steps` times, whatever the model does.
+
+      The model's reply is appended to `history` immediately, before anything else happens. The tests check this: on the second call, the model must see its own tool request just before the tool's result, or it has no record of what it asked for.
+  - lines: [26, 27]
+    title: Stop on a final answer
+    text: |
+      If the model says it's finished, return right away with `status`, `answer`, and `steps`. Returning a small dictionary with a status field (instead of just the text) means the caller can tell "done" from "gave up" without guessing from the content.
+
+      With the demo model, this happens on step 2, so the result is `{"status": "done", ..., "steps": 2}`.
+  - lines: [29, 35]
+    title: Run the tool, or explain why not
+    text: |
+      `tools.get(reply["name"])` looks the name up and gives `None` if the model invented a tool. In the tests, the model asks for `delete_ticket`, which doesn't exist.
+
+      Instead of raising an exception, the code builds an **error observation**: a message that says what went wrong and lists the real tools, using an **f-string** (`f"...{expression}..."` drops values into text). `", ".join(sorted(tools))` iterates over the dictionary's keys, sorts them, and joins them with commas. The model reads this on its next turn and can correct itself, which is usually what happens.
+
+      `tool(**reply["args"])` uses **keyword unpacking**: `**{"query": "login"}` becomes `query="login"`, so the model's argument names must match the function's parameter names.
+
+      A common mistake in AI-written loops is to let an unknown tool raise `KeyError` (with `tools[reply["name"]]`), which crashes the whole run over one recoverable slip. Another is to reply with a bare "error" that doesn't list the alternatives, which leaves the model guessing.
+  - lines: [37, 37]
+    title: The budget ran out
+    text: |
+      This line runs only if the `for` loop finished without a `return`, meaning the model was called `max_steps` times and never gave a final answer. The result says so explicitly, with `answer` set to `None`.
+
+      This is the guard against a model that loops forever (the second test feeds it the same tool request ten times). Without it you'd pay for calls until something else stopped you. In a real system you'd log this status and treat it as a failure to investigate, not a quiet empty answer.
+  - lines: [40, 47]
+    title: A scripted model for the demo
+    text: |
+      `demo_model` looks at the last entry in the history. If it's the user's task, it asks for a search; otherwise it answers with whatever the tool returned. `history[-1]` is **negative indexing**: index `-1` is the last item in a list.
+
+      This is the same trick the exercise's tests use: a fake model that follows a script, so you can predict exactly what the loop should do. Press **Run this code** to see the two-step run end in `status: done`.
+review:
+  - id: wt-loop-while-true
+    type: code-reading
+    prompt: An AI assistant rewrites the loop as below to "simplify the counting". What happens when the model keeps asking for a tool and never gives a final answer?
+    code: |
+      step = 0
+      while True:
+          step += 1
+          reply = model(history)
+          history.append({"role": "assistant", "content": reply})
+          if reply["type"] == "final":
+              return {"status": "done", "answer": reply["text"], "steps": step}
+          result = tools[reply["name"]](**reply["args"])
+          history.append({"role": "tool", "content": result})
+    options:
+      - id: a
+        text: It stops after `max_steps` calls, like the original
+        rationale: Nothing in this version reads `max_steps`. The budget check disappeared with the `for` loop.
+      - id: b
+        text: It keeps calling the model indefinitely, and it also crashes if the model names an unknown tool
+        correct: true
+        rationale: Right. There is no budget at all, and `tools[...]` raises `KeyError` for a made-up name instead of returning an error observation.
+      - id: c
+        text: It raises an error after five steps
+        rationale: There is no code that counts against a limit. A scripted fake would eventually run out of replies, but a real model would just keep going.
+    explanation: Two safety properties vanished in a "cleanup" that looks harmless. This is why the budget belongs in the loop's structure (a bounded `for`), and why the tests include a model that never stops.
+  - id: wt-loop-append-order
+    type: predict-output
+    prompt: With the demo model, what does `history` contain at the moment the model is called for the second time?
+    options:
+      - id: a
+        text: The user task, then the tool result
+        rationale: That skips the model's own tool request, which is appended first.
+      - id: b
+        text: The user task, the model's tool request, then the tool result
+        correct: true
+        rationale: Yes. Lines 24 and 35 append the request and then the observation, so the model sees what it asked for and what came back.
+      - id: c
+        text: Only the tool result, because each call starts fresh
+        rationale: The whole history is resent every call. That's the agent's memory, and also its growing cost.
+    explanation: The order matters to real APIs too. Claude's API expects each tool result to follow the assistant message that requested it.
+  - id: wt-loop-why-inject
+    type: scenario
+    prompt: A teammate asks why `run_agent` takes `model` as a parameter instead of calling the Claude API directly inside the loop. What's the strongest reason?
+    options:
+      - id: a
+        text: It makes production calls faster
+        rationale: It has no effect on speed.
+      - id: b
+        text: You can test stopping, budgets, and error handling with a scripted fake, offline and repeatably
+        correct: true
+        rationale: Exactly. A real model is slow, costs money, and varies from run to run, which makes it a poor way to test control logic.
+      - id: c
+        text: The API requires the client to be passed as an argument
+        rationale: It doesn't. This is a design choice for testability.
+    explanation: Separate the loop's logic from the model behind it. You test the logic with fakes and the model's behavior with evals; they answer different questions.
+direct:
+  task: |
+    You want to stop runaway tool use more precisely: the agent should also stop if it requests the same tool with the same arguments three times in a row, since that usually means it's stuck.
+
+    Write the prompt you'd give a coding assistant to add that.
+  prompt: |
+    In run_agent, add loop detection: if the model requests the same tool with exactly the same args on three consecutive steps, stop and return {"status": "stuck", "answer": None, "steps": <model calls so far>}. Do not run the tool on that third repeat.
+
+    Keep everything else exactly as it is: the max_steps budget, the history format and append order, the error observation for unknown tools, and the existing return values for "done" and "budget_exceeded".
+
+    Add tests with a scripted model for: three identical requests in a row (returns "stuck" after 3 calls), the same tool with different args (not stuck), and two identical requests followed by a final answer (returns "done").
+  checklist:
+    - The existing three tests still pass unchanged
+    - Repeats are compared on both tool name and args, and only consecutive repeats count
+    - The third repeated request is not executed, and "steps" equals the number of model calls
+    - max_steps still caps the loop even when no repeats occur
+    - New tests cover stuck, not-stuck-with-different-args, and recovered-before-the-limit cases

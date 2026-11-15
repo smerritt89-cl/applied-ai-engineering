@@ -2,6 +2,13 @@
 
 **Goes with:** Studio 4, week 4 (lessons 10 to 12). **Time:** about 75 minutes.
 
+## Review track
+
+Read the code instead of writing it first: open `WALKTHROUGH.md` for a guided tour of `solution.py` (your
+`work.py` starts as a copy of it), then do `CHANGE.md`, where you direct a coding assistant to relax one guard rule
+safely and check its work with `test_change.py`. The write-track steps below still apply if you want to build it
+yourself.
+
 ## Goal
 
 Build the safety layer of a status-report agent and prove it works:

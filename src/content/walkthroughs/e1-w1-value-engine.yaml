@@ -1,0 +1,219 @@
+id: e1-w1-value-engine
+summary: |
+  This is a complete scalar autograd engine in about sixty lines: a `Value` class that wraps one number, records which operation produced it and from which inputs, and can then compute the derivative of a final output with respect to every input. It is reverse-mode automatic differentiation, the same algorithm PyTorch runs, minus the tensors.
+
+  The design splits the work in two. Each operation (`+`, `*`, `tanh`) knows only its own local derivative and stores a tiny function that applies the chain rule for that one step. `backward()` then visits the whole graph once, in an order that guarantees every node's gradient is complete before it is passed further back. Keeping the local rule next to the forward computation is what lets you add a new operation without touching anything else.
+code: |
+  import math
+
+
+  class Value:
+      """A scalar that remembers how it was computed, so it can backpropagate."""
+
+      def __init__(self, data, _children=(), _op=""):
+          self.data = data
+          self.grad = 0.0
+          self._backward = lambda: None   # set by the operation that creates this node
+          self._prev = set(_children)
+          self._op = _op
+
+      def __repr__(self):
+          return f"Value(data={self.data:.4f}, grad={self.grad:.4f})"
+
+      def __add__(self, other):
+          other = other if isinstance(other, Value) else Value(other)
+          out = Value(self.data + other.data, (self, other), "+")
+
+          def _backward():
+              # d(out)/d(self) = 1 and d(out)/d(other) = 1. Use += because gradients accumulate.
+              self.grad += out.grad
+              other.grad += out.grad
+
+          out._backward = _backward
+          return out
+
+      def __mul__(self, other):
+          other = other if isinstance(other, Value) else Value(other)
+          out = Value(self.data * other.data, (self, other), "*")
+
+          def _backward():
+              # d(out)/d(self) = other.data and d(out)/d(other) = self.data.
+              self.grad += other.data * out.grad
+              other.grad += self.data * out.grad
+
+          out._backward = _backward
+          return out
+
+      def tanh(self):
+          t = math.tanh(self.data)
+          out = Value(t, (self,), "tanh")
+
+          def _backward():
+              # d tanh(x)/dx = 1 - tanh(x)**2, and we already have t = tanh(x).
+              self.grad += (1 - t * t) * out.grad
+
+          out._backward = _backward
+          return out
+
+      def backward(self):
+          """Fill in .grad for every node that feeds into this one."""
+          topo, visited = [], set()
+
+          def build(v):
+              if v not in visited:
+                  visited.add(v)
+                  for child in v._prev:
+                      build(child)
+                  topo.append(v)   # appended only after everything it depends on
+
+          build(self)
+          self.grad = 1.0   # d(self)/d(self)
+          for v in reversed(topo):
+              v._backward()
+
+
+  # The neuron from the video: o = tanh(x1*w1 + x2*w2 + b)
+  x1, x2 = Value(2.0), Value(0.0)
+  w1, w2 = Value(-3.0), Value(1.0)
+  b = Value(6.8813735870195432)
+  o = (x1 * w1 + x2 * w2 + b).tanh()
+  o.backward()
+  print(o)
+  print("x1", x1.grad, "w1", w1.grad, "x2", x2.grad, "w2", w2.grad)
+notes:
+  - lines: [1, 12]
+    title: The node and what it stores
+    text: |
+      `class Value:` defines a new type, and `__init__` is the **constructor**: Python calls it when you write `Value(2.0)`. Every attribute set on `self` becomes part of the object.
+
+      - `data` is the number itself, and `grad` will hold the partial derivative of the final output with respect to this node. It starts at `0.0` so contributions can be added into it.
+      - `_backward` holds a function. `lambda: None` is a **lambda**, an unnamed one-line function; this one takes no arguments and does nothing, which is the right behavior for a leaf such as a weight or an input.
+      - `_prev` is a `set` of the nodes this one was computed from: the edges of the graph. A set, because only membership matters.
+      - The leading underscore is a Python convention meaning "internal, don't touch from outside". It is not enforced.
+
+      `_children=()` and `_op=""` are **default arguments**, so users write `Value(3.0)` and only the operations below pass in children.
+  - lines: [14, 15]
+    title: A readable printout
+    text: |
+      `__repr__` is a **dunder method** (double underscore on each side). Python calls it when you `print` the object or inspect it in a console. Without it you'd see something like `<__main__.Value object at 0x10f...>`.
+
+      The **f-string** `f"Value(data={self.data:.4f}, ...)"` drops values into the text; `:.4f` is a format spec meaning "fixed point, four decimals". Small, but a good habit: debugging autograd mostly means printing nodes and comparing numbers.
+  - lines: [17, 27]
+    title: Addition, and the closure that remembers it
+    text: |
+      Defining `__add__` is **operator overloading**: after this, `a + b` on two Values calls `a.__add__(b)`. Line 18 uses a **conditional expression** (`x if cond else y`) with `isinstance` so that `a + 1` also works: a plain number is wrapped in a `Value` with no children.
+
+      Line 19 does the forward computation and records the edge: `out` remembers `self` and `other` as its children.
+
+      The nested `def _backward():` is a **closure**: a function defined inside another one that keeps access to that function's variables (`self`, `other`, `out`) after `__add__` has returned. Line 26 stores it on `out`, so when backpropagation reaches `out`, calling `out._backward()` pushes `out.grad` to the two inputs.
+
+      Mathematically, for o = a + b both partials are 1, so each input receives `1 * out.grad`. The `+=` is the multivariable chain rule: if a node feeds several consumers, its derivative is the **sum over paths**, and each consumer adds its share. Writing `=` instead is the classic bug, and it only shows up when a node is reused (the test `a + a` expects `a.grad == 2`).
+  - lines: [29, 39]
+    title: Multiplication applies the product rule
+    text: |
+      Same pattern as addition, with a different local derivative. For o = a * b, the partial with respect to a is b and the partial with respect to b is a, so each input receives the *other* input's value times `out.grad`.
+
+      Worked value from the demo: `x1 * w1` is `2 * -3 = -6`. When backpropagation reaches that product node with gradient 0.5, `x1` receives `w1.data * 0.5 = -1.5` and `w1` receives `x1.data * 0.5 = 1.0`. Those are exactly the numbers the demo prints.
+
+      Note that the closure reads `other.data` when backward runs, not when the product was formed. That's fine here because nothing changes `data` between the forward and backward passes. In the next lesson, training changes `data` only after `backward()` finishes, which keeps it safe.
+
+      For `p * p`, `self` and `other` are the same object, so line 35 and line 36 both add into `p.grad`, giving `2p`. Again, the `+=` is what makes reuse correct.
+  - lines: [41, 50]
+    title: tanh caches its own output
+    text: |
+      `tanh` is a method rather than an operator, so you call it as `x.tanh()`. The tuple `(self,)` has a trailing comma because `(self)` without it is just `self` in parentheses, not a one-element tuple.
+
+      The derivative of tanh(x) is 1 - tanh(x)^2. The forward pass already computed `t = tanh(x)`, and the closure captures `t`, so the backward pass costs one multiply and no extra `math.tanh` call. Caching forward results for reuse in the backward pass is the general pattern; PyTorch does the same thing, which is why training uses more memory than inference.
+
+      An AI-written version sometimes writes `1 - self.data ** 2`, the derivative formula applied to the input instead of the output. It is wrong for every input except 0, and only a gradient check (the exercise's central-difference test) catches it reliably.
+  - lines: [52, 66]
+    title: backward() is a topological sort, then one sweep
+    text: |
+      A node's gradient is complete only after **every** node that consumes it has pushed its contribution. So `backward()` first builds `topo`, a list where each node appears after all of its inputs (a **topological order**), then walks it in reverse with `reversed(topo)`, from the output back toward the leaves.
+
+      `build` is a **recursive** function: it calls itself on each child before appending the current node (line 61), which is exactly what guarantees "children before parents" in the list. The `visited` set ensures each node is added once even if it is reachable along many paths. Without it, a shared node would run its `_backward` twice and double-count its contribution to its own children.
+
+      Line 64 seeds the output's gradient with 1.0, because the derivative of o with respect to itself is 1. Forgetting the seed leaves every gradient at 0 and raises no error, which is why the tests check `o.grad == 1.0` explicitly.
+
+      Cost: one forward and one backward visit per node, regardless of how many inputs there are. That is why reverse mode, not finite differences, is how networks with millions of parameters are trained.
+  - lines: [69, 76]
+    title: The neuron from the video, checked by hand
+    text: |
+      Line 70 uses **tuple unpacking** (`x1, x2 = ...`) to create two Values on one line. Then the forward pass:
+
+      - `x1*w1 + x2*w2 + b = -6 + 0 + 6.8814 = 0.8814`
+      - `tanh(0.8814) = 0.7071` (the bias was chosen so the output is 1 divided by the square root of 2)
+
+      Backward: the tanh node's local derivative is `1 - 0.7071^2 = 0.5`, and the additions pass 0.5 straight through. So `x1.grad = w1 * 0.5 = -1.5`, `w1.grad = x1 * 0.5 = 1.0`, `x2.grad = w2 * 0.5 = 0.5`, and `w2.grad = x2 * 0.5 = 0`, because x2 is 0: changing that weight can't move the output when its input is zero.
+
+      Being able to predict the printout like this is the real review skill. If a run disagrees with your hand calculation on a five-node graph, there's no point trusting it on a five-million-node one.
+review:
+  - id: wt-value-assign-not-accumulate
+    type: code-reading
+    prompt: An AI assistant "simplifies" the addition rule to the version below. With `a = Value(3.0)`, `s = a + a`, `s.backward()`, what is `a.grad`?
+    code: |
+      def _backward():
+          self.grad = out.grad
+          other.grad = out.grad
+    options:
+      - id: a
+        text: "`2.0`, the same as before"
+        rationale: That needs both contributions to be added together. With `=`, the second line overwrites the first.
+      - id: b
+        text: "`1.0`"
+        correct: true
+        rationale: Right. `self` and `other` are the same node, so the second assignment replaces the first instead of adding to it. The true derivative of a + a is 2.
+      - id: c
+        text: It raises an error because `self` and `other` are the same object
+        rationale: Python happily assigns to the same attribute twice. The bug is silent, which is what makes it dangerous.
+    explanation: The `=` version passes every test where each node is used once, including the full neuron. Only a graph that reuses a node exposes it, which is why the exercise tests `a + a` and `p * p` directly. When reviewing autograd code, look for `+=` on every gradient update.
+  - id: wt-value-w2-zero
+    type: mcq
+    prompt: In the demo, why is `w2.grad` exactly 0?
+    options:
+      - id: a
+        text: Because w2 starts at 1.0, and the derivative at 1 is zero
+        rationale: The value of w2 itself doesn't enter its own gradient here. Its input does.
+      - id: b
+        text: Because its input x2 is 0, so the partial of `x2 * w2` with respect to w2 is 0
+        correct: true
+        rationale: Yes. The multiply rule gives w2 the value of the other factor, x2, times the upstream gradient 0.5. That is 0 times 0.5.
+      - id: c
+        text: Because `backward()` never reaches w2
+        rationale: It does reach it. `x2.grad` is 0.5, and both come from the same product node.
+    explanation: Gradients tell you which knobs matter for this input. A weight attached to an input of zero gets no signal from that example, which is one reason training averages over many examples.
+  - id: wt-value-why-topo
+    type: scenario
+    prompt: "Why does `backward()` build a topological order instead of just calling `_backward()` recursively on each node's children as it finds them?"
+    options:
+      - id: a
+        text: Recursion is slower than a loop in Python
+        rationale: Speed isn't the issue. The order of the calls is.
+      - id: b
+        text: A node's gradient must be complete (all consumers have added their share) before it is passed on to its own inputs
+        correct: true
+        rationale: Exactly. If a reused node runs its `_backward` after only one consumer has contributed, it passes an incomplete gradient back, and nothing fixes it later.
+      - id: c
+        text: Python sets are unordered, so the order must be fixed somehow
+        rationale: The set only affects the order of children within one node, which doesn't matter. What matters is that every consumer finishes before its input propagates.
+    explanation: The test with `r * r * r + r.tanh() * r` uses `r` in four places. Only the topologically ordered, accumulating pass gets its gradient right, which is the whole reason the algorithm has two phases.
+direct:
+  task: |
+    You want the engine to support `2 * x` (a plain number on the left) and `x ** 3` (a power with a constant exponent), so you can write polynomials naturally. Right now `2 * x` raises `TypeError`, because Python asks the number `2` how to multiply by a Value, and it doesn't know.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In the Value class, add two operations:
+
+    1. __rmul__(self, other), so that a plain number times a Value (2 * x) returns the same result as x * 2. Implement it by calling self * other; don't duplicate the multiply logic.
+    2. __pow__(self, k), where k is a plain int or float (not a Value). The forward value is self.data ** k with op label f"**{k}", and the backward rule is self.grad += k * self.data ** (k - 1) * out.grad. Raise TypeError if k is a Value.
+
+    Do not change __add__, __mul__, tanh, or backward(). Keep += for every gradient update.
+
+    Add test asserts: (2 * x).data == x.data * 2 and the gradient of 2 * x is 2; for x = Value(1.5), the gradient of x ** 3 matches a central-difference estimate within 1e-6; and the gradient of x * x ** 2 equals 3 * x.data ** 2, which checks that a reused node still accumulates.
+  checklist:
+    - "`__rmul__` delegates to `__mul__` rather than reimplementing the product rule"
+    - The power rule uses `self.data`, the input, and the exponent minus one, with `+=` on the gradient
+    - Non-number exponents are rejected instead of silently producing a wrong derivative
+    - "`__add__`, `__mul__`, `tanh`, and `backward()` are unchanged"
+    - The new tests include a central-difference gradient check and a reused-node case

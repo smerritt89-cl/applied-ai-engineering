@@ -1,0 +1,199 @@
+id: s4-w1-router-and-votes
+summary: |
+  This program implements two workflow patterns from the lesson. A **router** asks a cheap classifier which queue a ticket belongs in and sends it there. A **voting aggregator** combines several samples of the same judgment and only commits when there's a clear, strong majority.
+
+  Both rely on one strict parser. Small models are usually right but inconsistently formatted, and sometimes they hedge. The code normalizes formatting it can safely fix (spaces, a trailing period, capital letters) and refuses everything else. When the answer isn't clean, the work goes to a person rather than to a guess.
+code: |
+  from collections import Counter
+
+  LABELS = {"billing", "bug", "feature_request"}
+  VOTE_LABELS = {"risk", "no_risk"}
+
+
+  def fake_classifier(ticket):
+      """Stands in for a cheap model. Like a real one, its formatting varies."""
+      t = ticket.lower()
+      if "invoice" in t or "charge" in t:
+          return " Billing.\n"
+      if "crash" in t or "error" in t:
+          return "bug"
+      if "would be great" in t:
+          return "Feature_Request"
+      return "I'm not sure, maybe billing or a bug?"
+
+
+  def _normalize(raw):
+      """Strip whitespace and trailing periods, then lowercase. None stays None."""
+      if raw is None:
+          return None
+      return raw.strip().rstrip(".").strip().lower()
+
+
+  def parse_label(raw):
+      """Return a label from LABELS, or None if the text is not exactly one."""
+      label = _normalize(raw)
+      return label if label in LABELS else None
+
+
+  def route(ticket, classify, handlers):
+      """Classify, parse, and call the matching handler (or the fallback).
+      Return (label_or_None, handler_result)."""
+      label = parse_label(classify(ticket))
+      handler = handlers[label] if label is not None else handlers["fallback"]
+      return label, handler(ticket)
+
+
+  def aggregate(votes, threshold):
+      """Return the winning vote label, or "escalate" for a tie or a weak majority.
+      The share is computed over ALL votes, including unparseable ones."""
+      if not votes:
+          return "escalate"
+      valid = [v for v in (_normalize(v) for v in votes) if v in VOTE_LABELS]
+      if not valid:
+          return "escalate"
+      ranked = Counter(valid).most_common()
+      top_label, top_count = ranked[0]
+      if len(ranked) > 1 and ranked[1][1] == top_count:
+          return "escalate"
+      return top_label if top_count / len(votes) >= threshold else "escalate"
+
+
+  handlers = {
+      "billing": lambda t: "finance queue",
+      "bug": lambda t: "engineering queue",
+      "feature_request": lambda t: "product backlog",
+      "fallback": lambda t: "human triage",
+  }
+  for ticket in ["Duplicate charge on my invoice", "App crash on export", "Something odd happened"]:
+      print(ticket, "->", route(ticket, fake_classifier, handlers))
+  print(aggregate(["risk", "Risk.", "no_risk"], 2 / 3), aggregate(["risk", "no_risk"], 0.5))
+notes:
+  - lines: [1, 4]
+    title: Imports and the allowed labels
+    text: |
+      `Counter` from the standard library's `collections` module counts how often each item appears in a list. You'll use it for the votes.
+
+      `LABELS` and `VOTE_LABELS` are **sets** (curly braces with values, no colons). A set is the right container here because the only question you ask of it is "is this value a member?", and `x in some_set` answers that quickly. Naming the allowed outputs in one place also means a reviewer can see the whole contract at a glance.
+  - lines: [7, 16]
+    title: A fake classifier that behaves like a real one
+    text: |
+      `fake_classifier` stands in for a small, cheap model. It is deliberately messy: `" Billing.\n"` has a leading space, a period, a newline, and a capital letter; `"Feature_Request"` has odd capitalization; and the last line is a hedge that mentions two labels.
+
+      This is what makes the exercise realistic. If you test a parser only on clean inputs, you learn nothing about the inputs that actually break it.
+  - lines: [19, 23]
+    title: One normalizer, shared
+    text: |
+      `_normalize` does the safe cleanup. The leading underscore is a Python convention meaning "internal helper, not part of the public interface".
+
+      The calls are **chained**, each working on the result of the one before: `.strip()` removes whitespace (including the newline) from both ends, `.rstrip(".")` removes trailing periods, a second `.strip()` catches a space that was hiding before the period, and `.lower()` lowercases. So `" Billing.\n"` becomes `"Billing."`, then `"Billing"`, then `"billing"`.
+
+      The `None` check comes first because a failed sample may produce nothing at all, and calling `.strip()` on `None` would raise `AttributeError`. Both the parser and the aggregator use this one function, so they can't drift apart.
+  - lines: [26, 29]
+    title: Parse strictly, or return None
+    text: |
+      After normalizing, the label is accepted only if it is **exactly** one of `LABELS`. The return line is a **conditional expression**: `a if condition else b`.
+
+      Notice what this rejects. `"bugs"` is not `"bug"`, and the hedge `"I'm not sure, maybe billing or a bug?"` contains both `"billing"` and `"bug"` but is neither. An AI-written parser often "helpfully" searches for a label inside the text (`if "billing" in text`), which turns every hedge into a confident wrong answer. Returning `None` is the honest result, and the router knows what to do with it.
+  - lines: [32, 37]
+    title: The router
+    text: |
+      `route` takes the classifier as a parameter (`classify`), so the same code works with a fake in tests and a real model in production.
+
+      `handlers` is a dictionary from label to function. The conditional expression picks `handlers[label]` for a clean label and `handlers["fallback"]` for `None`, then calls it with the **original ticket**. The tests check that the fallback receives the ticket text, so a human triager sees what the customer actually wrote.
+
+      It returns a **tuple** `(label, result)`. Returning the label alongside the result lets the caller log which route was taken, which is what you'll want when you audit misroutes later.
+  - lines: [40, 47]
+    title: Aggregate, part 1, the empty cases
+    text: |
+      No votes at all means no decision, so return `"escalate"` immediately.
+
+      Line 45 has a **generator expression** inside a **list comprehension**. The inner `(_normalize(v) for v in votes)` normalizes each vote lazily, and the outer `[v for v in ... if v in VOTE_LABELS]` keeps only the ones that are real vote labels. So `["risk", "garbage", None]` gives `["risk"]`.
+
+      If nothing valid remains, escalate. That guard also protects line 49 from indexing into an empty list.
+  - lines: [48, 52]
+    title: Aggregate, part 2, ties and the threshold
+    text: |
+      `Counter(valid).most_common()` returns `(label, count)` pairs from most to least common, such as `[("risk", 2), ("no_risk", 1)]`. Line 49 **unpacks** the first pair into two names.
+
+      Two rules make the vote trustworthy:
+
+      - **A tie never wins.** If the runner-up has the same count as the leader, escalate. Otherwise the winner would depend on which label happened to be counted first.
+      - **The denominator is all votes**, `len(votes)`, not `len(valid)`. With `["risk", "garbage", "garbage"]` and a threshold of 0.5, the share is 1/3, not 1/1, so it escalates. Dividing by the valid votes only would let a single clean vote outvote two failures, which is exactly backwards: lots of unparseable samples is a sign the question is hard.
+
+      Worked example: `["risk", "Risk.", "no_risk"]` normalizes to two `risk` and one `no_risk`; 2/3 meets a 2/3 threshold, so `"risk"` wins.
+  - lines: [55, 63]
+    title: A small demonstration
+    text: |
+      Each handler is a **lambda**, a one-line anonymous function: `lambda t: "finance queue"` takes a ticket and returns a queue name. Lambdas suit tiny functions like these that you define once and store in a dictionary.
+
+      The loop routes three tickets: a billing complaint, a crash, and an ambiguous one that falls through to human triage. The last line shows a vote that passes and a 1 to 1 tie that escalates. Press **Run this code** to see them.
+review:
+  - id: wt-router-substring
+    type: code-reading
+    prompt: An AI assistant "makes the parser more forgiving" with the version below. What does `route("Something odd happened", fake_classifier, handlers)` return now?
+    code: |
+      def parse_label(raw):
+          text = _normalize(raw)
+          for label in LABELS:
+              if label in text:
+                  return label
+          return None
+    options:
+      - id: a
+        text: (None, "human triage"), the same as before
+        rationale: The classifier's hedge, "i'm not sure, maybe billing or a bug?", now contains a label as a substring, so the loop returns one.
+      - id: b
+        text: A confident label such as ("bug", "engineering queue") or ("billing", "finance queue"), depending on set order
+        correct: true
+        rationale: Right. Both "billing" and "bug" appear in the hedge, and which one is found first depends on the set's iteration order. A hedge becomes a confident misroute.
+      - id: c
+        text: It raises an error because the text has no exact label
+        rationale: Substring search never raises here; it just finds something.
+    explanation: '"More forgiving" parsing quietly removes the fallback path. The test `parse_label("bugs") is None` would also fail, because "bug" is inside "bugs". This is why the tests include near misses and hedges, not just clean labels.'
+  - id: wt-votes-denominator
+    type: predict-output
+    prompt: 'What does `aggregate(["no_risk", "no_risk", None, "unclear"], 0.6)` return?'
+    options:
+      - id: a
+        text: '"no_risk", because both valid votes agree'
+        rationale: That divides by the 2 valid votes. The code divides by all 4.
+      - id: b
+        text: '"escalate", because 2 of 4 is 0.5, below the 0.6 threshold'
+        correct: true
+        rationale: Yes. Unparseable votes count in the denominator, so the share is 2/4.
+      - id: c
+        text: '"escalate", because None makes the vote invalid'
+        rationale: None is simply filtered out of the valid list; it doesn't invalidate the vote. It does still count in the denominator.
+    explanation: Half the samples failing to give a clean answer is evidence of uncertainty. The aggregator treats it that way instead of ignoring it.
+  - id: wt-router-shared-normalize
+    type: scenario
+    prompt: Why do `parse_label` and `aggregate` both call `_normalize` instead of each doing its own cleanup inline?
+    options:
+      - id: a
+        text: Python requires shared helpers for functions in the same file
+        rationale: It doesn't; this is a design choice.
+      - id: b
+        text: So the two can't drift apart, and a fix (like handling None) lands in both at once
+        correct: true
+        rationale: Exactly. If one cleaned up trailing periods and the other didn't, the same model output would be accepted by one and rejected by the other.
+      - id: c
+        text: It makes the code run faster
+        rationale: The speed difference is negligible.
+    explanation: When two pieces of code must agree on a rule, give the rule one home. It is also the one place to look when reviewing.
+direct:
+  task: |
+    Product wants weak-but-real signals to go somewhere other than a generic escalation: when the top vote label leads but misses the threshold, return "review:<label>" (for example "review:risk"), so a reviewer starts from the model's leaning.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Change aggregate so that when one label is strictly ahead but its share of ALL votes is below the threshold, it returns "review:<label>" instead of "escalate" (for example "review:risk").
+
+    Do not change anything else: no votes, no valid votes, and ties must still return "escalate"; the denominator must stay len(votes), including unparseable votes; and a label at or above the threshold still returns the plain label. Do not touch parse_label, route, or _normalize.
+
+    Update the docstring, and add tests for: a leader below threshold (returns "review:risk"), a tie (still "escalate"), and a case where unparseable votes push the leader under the threshold (returns "review:...").
+  checklist:
+    - Ties, empty input, and all-invalid input still return "escalate"
+    - The share is still computed over len(votes), not the valid votes
+    - Labels at or above the threshold still return the bare label, so existing callers keep working
+    - parse_label, route, and _normalize are unchanged
+    - New tests cover the review case, the tie case, and the unparseable-votes case

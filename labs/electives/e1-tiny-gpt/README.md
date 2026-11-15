@@ -3,6 +3,17 @@
 **Goes with:** Elective "Let's Build GPT," week 4 (lessons e1-w4-l7 and e1-w4-l8), and the elective project.
 **Time:** about 60 minutes for the helpers and tests, plus however long you spend on the model.
 
+## Review track
+
+If you're on the review track (the default; see `labs/README.md`), start here instead of writing the helpers yourself:
+
+1. Run `python lab.py review all` once, if you haven't, so this folder has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it. It walks through every helper, connects each one to the math of the model, and points out what the tests do and don't catch.
+3. Run the tests from VS Code's Testing panel. They should all pass.
+4. Do [CHANGE.md](CHANGE.md): have a coding assistant add top-k filtering to `stable_softmax` in `work.py`, review its diff, then run `pytest electives/e1-tiny-gpt/test_change.py -q`.
+
+Then continue with steps 3 and 4 below (check your data, write the model, and train). The write-track steps that follow are for implementing the helpers yourself.
+
 ## Goal
 
 Get everything around a character-level GPT right, and tested, before you write the model:

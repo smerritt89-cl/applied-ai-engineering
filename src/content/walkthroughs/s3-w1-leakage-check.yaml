@@ -1,0 +1,183 @@
+id: s3-w1-leakage-check
+summary: |
+  This program checks whether any test case has leaked into the prompt: whether a question in your test set also appears, near word for word, as a few-shot example the model is shown. A leaked case measures memory, not skill, so it inflates your score on exactly the cases you trust most.
+
+  It works by normalizing text into lowercase words, cutting both the prompt and each test case into overlapping six-word windows (called n-grams), and flagging any case that shares a window with the prompt. Normalizing first is what makes it catch real leaks, which rarely arrive as exact copies: they differ in capitalization, punctuation, or a stray question mark.
+code: |
+  PROMPT = """You are Tallyhub's support assistant. Answer from the help center only.
+
+  Example
+  Customer: Can I sync Tallyhub with QuickBooks Desktop? My accountant uses it.
+  Assistant: QuickBooks Desktop isn't supported. Tallyhub syncs with QuickBooks Online and Xero.
+
+  Example
+  Customer: How do I add my logo to invoices?
+  Assistant: Go to Settings > Branding and upload your logo."""
+
+  TEST_CASES = [
+      {"id": "g01", "input": "can i sync tallyhub with quickbooks desktop?? my accountant uses it"},
+      {"id": "g02", "input": "Is there a free trial of the Pro plan?"},
+      {"id": "g03", "input": "I'm locked out and payroll invoices are due in an hour."},
+      {"id": "g04", "input": "How do I add my logo to invoices"},
+      {"id": "g05", "input": "Do you integrate with Xero or QuickBooks Online?"},
+  ]
+
+
+  def words(text):
+      """Lowercase, turn every non-alphanumeric character into a space, split."""
+      return "".join(ch.lower() if ch.isalnum() else " " for ch in text).split()
+
+
+  def ngrams(text, n):
+      """The set of n-word windows in text, each as a tuple of words."""
+      w = words(text)
+      return {tuple(w[i:i + n]) for i in range(len(w) - n + 1)}
+
+
+  def leaked_cases(test_cases, prompt, n=6):
+      """ids of test cases that share at least one n-word window with the prompt.
+      A case shorter than n words leaks if its whole word sequence appears in the prompt."""
+      prompt_words = words(prompt)
+      leaked = []
+      for case in test_cases:
+          case_words = words(case["input"])
+          if len(case_words) < n:
+              # Too short for an n-word window: look for the whole case, in order.
+              k = len(case_words)
+              prompt_windows = {tuple(prompt_words[i:i + k]) for i in range(len(prompt_words) - k + 1)}
+              if tuple(case_words) in prompt_windows:
+                  leaked.append(case["id"])
+          elif ngrams(case["input"], n) & ngrams(prompt, n):
+              leaked.append(case["id"])
+      return leaked
+
+
+  print(leaked_cases(TEST_CASES, PROMPT))
+notes:
+  - lines: [1, 9]
+    title: The prompt under test
+    text: |
+      `PROMPT` is a **triple-quoted string**, which can span several lines. It contains two few-shot examples: sample customer questions with ideal answers, shown to the model so it copies their style.
+
+      Those examples are the risk. If someone later copies one of them into the test set, the model has effectively seen the answer key.
+  - lines: [10, 17]
+    title: The test set, with two planted leaks
+    text: |
+      Five test inputs. Two are leaks in disguise:
+
+      - `g01` is the first example, lowercased, with "??" and no capitals. An exact-match check would miss it.
+      - `g04` is the second example without its question mark.
+
+      `g05` is the honest near miss: it mentions "QuickBooks Online" and "Xero", which also appear in the prompt, but it's a different question. A good leak check must not flag it.
+  - lines: [18, 22]
+    title: words, the normalizer
+    text: |
+      This one line does all the normalizing. Read it inside out:
+
+      - `for ch in text` walks the string one character at a time.
+      - `ch.lower() if ch.isalnum() else " "` is a **conditional expression**: keep letters and digits (lowercased), turn everything else (spaces, punctuation, apostrophes) into a space.
+      - `"".join(...)` glues the characters back into one string. The thing inside is a **generator expression**, which feeds `join` one character at a time without building a list first.
+      - `.split()` with no argument splits on any run of whitespace and drops empty pieces, so `"desktop??"` becomes just `"desktop"`.
+
+      So `"Can I sync"` and `"can i sync"` both become `["can", "i", "sync"]`. One side effect worth knowing: `"Tallyhub's"` becomes two words, `"tallyhub"` and `"s"`. That's fine here because both sides are normalized the same way.
+  - lines: [23, 28]
+    title: ngrams, every window of n words
+    text: |
+      `range(len(w) - n + 1)` gives every starting position for a window of `n` words. With 4 words and `n = 2`, that's 0, 1, 2, giving `("a", "b")`, `("b", "c")`, `("c", "d")`.
+
+      `w[i:i + n]` is a **slice** (the words from position `i` up to, not including, `i + n`), and `tuple(...)` turns it into a tuple. Tuples, unlike lists, can go in a set, because they can't be changed after they're made.
+
+      The curly braces make this a **set comprehension**, so duplicates collapse and membership checks are fast. When the text is shorter than `n`, the range is empty and you get an empty set, which is exactly the edge case the next function has to handle.
+  - lines: [29, 35]
+    title: Normalize the prompt once
+    text: |
+      The default argument `n=6` sets the window length. Six words is long enough that common phrases ("how do I add") don't flag everything, and short enough that a lightly edited example still shares a run. The lesson says to tune it on your own data.
+
+      `prompt_words` is computed once, before the loop, rather than once per test case. It's a small thing here, but with a long prompt and thousands of cases it's the difference between a fast check and a slow one.
+  - lines: [36, 43]
+    title: Short cases, matched as a whole sequence
+    text: |
+      A case with fewer than `n` words produces no windows at all, so without this branch it could never be flagged. Instead, the code uses the case's own length `k` as the window size, builds every `k`-word window of the prompt, and asks whether the case's exact word sequence is one of them.
+
+      So `"Settings, Branding"` becomes `("settings", "branding")`, which appears in "Go to Settings > Branding", and is flagged. `"Branding settings"` has the same words in the wrong order and is not. Order matters because a leak is a copied phrase, not a bag of shared vocabulary.
+
+      This is the branch an AI-written version most often leaves out, because the common case (long inputs) works fine without it.
+  - lines: [44, 46]
+    title: Long cases, matched by shared windows
+    text: |
+      `ngrams(case["input"], n) & ngrams(prompt, n)` is **set intersection**: the windows both texts contain. A non-empty set is truthy, so `elif` fires when at least one six-word run is shared.
+
+      For `g04`, the case's first window is `("how", "do", "i", "add", "my", "logo")`, which is also in the prompt. For `g05`, the longest shared run is two words ("quickbooks online"), so the intersection is empty and it isn't flagged.
+
+      Because the loop walks `test_cases` in order and appends as it goes, the result comes back in test-set order, which makes the report easy to cross-check.
+  - lines: [47, 49]
+    title: Run it
+    text: |
+      The demo prints `['g01', 'g04']`. In practice you'd run this in CI whenever the prompt or the test set changes, and remove or rewrite any flagged case, because a leak hides how the model does on questions it hasn't seen.
+review:
+  - id: wt-leak-no-short-branch
+    type: code-reading
+    prompt: 'An AI assistant "simplifies" `leaked_cases` to the version below. What does `leaked_cases([{"id": "s", "input": "Settings, Branding"}], PROMPT)` return now?'
+    code: |
+      def leaked_cases(test_cases, prompt, n=6):
+          prompt_grams = ngrams(prompt, n)
+          return [c["id"] for c in test_cases if ngrams(c["input"], n) & prompt_grams]
+    options:
+      - id: a
+        text: "`['s']`, the same as before"
+        rationale: The original had a special branch for short cases. This one doesn't.
+      - id: b
+        text: "`[]`"
+        correct: true
+        rationale: "Right. A two-word input has no six-word windows, so its n-gram set is empty and the intersection is always empty. Short leaks can never be caught."
+      - id: c
+        text: It raises an error because the set is empty
+        rationale: Intersecting with an empty set is fine in Python; it just returns an empty set.
+    explanation: The shorter version is cleaner and handles every long case correctly, which is why it would pass a casual review. Ask what happens at the edges (inputs shorter than the window) before accepting a "simplification".
+  - id: wt-leak-exact-match
+    type: predict-output
+    prompt: "Instead of n-grams, someone checks `case[\"input\"].lower() in PROMPT.lower()`. Which of the five test cases does that flag?"
+    options:
+      - id: a
+        text: "`g01` and `g04`, the same as the n-gram check"
+        rationale: "`g01` is lowercase with \"??\" where the prompt has \"?\" and \"Desktop? My\", so the strings never line up exactly."
+      - id: b
+        text: Only `g04`
+        correct: true
+        rationale: "Right. `\"how do i add my logo to invoices\"` is a substring of the lowercased prompt. `g01`'s doubled question mark and missing punctuation break the exact match."
+      - id: c
+        text: None of them
+        rationale: Lowercasing is enough to catch `g04`, which differs from the prompt only by a trailing question mark.
+    explanation: Leaks rarely arrive as exact copies. Normalizing punctuation as well as case, and matching windows rather than whole strings, is what turns a check that misses half the leaks into one that catches them.
+  - id: wt-leak-window
+    type: scenario
+    prompt: Your team lowers the window from 6 words to 2 to "catch more leaks". What is the most likely result on a real test set?
+    options:
+      - id: a
+        text: It catches the same leaks and nothing else
+        rationale: Two-word phrases are shared by many unrelated questions.
+      - id: b
+        text: It flags many honest cases, like `g05`, that only share common phrases such as "quickbooks online"
+        correct: true
+        rationale: Exactly. Short windows turn shared vocabulary into false alarms, and people start ignoring the check.
+      - id: c
+        text: It misses more leaks, because short windows are stricter
+        rationale: Short windows are looser, not stricter.
+    explanation: The window length trades false alarms against missed leaks. Pick it by looking at what gets flagged on your own data, and check the flagged cases by eye before deleting anything.
+direct:
+  task: |
+    Your test set now has inputs in several languages, and some cases contain no letters at all (for example, a customer who pastes only an invoice number). You also want to know *what* leaked, not just which case, so the person fixing it can find the example in the prompt.
+
+    Write the prompt you'd give a coding assistant to add a report of the shared text.
+  prompt: |
+    Add a function leak_report(test_cases, prompt, n=6) that returns a list of dicts {"id": ..., "shared": ...} for each leaked case, in test-set order, where "shared" is the first matching window joined back into a string with single spaces (for short cases, the whole normalized case).
+
+    Do not change words, ngrams, or leaked_cases, and leak_report must flag exactly the same ids as leaked_cases for any input. A case whose input normalizes to zero words should not be reported as leaked by leak_report (note this in its docstring).
+
+    Add asserts that leak_report(TEST_CASES, PROMPT) returns ids ["g01", "g04"], that each "shared" string is a substring of " ".join(words(PROMPT)), and that an input of "!!!" is not reported.
+  checklist:
+    - words, ngrams, and leaked_cases are unchanged
+    - leak_report flags the same ids as leaked_cases on the test set, in the same order
+    - The shared text really appears in the normalized prompt
+    - The empty-input case is handled and documented, not left to chance
+    - New asserts cover the report, the short-case path, and the empty input

@@ -1,0 +1,169 @@
+id: e1-w2-mlp-pieces
+summary: |
+  These four functions are the parts of a neural language model that sit outside the network itself. `build_dataset` turns words into training examples (a fixed-length window of previous characters, and the character that comes next). `log_softmax` and `cross_entropy` turn the network's raw scores into a loss, computed so that it can't overflow. `grad_logits` gives the closed-form gradient of that loss, which is where backpropagation starts.
+
+  They are written as small, pure functions (same input, same output, no hidden state) so each can be checked against a property or a number you can derive by hand. The exercise checks `grad_logits` against central differences of `cross_entropy`, the same gradient check you used on micrograd. Every language model, GPT included, has exactly these pieces at its input and output.
+code: |
+  import math
+
+
+  def build_dataset(words, stoi, block_size=3):
+      """Slide a block_size context window over each word, predicting each next character.
+
+      Returns (X, Y): X[k] is a list of block_size token ids, Y[k] is the id that follows them.
+      """
+      X, Y = [], []
+      for w in words:
+          context = [0] * block_size          # start of every word: all '.' padding
+          for ch in list(w) + ["."]:
+              ix = stoi[ch]
+              X.append(list(context))         # a copy, so X never shares a list with context
+              Y.append(ix)
+              context = context[1:] + [ix]    # drop the oldest token, add the newest
+      return X, Y
+
+
+  def log_softmax(logits):
+      """Return [z - logsumexp(logits) for z in logits], computed stably."""
+      m = max(logits)
+      lse = m + math.log(sum(math.exp(z - m) for z in logits))
+      return [z - lse for z in logits]
+
+
+  def cross_entropy(logits, target):
+      """The loss for one example: -log of the probability given to the correct class."""
+      return -log_softmax(logits)[target]
+
+
+  def grad_logits(logits, target):
+      """d(cross_entropy)/d(logits) = softmax(logits) - one_hot(target)."""
+      probs = [math.exp(lp) for lp in log_softmax(logits)]
+      probs[target] -= 1.0
+      return probs
+
+
+  stoi = {ch: i for i, ch in enumerate(".abcdefghijklmnopqrstuvwxyz")}
+  itos = {i: ch for ch, i in stoi.items()}
+  X, Y = build_dataset(["emma"], stoi)
+  for x, y in zip(X, Y):
+      print("".join(itos[i] for i in x), "->", itos[y])
+  print(cross_entropy([2.0, 1.0, 0.1], 0))
+notes:
+  - lines: [1, 9]
+    title: What a training example is
+    text: |
+      One example is a pair: a context of `block_size` previous token ids (an entry of X) and the id of the next token (the matching entry of Y). With `block_size=3`, the model predicts each character from the three before it.
+
+      The docstring states the shapes, which is the single most useful thing a docstring can do in numerical code. `X, Y = [], []` creates two empty lists in one line using **tuple unpacking**.
+  - lines: [10, 17]
+    title: The sliding window, reset for each word
+    text: |
+      Line 11 starts each word with a context of all zeros, and id 0 is `'.'`, so the first prediction is "which letter starts a name, given nothing". Resetting inside the `for w in words` loop keeps one name's ending from leaking into the next name's context.
+
+      Line 12 loops over the characters plus a final `'.'`, so the model also learns when to stop. For `"emma"` this gives five examples: `...` to e, `..e` to m, `.em` to m, `emm` to a, `mma` to `.`.
+
+      Line 16 shifts the window: `context[1:]` drops the oldest id and `+ [ix]` appends the new one. This builds a **new** list and rebinds the name `context`, so the list already stored in X is never touched. Line 14 still stores `list(context)`, a copy, as cheap insurance: if someone later changes the shift to an in-place edit such as `context.pop(0); context.append(ix)`, every stored example would otherwise be the same list, silently overwritten. Shared mutable lists are a frequent bug in AI-written data pipelines.
+  - lines: [20, 24]
+    title: log-softmax via a stable log-sum-exp
+    text: |
+      log softmax(z)_i = z_i minus log of the sum over j of exp(z_j). The second term is **log-sum-exp** (LSE). Computing it directly overflows: `math.exp(1000)` raises `OverflowError`.
+
+      The fix uses the identity LSE(z) = m + LSE(z - m) for any constant m. Choose m = max(z): every shifted value is at most 0, so every `exp` is at most 1 and the largest is exactly 1, which also guarantees the sum is at least 1 and its log is finite. Line 23 is that identity, with a **generator expression** inside `sum`.
+
+      Worked value for `[2.0, 1.0, 0.1]`: m = 2, the shifted exps are 1, e^-1, and e^-1.9, which sum to about 1.5174, so LSE = 2 + log(1.5174), about 2.4170.
+
+      Returning log-probabilities rather than probabilities is deliberate: the loss needs the log anyway, and taking `log` of a tiny probability that has already underflowed to 0 would give minus infinity.
+  - lines: [27, 29]
+    title: Cross-entropy is one lookup
+    text: |
+      For one example, cross-entropy is minus the log-probability of the correct class. With the log-softmax in hand, that is a single index: `-log_softmax(logits)[target]`.
+
+      Worked values that the tests check:
+
+      - `[2.0, 1.0, 0.1]` with target 0: 2.4170 minus 2.0, about **0.4170**. The model gave the right answer about 66% probability.
+      - 27 equal logits: every class gets 1/27, so the loss is log(27), about 3.296. This is the loss you should see at step 0 from a well-initialized model.
+      - `[1000.0, 0.0]` with target 1: about **1000**. A confidently wrong answer costs roughly the gap between the logits, which is why overconfident initialization produces huge first losses.
+  - lines: [32, 36]
+    title: The gradient is softmax minus one-hot
+    text: |
+      Differentiate L = LSE(z) minus z_t. The partial of LSE with respect to z_i is softmax(z)_i, and the partial of z_t is 1 when i = t and 0 otherwise. So the gradient is softmax(z) minus one_hot(t).
+
+      Line 34 recovers the probabilities by exponentiating the stable log-softmax, so this function inherits the overflow protection for free. Line 35 subtracts 1 at the target position. It modifies `probs` in place, which is safe because `probs` is a fresh list created on line 34.
+
+      The result sums to 0 (the probabilities sum to 1, minus the 1 at the target), which a test checks. Reading it as a signal: the correct class gets a negative gradient (gradient descent pushes its logit up), and every wrong class gets a positive one proportional to how much probability it stole. This one line is why frameworks fuse softmax and cross-entropy into a single operation.
+  - lines: [39, 44]
+    title: A small demonstration
+    text: |
+      `stoi` maps `'.'` to 0 and `a` to `z` to 1 to 26. Line 40 builds the reverse map `itos` with a dict comprehension over `stoi.items()`, which yields `(key, value)` pairs.
+
+      The loop prints each example for `"emma"` as text so you can check it by eye: `... -> e`, `..e -> m`, `.em -> m`, `emm -> a`, `mma -> .`. The last line prints about 0.4170, the value computed by hand above. Printing examples in readable form is the first thing to do with any data pipeline, yours or an AI's.
+review:
+  - id: wt-mlp-naive-ce
+    type: code-reading
+    prompt: An AI assistant replaces `cross_entropy` with the "more readable" version below. What does `cross_entropy([1000.0, 0.0, -1000.0], 0)` do now?
+    code: |
+      def cross_entropy(logits, target):
+          exps = [math.exp(z) for z in logits]
+          return -math.log(exps[target] / sum(exps))
+    options:
+      - id: a
+        text: Returns about 0, the same as before
+        rationale: The true answer is about 0, but this version never gets to compute it.
+      - id: b
+        text: Raises `OverflowError` from `math.exp(1000.0)`
+        correct: true
+        rationale: Right. Without subtracting the max first, the exponential of a large logit is too big for a float.
+      - id: c
+        text: Returns `nan`
+        rationale: In a tensor library you might get `inf` or `nan` silently. Python's `math.exp` raises an exception instead.
+    explanation: The naive formula is mathematically identical and fails only on large logits, which real models produce. The exercise's `[1000.0, 0.0, -1000.0]` test exists for exactly this reason. When reviewing loss code, look for the max subtraction or a library call that does it for you.
+  - id: wt-mlp-context-leak
+    type: predict-output
+    prompt: "Suppose `context = [0] * block_size` is moved above the `for w in words:` loop, so it is set only once. With `words = [\"emma\", \"ava\"]` and `block_size=3`, what is `X[5]`, the first example for \"ava\"? (Ids: '.' = 0, a = 1, m = 13.)"
+    options:
+      - id: a
+        text: "`[0, 0, 0]`, the same as before"
+        rationale: That's the correct behavior, which depends on resetting the context for each word.
+      - id: b
+        text: "`[13, 1, 0]`, the end of \"emma\" (`ma.`)"
+        correct: true
+        rationale: Yes. After the last example for "emma", the window has shifted to m, a, '.'. Without a reset, "ava" starts from that.
+      - id: c
+        text: "`[1, 22, 1]`, the letters of \"ava\""
+        rationale: The context holds the characters before the one being predicted, so it can't contain "ava" yet.
+    explanation: The leaked version still produces the right number of examples, so only a test on the content of X (the exercise checks `X[5] == [0, 0, 0]`) catches it. The model would learn that names depend on the previous name in the list, which is meaningless.
+  - id: wt-mlp-grad-sign
+    type: scenario
+    prompt: "`grad_logits([0.0, 0.0, 0.0, 0.0], 2)` returns `[0.25, 0.25, -0.75, 0.25]`. After a gradient descent step on the logits, what happens?"
+    options:
+      - id: a
+        text: All four logits rise by the same amount
+        rationale: The gradient entries differ in sign, so the logits move in different directions.
+      - id: b
+        text: Logit 2 rises and the other three fall, so the correct class gains probability
+        correct: true
+        rationale: Exactly. Descent subtracts the gradient, so the negative entry at the target increases its logit, and the positive entries decrease theirs.
+      - id: c
+        text: Nothing, because the gradient sums to zero
+        rationale: Summing to zero means the total of the logits doesn't change, not that the individual logits don't.
+    explanation: Softmax minus one-hot has a direct reading. The correct class is pushed up by how far its probability is from 1, and every other class is pushed down by the probability it currently has.
+direct:
+  task: |
+    Training uses minibatches, so you want a batched version of the loss: `mean_cross_entropy(batch_logits, targets)`, the average cross-entropy over a list of examples, and `grad_mean_cross_entropy` with its gradient. Lesson 6 relies on this: the batch gradient is the per-example gradient divided by the batch size N.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add two functions and leave the existing four unchanged:
+
+    1. mean_cross_entropy(batch_logits, targets): batch_logits is a list of N logit lists and targets a list of N class ids. Return the mean of cross_entropy(logits, t) over the batch. Raise ValueError if the lengths differ or the batch is empty.
+    2. grad_mean_cross_entropy(batch_logits, targets): return a list of N gradient lists, where row k is grad_logits(batch_logits[k], targets[k]) divided by N.
+
+    Reuse cross_entropy and grad_logits; don't reimplement softmax.
+
+    Add test asserts: a batch of one equals cross_entropy; a batch of [2, 1, 0.1] with target 0 and 27 equal logits with target 3 gives the average of 0.4170 and log(27); every gradient entry matches a central-difference estimate of mean_cross_entropy within 1e-6; mismatched lengths raise ValueError.
+  checklist:
+    - The batch gradient is divided by N (forgetting this is the most common batched-loss bug)
+    - The new functions call the existing stable ones rather than reintroducing a naive softmax
+    - The four original functions are unchanged
+    - Empty or mismatched batches raise a clear error
+    - A central-difference gradient check covers the new gradient

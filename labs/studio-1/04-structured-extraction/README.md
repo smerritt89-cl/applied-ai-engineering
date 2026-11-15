@@ -15,6 +15,17 @@ This is the core of the studio project (meeting transcript to action items). The
 fictional documents: a vendor email and a support ticket. Both contain real commitments, a request with no clear owner,
 and deadlines given as phrases rather than dates.
 
+## Review track
+
+If you're on the review track (the default), you don't write the code below from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to add a deadline check to `verify_evidence`, review its diff,
+   then run `pytest studio-1/04-structured-extraction/test_change.py -q`.
+
+The steps below are the write track, if you'd rather implement it yourself in `starter.py`.
+
 ## Steps
 
 Work in `starter.py`. The tests import from it.

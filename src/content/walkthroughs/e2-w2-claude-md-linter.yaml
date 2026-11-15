@@ -1,0 +1,208 @@
+id: e2-w2-claude-md-linter
+summary: |
+  This program is a small linter for CLAUDE.md (or AGENTS.md) files. It can't tell whether an instruction is wise, but it catches the mechanical problems the memory docs warn about: a file that's too long, no backticked test command, shouting in capitals, vague wording like "best practices", and absolute rules about a path that should probably be enforced with a hook or deny rule instead.
+
+  It's built as two small helpers plus one main function. `_strip_code` removes backticked text so that commands and file names don't trigger the style checks; `_has_test_command` looks only inside backticks. `lint` then walks the file line by line and collects `(line_number, code)` findings. Each check is a few lines you can read and argue with, which is what you want from a heuristic: when it flags something, you should be able to see exactly why.
+code: |
+  VAGUE = ["properly", "clean code", "best practices", "as needed", "appropriate", "good code", "well-structured"]
+  ABSOLUTE = ["never", "always", "must not", "do not ever"]
+
+
+  def _strip_code(line):
+      """Return the line with every `backticked` span removed."""
+      out, inside = [], False
+      for ch in line:
+          if ch == "`":
+              inside = not inside
+              continue
+          if not inside:
+              out.append(ch)
+      return "".join(out)
+
+
+  def _has_test_command(text):
+      """True if any backticked span on any line contains "test"."""
+      for line in text.splitlines():
+          parts = line.split("`")
+          # After splitting on backticks, the odd-numbered parts are the code spans.
+          if any("test" in parts[i] for i in range(1, len(parts), 2)):
+              return True
+      return False
+
+
+  def lint(text, max_lines=200):
+      """Return sorted (line_number, code) findings for a CLAUDE.md text. Line numbers start at 1;
+      file-level findings ("too-long", "no-test-command") use line 0."""
+      lines = text.splitlines()
+      findings = []
+      if len(lines) > max_lines:
+          findings.append((0, "too-long"))
+      if not _has_test_command(text):
+          findings.append((0, "no-test-command"))
+
+      for n, line in enumerate(lines, start=1):
+          if line.lstrip().startswith("#"):
+              continue  # headings are exempt
+          plain = _strip_code(line)
+          words = [w.strip(".,:;()!?\"'") for w in plain.split()]
+          low = plain.lower()
+
+          if "IMPORTANT" in plain or any(len(w) >= 4 and w.isalpha() and w.isupper() for w in words):
+              findings.append((n, "shouting"))
+          if any(phrase in low for phrase in VAGUE):
+              findings.append((n, "vague"))
+
+          # Single words must match whole words ("never" but not "whenever"); phrases match as text.
+          lower_words = [w.lower() for w in words]
+          absolute = any(a in lower_words for a in ABSOLUTE if " " not in a) or any(
+              a in low for a in ABSOLUTE if " " in a
+          )
+          if absolute and any("/" in token for token in plain.split()):
+              findings.append((n, "enforce"))
+
+      return sorted(findings)
+
+
+  SAMPLE = """# Commands
+  - Install: `uv sync`
+  - Tests: `uv run pytest -q`
+
+  # Conventions
+  - Write clean code and follow best practices.
+  - IMPORTANT: NEVER edit files in migrations/ by hand.
+  - Use the helpers in src/app/errors.py for errors.
+  - Always keep the CHANGELOG updated as needed."""
+
+  for finding in lint(SAMPLE):
+      print(finding)
+notes:
+  - lines: [1, 2]
+    title: The word lists are data, not code
+    text: |
+      Two module-level **constants** (uppercase names are the Python convention for "don't reassign this"). Keeping the phrases in lists means you can tune the linter by editing data: add "robust" to `VAGUE` and every check that uses the list picks it up.
+
+      Notice that `ABSOLUTE` mixes single words and multi-word phrases. That mix is why the matching code later has two branches.
+  - lines: [5, 14]
+    title: "`_strip_code`: a tiny state machine"
+    text: |
+      The leading underscore marks a **private helper**: used inside this module, not meant to be called from outside.
+
+      The function walks the line one character at a time with a flag, `inside`, that flips each time it meets a backtick. Characters are kept only while the flag is off. This is the simplest form of a **state machine**: the meaning of a character depends on what came before it.
+
+      `out, inside = [], False` assigns two variables at once. Building a list of characters and joining them with `"".join(out)` at the end is the idiomatic way to assemble a string piece by piece.
+
+      Worked value: ``"- Tests: `uv run pytest -q`"`` becomes `"- Tests: "`. That's what keeps `README` and `HTTP` inside backticks from counting as shouting.
+  - lines: [17, 24]
+    title: "`_has_test_command`: the odd-numbered pieces"
+    text: |
+      `line.split("`")` cuts a line at every backtick. In ``"run `pytest -q` now"`` the pieces are `["run ", "pytest -q", " now"]`: the text between backticks always lands at the odd positions 1, 3, 5. `range(1, len(parts), 2)` steps through exactly those positions.
+
+      `any(...)` with a generator returns `True` as soon as one item is true, and the `return True` inside the loop stops at the first matching line. A file with an unclosed backtick could confuse this, which is fine for a heuristic but worth knowing.
+
+      This is a different technique from `_strip_code` for a related job. Both work; a cleanup pass might unify them, but only if the tests still pass on lines with several code spans.
+  - lines: [27, 35]
+    title: File-level checks first
+    text: |
+      `text.splitlines()` splits on line breaks (and handles Windows line endings too). The two file-level findings use line number 0, a convention the docstring states so callers know 0 means "the whole file".
+
+      The 200-line default comes from the memory docs' guidance to keep project instructions short. It's a **default argument**, so a team with a different budget can call `lint(text, max_lines=120)`.
+  - lines: [37, 42]
+    title: Walk the lines, skip headings, prepare the words
+    text: |
+      `enumerate(lines, start=1)` numbers lines from 1, matching what an editor shows. `line.lstrip().startswith("#")` skips Markdown headings even if they're indented; `continue` jumps to the next line.
+
+      Line 41 splits the plain text into words and strips punctuation from each end with `str.strip(chars)`, which removes any of the listed characters from both ends (not the string as a unit). So `"IMPORTANT:"` becomes `"IMPORTANT"`. The escaped `\"` inside the string is a literal double quote.
+
+      Computing `plain`, `words` and `low` once per line, then reusing them in every check, keeps the checks short and consistent.
+  - lines: [44, 47]
+    title: Shouting and vague wording
+    text: |
+      `w.isalpha() and w.isupper()` means "all letters, all capitals", and `len(w) >= 4` lets short acronyms like `API` or `URL` through. `IMPORTANT` is named explicitly because it's the classic shouted instruction.
+
+      The vague check is a plain substring search on the lowercased line: "Write clean code and follow best practices" matches twice but is reported once, because `any` stops at the first hit.
+
+      A known false positive: line 9 of the sample, "keep the CHANGELOG updated", is flagged as shouting because `CHANGELOG` is a nine-letter capitalized word. Writing it as `` `CHANGELOG.md` `` (in backticks, as a file name) would fix both the finding and the instruction. Heuristics produce findings for you to judge, not verdicts.
+  - lines: [49, 55]
+    title: "Absolute rules that name a path: \"enforce\""
+    text: |
+      This is the most interesting check. "never" must match a whole word, so the code compares against the list of words (`a in lower_words`), not the raw text; otherwise "whenever" would count. Phrases like "must not" can't be found in a list of single words, so they're searched in the text instead. The `if " " not in a` / `if " " in a` filters inside the two generators split the list accordingly.
+
+      The parentheses around the long `or` expression let it continue across lines without a backslash.
+
+      The second condition, any token containing `/`, is a rough "names a path" test. Line 7, `NEVER edit files in migrations/ by hand`, triggers it: a zero-exception rule about a directory is a rule a hook or a deny rule can enforce, so writing it only in prose leaves it to the model's memory.
+  - lines: [57, 57]
+    title: Sorted output
+    text: |
+      `sorted` on a list of tuples orders by line number, then by code name, so `(7, "enforce")` comes before `(7, "shouting")`. Stable, predictable output makes the findings easy to test and easy to diff between runs.
+  - lines: [60, 71]
+    title: The sample file
+    text: |
+      A triple-quoted string holds a nine-line CLAUDE.md. Running the program prints the findings for lines 6, 7 and 9, and nothing for line 8, which is concrete ("use the helpers in src/app/errors.py").
+
+      The lesson's suggestion is the real exercise: paste your own CLAUDE.md in place of `SAMPLE` and see what it says. Then decide, finding by finding, whether to fix the file or accept the warning.
+review:
+  - id: wt-lint-substring
+    type: code-reading
+    prompt: An AI assistant simplifies the absolute-word check to the line below. Which of these lines is now flagged "enforce" when it wasn't before?
+    code: |
+      absolute = any(a in low for a in ABSOLUTE)
+    options:
+      - id: a
+        text: "- Run `pytest -q` whenever you touch src/app/models.py"
+        correct: true
+        rationale: Right. "never" is a substring of "whenever", and the line names a path, so the simplified check fires. The original compares whole words and doesn't.
+      - id: b
+        text: "- Never edit migrations/ by hand"
+        rationale: This was already flagged by the original; it's a genuine absolute rule about a path.
+      - id: c
+        text: "- Always run the formatter"
+        rationale: It contains "always", but no path, so neither version flags "enforce".
+    explanation: Substring matching on words is one of the most common sources of false positives in text heuristics. The original's two-branch check (whole words for single words, text search for phrases) exists for exactly this reason.
+  - id: wt-lint-backticks
+    type: predict-output
+    prompt: "What does `lint(\"- Check the `README` before opening a PR; run `pytest -q`\")` return?"
+    options:
+      - id: a
+        text: "`[(1, \"shouting\")]`, because README is in capitals"
+        rationale: README is inside backticks, and `_strip_code` removes it before the shouting check runs. "PR" is only two letters.
+      - id: b
+        text: "`[]`"
+        correct: true
+        rationale: Right. The backticked spans are removed for the style checks, and the file has a backticked command containing "test" (`pytest -q`), so there's no file-level finding either.
+      - id: c
+        text: "`[(0, \"no-test-command\")]`"
+        rationale: "`pytest -q` is in backticks and contains \"test\", so the file passes that check."
+    explanation: Treating code spans differently from prose is what lets the linter be strict about wording without punishing file names, commands and acronyms that are written correctly.
+  - id: wt-lint-why-enforce
+    type: scenario
+    prompt: The linter flags "NEVER edit files in migrations/ by hand" as "enforce". What's the best response?
+    options:
+      - id: a
+        text: Delete the line, since the linter says it's a problem
+        rationale: The rule itself is good. The finding is about how it's enforced, not whether it should exist.
+      - id: b
+        text: Keep a calm version of the rule in CLAUDE.md and add a hook or deny rule that actually blocks edits under migrations/
+        correct: true
+        rationale: Right. Prose tells the agent why; a hook or deny rule guarantees it. A zero-exception rule shouldn't depend on the model remembering it.
+      - id: c
+        text: Rewrite it in more capitals so the model takes it more seriously
+        rationale: That's the "shouting" finding. Emphasis in prose is not enforcement.
+    explanation: Instructions shape behavior; hooks and permissions constrain it. Use the first for judgment calls and the second for rules with no exceptions.
+direct:
+  task: |
+    CLAUDE.md files grow by accretion, and the same rule often gets added twice. Add a "duplicate" finding: a non-blank, non-heading line that repeats an earlier line.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a new finding code "duplicate" to lint. A line is a duplicate if, after stripping surrounding whitespace and lowercasing, it is identical to an earlier non-blank, non-heading line. Report (line_number, "duplicate") on the later occurrence only (the first one is fine). Blank lines and headings (lines starting with "#") are never duplicates.
+
+    Don't change any existing check, the helper functions, or the sort order. Update the docstring's list of codes.
+
+    Add asserts: a file with "- Use tabs." on lines 1 and 3 reports (3, "duplicate") and not (1, "duplicate"); two identical headings produce no duplicate finding; "- Use tabs." and "-   use TABS.  " count as duplicates; and lint(SAMPLE) is unchanged.
+  checklist:
+    - Only the later occurrence is reported, with the right line number
+    - Headings and blank lines are excluded
+    - Existing findings for SAMPLE are exactly the same as before
+    - The duplicate tracking uses a set or dict of seen lines (not a nested loop over all earlier lines)
+    - The docstring lists the new code
+    - New asserts cover the first-versus-later rule, headings, and whitespace or case differences

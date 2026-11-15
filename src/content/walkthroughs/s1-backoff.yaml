@@ -1,0 +1,172 @@
+id: s1-backoff
+summary: |
+  When an API call fails, a retry wrapper has to make two decisions: should I try again at all, and if so, how long should I wait first? This program answers each with its own small function. `should_retry` sorts failures into "will never fix itself" and "might work in a moment". `backoff_delay` computes the wait using exponential backoff with full jitter, the schedule described in the lesson.
+
+  Both functions are **pure**: they take numbers in and give a number or `True`/`False` back, with no sleeping, no network, and no hidden state. The actual waiting and re-sending happen elsewhere (you build that wrapper in the lab). Keeping the decisions pure is what lets the tests check the retry policy exactly, including the random part, in a fraction of a second.
+code: |
+  import random
+
+  RETRYABLE = {408, 409, 429, 500, 502, 503, 504, 529}
+
+
+  def should_retry(status, attempt, max_attempts, has_retry_after=True):
+      """True if a failed request should be retried.
+      - Never retry once attempt + 1 >= max_attempts (attempt counts from 0).
+      - Retry only RETRYABLE statuses.
+      - A 429 WITHOUT a retry-after header is a spend cap: do not retry."""
+      if attempt + 1 >= max_attempts:
+          return False  # out of attempts, whatever the error was
+      if status == 429 and not has_retry_after:
+          return False  # spend cap: waiting will not help
+      return status in RETRYABLE
+
+
+  def backoff_delay(attempt, base=0.5, cap=8.0, retry_after=None, rng=random.random):
+      """Full jitter: uniform in [0, min(cap, base * 2**attempt)).
+      If retry_after (seconds) is given, return max(jittered delay, retry_after)."""
+      ceiling = min(cap, base * 2 ** attempt)
+      delay = rng() * ceiling
+      if retry_after is not None:
+          delay = max(delay, retry_after)
+      return delay
+
+
+  for a in range(5):
+      print(a, round(backoff_delay(a, rng=lambda: 0.999), 3))
+notes:
+  - lines: [1, 3]
+    title: The retryable statuses, as a set
+    text: |
+      `import random` brings in Python's random-number module; we use its `random.random` function, which returns a float from 0 (inclusive) up to but not including 1.
+
+      `RETRYABLE` is a **set**, written with curly braces and no colons (a dict would have `key: value` pairs). A set is an unordered collection built for one question: "is this value in here?" That is exactly what the retry check asks. The members are the transient failures from the lesson: 408 (request timeout), 409 (conflict), 429 (rate limited), the 5xx server errors, and 529 (overloaded).
+
+      What's missing matters as much as what's present. 400, 401, 403, 404, and 413 are client mistakes: a bad field, a bad key, a mistyped model id. Retrying them sends the same mistake again. If an AI-written version adds 400 "to be safe", that is a bug, not caution.
+  - lines: [6, 10]
+    title: The retry decision and its three rules
+    text: |
+      `should_retry` takes the HTTP `status`, which `attempt` just failed (counting from 0), the `max_attempts` budget, and whether the response carried a `retry-after` header. `has_retry_after=True` is a **default argument**, so most callers can ignore it; only the 429 case needs it.
+
+      The docstring lists three rules. The body below implements them in a deliberate order: the cheap, absolute rules first, then the general one.
+  - lines: [11, 12]
+    title: Rule 1, stop when the attempt budget is spent
+    text: |
+      Because `attempt` counts from 0, `attempt + 1` is how many requests have been made so far. With `max_attempts=4`, attempts 0, 1, and 2 may retry, and after attempt 3 fails we stop, for four requests in total.
+
+      This check comes first so that no status, however retryable, can loop forever. The **comment after `#`** says why the line exists, not what it does, which is the useful kind of comment.
+
+      Off-by-one errors live here. A version that writes `attempt < max_attempts` allows a retry after attempt 3, which is a fifth request. It still "works", so tests that only check one or two attempts won't catch it; the hidden checks include `should_retry(500, 3, 4)` precisely for this.
+  - lines: [13, 14]
+    title: Rule 2, the spend-cap exception
+    text: |
+      A 429 normally means "slow down" and carries a `retry-after` header. When your organization hits its monthly spend cap, the API also returns 429, but with **no** `retry-after`, and no amount of waiting will help until access resumes.
+
+      `status == 429 and not has_retry_after` reads almost like English: the status is 429 and there is no retry-after. **`and`** requires both to be true; **`not`** flips `True` to `False`.
+
+      This check must run *before* the general rule on the next line, because 429 is in `RETRYABLE`. If the order were reversed, the general rule would return `True` first and this line would never run. Order of checks is a classic place for a quiet bug in AI-edited code.
+  - lines: [15, 15]
+    title: Rule 3, retry only what is transient
+    text: |
+      `status in RETRYABLE` is a **membership test** that evaluates to `True` or `False`, and the function returns that value directly. Writing `if status in RETRYABLE: return True` then `else: return False` would do the same thing in four lines.
+
+      Like an allow-list, this fails safe: a status code nobody anticipated is not retried. That is the right default, because retrying a request you don't understand can double side effects or costs.
+  - lines: [18, 22]
+    title: The exponential ceiling, then full jitter
+    text: |
+      `ceiling = min(cap, base * 2 ** attempt)` is the exponential part. `**` is Python's power operator, so with `base=0.5` the ceiling goes 0.5, 1, 2, 4, 8 for attempts 0 to 4, and `min(cap, ...)` stops it growing past 8 seconds. Without the cap, attempt 10 would wait up to 512 seconds.
+
+      `delay = rng() * ceiling` is the jitter. `rng()` returns a number in [0, 1), so the delay lands anywhere from 0 up to the ceiling, uniformly. That spread is what stops many clients that failed at the same moment from retrying in one synchronized wave.
+
+      `rng=random.random` passes the **function itself** (no parentheses, so it isn't called yet) as a default argument. Tests replace it: `rng=lambda: 1.0` is a **lambda**, a one-line unnamed function, that always returns 1.0, which pins the delay to the ceiling so the math can be checked exactly. For example, attempt 2 with `lambda: 0.5` gives 0.5 x 2 = 1.0.
+  - lines: [23, 25]
+    title: Never wait less than the server asked
+    text: |
+      If the server sent `retry-after`, retrying earlier is guaranteed to fail, so the delay becomes the larger of the jittered value and the server's number. `backoff_delay(0, retry_after=3, rng=lambda: 0.1)` jitters to 0.05 seconds, then `max(0.05, 3)` returns 3.
+
+      The test is `retry_after is not None`, not `if retry_after:`. `None` means "no header"; a plain truthiness check would also treat a header value of `0` as absent. Here the result happens to be the same, but `is not None` says precisely what is meant, and the difference matters in many similar checks (a count of 0, an empty string), so it is a good habit to look for in review.
+  - lines: [28, 29]
+    title: Watching the schedule grow
+    text: |
+      The demo passes `rng=lambda: 0.999`, almost the top of the jitter range, so each line shows roughly the ceiling for that attempt:
+
+      ```python
+      0 0.499
+      1 0.999
+      2 1.998
+      3 3.996
+      4 7.992
+      ```
+
+      Each wait doubles until the cap. In real use, `rng` returns a fresh random number each time, and the actual delays fall anywhere below these values. One of the hidden checks samples 2,000 delays at attempt 4 and confirms their average is near 4 seconds, half the ceiling of 8, which is what a uniform spread predicts.
+review:
+  - id: wt-backoff-reordered
+    type: code-reading
+    prompt: An AI assistant "tidies" `should_retry` into the version below. What does `should_retry(429, 0, 4, has_retry_after=False)` return now?
+    code: |
+      def should_retry(status, attempt, max_attempts, has_retry_after=True):
+          if status in RETRYABLE and attempt < max_attempts:
+              return True
+          if status == 429 and not has_retry_after:
+              return False
+          return False
+    options:
+      - id: a
+        text: "`False`, the spend-cap rule still applies"
+        rationale: The rule is still in the code, but it never runs for a 429, because 429 is in `RETRYABLE` and the first `if` returns `True` before reaching it.
+      - id: b
+        text: "`True`, so the wrapper keeps retrying a request that cannot succeed"
+        correct: true
+        rationale: Right. Moving the general rule first made the spend-cap check unreachable for 429. The version also changed the budget check to `attempt < max_attempts`, which allows one extra request.
+      - id: c
+        text: It raises `TypeError` because `has_retry_after` is a keyword argument
+        rationale: Passing a default argument by name is normal Python and works fine.
+    explanation: Both bugs pass a quick test such as `should_retry(500, 0, 4)`. They only show up on the edge cases, which is why the hidden checks test attempt 3 of 4 and a 429 without `retry-after`. When an AI reorders conditions, check whether any rule became unreachable.
+  - id: wt-backoff-predict-retry-after
+    type: predict-output
+    prompt: What does this call return?
+    code: |
+      backoff_delay(1, retry_after=0.2, rng=lambda: 0.9)
+    options:
+      - id: a
+        text: "`0.2`, because the server's value always wins"
+        rationale: The server's value is a minimum, not a replacement. `max` keeps the larger number.
+      - id: b
+        text: "`1.1`, the jittered delay plus the server's value"
+        rationale: The code takes the larger of the two; it never adds them.
+      - id: c
+        text: "`0.9`"
+        correct: true
+        rationale: Right. The ceiling for attempt 1 is min(8, 0.5 x 2) = 1.0, jitter gives 0.9 x 1.0 = 0.9, and max(0.9, 0.2) is 0.9.
+    explanation: "`retry-after` sets a floor: never retry earlier than the server asked. When our own backoff already waits longer, we keep it."
+  - id: wt-backoff-no-jitter
+    type: scenario
+    prompt: A teammate's AI-generated wrapper uses `delay = min(cap, base * 2 ** attempt)` with no random factor, because "jitter makes the tests flaky". Five hundred workers in a batch job hit a 529 at the same second. What happens next?
+    options:
+      - id: a
+        text: They all retry at exactly the same moments, in synchronized waves that keep overloading the service
+        correct: true
+        rationale: Right. Identical schedules mean identical arrival times. Jitter spreads the 500 retries across the whole window, which is the point of it.
+      - id: b
+        text: Nothing changes, because exponential backoff already spreads them out
+        rationale: Backoff spaces out one client's attempts over time. It does nothing to separate many clients that started together.
+      - id: c
+        text: The SDK adds jitter automatically, so the wrapper's choice doesn't matter
+        rationale: Whatever the SDK does internally, this wrapper computes its own delays, and these delays have no randomness.
+    explanation: The fix for flaky tests is not to remove the randomness but to inject it, as `rng` does here, so tests can pin it to a fixed value. That keeps production behavior correct and the tests exact.
+direct:
+  task: |
+    The lesson says to retry timeouts and connection errors too, but those failures never produce an HTTP response, so there is no status code. Your wrapper represents them as `status=None`, and right now `should_retry(None, 0, 4)` returns `False`.
+
+    Write the prompt you'd give a coding assistant to make connection errors and timeouts retryable.
+  prompt: |
+    In should_retry, treat status=None as a retryable failure: it means the request never got an HTTP response (a timeout or a connection error).
+
+    Keep every existing rule exactly as it is, in the same order: the attempt budget check still comes first, so status=None must also stop at max_attempts. Do not add None to the RETRYABLE set and do not change backoff_delay. Update the docstring to say what status=None means.
+
+    Add test asserts for: should_retry(None, 0, 4) is True; should_retry(None, 3, 4) is False; and the existing 400 and 429-without-retry-after cases still return False.
+  checklist:
+    - The attempt-budget check is still the first rule, and `None` stops at `max_attempts` like any other status
+    - The spend-cap rule still runs before the general rule, so a 429 without `retry-after` is still not retried
+    - Client errors such as 400 and 401 are still not retried
+    - "`backoff_delay` and `RETRYABLE` are unchanged (no scope creep)"
+    - The docstring explains `status=None`, and new asserts cover both the retry and the out-of-attempts case

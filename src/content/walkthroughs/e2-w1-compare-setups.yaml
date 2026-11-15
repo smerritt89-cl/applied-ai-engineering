@@ -1,0 +1,159 @@
+id: e2-w1-compare-setups
+summary: |
+  This program turns a log of agent runs into a decision. Each run records which setup was used (a model plus an effort level), whether the task succeeded, what it cost, and how many minutes of your rework it needed. `summarize` groups the runs by setup and computes four numbers per setup; `choose` picks the cheapest setup per success among those that clear your quality bars.
+
+  The split mirrors how you'd make the decision on paper: first get honest per-setup numbers, then apply your thresholds. Keeping the thresholds as parameters of `choose` (instead of constants inside it) is the point of the exercise: whether the cheap setup or the strong one wins depends on how much rework you can tolerate, and that's a judgment you should be able to change and rerun.
+code: |
+  def summarize(runs):
+      """runs: list of dicts with keys setup, task, success (bool), cost (dollars), rework_min, minutes.
+      Return {setup: {"runs": n, "success_rate": s, "cost_per_success": c, "mean_rework_min": r}}
+      where cost_per_success is total cost / number of successes (float('inf') if none),
+      success_rate and the others are floats rounded to 2 decimals (leave inf as inf)."""
+      out = {}
+      for setup in sorted({r["setup"] for r in runs}):
+          rs = [r for r in runs if r["setup"] == setup]
+          wins = sum(1 for r in rs if r["success"])
+          cost = sum(r["cost"] for r in rs)
+          out[setup] = {
+              "runs": len(rs),
+              "success_rate": round(wins / len(rs), 2),
+              "cost_per_success": round(cost / wins, 2) if wins else float("inf"),
+              "mean_rework_min": round(sum(r["rework_min"] for r in rs) / len(rs), 2),
+          }
+      return out
+
+
+  def choose(summary, min_success=0.8, max_rework=10):
+      """Return the setup with the lowest cost_per_success among those with
+      success_rate >= min_success and mean_rework_min <= max_rework, or None if none qualify."""
+      qualifying = [
+          (stats["cost_per_success"], setup)
+          for setup, stats in summary.items()
+          if stats["success_rate"] >= min_success and stats["mean_rework_min"] <= max_rework
+      ]
+      return min(qualifying)[1] if qualifying else None
+
+
+  RUNS = [
+      {"setup": "sonnet-medium", "task": t, "success": s, "cost": c, "rework_min": r, "minutes": m}
+      for t, s, c, r, m in [("bug-1", True, 0.42, 2, 6), ("bug-2", False, 0.55, 25, 9), ("feat-1", True, 0.61, 5, 11),
+                            ("bug-1", True, 0.38, 0, 5), ("bug-2", True, 0.70, 8, 12), ("feat-1", True, 0.59, 6, 10)]
+  ] + [
+      {"setup": "opus-high", "task": t, "success": s, "cost": c, "rework_min": r, "minutes": m}
+      for t, s, c, r, m in [("bug-1", True, 1.10, 0, 7), ("bug-2", True, 1.45, 3, 14), ("feat-1", True, 1.30, 4, 13),
+                            ("bug-1", True, 0.95, 0, 6), ("bug-2", True, 1.60, 2, 15), ("feat-1", True, 1.25, 3, 12)]
+  ]
+  s = summarize(RUNS)
+  for k, v in s.items():
+      print(k, v)
+  print("choose:", choose(s))
+notes:
+  - lines: [1, 6]
+    title: The contract, then an empty result
+    text: |
+      The docstring is precise about two things that are easy to get wrong: what "cost per success" means (total cost divided by successes, not the average cost of the successful runs) and what to do when a setup never succeeds (infinity, so it can never be "cheapest").
+
+      `out = {}` starts an empty **dictionary** that will map each setup name to its stats.
+  - lines: [7, 10]
+    title: Group the runs by setup
+    text: |
+      `{r["setup"] for r in runs}` has curly braces, so it's a **set comprehension**: it collects each setup name once, however many runs it has. `sorted(...)` turns that into an alphabetical list, so the output dict has a predictable order (`opus-high` before `sonnet-medium`) every time you run it.
+
+      For each setup, line 8 filters the runs with a list comprehension, line 9 counts successes, and line 10 adds up the cost. Worked values for `sonnet-medium`: 6 runs, 5 wins, cost 3.25 dollars.
+
+      This approach scans `runs` once per setup. For a few dozen runs that's fine and very readable; with millions of rows you'd group in a single pass instead. An AI may "optimize" this into something cleverer; for data this size, prefer the version you can read.
+  - lines: [11, 17]
+    title: Four numbers per setup
+    text: |
+      The nested dict holds the summary. Line 14 uses a **conditional expression**, `A if condition else B`: if there were any wins, divide and round; otherwise use `float("inf")`. That guard is what prevents a `ZeroDivisionError` for a setup that failed every run, and infinity sorts after every real number, so such a setup can never win in `choose`.
+
+      Worked values: `sonnet-medium` gets success 0.83 (5 of 6), cost per success 0.65 (3.25 / 5), mean rework 7.67 minutes (46 / 6). `opus-high` gets 1.0, 1.28 and 2.0.
+
+      One thing to know about `round`: 7.65 / 6 is stored as 1.2750000000000001, so it rounds to 1.28. A value that landed exactly on a half could round either way, because floats can't store most decimals exactly. For a report that's fine; for money you'd charge someone, use integer cents.
+  - lines: [20, 22]
+    title: "`choose`: thresholds as parameters"
+    text: |
+      `min_success=0.8` and `max_rework=10` are **default arguments**. Calling `choose(s)` uses them; calling `choose(s, max_rework=5)` tightens the rework budget without touching the code. That's the design decision of this function: the quality bars are your judgment, so they're inputs.
+  - lines: [23, 28]
+    title: Filter, then take the minimum
+    text: |
+      The comprehension builds a list of `(cost_per_success, setup)` **tuples** for the setups that clear both bars. `summary.items()` yields each key and value together.
+
+      `min(qualifying)` compares tuples element by element: lowest cost first, and if two costs tie, the alphabetically first name. `[1]` takes the name out of the winning tuple. The trailing `if qualifying else None` handles "nobody qualifies", since `min` of an empty list raises `ValueError`.
+
+      Worked values: with defaults, both setups qualify and `sonnet-medium` wins at 0.65. With `max_rework=5`, sonnet's 7.67 minutes disqualifies it, so `opus-high` wins at 1.28.
+
+      Note that the comparisons use the *rounded* success rate. A setup at 0.795 would round to 0.8 and pass a 0.8 bar. That's acceptable here, but worth noticing: rounding belongs at the display step, and when thresholds are tight, compare unrounded numbers.
+  - lines: [31, 43]
+    title: The sample data and the output
+    text: |
+      `RUNS` is built from two list comprehensions that turn compact tuples into dicts, joined with `+`. The `for t, s, c, r, m in [...]` part **unpacks** each 5-tuple into named pieces.
+
+      Running it prints both summaries and `choose: sonnet-medium`. Now try the lesson's question: put a price on your rework minutes. If your time is worth 1.50 dollars a minute, sonnet's extra 5.67 minutes of rework per run is worth far more than the 0.63 dollars it saves per success. The numbers don't make the decision; they make your assumptions visible.
+review:
+  - id: wt-setups-no-filter
+    type: code-reading
+    prompt: An AI assistant shortens `choose` to the one-liner below. What does `choose(s, max_rework=5)` return now?
+    code: |
+      def choose(summary, min_success=0.8, max_rework=10):
+          return min(summary, key=lambda k: summary[k]["cost_per_success"])
+    options:
+      - id: a
+        text: "`opus-high`, as before"
+        rationale: That's the original answer. This version never looks at `max_rework`, so tightening it has no effect.
+      - id: b
+        text: "`sonnet-medium`, because it ignores both thresholds"
+        correct: true
+        rationale: Right. It just returns the cheapest setup per success. The parameters are still in the signature, which makes the bug harder to spot.
+      - id: c
+        text: "`None`, because no setup has rework under 5"
+        rationale: "`opus-high` averages 2.0 minutes, so it would qualify; and this version can't return None anyway."
+    explanation: A function that accepts a parameter and then ignores it is a common AI-written defect. When reviewing, check that every parameter is actually used, and test that changing it changes the result.
+  - id: wt-setups-tie
+    type: predict-output
+    prompt: Two setups both qualify, and both have `cost_per_success` of 0.65. Their names are `"sonnet-medium"` and `"haiku-high"`. What does `choose` return?
+    options:
+      - id: a
+        text: "`haiku-high`, because tuples compare the second element when the first ties"
+        correct: true
+        rationale: Right. `(0.65, "haiku-high") < (0.65, "sonnet-medium")` because "h" sorts before "s".
+      - id: b
+        text: Whichever setup appears first in the summary
+        rationale: That's what `min` with a `key=` function would do on a tie. Comparing whole tuples breaks ties by the name.
+      - id: c
+        text: It raises an error because the tie can't be resolved
+        rationale: Tuples always have an order as long as their elements can be compared, and strings can.
+    explanation: Tie-breaking rules are easy to leave implicit. Alphabetical is deterministic, which is good for testing, but it's arbitrary. If ties matter, say what should win (lower rework, say) and encode it.
+  - id: wt-setups-inf
+    type: scenario
+    prompt: Why does `summarize` use `float("inf")` for a setup with no successes, instead of `0` or `None`?
+    options:
+      - id: a
+        text: Because Python can't divide by zero, and infinity is the only other number
+        rationale: The code avoids the division entirely with a conditional. The choice of value is about what it means downstream.
+      - id: b
+        text: So a setup that never succeeds can never be chosen as cheapest, and comparisons still work
+        correct: true
+        rationale: Exactly. Infinity is larger than every real cost, so `min` never picks it. A `0` would make it look free, and `None` would crash the comparison in `min`.
+      - id: c
+        text: Because JSON requires infinity for missing values
+        rationale: JSON has no infinity at all, which is something to remember if you export these summaries.
+    explanation: Sentinel values should behave correctly in the operations that follow. "Zero cost per success" for a setup that never worked is the kind of plausible-looking wrong number that leads to a bad decision.
+direct:
+  task: |
+    You want `choose` to account for your time. Add a `minute_value` parameter (dollars per minute of rework, default 0) and rank setups by cost per success plus the rework cost, so you can see whether the cheaper model is still cheaper once your time counts.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a keyword parameter minute_value=0.0 to choose (after max_rework). Rank the qualifying setups by cost_per_success + mean_rework_min * minute_value instead of cost_per_success alone. Keep the same filters (success_rate >= min_success and mean_rework_min <= max_rework), the same alphabetical tie-break, and the same None result when nothing qualifies.
+
+    With minute_value=0 the result must be identical to today for every input. Don't change summarize or its output format.
+
+    Update the docstring to describe minute_value. Add asserts: choose(s) is still "sonnet-medium"; choose(s, minute_value=1.5) is "opus-high"; choose(s, minute_value=0.05) is still "sonnet-medium"; and a setup with infinite cost_per_success is never chosen whatever minute_value is.
+  checklist:
+    - With `minute_value=0`, results are identical to the original (the existing asserts still pass)
+    - The thresholds still filter before ranking; minute_value only changes the order
+    - "`summarize` and its output keys are untouched"
+    - An infinite cost per success still never wins, and nothing crashes on it
+    - The docstring explains the units (dollars per minute of rework)
+    - New asserts include at least one case where the answer flips
