@@ -68,6 +68,31 @@ def check(path: pathlib.Path, ex: dict[str, str]) -> list[str]:
             errs.append(f"missing {key}")
     if errs:
         return errs
+    # Types: YAML turns unquoted "a: b" into a mapping and "0.6" into a number.
+    def must_str(v, where):
+        if not isinstance(v, str):
+            errs.append(f"{where} should be text but YAML read it as {type(v).__name__} (quote it)")
+    for key in ("summary", "code"):
+        must_str(w[key], key)
+    for i, n in enumerate(w["notes"]):
+        must_str(n.get("title"), f"notes[{i}].title")
+        must_str(n.get("text"), f"notes[{i}].text")
+    for q in w["review"]:
+        for f in ("prompt", "explanation"):
+            must_str(q.get(f), f"{q.get('id')}.{f}")
+        if "code" in q:
+            must_str(q["code"], f"{q.get('id')}.code")
+        for o in q["options"]:
+            must_str(o.get("text"), f"{q.get('id')} option {o.get('id')}.text")
+            if "rationale" in o:
+                must_str(o["rationale"], f"{q.get('id')} option {o.get('id')}.rationale")
+    if w.get("direct"):
+        for f in ("task", "prompt"):
+            must_str(w["direct"].get(f), f"direct.{f}")
+        for i, c in enumerate(w["direct"].get("checklist", [])):
+            must_str(c, f"direct.checklist[{i}]")
+    if errs:
+        return errs
     code = w["code"].rstrip("\n") + "\n"
     n_lines = len(code.rstrip("\n").split("\n"))
     notes = w["notes"]
