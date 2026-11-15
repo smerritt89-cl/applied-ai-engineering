@@ -2,6 +2,16 @@
 
 **Goes with:** Studio 2, week 3 (lessons 7 to 9). **Time:** about 75 minutes. **API key:** not needed.
 
+## Review track
+
+The default way to do this lab: read the finished code, then direct a change to it.
+
+1. Run `python lab.py review studio-2/03-hybrid-retrieval` from the `labs` folder. It copies `solution.py` to `work.py`, and the tests run against `work.py`.
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): have a coding assistant add an optional stop-word list to `BM25` in `work.py`, review its change, and run `test_change.py`.
+
+To write the code yourself instead, follow the steps below in `starter.py` (run `python lab.py reset studio-2/03-hybrid-retrieval` first).
+
 ## Goal
 
 Build a small hybrid retriever and find out, with numbers, what each piece is worth:

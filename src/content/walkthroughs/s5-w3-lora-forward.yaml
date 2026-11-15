@@ -1,0 +1,161 @@
+id: s5-w3-lora-forward
+summary: |
+  This program implements the core of **LoRA** (low-rank adaptation) with plain Python lists. Instead of changing a big frozen weight matrix `W`, LoRA trains two thin matrices, `A` and `B`, and adds their scaled product to the layer's output: `h = W x + (alpha / r) * B (A x)`. Because `A` has only `r` rows, the update has far fewer parameters than `W`.
+
+  There are three functions for the three things you need to know about an adapter: how many parameters it adds (`lora_params`), how it changes a layer's output during training (`lora_forward`), and how to fold it into a single ordinary matrix for serving (`merge`). The tests tie them together: the merged matrix must give exactly the same output as the unmerged adapter, which is why a merged LoRA model costs nothing extra at inference.
+code: |
+  def matvec(M, v):
+      """M is a list of rows; return M @ v as a list."""
+      return [sum(a * b for a, b in zip(row, v)) for row in M]
+
+
+  def lora_params(shapes, r):
+      """shapes: dict name -> (d_in, d_out). Total LoRA parameters at rank r over all layers."""
+      # A is r x d_in and B is d_out x r, so each adapted layer adds r * (d_in + d_out).
+      return sum(r * (d_in + d_out) for d_in, d_out in shapes.values())
+
+
+  def lora_forward(x, W, A, B, alpha, r):
+      """h = W x + (alpha / r) * B (A x). W is d_out x d_in, A is r x d_in, B is d_out x r.
+      Compute A x first (a short vector), never the full B A matrix."""
+      scale = alpha / r
+      base = matvec(W, x)                 # the frozen layer's output
+      update = matvec(B, matvec(A, x))    # A x has only r entries
+      return [b + scale * u for b, u in zip(base, update)]
+
+
+  def merge(W, A, B, alpha, r):
+      """Return W + (alpha / r) * B A as a new matrix (lists of lists)."""
+      scale = alpha / r
+      rows, cols, rank = len(W), len(W[0]), len(A)
+      return [
+          [W[i][j] + scale * sum(B[i][k] * A[k][j] for k in range(rank)) for j in range(cols)]
+          for i in range(rows)
+      ]
+
+
+  W = [[1, 0, 2, 0], [0, 1, 0, 1], [1, 1, 1, 1]]          # 3 x 4, frozen
+  A = [[0.1, 0.2, 0, 0.1], [0, 0.3, 0.1, 0]]              # 2 x 4
+  B = [[1, 0], [0, 2], [1, 1]]                            # 3 x 2
+  x = [1, 2, 3, 4]
+  print("base:   ", matvec(W, x))
+  print("adapted:", lora_forward(x, W, A, B, alpha=4, r=2))
+
+  QWEN_BLOCK = {"q_proj": (896, 896), "k_proj": (896, 128), "v_proj": (896, 128), "o_proj": (896, 896),
+                "gate_proj": (896, 4864), "up_proj": (896, 4864), "down_proj": (4864, 896)}
+  print("per block at r=16:", lora_params(QWEN_BLOCK, 16))
+notes:
+  - lines: [1, 3]
+    title: 'matvec, matrix times vector'
+    text: |
+      A matrix is stored as a **list of rows**, each row a list of numbers. Multiplying a matrix by a vector means: for each row, multiply it element by element with the vector and add up the results.
+
+      `zip(row, v)` pairs the row's entries with the vector's entries. `sum(a * b for a, b in zip(row, v))` is a **generator expression** inside `sum`, computing one dot product. The outer **list comprehension** does that for every row.
+
+      Worked value: the first row of `W` is `[1, 0, 2, 0]` and `x` is `[1, 2, 3, 4]`, so 1 + 0 + 6 + 0 = 7. This helper was given in the starter; everything else builds on it.
+  - lines: [6, 9]
+    title: 'Counting adapter parameters'
+    text: |
+      `A` is `r x d_in` and `B` is `d_out x r`, so one adapted layer adds `r * d_in + d_out * r = r * (d_in + d_out)` parameters. The comment states that derivation, which is worth having in the code because the formula alone does not say where it came from.
+
+      `shapes.values()` gives the `(d_in, d_out)` tuples, and `for d_in, d_out in ...` **unpacks** each one into two names.
+
+      Worked value: for a 4,096 by 4,096 layer at rank 8, that is 8 × 8,192 = 65,536 parameters, against 16.8 million in `W` itself. A common AI mistake is `r * d_in * d_out`, which describes nothing real.
+  - lines: [12, 18]
+    title: 'The forward pass, in the cheap order'
+    text: |
+      `scale = alpha / r` is LoRA's scaling factor. `alpha` is a hyperparameter you choose; dividing by `r` means that if you change the rank, you don't also have to retune the learning rate as much.
+
+      The order of operations is the point. `matvec(A, x)` produces a vector of only `r` numbers, and then `matvec(B, ...)` expands it back to `d_out`. That costs about `r * (d_in + d_out)` multiplications. Building the full `B A` matrix first would cost `d_out * d_in * r` and then another `d_out * d_in` to apply it. The docstring says "never the full B A matrix" so nobody "simplifies" it later.
+
+      Worked value: `A x = [0.9, 0.9]`, `B (A x) = [0.9, 1.8, 1.8]`, scaled by 4 / 2 = 2 gives `[1.8, 3.6, 3.6]`, added to the base `[7, 6, 10]`: **`[8.8, 9.6, 13.6]`**.
+  - lines: [21, 28]
+    title: 'Merging the adapter into one matrix'
+    text: |
+      `rows, cols, rank = len(W), len(W[0]), len(A)` is **multiple assignment**: three names set at once from the matrix shapes.
+
+      The nested comprehension builds a brand-new matrix. For each position `(i, j)` it takes `W[i][j]` and adds the scaled entry of `B A`, which is the dot product of row `i` of `B` with column `j` of `A`: `sum(B[i][k] * A[k][j] for k in range(rank))`. The outer comprehension makes rows, the inner one makes the entries of each row.
+
+      Returning a **new** matrix instead of updating `W` in place is deliberate. `W` is the frozen base model; changing it would mean the adapter gets applied twice the next time anyone runs `lora_forward`. A test checks that `W` is unchanged afterwards.
+  - lines: [31, 36]
+    title: 'A tiny layer to check by hand'
+    text: |
+      `W` is 3 by 4 (3 outputs, 4 inputs), `A` is 2 by 4 (rank 2), and `B` is 3 by 2. The comments record the shapes, which is the single most useful kind of comment in matrix code: shape mistakes are the most common bug, and Python lists won't complain about them until something breaks.
+
+      The two prints compare the frozen layer's output with the adapted one. Press **Run this code** to see `[7, 6, 10]` become `[8.8, 9.6, 13.6]`.
+  - lines: [38, 40]
+    title: 'Parameter count for a real model block'
+    text: |
+      `QWEN_BLOCK` lists the seven linear layers in one decoder block of Qwen2.5-0.5B-Instruct, the model in this week's lab, with their `(d_in, d_out)` shapes from its config. The key and value projections are narrow (128 outputs) because of grouped-query attention.
+
+      At rank 16 one block adds 366,592 parameters; over 24 blocks that is about 8.8 million, under 2% of the model's roughly 494 million. That ratio is why LoRA training fits on modest hardware.
+review:
+  - id: wt-lora-in-place
+    type: code-reading
+    prompt: 'An AI assistant rewrites `merge` to "save memory" by updating `W` directly, as below. You call `merge(W, A, B, 4, 2)` and then `lora_forward(x, W, A, B, alpha=4, r=2)`. What do you get?'
+    code: |
+      def merge(W, A, B, alpha, r):
+          scale = alpha / r
+          for i in range(len(W)):
+              for j in range(len(W[0])):
+                  W[i][j] += scale * sum(B[i][k] * A[k][j] for k in range(len(A)))
+          return W
+    options:
+      - id: a
+        text: "`[8.8, 9.6, 13.6]`, the correct adapted output"
+        rationale: 'That would require the original `W`. After the in-place merge, `W` already contains the update.'
+      - id: b
+        text: "`[10.6, 13.2, 17.2]`: the update is applied twice"
+        correct: true
+        rationale: 'Right. `W` now holds the merged weights, and `lora_forward` adds the adapter again on top, so 2 × [1.8, 3.6, 3.6] is added to the base.'
+      - id: c
+        text: 'An error, because lists cannot be modified'
+        rationale: 'Lists are mutable, which is exactly why this bug is possible.'
+    explanation: 'Mutating an argument is a classic source of bugs that only show up later, in a different function. When reviewing code that takes a matrix or a list and "returns" it, check whether it changed the caller''s copy.'
+  - id: wt-lora-scale
+    type: mcq
+    prompt: 'Someone writes `scale = r / alpha` by mistake. Which test catches it most directly?'
+    options:
+      - id: a
+        text: '"with B = 0 the adapter must be a no-op"'
+        rationale: 'With B all zeros the update is zero whatever the scale, so this test still passes.'
+      - id: b
+        text: '"doubling alpha doubles the update"'
+        correct: true
+        rationale: 'Right. With the inverted scale, doubling alpha halves the update. (The exact-value test fails too, but this one names the property.)'
+      - id: c
+        text: 'The parameter-count tests'
+        rationale: "`lora_params` doesn't use alpha at all."
+    explanation: 'Tests that check a **property** (doubling one input doubles the effect) catch whole classes of mistakes, not just one wrong number. Look for them when you judge whether a test suite is strong.'
+  - id: wt-lora-order
+    type: scenario
+    prompt: 'For a 4,096 by 4,096 layer at rank 8, why does `lora_forward` compute `B (A x)` instead of forming `B A` and multiplying by `x`?'
+    options:
+      - id: a
+        text: 'Because matrix multiplication is not associative, so only this order is correct'
+        rationale: 'It is associative; both orders give the same answer. The difference is cost.'
+      - id: b
+        text: 'Because `B (A x)` takes about 65,000 multiplications, while forming `B A` takes about 134 million before you even apply it'
+        correct: true
+        rationale: 'Right. r × (d_in + d_out) = 8 × 8,192 versus d_out × d_in × r = 4,096 × 4,096 × 8.'
+      - id: c
+        text: 'Because `B A` would have the wrong shape'
+        rationale: "`B A` is d_out by d_in, the same shape as `W`; that is exactly what `merge` builds."
+    explanation: 'Same math, very different cost. During training you keep the adapter separate and use the cheap order; for serving you pay the `B A` cost once in `merge` and then run a single ordinary matrix.'
+direct:
+  task: |
+    You want to compare adapter sizes when LoRA targets only some layers (for example only `q_proj` and `v_proj`, a common lighter setup). Add a `targets=None` parameter to `lora_params`: `None` means all layers, otherwise only the named layers are counted, and an unknown name raises `KeyError`.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a keyword parameter targets=None to lora_params. When targets is None, count every layer as now. Otherwise count only the layers whose names are in targets, and raise KeyError naming the layer if any target is not a key in shapes (a typo like "q_prog" must not silently count as zero).
+
+    Do not change matvec, lora_forward, or merge, and keep the r * (d_in + d_out) formula. Update the docstring.
+
+    Add test asserts: lora_params(QWEN_BLOCK, 16, targets=["q_proj", "v_proj"]) == 16 * (1792 + 1024); targets=None still gives 366592; targets=[] gives 0; and targets=["q_prog"] raises KeyError.
+  checklist:
+    - 'The default still counts every layer (366,592 for the Qwen block at r=16)'
+    - 'An unknown target name raises an error instead of being skipped'
+    - 'The per-layer formula is unchanged'
+    - 'The other three functions are untouched'
+    - 'Tests cover a subset, the default, an empty list, and a typo'

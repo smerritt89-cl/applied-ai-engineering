@@ -2,6 +2,16 @@
 
 **Goes with:** Studio 2, week 4 (lessons 10 to 12). **Time:** about 60 minutes.
 
+## Review track
+
+The default way to do this lab: read the finished code, then direct a change to it.
+
+1. Run `python lab.py review studio-2/04-cited-answers` from the `labs` folder. It copies `solution.py` to `work.py`, and the tests run against `work.py`.
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): have a coding assistant flag claims that cite an archived source in `work.py`, review its change, and run `test_change.py`.
+
+To write the code yourself instead, follow the steps below in `starter.py` (run `python lab.py reset studio-2/04-cited-answers` first).
+
 ## Goal
 
 Generate an answer grounded in retrieved passages, then prove, in code, that its citations are real:

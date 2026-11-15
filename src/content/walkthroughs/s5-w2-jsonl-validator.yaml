@@ -1,0 +1,255 @@
+id: s5-w2-jsonl-validator
+summary: |
+  This program checks a fine-tuning dataset before you upload it. The dataset is in **JSONL** format (JSON Lines): one JSON object per line, each holding a `messages` list of chat turns with a `role` and `content`. The validator returns a list of `(line number, problem)` pairs, so you can fix the file line by line.
+
+  It runs in two phases. **Structural** checks ask "is this line a valid conversation at all?" and stop at the first failure, because a broken line can't be judged further. **Content** checks ask "is this a good training example?" and report everything that applies. The structural checks are split into a helper function so the main loop reads like the docstring. A provider's upload check catches structural problems; the content checks (length, answer format, leaked labels, duplicates) are the ones only you will catch.
+code: |
+  import json
+
+  ROLES = ("system", "user", "assistant")
+
+
+  def structural_problem(msgs):
+      """Return the first structural problem in a messages list, or None if it is well formed."""
+      for i, m in enumerate(msgs):
+          role = m.get("role") if isinstance(m, dict) else None
+          if role not in ROLES:
+              return "unknown role"
+          if role == "system" and i != 0:
+              return "system not first"
+          content = m.get("content")
+          if not isinstance(content, str) or not content.strip():
+              return "empty content"
+      turns = [m["role"] for m in msgs if m["role"] != "system"]
+      alternates = all(t == ("user" if i % 2 == 0 else "assistant") for i, t in enumerate(turns))
+      if not alternates or not turns or turns[-1] != "assistant":
+          return "bad turn order"
+      return None
+
+
+  def is_items_json(text):
+      """True if text parses as a JSON object whose "items" value is a list."""
+      try:
+          parsed = json.loads(text)
+      except json.JSONDecodeError:
+          return False
+      return isinstance(parsed, dict) and isinstance(parsed.get("items"), list)
+
+
+  def validate_lines(lines, max_chars=2000):
+      """Return a list of (line_number, problem) tuples, line numbers starting at 1, in line order.
+
+      Structural checks (report the FIRST one that applies, then move to the next line):
+        "invalid JSON"                 the line doesn't parse
+        "no messages list"             no non-empty "messages" list
+        "unknown role"                 a role other than system, user, assistant
+        "system not first"             a system message anywhere but position 0
+        "empty content"                content missing, not a string, or only whitespace
+        "bad turn order"               after an optional system message, turns must go user, assistant,
+                                       user, assistant, ... and the last turn must be assistant
+      Content checks (report every one that applies, in this order):
+        "too long"                     total characters of all contents > max_chars
+        "answer not JSON with items"   the last message's content isn't a JSON object with an "items" list
+        "label leaked"                 the last message's content appears inside a system or user message
+        "duplicate of line K"          same messages as an earlier line (compare with sort_keys=True)
+      """
+      problems = []
+      seen = {}  # canonical messages text -> first line number it appeared on
+      for n, line in enumerate(lines, start=1):
+          try:
+              obj = json.loads(line)
+          except json.JSONDecodeError:
+              problems.append((n, "invalid JSON"))
+              continue
+          msgs = obj.get("messages") if isinstance(obj, dict) else None
+          if not isinstance(msgs, list) or not msgs:
+              problems.append((n, "no messages list"))
+              continue
+          structural = structural_problem(msgs)
+          if structural:
+              problems.append((n, structural))
+              continue
+
+          # The line is well formed. Now check whether it is a GOOD training example.
+          if sum(len(m["content"]) for m in msgs) > max_chars:
+              problems.append((n, "too long"))
+          answer = msgs[-1]["content"]
+          if not is_items_json(answer):
+              problems.append((n, "answer not JSON with items"))
+          if any(answer.strip() in m["content"] for m in msgs[:-1]):
+              problems.append((n, "label leaked"))
+          key = json.dumps(msgs, sort_keys=True)
+          if key in seen:
+              problems.append((n, "duplicate of line " + str(seen[key])))
+          else:
+              seen[key] = n
+      return problems
+
+
+  def ex(*turns):
+      """Build one JSONL line from (role, content) pairs."""
+      return json.dumps({"messages": [{"role": r, "content": c} for r, c in turns]})
+
+
+  SYS = "Extract action items as JSON with an items list."
+  DOC = "<document>Ana: I'll call the vendor tomorrow.</document>"
+  ANSWER = json.dumps({"items": [{"task": "Call the vendor", "owner": "Ana"}]}, sort_keys=True)
+
+  LINES = [
+      ex(("system", SYS), ("user", DOC), ("assistant", ANSWER)),                     # 1 fine
+      ex(("user", DOC), ("assistant", json.dumps({"items": []}))),                   # 2 fine: no system, empty answer
+      '{"messages": [{"role": "user", "content": "hi"}',                             # 3 broken JSON
+      ex(("system", SYS), ("user", DOC)),                                            # 4 ends on the user turn
+      ex(("user", DOC), ("system", SYS), ("assistant", ANSWER)),                     # 5 system in the middle
+      ex(("system", SYS), ("human", DOC), ("assistant", ANSWER)),                    # 6 unknown role
+      ex(("system", SYS), ("user", "   "), ("assistant", ANSWER)),                   # 7 empty user turn
+      ex(("system", SYS), ("user", DOC + " x" * 1200), ("assistant", ANSWER)),       # 8 too long
+      ex(("system", SYS), ("user", DOC), ("assistant", "Ana will call the vendor.")),  # 9 prose answer
+      ex(("system", SYS + " Example: " + ANSWER), ("user", DOC), ("assistant", ANSWER)),  # 10 answer in the prompt
+      ex(("system", SYS), ("user", DOC), ("assistant", ANSWER)),                     # 11 same as line 1
+  ]
+
+  for n, problem in validate_lines(LINES):
+      print(n, problem)
+notes:
+  - lines: [1, 3]
+    title: 'The import and the allowed roles'
+    text: |
+      `json` is Python's built-in JSON library: `json.loads` turns text into Python objects and `json.dumps` turns them back into text.
+
+      `ROLES` is a **tuple** constant listing the three chat roles a training file may use. Naming it once, at the top, makes the rule easy to find and change. An AI-written validator that accepts `"human"` or `"bot"` would quietly let through lines a training job will reject.
+  - lines: [6, 16]
+    title: 'structural_problem, checking each message'
+    text: |
+      `for i, m in enumerate(msgs):` uses **enumerate**, which hands you each item together with its position (0, 1, 2, ...). The position is needed for the "system must be first" rule.
+
+      `m.get("role") if isinstance(m, dict) else None` is a **conditional expression** guarded by **isinstance**. A malformed file might contain a number or a string where a message should be, and calling `.get` on those would crash. Treating them as "no role" turns a crash into a clear "unknown role" finding.
+
+      Each check `return`s as soon as it fails. That is how "report the first structural problem" is implemented: there is no list to build, just the first answer.
+
+      `not isinstance(content, str) or not content.strip()` catches missing content, non-text content, and whitespace-only text (`"   ".strip()` is `""`, which counts as false).
+  - lines: [17, 21]
+    title: 'Turn order, with all() and a modulo'
+    text: |
+      `turns = [m["role"] for m in msgs if m["role"] != "system"]` is a **list comprehension with a filter**: the roles in order, with the optional system message removed.
+
+      `all(t == ("user" if i % 2 == 0 else "assistant") for i, t in enumerate(turns))` checks that even positions are `user` and odd positions are `assistant`. `i % 2` is the remainder after dividing by 2 (the **modulo** operator), so it alternates 0, 1, 0, 1. `all(...)` is true only if every comparison is true.
+
+      Worked value: `["user", "assistant"]` passes. `["user"]` alternates correctly but fails `turns[-1] != "assistant"` (index `-1` is the last item): a conversation that ends on the user turn gives the model nothing to learn. `["assistant"]` fails because position 0 must be `user`.
+  - lines: [24, 30]
+    title: 'is_items_json, with try/except'
+    text: |
+      The training target here is structured output: a JSON object with an `items` list. **try/except** runs `json.loads` and, if it raises `json.JSONDecodeError`, returns `False` instead of crashing. Catching that specific error (not every exception) means real bugs elsewhere still surface.
+
+      If it parses, the function still checks the shape: `"{}"` is valid JSON but has no `items`, and `"[]"` is valid JSON but not an object. Both fail, as the tests require. A prose answer like "Ana will call the vendor." fails to parse at all.
+  - lines: [33, 51]
+    title: 'validate_lines, the contract and the memory'
+    text: |
+      The docstring is the full specification, including the two different reporting rules (first structural problem only, every content problem). Keep it in sync with the code; it is what a reviewer and the next AI edit will rely on.
+
+      `seen = {}` is a dictionary that remembers, for each distinct conversation, the first line it appeared on. Looking a key up in a dictionary is fast no matter how large it gets, so this scales to a dataset of many thousands of lines.
+  - lines: [52, 65]
+    title: 'Phase 1, can this line be read at all?'
+    text: |
+      `enumerate(lines, start=1)` numbers from 1, because people (and editors) count lines from 1.
+
+      Three gates, each followed by `continue`, which skips the rest of the loop body and moves to the next line:
+
+      - the line must parse as JSON;
+      - it must be an object with a non-empty `messages` list (`not msgs` is true for an empty list);
+      - `structural_problem` must return `None`.
+
+      The `continue` statements are what keep a broken line from also collecting confusing content findings.
+  - lines: [67, 80]
+    title: 'Phase 2, is it a good training example?'
+    text: |
+      These checks use separate `if` statements, so a line can collect several findings.
+
+      - `sum(len(m["content"]) for m in msgs)` adds up the characters across all turns using a **generator expression**.
+      - `msgs[-1]["content"]` is the final assistant answer, the label the model learns from.
+      - `msgs[:-1]` is a **slice** of every message except the last. If the answer text appears verbatim in the system or user prompt (line 10 pastes it in as an "example"), the model learns to copy rather than extract.
+      - `json.dumps(msgs, sort_keys=True)` turns the messages into canonical text: keys in alphabetical order, so two lines that differ only in key order still match. That text is the dictionary key for duplicate detection.
+
+      Note that duplicates are only tracked for well-formed lines. That is a reasonable choice, but it is not tested, so it is the kind of behavior an edit could change without anyone noticing.
+  - lines: [83, 90]
+    title: 'A helper for building test lines'
+    text: |
+      `def ex(*turns):` uses **\*args**: the star collects any number of positional arguments into a tuple, so `ex(("user", DOC), ("assistant", ANSWER))` passes two `(role, content)` pairs. The comprehension `for r, c in turns` unpacks each pair.
+
+      `ANSWER` is built with `json.dumps(..., sort_keys=True)` so its text is predictable, which matters for the leaked-label line that embeds it.
+  - lines: [92, 107]
+    title: 'Eleven sample lines, one per rule'
+    text: |
+      `LINES` holds two valid examples followed by one example of each failure, with a comment naming the problem. Line 3 is written as a raw string with a missing closing bracket, because `ex` would always produce valid JSON.
+
+      Press **Run this code**. Lines 1 and 2 print nothing; lines 3 to 11 print exactly one problem each. Try adding a twelfth line that ends on the user turn **and** has a prose answer, and notice that only the structural problem is reported.
+review:
+  - id: wt-jsonl-no-continue
+    type: code-reading
+    prompt: 'An AI assistant refactors the structural gate in `validate_lines` to the version below, dropping the `continue`. What does the validator now report for line 4 (system, then user, with no assistant turn)?'
+    code: |
+      structural = structural_problem(msgs)
+      if structural:
+          problems.append((n, structural))
+      # content checks follow
+    options:
+      - id: a
+        text: 'Only "bad turn order", as before'
+        rationale: 'Without `continue`, the loop falls through into the content checks for the same line.'
+      - id: b
+        text: '"bad turn order" and "answer not JSON with items"'
+        correct: true
+        rationale: 'Right. The last message is now the user''s document, which is not JSON, so a second, misleading finding appears. The docstring says to report only the first structural problem.'
+      - id: c
+        text: 'It raises an error, because line 4 has no assistant message'
+        rationale: 'The content checks read `msgs[-1]`, which exists (it is the user turn), so nothing crashes on this line.'
+    explanation: "`continue` is easy to lose in a refactor, and the code still runs. The test `d.get(4) == [\"bad turn order\"]` catches it because it checks the full list for that line, not just whether the problem is present."
+  - id: wt-jsonl-sort-keys
+    type: mcq
+    prompt: 'Why does the duplicate check use `json.dumps(msgs, sort_keys=True)` instead of comparing the raw line text?'
+    options:
+      - id: a
+        text: 'Because dictionaries cannot be compared in Python'
+        rationale: 'Dictionaries can be compared with `==`. The issue is using them as dictionary keys, and matching lines written differently.'
+      - id: b
+        text: 'So two lines with the same messages but different key order or spacing are still caught as duplicates'
+        correct: true
+        rationale: 'Right. `{"role": "user", "content": "hi"}` and `{"content": "hi", "role": "user"}` are the same message; raw text would treat them as different.'
+      - id: c
+        text: 'To make the check faster'
+        rationale: 'It is slightly slower than comparing raw lines. It is there for correctness.'
+    explanation: 'Duplicates from different export scripts often differ only in formatting. Canonicalizing before comparing is a general technique worth looking for whenever code decides whether two records are "the same".'
+  - id: wt-jsonl-provider
+    type: scenario
+    prompt: 'A teammate says the fine-tuning provider validates uploads, so this function is redundant and can be deleted. What is the best response?'
+    options:
+      - id: a
+        text: 'Agree; the provider''s checks are authoritative'
+        rationale: 'The provider''s checks are authoritative for format. They don''t know your task, so they can''t tell a prose answer or a leaked label from a good example.'
+      - id: b
+        text: 'Keep the content checks at least; the provider catches structure, but only your own checks catch overlong, wrong-format, leaked, or duplicated examples'
+        correct: true
+        rationale: 'Right. Those problems upload fine and then quietly teach the model the wrong behavior.'
+      - id: c
+        text: 'Keep it only for the "invalid JSON" check, since that is what breaks training jobs'
+        rationale: 'That''s the one check the provider will certainly do for you.'
+    explanation: 'A fine-tuned model learns whatever the data shows, including mistakes. Dataset checks are your checks and balances before you spend money on training.'
+direct:
+  task: |
+    Your production system always sends a system prompt, so training examples without one teach the wrong format. Add a `require_system=False` parameter. When it is `True`, a line whose first message is not a system message gets the structural problem `"missing system message"`, checked after `"empty content"` and before `"bad turn order"`.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a require_system=False keyword parameter to validate_lines and pass it to structural_problem.
+
+    In structural_problem, after the per-message loop and before the turn-order check, return "missing system message" when require_system is True and msgs[0]["role"] != "system". It is a structural problem, so it is reported alone and the line is skipped, like the others.
+
+    With the default (False) every current result must be identical. Do not change the content checks, the order of existing checks, or any problem strings. Add "missing system message" to the docstring's list of structural checks in its position.
+
+    Add test asserts: validate_lines(LINES, require_system=True) reports "missing system message" for line 2 only (line 5 still reports "system not first"), and the default call returns exactly what it returned before.
+  checklist:
+    - 'The default behavior is unchanged, so existing callers and tests are unaffected'
+    - 'The new check runs after the per-message checks and before turn order, and the line is skipped afterwards'
+    - 'Line 5 still reports "system not first", not the new problem'
+    - 'The parameter is threaded from validate_lines to structural_problem rather than read from a global'
+    - 'The docstring and new tests match the new behavior'

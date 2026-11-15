@@ -1,0 +1,157 @@
+id: s5-w4-break-even
+summary: |
+  This program compares the monthly cost of calling an API model with the cost of running your own open model on a rented GPU. An API bills per task; a GPU that is always on bills per hour whether or not anyone uses it. So there is a volume above which the GPU is cheaper, and the program computes it, or reports that there isn't one.
+
+  The three functions are the three questions you'd ask: what does one API task cost, what does self-hosting cost at a given volume (including adding GPUs when one is full), and where do the two cross. The break-even function first checks the GPU's **best case** per task. If even a fully planned GPU can't beat the API per task, no volume will make it win, which is the result for a cheap small API model here. Batching (how many tasks per hour a GPU serves) turns out to decide everything.
+code: |
+  import math
+
+  HOURS_PER_MONTH = 730  # 24 hours * 365 days / 12 months, rounded
+
+
+  def api_cost_per_task(input_tokens, output_tokens, usd_per_mtok_in, usd_per_mtok_out):
+      """Dollars for one task at per-million-token prices."""
+      return (input_tokens * usd_per_mtok_in + output_tokens * usd_per_mtok_out) / 1e6
+
+
+  def selfhost_monthly_cost(volume, gpu_hourly, tasks_per_hour, max_util=0.7, hours=HOURS_PER_MONTH):
+      """Always-on GPUs: enough GPUs that none runs above max_util, and at least one.
+      gpus = max(1, ceil(volume / (tasks_per_hour * hours * max_util))). Return gpus * gpu_hourly * hours."""
+      capacity = tasks_per_hour * hours * max_util  # planned tasks per GPU per month
+      gpus = max(1, math.ceil(volume / capacity))
+      return gpus * gpu_hourly * hours
+
+
+  def break_even_volume(api_task_cost, gpu_hourly, tasks_per_hour, max_util=0.7, hours=HOURS_PER_MONTH):
+      """Monthly volume at which one always-on GPU costs the same as the API.
+      Return None if the GPU's best-case cost per task, gpu_hourly / (tasks_per_hour * max_util),
+      is not below api_task_cost (then self-hosting never wins on cost).
+      Otherwise return gpu_hourly * hours / api_task_cost."""
+      best_case = gpu_hourly / (tasks_per_hour * max_util)
+      if best_case >= api_task_cost:
+          return None
+      return gpu_hourly * hours / api_task_cost
+
+
+  # Prices at the review date (check the pricing pages before reusing them).
+  sonnet = api_cost_per_task(620, 70, 2.00, 10.00)    # frontier-tier model, long few-shot prompt
+  haiku = api_cost_per_task(620, 70, 0.10, 0.50)      # small API model, same prompt
+  for name, cost in (("Sonnet 5.5", sonnet), ("Haiku 5.5", haiku)):
+      v = break_even_volume(cost, gpu_hourly=0.80, tasks_per_hour=3000)
+      print(name, f"${cost * 1000:.3f} per 1,000 tasks;", "never breaks even" if v is None else f"break-even at {v:,.0f} tasks/month")
+notes:
+  - lines: [1, 3]
+    title: 'The import and a named constant'
+    text: |
+      `math` provides `math.ceil` (round up). `HOURS_PER_MONTH = 730` is an average month: 24 × 365 / 12 = 730. Naming it, with the derivation in a comment, saves the next reader from wondering whether 720 or 744 would be more correct (they are just 30- and 31-day months).
+
+      It is used as a **default argument** below, so callers can pass a different number of hours, for example a GPU you only run during business hours.
+  - lines: [6, 8]
+    title: 'Cost of one API task'
+    text: |
+      Prices are per million tokens, so multiply each token count by its price and divide by `1e6` (scientific notation for 1,000,000). Input and output are priced separately.
+
+      Worked value: 620 input tokens at $2 and 70 output tokens at $10 per million is 0.00124 + 0.0007 = **$0.00194**, or $1.94 per 1,000 tasks. The same prompt at $0.10 and $0.50 is about $0.10 per 1,000 tasks.
+  - lines: [11, 16]
+    title: 'Self-hosting, sized in whole GPUs'
+    text: |
+      `capacity` is how many tasks one GPU should handle in a month: tasks per hour × hours × `max_util`. Planning for 70% utilization rather than 100% leaves headroom for traffic spikes, so latency doesn't collapse at the busiest hour.
+
+      `math.ceil(volume / capacity)` rounds up, because you can't rent 1.3 GPUs. `max(1, ...)` makes the minimum one GPU: an always-on server costs money even with zero traffic.
+
+      Worked value: at 3,000 tasks an hour, one GPU's planned capacity is 3,000 × 730 × 0.7 = 1,533,000 tasks a month. A million tasks needs one GPU ($584 at $0.80 an hour); two million needs two ($1,168).
+  - lines: [19, 23]
+    title: 'The break-even contract'
+    text: |
+      The docstring describes two possible answers. If the GPU's best-case cost per task isn't below the API's cost per task, return `None`: self-hosting never wins on cost, no matter the volume. Otherwise, return the volume at which one GPU's monthly bill equals the API's monthly bill.
+
+      Returning `None` rather than a huge number or infinity makes "never" impossible to mistake for "eventually", as long as the caller checks for it (the demo does).
+  - lines: [24, 27]
+    title: 'Best case first, then the crossing point'
+    text: |
+      `best_case = gpu_hourly / (tasks_per_hour * max_util)` is the GPU's cost per task when it is as busy as you plan to let it be. At $0.80 an hour and 2,100 planned tasks an hour that is about $0.00038 per task, $0.38 per 1,000. That beats $1.94 but not $0.10.
+
+      `>=` (not `>`) means a tie returns `None`: equal cost is not a reason to take on the work of running servers. A test checks this exact boundary.
+
+      `gpu_hourly * hours / api_task_cost` is one GPU's monthly cost divided by the API's cost per task. Worked value: 584 / 0.00194 is about **301,031** tasks a month. Note the assumption: this formula is for one GPU. It is valid here because 301,031 is well under one GPU's 1,533,000 capacity, but a reviewer should notice that it would be wrong if the break-even needed more than one GPU.
+  - lines: [30, 32]
+    title: 'Two API options, same prompt'
+    text: |
+      The comment dates the prices and says to check them before reuse, which is the right habit for any cost model. Both calls use the same token counts, so the only difference is the price tier: a frontier-tier model and a small, cheap API model.
+  - lines: [33, 35]
+    title: 'Print each result with formatted numbers'
+    text: |
+      The loop iterates over a **tuple of pairs** and unpacks each into `name, cost`.
+
+      The **f-strings** use format specifications after a colon: `{cost * 1000:.3f}` shows three decimal places, and `{v:,.0f}` shows no decimals with comma thousands separators. The **conditional expression** prints "never breaks even" when `v` is `None`.
+
+      Press **Run this code**: the frontier tier breaks even near 301,000 tasks a month, and the small API model never does. Then change `tasks_per_hour` to 300 (an unbatched server) and the frontier break-even disappears too, because the GPU's best case rises to about $3.81 per 1,000 tasks.
+review:
+  - id: wt-be4-no-floor
+    type: code-reading
+    prompt: 'An AI assistant simplifies the GPU count to the version below. What does `selfhost_monthly_cost(0, 0.80, 3000)` return now?'
+    code: |
+      capacity = tasks_per_hour * hours * max_util
+      gpus = math.ceil(volume / capacity)
+      return gpus * gpu_hourly * hours
+    options:
+      - id: a
+        text: "584.0, the cost of one always-on GPU"
+        rationale: 'That needs the `max(1, ...)` floor. Without it, zero volume rounds up to zero GPUs.'
+      - id: b
+        text: "0, as if an idle always-on server were free"
+        correct: true
+        rationale: "Right. `math.ceil(0 / capacity)` is 0. Low volumes now look far cheaper than they are, which is exactly the range where self-hosting usually loses."
+      - id: c
+        text: 'It raises `ZeroDivisionError`'
+        rationale: 'The division is 0 divided by capacity, which is fine. Only a capacity of zero would raise.'
+    explanation: 'The fixed cost is the whole reason self-hosting loses at low volume. Removing the floor hides it, and the test "an always-on GPU costs the same with no traffic" exists to catch that.'
+  - id: wt-be4-util
+    type: mcq
+    prompt: 'Someone computes `best_case = gpu_hourly / tasks_per_hour`, dropping `max_util`. Which test fails first?'
+    options:
+      - id: a
+        text: 'The Haiku "never breaks even" test'
+        rationale: 'Without the 70% factor the GPU''s best case is about $0.27 per 1,000, still above Haiku''s $0.10, so that test still passes.'
+      - id: b
+        text: 'The test that equal best-case cost is not a win'
+        correct: true
+        rationale: 'Right. That test passes exactly 0.80 / 2,100 per task as the API cost. The changed best case is lower, so it now returns a volume instead of `None`.'
+      - id: c
+        text: 'None, because `max_util` only matters for multi-GPU setups'
+        rationale: "`max_util` sets every GPU's planned capacity, including the first."
+    explanation: 'Planned utilization is a real constraint, not a tuning detail. Assuming 100% busy GPUs makes self-hosting look cheaper than it can be in practice.'
+  - id: wt-be4-decision
+    type: scenario
+    prompt: 'You run 400,000 tasks a month on the frontier-tier API, above the 301,031 break-even. What should you establish before moving to a self-hosted open model?'
+    options:
+      - id: a
+        text: 'Nothing; above break-even means self-hosting saves money'
+        rationale: 'The cost model assumes the open model is as good as the API model and ignores engineering and on-call time.'
+      - id: b
+        text: 'That an open model you can serve matches the API model''s quality on your eval, and what the people time for serving and monitoring adds to the monthly cost'
+        correct: true
+        rationale: 'Right. Quality first, then a full cost that includes the work, then the decision.'
+      - id: c
+        text: 'Whether a cheaper API tier would do the job'
+        rationale: 'Worth checking too, and it might change everything, but on its own it doesn''t tell you whether self-hosting is viable.'
+    explanation: 'Break-even compares equivalent options. The eval is what establishes equivalence, and a cheap API tier belongs in that same eval as a baseline.'
+direct:
+  task: |
+    The model ignores the people cost of running servers. Add an `ops_monthly=0.0` parameter to both `selfhost_monthly_cost` (added to the bill) and `break_even_volume` (added to one GPU's monthly cost before dividing by the API cost per task).
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a keyword parameter ops_monthly=0.0 (fixed monthly engineering and on-call cost) to selfhost_monthly_cost and to break_even_volume, after hours.
+
+    In selfhost_monthly_cost, return gpus * gpu_hourly * hours + ops_monthly. In break_even_volume, keep the best-case per-task check exactly as it is (ops cost does not change the per-task comparison), and return (gpu_hourly * hours + ops_monthly) / api_task_cost.
+
+    With ops_monthly=0 every result must be identical. Do not change api_cost_per_task or the max(1, ...) floor. Update both docstrings.
+
+    Add test asserts: with ops_monthly=1000 the Sonnet break-even is (584 + 1000) / sonnet; at that volume selfhost_monthly_cost(v, 0.80, 3000, ops_monthly=1000) equals v * sonnet; and Haiku still returns None.
+  checklist:
+    - 'The default (0.0) leaves every existing result unchanged'
+    - 'The ops cost is added once per month, not per GPU'
+    - 'The best-case None check is unchanged'
+    - 'The floor of one GPU is still there'
+    - 'At the new break-even, both monthly bills are equal in a test'

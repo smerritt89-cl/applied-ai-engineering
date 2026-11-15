@@ -1,0 +1,194 @@
+id: s2-w3-bm25
+summary: |
+  This program is a complete keyword search engine using **BM25**, the ranking formula behind Elasticsearch, OpenSearch, and Lucene. It builds an **inverted index** (for each word, which documents contain it and how often), then scores documents for a query by adding up one contribution per query word. Rare words count more than common ones, repeats count with diminishing returns, and long documents are discounted so they don't win just by being long.
+
+  It is organized the way real search engines are: index once (`build_index`), then answer many queries cheaply (`search`). The formula's pieces live in separate functions, `idf` for "how rare is this word" and `bm25_score` for "how well does this document match", so each can be checked against hand-computed values. The tokenizer keeps identifiers like `TS-999` whole, which is exactly where keyword search beats embeddings.
+code: |
+  import math
+  import re
+  from collections import Counter
+
+
+  def tokenize(text):
+      """Lowercase and keep hyphenated identifiers such as ts-999 as one token."""
+      return re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", text.lower())
+
+
+  DOCS = {
+      "kb-101": "Error TS-999 means the license server is unreachable. Restart the license service on the host.",
+      "kb-102": "To reset your password, open Settings, choose Security, and follow the reset link.",
+      "kb-103": "License renewal starts 30 days before expiry. Finance approves every license renewal.",
+      "kb-104": "If the VPN drops, check the network adapter, then restart the VPN client.",
+      "kb-105": "Error TS-404 appears when a report template is missing from the shared drive.",
+      "kb-106": "The server room is locked after 6 pm. Ask facilities for after-hours server access.",
+  }
+
+
+  def build_index(docs):
+      """Return {"postings": {term: {doc_id: tf}}, "lengths": {doc_id: n_tokens},
+      "N": number of docs, "avgdl": average length in tokens}."""
+      tokens = {doc_id: tokenize(text) for doc_id, text in docs.items()}
+      postings = {}
+      for doc_id, toks in tokens.items():
+          for term, tf in Counter(toks).items():
+              postings.setdefault(term, {})[doc_id] = tf
+      lengths = {doc_id: len(toks) for doc_id, toks in tokens.items()}
+      return {
+          "postings": postings,
+          "lengths": lengths,
+          "N": len(docs),
+          "avgdl": sum(lengths.values()) / len(docs),
+      }
+
+
+  def idf(index, term):
+      """Lucene's form: log(1 + (N - n + 0.5) / (n + 0.5)), n = docs containing term."""
+      n = len(index["postings"].get(term, {}))
+      N = index["N"]
+      return math.log(1 + (N - n + 0.5) / (n + 0.5))
+
+
+  def bm25_score(index, query, doc_id, k1=1.2, b=0.75):
+      """Sum the BM25 contribution of each query token for this document."""
+      score = 0.0
+      dl = index["lengths"][doc_id]
+      for term in tokenize(query):
+          tf = index["postings"].get(term, {}).get(doc_id, 0)
+          if tf == 0:
+              continue
+          norm = k1 * (1 - b + b * dl / index["avgdl"])
+          score += idf(index, term) * tf * (k1 + 1) / (tf + norm)
+      return score
+
+
+  def search(index, query, k=3, k1=1.2, b=0.75):
+      """Score only documents that contain at least one query token.
+      Return up to k (doc_id, score) pairs, best first; break ties by doc_id."""
+      candidates = set()
+      for term in tokenize(query):
+          candidates.update(index["postings"].get(term, {}))
+      scored = [(doc_id, bm25_score(index, query, doc_id, k1, b)) for doc_id in candidates]
+      scored.sort(key=lambda pair: (-pair[1], pair[0]))
+      return scored[:k]
+
+
+  INDEX = build_index(DOCS)
+  print(search(INDEX, "error TS-999"))
+  print(search(INDEX, "license renewal"))
+notes:
+  - lines: [1, 3]
+    title: Imports
+    text: |
+      `math` for the logarithm, `re` for the tokenizer's regular expression, and `Counter` to count how many times each word appears in a document. All standard library.
+  - lines: [6, 8]
+    title: A tokenizer that keeps error codes whole
+    text: |
+      `re.findall` returns every non-overlapping match of the pattern as a list of strings. The pattern `[a-z0-9]+(?:-[a-z0-9]+)*` reads: a run of letters or digits, optionally followed by more runs joined with hyphens. `(?:...)` is a **non-capturing group**, which groups without changing what `findall` returns.
+
+      So `"Error TS-999 means"` becomes `["error", "ts-999", "means"]`. A simpler pattern, `[a-z0-9]+`, would split the code into `ts` and `999`. Then `kb-105` (about `TS-404`) would match the query too, through the shared token `ts`. Tokenization decides what "the same word" means, so it's worth reviewing as carefully as the scoring.
+  - lines: [11, 18]
+    title: Six help-center articles
+    text: |
+      A small corpus with deliberate overlaps: two articles mention an error code, two mention "license", two mention "server", and "the" appears almost everywhere. Those overlaps are what make the rarity weighting visible.
+  - lines: [21, 35]
+    title: Build the inverted index
+    text: |
+      `{doc_id: tokenize(text) for doc_id, text in docs.items()}` is a **dictionary comprehension**: it builds a dictionary from each document id to its token list, tokenizing each document once.
+
+      `Counter(toks).items()` gives `(term, count)` pairs for one document. `postings.setdefault(term, {})` returns the inner dictionary for `term`, creating an empty one first if the term is new; then `[doc_id] = tf` records the count. After the loop, `postings["license"]` is `{"kb-101": 2, "kb-103": 2}`.
+
+      `lengths` stores each document's token count (kb-103 has 12), and `avgdl` is the mean, 80 / 6, about 13.3. Both are needed for length normalization later.
+  - lines: [38, 42]
+    title: IDF, the rarity weight
+    text: |
+      `index["postings"].get(term, {})` uses **dict.get** with a default: if the term was never seen, you get an empty dictionary instead of a `KeyError`, so `n` is 0.
+
+      The formula gives rare terms large weights. Worked values with N = 6: "error" is in 2 documents, so idf is log(1 + 4.5 / 2.5), about 1.03. "ts-999" is in 1, about 1.54. The `1 +` inside the log is Lucene's variant, and it keeps idf positive even for a word in every document. The original formula without it goes negative for words in more than half the documents, which would make a common word **hurt** a document's score.
+  - lines: [45, 55]
+    title: Score one document
+    text: |
+      For each query token, `tf` is how often it appears in this document (0 if not at all, thanks to two chained `.get` calls with defaults). Tokens that don't appear are skipped with `continue`.
+
+      `norm` is the length adjustment. `b` controls how much length matters: at `b = 0` every document is treated as average length; at `b = 0.75` (the usual default) a longer-than-average document gets a bigger `norm` and so a smaller score.
+
+      `tf * (k1 + 1) / (tf + norm)` is **term-frequency saturation**. The first occurrence counts a lot, the second less, the tenth hardly at all, and `k1` sets how fast it levels off. With `k1 = 0` the fraction is always 1, so only presence counts.
+
+      Worked value: for "error TS-999" against kb-101 (15 tokens), `norm` is about 1.31, each term's fraction is about 0.95, and the score is (1.03 + 1.54) times 0.95, about 2.445.
+  - lines: [58, 66]
+    title: Search only the candidates
+    text: |
+      `candidates.update(...)` adds every document id from each query term's postings to a **set**. Iterating over a dictionary yields its keys, so `update` gets the doc ids. That's the efficiency trick of an inverted index: documents sharing no word with the query are never scored at all, which is also why "quarterly forecast" returns `[]` rather than six zero scores.
+
+      The sort key `(-score, doc_id)` gives highest score first and a deterministic order for ties. Sets have no reliable order, so without the tie-breaker equal scores could come out in any order.
+  - lines: [69, 71]
+    title: Two queries
+    text: |
+      "error TS-999" puts kb-101 first (about 2.45) and kb-105 second (about 1.04, matching only on "error"). "license renewal" puts kb-103 first: it says "license" and "renewal" twice each and is shorter than kb-101.
+review:
+  - id: wt-bm25-negative-idf
+    type: code-reading
+    prompt: An AI assistant "uses the textbook formula" for `idf`, as below. The word "the" appears in 5 of the 6 documents. What is `idf(INDEX, "the")` now, and what does it do to a query like "restart the vpn"?
+    code: |
+      def idf(index, term):
+          n = len(index["postings"].get(term, {}))
+          N = index["N"]
+          return math.log((N - n + 0.5) / (n + 0.5))
+    options:
+      - id: a
+        text: About 0.24, a small positive weight, so "the" barely matters
+        rationale: That's roughly what Lucene's version gives. Without the `1 +`, the ratio is 1.5 / 5.5, less than 1, so the log is negative.
+      - id: b
+        text: About -1.30, so documents containing "the" are pushed down for that query
+        correct: true
+        rationale: Right. A common word now subtracts from the score, so documents without "the" can outrank better matches that happen to contain it.
+      - id: c
+        text: It raises a math domain error
+        rationale: The ratio is still positive (1.5 / 5.5), so the log is defined, just negative.
+    explanation: This is why Lucene adds 1 inside the log. The exercise checks that idf stays positive. When an AI swaps in "the standard formula", check which standard it means.
+  - id: wt-bm25-k1-zero
+    type: predict-output
+    prompt: "What does `search(INDEX, \"license\", k1=0.0)` return? (kb-101 and kb-103 each contain \"license\" twice.)"
+    options:
+      - id: a
+        text: kb-103 first with a higher score, because it is shorter
+        rationale: With k1 = 0, `norm` is 0 and the fraction is tf / tf = 1, so length no longer matters.
+      - id: b
+        text: "`[(\"kb-101\", 1.0296...), (\"kb-103\", 1.0296...)]`, a tie broken alphabetically"
+        correct: true
+        rationale: Right. Each score is just idf("license"), log(2.8), about 1.03. Equal scores fall back to the doc_id tie-breaker.
+      - id: c
+        text: An error, because k1 = 0 divides by zero
+        rationale: The denominator is tf + norm = 2 + 0, which is fine.
+    explanation: Setting a parameter to an extreme is a good way to check you understand a formula, and a good test. The exercise uses exactly this check.
+  - id: wt-bm25-tokenizer
+    type: scenario
+    prompt: A teammate simplifies the tokenizer to `re.findall(r"[a-z0-9]+", text.lower())` because "hyphens are rare". Your users paste error codes like TS-999 into search. What should you say?
+    options:
+      - id: a
+        text: Fine, kb-101 still ranks first, so nothing important changed
+        rationale: It does still rank first here, but kb-105 (about TS-404) now matches the query through the shared token "ts" and gains score, and on a larger corpus every TS- article would compete.
+      - id: b
+        text: Ask for a test with an error-code query that checks an unrelated code's article doesn't score on the code's prefix, and keep codes as single tokens
+        correct: true
+        rationale: Right. The point of keyword search in a hybrid system is exact identifiers. Splitting them weakens exactly the queries BM25 is there for.
+      - id: c
+        text: Switch to embeddings only, since tokenization is fragile
+        rationale: Embeddings are usually worse at exact codes, which is why hybrid search keeps BM25.
+    explanation: A change that keeps the current top result can still be a regression. Review tokenizer changes against the queries your users actually type, and ask for a test that pins the behavior you care about.
+direct:
+  task: |
+    When a ranking looks wrong, you want to see why. Add a function that breaks a document's BM25 score into one contribution per query term.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a function explain(index, query, doc_id, k1=1.2, b=0.75) that returns a list of (term, tf, idf, contribution) tuples, one per query token in query order, using the same formula as bm25_score. Terms not in the document appear with tf 0 and contribution 0.0. Round idf and contribution to 4 places.
+
+    Do not change tokenize, build_index, idf, bm25_score, or search. Do not duplicate the formula in a way that could drift: either have bm25_score call a shared helper for one term's contribution, or have explain call that helper, so both always agree.
+
+    Add asserts: the contributions for "error TS-999" on kb-101 sum to bm25_score for the same inputs (within 1e-4); "quarterly" on kb-101 gives one row with tf 0 and contribution 0.0; the existing checks still pass.
+  checklist:
+    - Search results and scores are numerically unchanged
+    - The per-term formula exists in one place, shared by both functions
+    - Contributions sum to the document's score
+    - Missing terms are shown with zero instead of being dropped silently
+    - New asserts compare explain against bm25_score

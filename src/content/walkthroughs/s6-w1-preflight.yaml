@@ -1,0 +1,202 @@
+id: s6-w1-preflight
+summary: |
+  `preflight` reads a deployment configuration (the settings for one environment of an LLM app) and returns a sorted list of problem codes. An empty list means the deploy may go ahead. In a real pipeline this runs in CI and blocks the release on any problem.
+
+  Each check is one way LLM deploys actually go wrong: an API key exposed to the browser, timeouts that don't nest, retries stacked in two layers, a typo in a model id, or a preview deployment holding the production key. The function collects every problem rather than stopping at the first, so one run tells you everything you need to fix.
+code: |
+  ALLOWED_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
+  PUBLIC_PREFIXES = ("NEXT_PUBLIC_", "VITE_", "PUBLIC_")
+  SECRET_WORDS = ("KEY", "SECRET", "TOKEN")
+  MARGIN = 5  # seconds of headroom between your deadline and the platform's limit
+
+
+  def preflight(config):
+      """Return a sorted list of problem codes for a deployment config.
+
+      missing_key           ANTHROPIC_API_KEY is absent or empty in env_vars
+      public_secret         a variable with a public prefix has a secret-looking name
+                            (contains KEY, SECRET, or TOKEN) or a value starting with "sk-ant"
+      deadline_too_long     request_deadline + MARGIN > platform_max_duration
+      timeout_exceeds_deadline   sdk_timeout > request_deadline
+      stacked_retries       app_retries is True and sdk_max_retries > 0
+      unknown_model         any value in config["models"] is not in ALLOWED_MODELS
+      key_env_mismatch      config["key_env"] != config["env"]
+      """
+      problems = set()
+      env_vars = config.get("env_vars", {})
+
+      # Secrets: the key must be present, and nothing public may look like one.
+      if not env_vars.get("ANTHROPIC_API_KEY"):
+          problems.add("missing_key")
+      for name, value in env_vars.items():
+          if name.startswith(PUBLIC_PREFIXES):
+              looks_secret = any(word in name.upper() for word in SECRET_WORDS)
+              if looks_secret or str(value).startswith("sk-ant"):
+                  problems.add("public_secret")
+
+      # Timeouts must nest: SDK timeout <= request deadline < platform limit.
+      if config["request_deadline"] + MARGIN > config["platform_max_duration"]:
+          problems.add("deadline_too_long")
+      if config["sdk_timeout"] > config["request_deadline"]:
+          problems.add("timeout_exceeds_deadline")
+
+      # Retries belong in one layer, not two.
+      if config["app_retries"] and config["sdk_max_retries"] > 0:
+          problems.add("stacked_retries")
+
+      if any(model not in ALLOWED_MODELS for model in config["models"].values()):
+          problems.add("unknown_model")
+      if config["key_env"] != config["env"]:
+          problems.add("key_env_mismatch")
+      return sorted(problems)
+
+
+  good = {
+      "env": "production",
+      "key_env": "production",
+      "platform_max_duration": 300,
+      "request_deadline": 60,
+      "sdk_timeout": 20,
+      "sdk_max_retries": 0,
+      "app_retries": True,
+      "models": {"primary": "claude-opus-5-5", "fallback": "claude-sonnet-5-5"},
+      "env_vars": {"ANTHROPIC_API_KEY": "sk-ant-example", "NEXT_PUBLIC_APP_NAME": "Helpdesk"},
+  }
+  print(preflight(good))
+notes:
+- lines:
+  - 1
+  - 4
+  title: Rules as named constants
+  text: |
+    The rules live at the top as **constants** (uppercase names by convention, meaning "don't reassign these"). `ALLOWED_MODELS` is a **set** (curly braces, no duplicates, fast membership tests); the other two are **tuples** (parentheses, fixed sequences).
+
+    Keeping rules in data rather than buried in `if` statements means updating the allowed models is a one-line, easy-to-review change. `PUBLIC_PREFIXES` lists the prefixes that popular frontend build tools use to mark a variable as safe to ship to the browser; anything with those prefixes ends up readable by every visitor.
+- lines:
+  - 7
+  - 18
+  title: The contract
+  text: |
+    The docstring defines every problem code and its exact condition. This is what makes the function reviewable: each code is a testable promise, and a reviewer can check each `if` below against one line here.
+
+    Returning short machine-readable codes (like `stacked_retries`) instead of prose messages lets CI, dashboards, and tests compare results exactly.
+- lines:
+  - 19
+  - 20
+  title: Collect into a set
+  text: |
+    `problems = set()` starts an empty set. Using a set means adding the same code twice (say, two leaked variables) still reports it once.
+
+    `config.get("env_vars", {})` is **dict.get with a default**: it returns the value if the key exists and `{}` otherwise, so a config without any variables doesn't crash with `KeyError`. It then flows naturally into the missing-key check.
+- lines:
+  - 22
+  - 29
+  title: 'Secrets: present, and not public'
+  text: |
+    `if not env_vars.get("ANTHROPIC_API_KEY"):` treats a missing key and an empty string the same way, because `None` and `""` are both **falsy** in Python. That's exactly the rule "absent or empty".
+
+    The loop uses `.items()` to get each name and value together. `name.startswith(PUBLIC_PREFIXES)` works because `startswith` accepts a tuple and returns `True` if any prefix matches.
+
+    `any(word in name.upper() for word in SECRET_WORDS)` is a **generator expression** inside `any()`: it checks each word and stops at the first match. `.upper()` makes the check case-insensitive.
+
+    The value check matters as much as the name check: `VITE_BACKEND = "sk-ant-..."` has an innocent name and a real key. An AI-written check that looks only at names misses it, which is why the test is called `sneaky`. `str(value)` guards against a non-string value such as a number.
+- lines:
+  - 31
+  - 35
+  title: Timeouts must nest
+  text: |
+    Three limits, from the inside out: the SDK's per-attempt timeout, your request's overall deadline, and the hosting platform's hard maximum. Each must fit inside the next.
+
+    - The deadline plus a 5 second `MARGIN` must fit under the platform limit, so your code can return a clean error before the platform kills the request. With a 300 s platform limit, a 298 s deadline fails.
+    - The SDK timeout must not exceed the deadline. The test uses 600 s because the lesson notes that is the SDK's default, which is why leaving it unset is a real deploy bug.
+- lines:
+  - 37
+  - 39
+  title: Retries in one layer
+  text: |
+    If your app retries and the SDK also retries, attempts multiply: 3 app attempts times 3 SDK attempts is 9 calls to a struggling service, and the user waits through all of them. The rule allows retries in either layer, not both, which is why `sdk_max_retries=2` with `app_retries=False` passes.
+
+    The `and` combines two conditions; both must be true to flag the problem.
+- lines:
+  - 41
+  - 45
+  title: Model ids and key environment, then sort
+  text: |
+    `config["models"].values()` gives just the model ids (`"claude-opus-5-5"`, ...), ignoring the role names. `any(model not in ALLOWED_MODELS ...)` flags a typo like `claude-sonet-5-5`, which would otherwise only fail on the first real request in production.
+
+    `key_env != env` catches a preview deploy using the production key, so test traffic can't run up production spend or touch production data.
+
+    `sorted(problems)` turns the set into an alphabetical list. Sets have no guaranteed order, so sorting makes the output stable and comparable in tests.
+- lines:
+  - 48
+  - 59
+  title: A known-good config
+  text: |
+    This dictionary is a config that passes every check, so `print(preflight(good))` shows `[]`. The tests build failing variants from it by deep-copying and changing one field, which is a clean way to test checks one at a time: each variant should produce exactly one code.
+review:
+- id: wt-pf-names-only
+  type: code-reading
+  prompt: An AI assistant shortens the public-variable check to the version below. Which config now passes that should not?
+  code: |
+    for name in env_vars:
+        if name.startswith(PUBLIC_PREFIXES) and any(w in name.upper() for w in SECRET_WORDS):
+            problems.add("public_secret")
+  options:
+  - id: a
+    text: '`NEXT_PUBLIC_ANTHROPIC_API_KEY = "sk-ant-a"`'
+    rationale: The name contains KEY, so this is still caught.
+  - id: b
+    text: '`VITE_BACKEND = "sk-ant-a"`'
+    correct: true
+    rationale: Right. The name looks harmless, so only the value check would catch it, and that check is gone. A real key would ship in the browser bundle.
+  - id: c
+    text: '`ANTHROPIC_API_KEY = ""`'
+    rationale: That is a `missing_key` problem, checked separately, and unaffected by this change.
+  explanation: Name-based checks catch honest mistakes; value-based checks catch the ones where someone (or something) renamed the variable. Keep both.
+- id: wt-pf-set
+  type: mcq
+  prompt: Two public variables both leak a key. How many times does `public_secret` appear in the result, and why?
+  options:
+  - id: a
+    text: Twice, once per variable
+    rationale: Each variable does trigger `add`, but adding to a set twice keeps one copy.
+  - id: b
+    text: Once, because `problems` is a set
+    correct: true
+    rationale: Right. A set ignores duplicates, so each problem code appears at most once.
+  - id: c
+    text: Once, because the loop stops at the first match
+    rationale: The loop doesn't stop; there is no `break`. The set is what deduplicates.
+  explanation: Problem codes answer "what kinds of problems exist". If you also wanted to know which variables leaked, you'd collect names separately (see the change below).
+- id: wt-pf-predict
+  type: predict-output
+  prompt: Starting from `good`, you set `request_deadline` to 296 and `sdk_timeout` to 300. What does `preflight` return?
+  options:
+  - id: a
+    text: '`["deadline_too_long"]`'
+    rationale: That one is right (296 + 5 > 300), but the SDK timeout is also longer than the deadline.
+  - id: b
+    text: '`["deadline_too_long", "timeout_exceeds_deadline"]`'
+    correct: true
+    rationale: Right. 296 + 5 = 301 exceeds the 300 s platform limit, and 300 s of SDK timeout exceeds the 296 s deadline. Both are reported, sorted.
+  - id: c
+    text: '`[]`, because 296 is under 300'
+    rationale: The margin rule requires 5 seconds of headroom, and the SDK timeout must fit inside the deadline.
+  explanation: Reporting every problem in one run (instead of stopping at the first) saves a fix-and-rerun cycle for each one.
+direct:
+  task: |
+    Your platform team wants the leaked variable names in the report so the CI log says exactly what to fix. Change `preflight` so a public-secret problem names the variable.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Change preflight so that, instead of the single code "public_secret", it adds one code per leaking variable in the form "public_secret:<NAME>", for example "public_secret:VITE_BACKEND". The leak rule itself (public prefix AND either a secret-looking name or a value starting with "sk-ant") must not change.
+
+    Keep every other code exactly as it is, keep the result a sorted list with no duplicates, and do not print or include the variable's value anywhere in the output (the value may be a real key).
+
+    Update the docstring. Update the two existing public_secret asserts to the new form and add asserts for: two leaking variables (two codes, sorted), and a public variable that is not a secret (no code).
+  checklist:
+  - The leak condition (prefix, name words, `sk-ant` value) is unchanged
+  - The key's value never appears in the returned codes or any message
+  - Other problem codes are untouched, and the list is still sorted
+  - Existing public-secret asserts were updated, not removed
+  - A new assert covers two leaks at once

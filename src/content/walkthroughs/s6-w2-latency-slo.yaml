@@ -1,0 +1,176 @@
+id: s6-w2-latency-slo
+summary: |
+  This program checks a latency service level objective (SLO): targets like "half of responses show output within 2.5 seconds, 95 percent within 4, 99 percent within 10". It computes percentiles from measured samples, compares each to its target, and also says whether you have enough samples for each percentile to mean anything.
+
+  That last part is the design point. A p99 from 200 samples rests on the two slowest responses, so it is a hint, not a measurement. The report keeps "did we meet the target" and "can we trust the number" as separate fields, so a dashboard can show both instead of hiding the uncertainty.
+code: |
+  import math
+
+  def percentile(values, p):
+      """Nearest-rank percentile: the smallest value such that at least p percent
+      of the values are less than or equal to it. 0 < p <= 100. Raise ValueError
+      on an empty list."""
+      if not values:
+          raise ValueError("no samples")
+      ordered = sorted(values)
+      rank = math.ceil(p / 100 * len(ordered))  # 1-based rank
+      return ordered[max(rank, 1) - 1]
+
+  def required_samples(p):
+      """Rough minimum sample count to read percentile p: about ten observations
+      beyond it. Return math.ceil(1000 / (100 - p)); for p = 100 return None."""
+      if p >= 100:
+          return None
+      return math.ceil(1000 / (100 - p))
+
+  def check_slo(samples, slo):
+      """Check each percentile target; report reliability without enforcing it."""
+      results = {}
+      for label, target in slo.items():
+          p = float(label.lstrip("p"))  # "p95" -> 95.0
+          value = percentile(samples, p)
+          need = required_samples(p)
+          results[label] = {
+              "value": value,
+              "target": target,
+              "ok": value <= target,
+              "reliable": need is not None and len(samples) >= need,
+          }
+      return {
+          "n": len(samples),
+          "mean": sum(samples) / len(samples),
+          "all_ok": all(r["ok"] for r in results.values()),
+          "results": results,
+      }
+
+  # 200 chat responses: time to first visible output, in seconds.
+  SAMPLES = [round(1.5 + (i % 16) * 0.1, 1) for i in range(190)] + [15.0] * 10
+  SLO = {"p50": 2.5, "p95": 4.0, "p99": 10.0}
+
+  report = check_slo(SAMPLES, SLO)
+  if report:
+      print("n", report["n"], "mean", round(report["mean"], 2), "all_ok", report["all_ok"])
+      for label, r in report["results"].items():
+          print(label, r)
+notes:
+- lines:
+  - 1
+  - 11
+  title: Nearest-rank percentile
+  text: |
+    `import math` gives us `math.ceil` (round up to a whole number).
+
+    The nearest-rank method sorts the values and picks the one at rank ceil(p/100 times n), counting from 1. With 200 samples and p = 95, that's rank 190, so the answer is the 190th smallest value. Python lists count from 0, so `ordered[rank - 1]` gets it.
+
+    `max(rank, 1)` protects against a tiny p (say 0.1 percent of 5 samples, which rounds up to rank 1 anyway, but a p of 0 would give rank 0 and index -1, which in Python silently means *the last item*). That negative-index behavior is a classic source of wrong-but-no-error results.
+
+    `raise ValueError(...)` stops with a clear error on an empty list instead of an obscure `IndexError`. There are other percentile definitions (interpolating between values, as `statistics.quantiles` can); this one always returns a value that was actually observed, which is easy to explain.
+- lines:
+  - 13
+  - 18
+  title: How many samples a percentile needs
+  text: |
+    The rule of thumb is to have about ten observations beyond the percentile. p99 means 1 percent of samples are above it, so you need 1,000 samples to have ten of them: 1000 divided by (100 minus 99). p95 needs 200, p50 needs 20.
+
+    p100 (the maximum) has nothing beyond it, so the formula would divide by zero; the function returns `None` to mean "no sample count makes this reliable". Note the order: the `p >= 100` check comes before the division.
+- lines:
+  - 20
+  - 32
+  title: Check each target
+  text: |
+    `slo.items()` yields each label and target, like `("p95", 4.0)`. `label.lstrip("p")` removes the leading `p`, and `float(...)` turns `"95"` into `95.0` so labels like `"p99.9"` work too.
+
+    Each result is a small dictionary. `"ok": value <= target` stores a **boolean** directly; there's no need for `True if ... else False`.
+
+    `"reliable": need is not None and len(samples) >= need` again relies on `and` short-circuiting, so the comparison never runs with `None`. With 200 samples, p95 is reliable (needs 200) and p99 is not (needs 1,000).
+- lines:
+  - 33
+  - 38
+  title: The overall verdict
+  text: |
+    `all(r["ok"] for r in results.values())` is `True` only if every target is met. As the docstring says, reliability is reported but not enforced: an unreliable p99 that misses still fails the SLO, and an unreliable one that passes still passes. That keeps the verdict simple while making the doubt visible.
+
+    The mean is included because people ask for it, not because it's useful for latency. Here it's 2.88 seconds, which sounds fine, while one response in twenty takes 15 seconds.
+- lines:
+  - 40
+  - 42
+  title: Synthetic but realistic samples
+  text: |
+    A **list comprehension** builds 190 typical responses: `i % 16` (the remainder after dividing by 16) cycles 0 to 15, giving values from 1.5 to 3.0 seconds. `round(..., 1)` avoids floating-point noise like `2.3000000000000003`. Then `[15.0] * 10` adds ten slow outliers (list repetition).
+
+    This shape, a tight body plus a heavy tail, is typical of LLM latency: most responses are similar, and a few hit a slow path (a long output, a retry, a cold cache).
+- lines:
+  - 44
+  - 48
+  title: Print the report
+  text: |
+    The demo prints the count, the mean, the verdict, then one line per percentile. Read the p99 line: value 15.0, target 10.0, `ok` False, `reliable` False. The honest summary is "the tail probably misses, and we need more data to be sure".
+review:
+- id: wt-slo-no-sort
+  type: code-reading
+  prompt: An AI assistant removes the `sorted` call from `percentile` because "the samples are already collected in order". What does `percentile(SAMPLES, 95)` return now?
+  code: |
+    def percentile(values, p):
+        if not values:
+            raise ValueError("no samples")
+        rank = math.ceil(p / 100 * len(values))
+        return values[max(rank, 1) - 1]
+  options:
+  - id: a
+    text: 3.0, the same as before
+    rationale: It would only match if the list happened to be sorted. Samples are in arrival order, not size order.
+  - id: b
+    text: Whatever the 190th sample to arrive was, which here is a 15.0 second outlier
+    correct: true
+    rationale: Right. Without sorting, "the 190th value" means the 190th in time, which is meaningless as a percentile. In this list the outliers are at the end, so p95 jumps to 15.0.
+  - id: c
+    text: It raises an error because the list isn't sorted
+    rationale: Nothing checks the order, so it returns a wrong number silently.
+  explanation: Logs are in arrival order, so "already in order" is almost always wrong for percentiles. The first test, `percentile([3, 1, 2], 50) == 2`, exists to catch this.
+- id: wt-slo-reliable
+  type: scenario
+  prompt: The p99 is 15.0 against a 10.0 target, but `reliable` is False. What should you conclude?
+  options:
+  - id: a
+    text: Ignore the p99 until you have 1,000 samples
+    rationale: The tail is still evidence. Ignoring it means ignoring ten users who waited 15 seconds.
+  - id: b
+    text: The tail likely misses, but collect more samples before treating the exact number as a measurement
+    correct: true
+    rationale: Right. Unreliable means the number could move a lot with more data, not that it's wrong.
+  - id: c
+    text: The p99 target is met because the mean is under 10 seconds
+    rationale: The mean says nothing about the tail. That's the point of percentile targets.
+  explanation: Report uncertainty, don't hide it. The same habit applies to eval scores from small test sets.
+- id: wt-slo-predict
+  type: predict-output
+  prompt: What does `percentile([10, 20, 30, 40, 50], 50)` return?
+  options:
+  - id: a
+    text: '25'
+    rationale: That would be an interpolated value. Nearest-rank always returns an observed value.
+  - id: b
+    text: '30'
+    correct: true
+    rationale: 'Right. ceil(0.5 times 5) is 3, so the third smallest value: 30.'
+  - id: c
+    text: '20'
+    rationale: Rank 2.5 rounds up to 3, not down to 2.
+  explanation: Always check which percentile definition a tool uses before comparing numbers across tools; they can differ on small samples.
+direct:
+  task: |
+    Your team wants percentiles broken down by route (`/chat`, `/summarize`), because one slow route can hide inside a healthy overall number. Add a per-group check.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function check_slo_by_group(samples_by_group, slo) where samples_by_group is a dict {group_name: [latencies]}. Return {"all_ok": bool, "groups": {group_name: <the dict check_slo returns for that group>}}. all_ok is True only if every group's all_ok is True.
+
+    Reuse check_slo and percentile as they are; do not change percentile, required_samples, or check_slo. A group with an empty sample list should be reported as {"n": 0, "error": "no samples"} and make all_ok False, instead of raising.
+
+    Add asserts for: two groups where one misses its p95, an empty group, and a check that each group's reliable flags use that group's own sample count, not the total.
+  checklist:
+  - '`check_slo` is reused, not duplicated'
+  - Reliability is computed from each group's own sample count
+  - An empty group is reported, not raised, and fails `all_ok`
+  - The existing functions and their asserts are unchanged
+  - New asserts cover a failing group and an empty group

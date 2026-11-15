@@ -1,0 +1,195 @@
+id: s2-w4-citation-check
+summary: |
+  This program checks a model's cited answer before it ships. The answer arrives as a list of claims, each with citations that give a passage id and a quoted span. The checker gives each claim one status: **uncited** (no source at all), **unknown source** (cites a passage that was never provided), **bad quote** (the quoted text isn't actually in the cited passage), or **verified**. Then it reports the verified share.
+
+  It is deliberately mechanical. It can't tell whether a claim is true, but it can prove whether the evidence the model pointed to exists, word for word, in the passage it named. That's the cheap, deterministic check you run on every answer, before any slower model-based grading. The rules are ordered, and the order is part of the design.
+code: |
+  def normalize(text):
+      """Collapse runs of whitespace to one space and strip the ends."""
+      return " ".join(text.split())
+
+
+  def quote_matches(citation, passages):
+      """True if the citation's quote is non-empty and appears in its own passage."""
+      quote = normalize(citation["quote"])
+      return bool(quote) and quote in normalize(passages[citation["id"]])
+
+
+  def check_claims(claims, passages):
+      """Return one status per claim, in order.
+
+      claims:   list of {"text": str, "citations": [{"id": str, "quote": str}, ...]}
+      passages: dict of passage id -> passage text
+
+      For each claim, the first rule that applies wins:
+        "uncited"         the claim has no citations
+        "unknown source"  any citation id is not in passages
+        "bad quote"       any citation's normalized quote is empty, or is not a substring
+                          of the normalized text of THAT citation's passage
+        "verified"        otherwise
+      """
+      statuses = []
+      for claim in claims:
+          cites = claim["citations"]
+          if not cites:
+              statuses.append("uncited")
+          elif any(c["id"] not in passages for c in cites):
+              statuses.append("unknown source")
+          elif not all(quote_matches(c, passages) for c in cites):
+              statuses.append("bad quote")
+          else:
+              statuses.append("verified")
+      return statuses
+
+
+  def verified_share(statuses):
+      """Fraction of claims that are "verified" (0.0 for an empty list)."""
+      if not statuses:
+          return 0.0
+      return sum(s == "verified" for s in statuses) / len(statuses)
+
+
+  PASSAGES = {
+      "ret-1": "Returns are accepted within 30 days of delivery.",
+      "ret-2": "Refunds are issued to the original payment method.",
+      "ret-3": "Final-sale items cannot be returned.\nGift cards are final sale.",
+  }
+
+  CLAIMS = [
+      {"text": "You have 30 days to return an item.",
+       "citations": [{"id": "ret-1", "quote": "Returns are accepted within 30 days of delivery."}]},
+      {"text": "Gift cards can't be returned.",
+       "citations": [{"id": "ret-3", "quote": "cannot be returned. Gift cards are final sale."}]},
+      {"text": "Refunds take 5 to 7 business days.", "citations": []},
+      {"text": "Refunds go back to your card.",
+       "citations": [{"id": "ret-9", "quote": "Refunds are issued to the original payment method."}]},
+      {"text": "Returns are accepted within 30 days and refunds go to the original method.",
+       "citations": [{"id": "ret-1", "quote": "within 30 days of delivery. Refunds are issued"}]},
+      {"text": "Refunds use the original payment method.",
+       "citations": [{"id": "ret-2", "quote": "   "}]},
+  ]
+
+  statuses = check_claims(CLAIMS, PASSAGES)
+  for claim, status in zip(CLAIMS, statuses):
+      print(f"{status:15} {claim['text']}")
+  print("verified share:", verified_share(statuses))
+notes:
+  - lines: [1, 3]
+    title: Normalize whitespace
+    text: |
+      `text.split()` with no argument splits on **any** run of whitespace (spaces, tabs, newlines) and drops empty pieces. `" ".join(...)` glues the words back with single spaces. So `"  a \n b "` becomes `"a b"`.
+
+      Models copy text but rarely copy line breaks and double spaces faithfully. Normalizing both sides means a quote fails only when the **words** differ, not the spacing. It doesn't touch case or punctuation, so a quote that changes a word still fails.
+  - lines: [6, 9]
+    title: One quote, one passage
+    text: |
+      `quote_matches` is a small helper so the main loop reads like the rules. `quote in normalize(...)` is Python's **substring test** on strings.
+
+      `bool(quote) and ...` is the guard that matters most. In Python, the empty string is a substring of every string (`"" in "anything"` is `True`). Without the guard, a blank quote like `"   "` would normalize to `""` and verify against any passage. The `and` **short-circuits**: if the quote is empty, the substring test never runs and the result is `False`.
+
+      Note that it looks up `passages[citation["id"]]`, the passage this citation named, not the whole corpus.
+  - lines: [12, 24]
+    title: The rules, in order
+    text: |
+      The docstring is the specification, and "the first rule that applies wins" is its key sentence. Each claim gets exactly one status, so the summary counts add up and a dashboard can show them as one stacked bar.
+
+      Notice "THAT citation's passage" in capitals. It's the rule AI-written checkers most often get wrong, as the first review question shows.
+  - lines: [25, 37]
+    title: An if/elif chain with any and all
+    text: |
+      `any(c["id"] not in passages for c in cites)` is `True` if at least one citation names a missing passage. `all(quote_matches(c, passages) for c in cites)` is `True` only if every quote checks out, so `not all(...)` means "at least one bad quote". Both take a **generator expression** and stop early once the answer is known.
+
+      The order protects the code as well as the policy. The unknown-source check runs before any quote is checked, because `quote_matches` does `passages[citation["id"]]`, which would raise `KeyError` for `ret-9`. Swap the two `elif` branches and claim 3 crashes the checker instead of being reported.
+  - lines: [39, 43]
+    title: Count the verified share
+    text: |
+      `s == "verified"` is a boolean, and in Python `True` counts as 1 and `False` as 0 when summed. So `sum(...)` counts the verified claims. The empty-list guard returns 0.0 instead of dividing by zero.
+
+      On the demo data the share is 2 of 6, about 0.33. In production you'd also track the share of each failure type: a rise in "unknown source" usually means a prompt or context-assembly bug rather than a model getting worse.
+  - lines: [46, 50]
+    title: The passages
+    text: |
+      Three short policy passages, as they'd arrive from retrieval. `ret-3` contains a line break (`\n`) between its two sentences, which is how text from a PDF or a Markdown file often looks.
+  - lines: [52, 64]
+    title: Six claims, one per outcome
+    text: |
+      Read them as test cases:
+
+      - Claim 0 quotes ret-1 exactly: **verified**.
+      - Claim 1 quotes across ret-3's line break: **verified**, thanks to normalizing.
+      - Claim 2 states a specific number with no citation: **uncited**. This is the classic hallucination shape.
+      - Claim 3 cites `ret-9`, which was never provided: **unknown source**.
+      - Claim 4's quote is real text, but it spans the end of ret-1 and the start of ret-2, so no single passage contains it: **bad quote**.
+      - Claim 5's quote is blank: **bad quote**.
+  - lines: [66, 69]
+    title: Print a status report
+    text: |
+      `zip(CLAIMS, statuses)` walks claims and their statuses together. In the f-string, `{status:15}` pads the status to 15 characters so the claim text lines up in a column. The output is the kind of report you'd log for every answer, or show a reviewer before an answer goes out.
+review:
+  - id: wt-cite-whole-corpus
+    type: code-reading
+    prompt: An AI assistant "makes the check more forgiving" by matching quotes against all passages joined together, as below. Which claim's status changes?
+    code: |
+      def quote_matches(citation, passages):
+          quote = normalize(citation["quote"])
+          corpus = " ".join(normalize(p) for p in passages.values())
+          return bool(quote) and quote in corpus
+    options:
+      - id: a
+        text: None; every real quote is in the corpus anyway
+        rationale: One quote is in the joined corpus only because two passages were glued together.
+      - id: b
+        text: Claim 4 becomes "verified", though no single passage contains its quote
+        correct: true
+        rationale: Right. Joining ret-1 and ret-2 creates the text "within 30 days of delivery. Refunds are issued", which exists in no real passage. The citation now passes while pointing at ret-1, which doesn't contain it.
+      - id: c
+        text: Claim 3 becomes "verified", since its quote is real text from ret-2
+        rationale: Claim 3 is stopped earlier by the unknown-source rule, because ret-9 isn't a passage.
+    explanation: A citation is a promise that this passage supports this claim. Checking against the corpus breaks that promise and lets stitched or misattributed quotes through. Keep the check per passage.
+  - id: wt-cite-blank-quote
+    type: predict-output
+    prompt: Someone deletes `bool(quote) and` from `quote_matches`, so it returns just `quote in normalize(passages[citation["id"]])`. What status does claim 5 (the blank quote) get now?
+    options:
+      - id: a
+        text: '"bad quote", because the quote is blank'
+        rationale: The blank-quote rule was implemented by exactly the code that was deleted.
+      - id: b
+        text: '"verified"'
+        correct: true
+        rationale: Right. The quote normalizes to the empty string, and `"" in s` is True for every string, so the citation passes.
+      - id: c
+        text: '"uncited"'
+        rationale: The claim has a citation; it just has an empty quote.
+    explanation: Python's empty-substring rule turns a missing quote into an automatic pass. Any "is this text in that text" check needs an explicit non-empty guard, and a test for it.
+  - id: wt-cite-rule-order
+    type: mcq
+    prompt: Why does the "unknown source" check come before the "bad quote" check?
+    options:
+      - id: a
+        text: It's faster to check ids than quotes
+        rationale: It is a bit faster, but speed isn't the main reason.
+      - id: b
+        text: Checking a quote looks up the cited passage by id, which raises KeyError if the id is missing; checking ids first turns a crash into a status
+        correct: true
+        rationale: Right. The order makes the checker total, meaning it returns a status for every input instead of crashing on the ones that most need flagging.
+      - id: c
+        text: The order doesn't matter, since each claim gets only one status
+        rationale: The order determines which status that is, and whether the code reaches a status at all.
+    explanation: A verifier that crashes on bad model output is worse than none, because bad output is exactly what it exists to catch. Test it with the malformed cases, not just the clean ones.
+direct:
+  task: |
+    Models sometimes return curly apostrophes and quotation marks where the source has straight ones, and those quotes fail even though the words match. Make the comparison tolerant of that, and only that.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Change normalize so that, in addition to collapsing whitespace, it maps curly single quotes (left and right) to a straight apostrophe and curly double quotes (left and right) to a straight double quote. Nothing else changes: keep case, other punctuation, and the whitespace behavior as they are.
+
+    Do not change check_claims, quote_matches, verified_share, the rule order, or the empty-quote guard. Quotes must still be checked against the cited passage only.
+
+    Add asserts: a quote using a curly apostrophe verifies against a passage using a straight one; a quote that changes one word still gets "bad quote"; a blank quote still gets "bad quote"; the existing statuses for CLAIMS are unchanged.
+  checklist:
+    - Only quote characters were added to normalize; case and other punctuation are still exact
+    - The empty-quote guard and the per-passage lookup are untouched
+    - The rule order in check_claims is unchanged
+    - New tests include a near-miss that must still fail, not only the case that should now pass
+    - The docstring for normalize describes the new mapping

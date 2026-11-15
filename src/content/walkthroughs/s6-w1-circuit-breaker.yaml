@@ -1,0 +1,204 @@
+id: s6-w1-circuit-breaker
+summary: |
+  A circuit breaker sits in front of a dependency (here, a model API) and stops calling it when it keeps failing. After a few consecutive failures it "opens" and rejects calls instantly instead of making every user wait for another timeout. After a cool-off period it lets exactly one trial call through; if that works, normal traffic resumes, and if not, it waits again.
+
+  The class is built around one design choice: it never reads the real time. It asks a `clock` object it was given, and in tests that clock is a `FakeClock` you can move forward 30 seconds instantly. The state (closed, open, half_open) is also not stored; it is computed from two facts, when the breaker opened and what time it is now, which removes a whole class of "the state field got out of sync" bugs.
+code: |
+  class FakeClock:
+      def __init__(self):
+          self.t = 0.0
+      def now(self):
+          return self.t
+      def advance(self, seconds):
+          self.t += seconds
+
+
+  class CircuitBreaker:
+      """closed -> open after failure_threshold CONSECUTIVE failures.
+      open -> half_open once reset_timeout seconds have passed since it opened.
+      half_open: allow exactly one trial call; success closes, failure reopens (timer restarts)."""
+
+      def __init__(self, failure_threshold, reset_timeout, clock):
+          self.failure_threshold = failure_threshold
+          self.reset_timeout = reset_timeout
+          self.clock = clock
+          self.failures = 0
+          self.opened_at = None        # time it last opened, or None when closed
+          self.trial_in_flight = False
+
+      @property
+      def state(self):
+          if self.opened_at is None:
+              return "closed"
+          if self.clock.now() - self.opened_at >= self.reset_timeout:
+              return "half_open"
+          return "open"
+
+      def allow(self):
+          """True if a call may proceed now. In half_open, hand out one trial only."""
+          s = self.state
+          if s == "closed":
+              return True
+          if s == "open" or self.trial_in_flight:
+              return False
+          self.trial_in_flight = True  # this caller gets the trial
+          return True
+
+      def record_success(self):
+          self.failures = 0
+          self.opened_at = None
+          self.trial_in_flight = False
+
+      def record_failure(self):
+          if self.state == "half_open":
+              # The trial failed: reopen and restart the timer from now.
+              self.opened_at = self.clock.now()
+              self.trial_in_flight = False
+              return
+          self.failures += 1
+          if self.failures >= self.failure_threshold:
+              self.opened_at = self.clock.now()
+
+
+  clock = FakeClock()
+  br = CircuitBreaker(failure_threshold=3, reset_timeout=30, clock=clock)
+  for _ in range(3):
+      br.record_failure()
+  print(br.state, br.allow())
+notes:
+- lines:
+  - 1
+  - 7
+  title: A clock you control
+  text: |
+    `class FakeClock:` defines a tiny **class** (a bundle of data plus the functions that act on it, called **methods**). `__init__` is the constructor that runs when you write `FakeClock()`, and `self` is the object being built or used.
+
+    It has one number, `t`, a `now()` method that reports it, and `advance()` to move it forward. The real version would return `time.monotonic()`. Because the breaker only ever calls `clock.now()`, either works. This is **dependency injection**: hand a component the things it depends on rather than letting it reach for them, so a test can substitute a fake.
+- lines:
+  - 10
+  - 21
+  title: The breaker's configuration and memory
+  text: |
+    The docstring states the three transitions in one place, which is the best spec a reviewer can ask for.
+
+    The constructor stores the settings (`failure_threshold`, `reset_timeout`, `clock`) and three pieces of memory:
+
+    - `failures`: how many failures in a row we've seen.
+    - `opened_at`: the clock time the breaker last opened, or `None` while closed.
+    - `trial_in_flight`: whether the single half-open trial has been handed out.
+
+    Notice what is **not** here: no `self.state = "closed"`. That is deliberate, as the next note shows.
+- lines:
+  - 23
+  - 29
+  title: State is computed, not stored
+  text: |
+    `@property` is a **decorator** (a line starting with `@` that wraps the function below it). It makes `state` look like a plain attribute: callers write `br.state`, with no parentheses, but the code runs every time.
+
+    The logic: never opened means closed. Opened and at least `reset_timeout` seconds have passed means half-open. Otherwise open. With a 30 s timeout opened at t = 0, at t = 29.9 it's open and at t = 30.1 it's half-open, with no timer or background thread needed to flip anything.
+
+    An AI-written version often stores `self.state` and updates it in each method. Then something has to change "open" to "half_open" when time passes, and that "something" is easy to forget. Deriving state from `opened_at` and the clock makes that bug impossible.
+- lines:
+  - 31
+  - 39
+  title: 'allow: the gatekeeper'
+  text: |
+    `allow()` is called before each request. Closed lets everything through; open rejects everything (this is the "fail fast" that saves your users from waiting on a dead dependency).
+
+    Half-open is the subtle case. The first caller sets `trial_in_flight = True` and gets `True`; every caller after that gets `False` until the trial reports back. Without that flag, a burst of traffic arriving at second 30 would all count as "trials" and hammer a service that is still recovering.
+
+    `s = self.state` reads the property once and reuses it, so the clock is consulted once per decision.
+- lines:
+  - 41
+  - 44
+  title: 'record_success: back to normal'
+  text: |
+    Any success resets all three pieces of memory. That covers both cases at once: in closed state it breaks a run of failures (so only *consecutive* failures count), and after a successful half-open trial it closes the breaker.
+
+    Resetting `failures` on success is the rule the second test checks: failure, failure, success, failure, failure must stay closed.
+- lines:
+  - 46
+  - 54
+  title: 'record_failure: count, or reopen'
+  text: |
+    A failed half-open trial reopens immediately: `opened_at` moves to *now*, so the cool-off timer restarts from the failed trial, not from the original opening. `return` exits early so the trial failure isn't also added to the count.
+
+    Otherwise we add one to `failures` and open the breaker once the count reaches the threshold. `>=` rather than `==` is the safer comparison: if a later edit ever let the count skip past the threshold, `==` would never fire.
+
+    A common mistake in generated code is to clear the trial flag but forget the restart, leaving `opened_at` at its old value. The breaker then stays "half-open" forever after the first failed trial and hands a new trial to every caller, so a struggling dependency gets hit on every request. The test that advances 15 seconds after a failed trial exists to catch exactly that.
+- lines:
+  - 57
+  - 61
+  title: 'Demo: trip it'
+  text: |
+    Three failures in a row with a threshold of 3 opens the breaker. `for _ in range(3):` runs the body three times; `_` again means "I don't need the loop variable".
+
+    The print shows `open False`: the state, and the fact that a call right now would be refused without touching the API.
+review:
+- id: wt-cb-stuck-open
+  type: code-reading
+  prompt: An AI assistant rewrites `record_failure` as below, explaining that it "shouldn't overwrite the time the breaker opened". The breaker opened at t = 0 (timeout 30). At t = 30.1 a trial is allowed and fails. What does `allow()` return at t = 61, and after?
+  code: |
+    def record_failure(self):
+        self.failures += 1
+        if self.failures >= self.failure_threshold and self.opened_at is None:
+            self.opened_at = self.clock.now()
+  options:
+  - id: a
+    text: '`True` at t = 61: more than 30 seconds have passed since the failed trial, so a new trial is allowed'
+    rationale: That is what the original does. Here the timer never restarted, and the trial flag was never cleared.
+  - id: b
+    text: '`False`, forever: the breaker never lets another call through'
+    correct: true
+    rationale: Right. `opened_at` stays at 0, so the state stays half-open, but `trial_in_flight` is still `True` from the failed trial and only `record_success` clears it. No trial can ever run, so no success can ever happen.
+  - id: c
+    text: '`True` on every call from t = 30.1 onward'
+    rationale: That would happen if the flag were cleared but the timer not restarted. This version clears neither.
+  explanation: 'The half-open branch in the original does two jobs: restart the timer and release the trial slot. Dropping it produces a breaker that looks fine for the first minute and then blocks a recovered dependency permanently. This is why the tests walk through a failed trial and then a later successful one.'
+- id: wt-cb-property
+  type: scenario
+  prompt: Why is `state` computed by a `@property` from `opened_at` and the clock, instead of stored in a `self.state` field?
+  options:
+  - id: a
+    text: Properties run faster than attribute reads
+    rationale: They're slightly slower, if anything. Speed isn't the reason.
+  - id: b
+    text: Nothing has to remember to flip open to half_open when time passes; the state is always consistent with the clock
+    correct: true
+    rationale: Exactly. A stored state needs a timer or a check in every method to change it, and missing one leaves the breaker stuck.
+  - id: c
+    text: Python classes can't have a string attribute named `state`
+    rationale: They can. This is a design choice, not a language rule.
+  explanation: Deriving a value from the facts it depends on, instead of storing a copy that can go stale, is a good general habit. Look for stored-and-updated state in AI-written code and ask what keeps it in sync.
+- id: wt-cb-predict
+  type: predict-output
+  prompt: 'With the original code: threshold 3, timeout 30. Record failure, failure, success, failure, failure. What is `br.state`?'
+  options:
+  - id: a
+    text: '`"closed"`'
+    correct: true
+    rationale: Right. The success reset the count, so only the last two failures are consecutive.
+  - id: b
+    text: '`"open"`'
+    rationale: There have been four failures in total, but the breaker counts consecutive failures only.
+  - id: c
+    text: '`"half_open"`'
+    rationale: Half-open only happens after the breaker has opened and the timeout has passed.
+  explanation: Counting consecutive failures rather than total failures means a dependency with occasional errors keeps working, and only a run of failures (a real outage) trips the breaker.
+direct:
+  task: |
+    In production you want to see when the breaker changes state, so you can chart it and alert on it. Add an optional callback that the breaker calls on every transition.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add an optional on_transition parameter to CircuitBreaker.__init__ (default None). When set, call it as on_transition(old_state, new_state) whenever the breaker's state changes because of record_failure or record_success: closed to open when the threshold is reached, half_open to open on a failed trial, and half_open or open to closed on a success. Do not call it when the state doesn't change (for example a success while already closed).
+
+    The open to half_open change happens by the passage of time, not by a method call. Do not add timers or threads for it; leave it unreported and say so in the docstring.
+
+    Keep state as a computed @property, keep the clock injection, and do not change any existing behavior. Add asserts using FakeClock and a list-appending callback for: closed to open, a failed trial (half_open to open), a successful trial (half_open to closed), and no call on a success while closed.
+  checklist:
+  - '`state` is still a computed property; no stored `self.state` was introduced'
+  - The callback defaults to `None` and the breaker works exactly as before without it
+  - No calls on non-transitions (a success while closed, a failure below the threshold)
+  - No `time.time()`, `threading`, or timers were added
+  - All the original tests still pass, and the new asserts use the fake clock

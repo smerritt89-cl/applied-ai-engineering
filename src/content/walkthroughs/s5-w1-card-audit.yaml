@@ -1,0 +1,227 @@
+id: s5-w1-card-audit
+summary: |
+  This program audits Hugging Face model cards. A model card is the `README.md` at the top of a model repository: a block of YAML metadata (license, tags, base model, gating) followed by Markdown prose. The program splits a card into those two parts, then runs a fixed list of checks and returns human-readable flags such as `"no license"` or `"gated: request access first"`.
+
+  It is two functions on purpose. `split_card` only parses; `audit` only judges. Parsing is where the tricky edge cases live (no metadata, an empty block, an unclosed block), so keeping it separate lets you test it on its own and reuse it. The audit is a shortlist filter: it tells you which cards need a human to read the license or chase the base model, before anyone downloads gigabytes of weights.
+code: |
+  import yaml
+
+
+  def split_card(readme):
+      """Split a model card README into (metadata dict, body text).
+      The metadata is YAML between a first line '---' and the next line '---'.
+      If there is no metadata block, return ({}, readme)."""
+      lines = readme.split("\n")
+      if not lines or lines[0].strip() != "---":
+          return {}, readme
+      for i in range(1, len(lines)):
+          if lines[i].strip() == "---":
+              meta = yaml.safe_load("\n".join(lines[1:i])) or {}
+              return meta, "\n".join(lines[i + 1:])
+      return {}, readme  # an opening '---' that never closes is not metadata
+
+
+  def audit(readme, allowed=("apache-2.0", "mit")):
+      """Return a list of flags (strings), in this order:
+        "no license"                          metadata has no license field
+        "custom license: <license_name>"      license is "other" (use "unnamed" if license_name is missing)
+        "license not allowed: <license>"      license is set, not "other", and not in allowed
+        "gated: request access first"         metadata has a truthy "gated" or any key starting with "extra_gated_"
+        "derivative without base_model"       tags include "gguf", "mlx", or "quantized" and there is no base_model
+        "no evaluation section"               no markdown heading line (starting with '#') containing "evaluation" (any case)
+        "no intended use section"             no heading line containing "intended use" or "uses" (any case)
+      """
+      meta, body = split_card(readme)
+      flags = []
+
+      lic = meta.get("license")
+      if lic is None:
+          flags.append("no license")
+      elif lic == "other":
+          flags.append("custom license: " + str(meta.get("license_name") or "unnamed"))
+      elif lic not in allowed:
+          flags.append("license not allowed: " + str(lic))
+
+      if meta.get("gated") or any(k.startswith("extra_gated_") for k in meta):
+          flags.append("gated: request access first")
+
+      tags = set(meta.get("tags") or [])
+      if tags & {"gguf", "mlx", "quantized"} and not meta.get("base_model"):
+          flags.append("derivative without base_model")
+
+      headings = [line.lower() for line in body.split("\n") if line.lstrip().startswith("#")]
+      if not any("evaluation" in h for h in headings):
+          flags.append("no evaluation section")
+      if not any("intended use" in h or "uses" in h for h in headings):
+          flags.append("no intended use section")
+      return flags
+
+
+  CARDS = {
+      "acme/support-7b": """---
+  license: apache-2.0
+  base_model: acme/base-7b
+  pipeline_tag: text-generation
+  ---
+  # Support 7B
+  ## Intended uses and limitations
+  Customer support triage in English.
+  ## Evaluation
+  Exact match on our ticket set.
+  """,
+      "someone/support-7b-GGUF": """---
+  license: apache-2.0
+  tags: [gguf, quantized]
+  ---
+  # Support 7B, GGUF quantizations
+  Q4_K_M and Q8_0 files.
+  """,
+      "bigco/frontier-open": """---
+  license: other
+  license_name: bigco-community-license
+  gated: true
+  extra_gated_prompt: You agree to the BigCo acceptable use policy.
+  ---
+  # BigCo Frontier Open
+  ## Uses
+  General assistant.
+  ## Evaluation results
+  See the technical report.
+  """,
+  }
+
+  for repo, card in CARDS.items():
+      print(repo, audit(card))
+notes:
+  - lines: [1, 1]
+    title: 'The one dependency'
+    text: |
+      `yaml` is the PyYAML library, which turns YAML text into Python dictionaries and lists. It is the only import, which matches the job: this program reads text and makes decisions, nothing else.
+
+      The function below uses `yaml.safe_load`, never `yaml.load`. Plain `load` can construct arbitrary Python objects from specially written YAML, which is a security hole when the text comes from a stranger's repository. When you review AI-written code that parses YAML from the internet, `safe_load` is a non-negotiable check.
+  - lines: [4, 10]
+    title: 'split_card, the early exit'
+    text: |
+      `readme.split("\n")` breaks the text into a list of lines (`"\n"` is the newline character).
+
+      `if not lines or lines[0].strip() != "---":` checks two things. `not lines` is true for an empty list. `lines[0].strip()` removes surrounding spaces from the first line before comparing it to `"---"`, so a stray trailing space does not hide the metadata. If the card does not open with `---`, there is no metadata block, and the function returns a **tuple** of two values, `({}, readme)`: an empty dictionary and the whole text as the body.
+
+      Returning early like this (a **guard clause**) keeps the main logic below un-nested and easy to read.
+  - lines: [11, 15]
+    title: 'Find the closing fence, then parse'
+    text: |
+      `for i in range(1, len(lines)):` walks the line numbers starting at 1, skipping the opening `---` at index 0. The first line that is exactly `---` closes the block.
+
+      `lines[1:i]` is a **slice**: the lines from index 1 up to, but not including, `i`. Those are joined back into text and handed to `yaml.safe_load`. The `or {}` matters: an empty metadata block makes `safe_load` return `None`, and `None or {}` gives an empty dictionary, so the caller can always use `.get` on the result.
+
+      `lines[i + 1:]` is everything after the closing fence: the body. If the loop finishes without finding a closing `---`, the last line returns "no metadata" rather than guessing, which the trailing comment explains.
+  - lines: [18, 29]
+    title: 'audit, the contract and the split'
+    text: |
+      The docstring is the specification: seven possible flags and the exact order they appear in. Order is part of the contract because the tests (and any report built on this) compare whole lists.
+
+      `allowed=("apache-2.0", "mit")` is a **default argument** holding a **tuple** (an unchangeable list). A team with a different policy can pass its own allow list without editing the function. Using a tuple rather than a list as the default avoids a classic Python trap where a mutable default is shared between calls.
+
+      `meta, body = split_card(readme)` is **tuple unpacking**: the two returned values land in two names at once.
+  - lines: [31, 37]
+    title: 'The license check, one outcome only'
+    text: |
+      `meta.get("license")` is **dict.get**: it returns the value, or `None` if the key is missing, instead of raising `KeyError`. That is how "no license" is detected.
+
+      Here an `if`/`elif` chain is the right shape, because exactly one license outcome applies: missing, custom ("other"), or not on the allow list. `"other"` is what Hugging Face cards use when the real license is custom; the actual name, if given, is in `license_name`. `meta.get("license_name") or "unnamed"` falls back to `"unnamed"` when that name is missing or empty.
+
+      `str(...)` guards against metadata that YAML parsed as a non-string, so the concatenation with `+` cannot fail.
+  - lines: [39, 40]
+    title: 'Gating, with any() and a generator'
+    text: |
+      A gated repo makes you request access (often accepting terms) before downloading. Cards signal it either with `gated: true` or with keys like `extra_gated_prompt`.
+
+      `any(k.startswith("extra_gated_") for k in meta)` uses a **generator expression** (a list comprehension without the brackets) inside `any`, which returns `True` as soon as one key matches. Looping over a dictionary gives its keys.
+
+      Worked value: the BigCo card has both `gated: true` and `extra_gated_prompt`, so this is true; a card with only `extra_gated_fields` is caught by the second half.
+  - lines: [42, 44]
+    title: 'Derivatives must name their base model'
+    text: |
+      `set(meta.get("tags") or [])` turns the tags into a **set** (an unordered collection without duplicates), treating missing tags as an empty list. `tags & {"gguf", "mlx", "quantized"}` is **set intersection**: the tags the two have in common. An empty set counts as false, so the condition reads "has any derivative tag and no base model".
+
+      Why it matters: a GGUF or MLX file is usually someone's conversion of another model, and the original model's license still applies. Without `base_model` you cannot tell whose license that is. The GGUF card in `CARDS` is exactly this case.
+  - lines: [46, 51]
+    title: 'Sections, judged by headings only'
+    text: |
+      `[line.lower() for line in body.split("\n") if line.lstrip().startswith("#")]` is a **list comprehension with a filter**: keep only lines that start with `#` (Markdown headings), lowercased so the match ignores case.
+
+      Checking headings rather than the whole body is deliberate. A card that says "We did no evaluation" in prose has no evaluation section, and the last test checks exactly that. An AI shortcut like `"evaluation" in body.lower()` would pass most tests and get that case wrong.
+
+      Note `"uses" in h` also matches "Intended uses and limitations", so the first card passes both checks.
+  - lines: [54, 88]
+    title: 'Three sample cards and a demo loop'
+    text: |
+      `CARDS` maps repo ids to card text written with **triple-quoted strings** (`"""..."""`), which can span lines. The three cards are chosen to exercise the rules: a clean card, a quantized copy with no base model and no sections, and a gated custom-license card.
+
+      `for repo, card in CARDS.items():` loops over key and value pairs. Press **Run this code**: the first card returns `[]`, the GGUF copy gets three flags, and BigCo gets two. On a real shortlist you would fetch cards with `huggingface_hub` instead of pasting them in.
+review:
+  - id: wt-card-none-meta
+    type: code-reading
+    prompt: 'An AI assistant shortens the parsing line in `split_card` to the version below. What happens when you call `audit("---\n---\n# M\n## Uses\n## Evaluation\n")`, a card with an empty metadata block?'
+    code: |
+      meta = yaml.safe_load("\n".join(lines[1:i]))
+      return meta, "\n".join(lines[i + 1:])
+    options:
+      - id: a
+        text: 'It returns `["no license"]`, as before'
+        rationale: 'That is what the original returns. Without `or {}`, the metadata is `None`, and the next step fails.'
+      - id: b
+        text: 'It raises `AttributeError`, because `None` has no `.get`'
+        correct: true
+        rationale: 'Right. `yaml.safe_load("")` returns `None`, and `audit` immediately calls `meta.get("license")`.'
+      - id: c
+        text: 'It returns `[]`, because an empty block means nothing to flag'
+        rationale: 'An empty block still means no license, and in this version the code never gets far enough to say so.'
+    explanation: 'Library functions often return `None` for empty input. The `or {}` normalizes that so every caller can rely on getting a dictionary. When a "simplification" removes a fallback like this, ask which input it was there for.'
+  - id: wt-card-prose
+    type: mcq
+    prompt: 'Someone replaces the heading-based evaluation check with `if "evaluation" not in body.lower():`. Which card does this now get wrong?'
+    options:
+      - id: a
+        text: 'A card whose only mention is the sentence "We did no evaluation."'
+        correct: true
+        rationale: 'Right. The word appears in prose, so the new check finds it and stops flagging a card that has no evaluation section.'
+      - id: b
+        text: 'A card with the heading `## EVALUATION`'
+        rationale: 'Lowercasing the body still finds it, so this card is handled correctly by both versions.'
+      - id: c
+        text: 'The acme/support-7b card'
+        rationale: 'It has a real evaluation heading, so both versions agree it is fine.'
+    explanation: 'Substring checks on free text are a common AI shortcut. They pass the happy-path cards and fail on cards that mention a word without having the section. Checking structure (headings) is what the spec actually asked for.'
+  - id: wt-card-base-model
+    type: scenario
+    prompt: 'Your team''s shortlist includes a popular GGUF repo that the audit flags as "derivative without base_model". The model runs well locally. What is the right next step?'
+    options:
+      - id: a
+        text: 'Ignore the flag, since its own card says apache-2.0'
+        rationale: 'A conversion''s card can say anything. The license that governs the weights is the original model''s, and you do not know what that is yet.'
+      - id: b
+        text: 'Find the original model, read its license and card, and prefer a conversion that names it in `base_model` (or convert it yourself)'
+        correct: true
+        rationale: 'Right. Trace provenance to the source, then make sure the file you deploy is traceable to it.'
+      - id: c
+        text: 'Add a `base_model` line to your local copy of the card so the audit passes'
+        rationale: 'That silences the check without answering the question it asks.'
+    explanation: 'A flag is a question for a human, not a nuisance to suppress. The checks-and-balances move is to answer it with evidence (the original license text) before the model goes further.'
+direct:
+  task: |
+    Legal also wants to know when a card does not list its training data. Add a flag `"no datasets listed"` when the metadata has no non-empty `datasets` field. It should appear right after `"derivative without base_model"` and before the section checks.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In audit, add one new flag, "no datasets listed", when meta.get("datasets") is missing or empty (None, an empty list, or an empty string). Insert it immediately after the "derivative without base_model" check and before the two section checks, so the flag order is: license, gated, derivative, datasets, evaluation, intended use.
+
+    Do not change split_card or any other flag's wording or condition. Update the docstring's list of flags to include the new one in its position.
+
+    The existing test expectations will change for cards without datasets, so update them deliberately and show me the diff of the expected lists. Add tests for: a card with datasets: [squad] (no new flag), a card with datasets: [] (flagged), and a card with no metadata (both "no license" and "no datasets listed", in that order).
+  checklist:
+    - 'The new check sits between the derivative check and the section checks, matching the docstring'
+    - 'Missing, None, and empty datasets are all flagged; a non-empty list is not'
+    - 'split_card and the other six flags are unchanged'
+    - 'Existing expected lists were updated on purpose (and only where a card really has no datasets)'
+    - 'New tests cover present, empty, and missing datasets'

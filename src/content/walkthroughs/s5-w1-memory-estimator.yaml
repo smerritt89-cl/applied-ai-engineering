@@ -1,0 +1,192 @@
+id: s5-w1-memory-estimator
+summary: |
+  This program estimates how much memory a model needs to run locally, so you can tell before downloading whether it fits on your laptop or GPU. The total is three parts: the **weights** (the model's parameters, shrunk by quantization), the **KV cache** (the keys and values the model stores for every token in the conversation so it does not recompute them), and a fixed allowance for the runtime itself.
+
+  Each part is its own small function, and the two top-level functions (`estimate_gib` and `max_context`) are built from them. That structure mirrors the arithmetic, so each formula can be checked against a published reference number on its own, which is exactly what the tests do. It also makes the lesson's key point visible: at long context, the cache can outgrow the weights.
+code: |
+  GIB = 2**30  # one gibibyte: 1,073,741,824 bytes
+
+
+  def weight_gib(params, bits_per_weight):
+      """Memory for the weights in GiB: params * bits / 8 bytes."""
+      return params * bits_per_weight / 8 / GIB
+
+
+  def kv_bytes_per_token(layers, kv_heads, head_dim, bytes_per_value=2):
+      """Keys and values for one token across all layers: 2 * layers * kv_heads * head_dim * bytes."""
+      return 2 * layers * kv_heads * head_dim * bytes_per_value
+
+
+  def kv_cache_gib(layers, kv_heads, head_dim, context, bytes_per_value=2, batch=1,
+                   sliding_window=None, sliding_layers=0):
+      """KV cache in GiB. The first (layers - sliding_layers) layers keep every token;
+      sliding layers keep at most sliding_window tokens. Multiply by batch."""
+      per_layer_token = 2 * kv_heads * head_dim * bytes_per_value
+      full_layers = layers - sliding_layers
+      window_tokens = context if sliding_window is None else min(context, sliding_window)
+      total = per_layer_token * (full_layers * context + sliding_layers * window_tokens) * batch
+      return total / GIB
+
+
+  def estimate_gib(model, bits_per_weight, context, kv_bytes=2, overhead_gib=1.0):
+      """Total = weights + KV cache + a fixed runtime overhead.
+      model is a dict with params, layers, kv_heads, head_dim, and optional sliding_window, sliding_layers."""
+      kv = kv_cache_gib(model["layers"], model["kv_heads"], model["head_dim"], context,
+                        bytes_per_value=kv_bytes,
+                        sliding_window=model.get("sliding_window"),
+                        sliding_layers=model.get("sliding_layers", 0))
+      return weight_gib(model["params"], bits_per_weight) + kv + overhead_gib
+
+
+  def max_context(model, bits_per_weight, memory_gib, kv_bytes=2, overhead_gib=1.0):
+      """Largest whole-token context that fits in memory_gib (for models without sliding windows).
+      Return 0 if the weights and overhead alone do not fit."""
+      free = memory_gib - weight_gib(model["params"], bits_per_weight) - overhead_gib
+      if free <= 0:
+          return 0
+      per_token = kv_bytes_per_token(model["layers"], model["kv_heads"], model["head_dim"], kv_bytes)
+      return int(free * GIB // per_token)
+
+
+  LLAMA_31_8B = {"params": 8.03e9, "layers": 32, "kv_heads": 8, "head_dim": 128}
+  OLMO_31_32B = {"params": 32.2e9, "layers": 64, "kv_heads": 8, "head_dim": 128,
+                 "sliding_window": 4096, "sliding_layers": 48}
+
+  QUANTS = {"Q4_K_M": 4.8944, "Q6_K": 6.5633, "Q8_0": 8.5008, "F16": 16.0005}
+  for name, bits in QUANTS.items():
+      row = [round(estimate_gib(LLAMA_31_8B, bits, ctx), 1) for ctx in (4096, 32768, 131072)]
+      print(f"Llama 3.1 8B {name:7} 4K/32K/128K context: {row} GiB")
+  print("max context in 16 GiB at Q4_K_M:", max_context(LLAMA_31_8B, 4.8944, 16))
+notes:
+  - lines: [1, 1]
+    title: 'A named constant for the unit'
+    text: |
+      `GIB = 2**30` defines one **gibibyte** (`**` is "to the power of"). Memory tools such as Activity Monitor and `ollama ps` report binary units, while marketing figures often use decimal gigabytes (10 to the 9th bytes). The two differ by about 7%, which is enough to turn "fits" into "doesn't fit" near the limit.
+
+      Naming the constant once, in capitals by Python convention, means every function divides by the same thing. An AI-written version that mixes `1e9` in one place and `2**30` in another produces numbers that are subtly inconsistent.
+  - lines: [4, 6]
+    title: 'Weights, from parameter count and bits per weight'
+    text: |
+      Each parameter is stored in `bits_per_weight` bits; divide by 8 for bytes, then by `GIB` for gibibytes.
+
+      Worked value: Llama 3.1 8B has 8.03 billion parameters. At Q4_K_M (about 4.89 bits per weight on average, because the format mixes block sizes and stores scales) that is 8.03e9 × 4.8944 / 8 / 2^30, about **4.58 GiB**, matching llama.cpp's published table. At F16 it is about 15 GiB.
+  - lines: [9, 11]
+    title: 'KV bytes per token'
+    text: |
+      For every token, every layer stores one key vector and one value vector per KV head. That is where each factor comes from: `2` (key and value), `layers`, `kv_heads`, `head_dim` (the length of each vector), and `bytes_per_value` (2 for 16-bit numbers).
+
+      `bytes_per_value=2` is a **default argument**: callers can leave it out for the common FP16 case or pass 1 for an 8-bit cache.
+
+      Worked value: Llama 3.1 8B has 32 layers, 8 KV heads, and head size 128, so 2 × 32 × 8 × 128 × 2 = **131,072 bytes**, 128 KiB per token. The model has more attention heads than KV heads (grouped-query attention), and using the attention head count here is a common mistake that inflates the estimate fourfold.
+  - lines: [14, 22]
+    title: 'The KV cache, with sliding-window layers'
+    text: |
+      Some models (OLMo 3.1 32B here) use **sliding-window attention** on most layers: those layers only look at the last `sliding_window` tokens, so they only need to store that many. The function splits the layers into two groups:
+
+      - `full_layers` keep every token: `full_layers * context`.
+      - sliding layers keep `window_tokens`, which is the smaller of the context and the window.
+
+      `context if sliding_window is None else min(context, sliding_window)` is a **conditional expression** (Python's one-line if/else). When there is no window, sliding layers (normally 0 of them) keep everything.
+
+      Worked value: OLMo at 65,536 tokens with 48 of 64 layers windowed to 4,096 needs 4.75 GiB instead of 16 GiB. The `* batch` factor at the end reflects that each concurrent sequence has its own cache.
+  - lines: [25, 32]
+    title: 'estimate_gib, composing the parts'
+    text: |
+      This function adds the three parts. It passes the model's fields into `kv_cache_gib` using **keyword arguments** (`bytes_per_value=kv_bytes`), which makes each value's role obvious at the call site.
+
+      `model.get("sliding_window")` uses **dict.get**: Llama's dictionary has no such key, so `get` returns `None`, which `kv_cache_gib` reads as "no window". `model.get("sliding_layers", 0)` supplies a default of 0. With square brackets, the Llama case would raise `KeyError`.
+
+      Forgetting to pass the window through is the subtle bug here: the code would still run, and would overestimate OLMo's memory by more than 3x. The test labelled "estimate_gib must pass the sliding window through" exists to catch that.
+  - lines: [35, 40]
+    title: 'max_context, first check that anything fits'
+    text: |
+      `free` is what is left after the weights and the overhead. If it is zero or negative, the model cannot even load, so the function returns 0 rather than a negative context. This is another **guard clause**: handle the impossible case first and return.
+
+      Worked value: F16 Llama weights are about 15 GiB; with 1 GiB overhead they do not fit in 12 GiB, so the answer is 0.
+  - lines: [41, 43]
+    title: 'Divide the free memory by the per-token cost'
+    text: |
+      `free * GIB // per_token` converts the free space back to bytes and uses `//`, **floor division**, which rounds down. Rounding down is the whole point: a context of 85,398.7 tokens means 85,398 fit and 85,399 do not. `int(...)` turns the float result into a whole number.
+
+      Worked value: 16 − 4.58 − 1 leaves about 10.42 GiB, which divided by 128 KiB per token is **85,398 tokens**. The docstring notes this simple division only holds for models without sliding windows, a limit worth keeping in mind before reusing it.
+  - lines: [45, 47]
+    title: 'Two model descriptions as data'
+    text: |
+      Each model is a plain dictionary of the numbers the formulas need, copied from the models' configuration files. `8.03e9` is **scientific notation** for 8.03 billion. OLMo's dictionary has two extra keys; Llama's simply leaves them out, which `estimate_gib` handles with `.get`.
+  - lines: [49, 53]
+    title: 'The table the program prints'
+    text: |
+      `QUANTS` maps quantization names to their average bits per weight. The loop builds each row with a **list comprehension** over three context lengths and prints it with an **f-string**; `{name:7}` pads the name to 7 characters so the columns line up.
+
+      Press **Run this code**. At Q4_K_M the total goes from about 6.1 GiB at 4K context to 21.6 GiB at 128K, because the cache alone reaches 16 GiB, far more than the 4.58 GiB of weights. The 1 GiB overhead is an assumption; check real usage with `ollama ps` and adjust it.
+review:
+  - id: wt-mem-window-all-layers
+    type: code-reading
+    prompt: 'An AI assistant "simplifies" the cache formula to the version below. What does `kv_cache_gib(64, 8, 128, 65536, sliding_window=4096, sliding_layers=48)` return now? (The correct answer is 4.75.)'
+    code: |
+      per_layer_token = 2 * kv_heads * head_dim * bytes_per_value
+      tokens = context if sliding_window is None else min(context, sliding_window)
+      return per_layer_token * layers * tokens * batch / GIB
+    options:
+      - id: a
+        text: "4.75, the same as before"
+        rationale: 'This version ignores `sliding_layers`, so it can''t tell full layers from windowed ones.'
+      - id: b
+        text: "1.0, because it applies the window to all 64 layers"
+        correct: true
+        rationale: 'Right. 4,096 bytes per layer-token × 64 layers × 4,096 tokens is exactly 1 GiB. It forgets that 16 layers still keep every token, so it underestimates by almost 5x.'
+      - id: c
+        text: "16.0, because it ignores the window entirely"
+        rationale: 'It does use the window, just for every layer instead of only the sliding ones.'
+    explanation: 'Underestimates are the dangerous direction for a memory estimator, because the model loads and then fails partway through a long conversation. When an AI drops a parameter like `sliding_layers` from a formula, check whether any test still exercises it.'
+  - id: wt-mem-round
+    type: mcq
+    prompt: 'In `max_context`, someone replaces `int(free * GIB // per_token)` with `round(free * GIB / per_token)`. Which test can now fail?'
+    options:
+      - id: a
+        text: 'The one asserting the result is an `int`'
+        rationale: "`round` with one argument already returns an int in Python 3."
+      - id: b
+        text: 'The one asserting the result is the largest context that fits "and not one more"'
+        correct: true
+        rationale: 'Right. Whenever the fractional part is 0.5 or more, `round` goes up by one token, and that context no longer fits.'
+      - id: c
+        text: 'None; rounding to the nearest token is more accurate'
+        rationale: 'Nearest is the wrong goal. A capacity limit must round down.'
+    explanation: 'Floor division (`//`) is the honest choice for "how many fit". This is a one-character difference that AI-written code often gets wrong, and it only shows up in a boundary test.'
+  - id: wt-mem-verify
+    type: scenario
+    prompt: 'The estimator says Llama 3.1 8B at Q4_K_M with 32K context needs about 9.6 GiB, and your laptop has 16 GB. Before promising the team it will work, what should you do?'
+    options:
+      - id: a
+        text: 'Nothing more; the formulas are checked against published numbers'
+        rationale: 'The weights and cache formulas are checked, but the 1 GiB overhead is an assumption, and your operating system and other apps also use memory.'
+      - id: b
+        text: 'Load the model at that context, run a long prompt, and read the real usage with `ollama ps` or the runtime''s peak memory, then adjust `overhead_gib`'
+        correct: true
+        rationale: 'Right. The estimate tells you what to try; a measurement tells you what is true on your machine.'
+      - id: c
+        text: 'Switch to F16 to be safe'
+        rationale: 'F16 needs far more memory (about 15 GiB for weights alone), the opposite of safe here.'
+    explanation: 'Checks and balances apply to arithmetic too. An estimate is a hypothesis; one measured run either confirms it or tells you which assumption to fix.'
+direct:
+  task: |
+    You want to serve several users at once from one machine. Weights are shared, but each concurrent request has its own KV cache. Add a `batch` parameter (default 1) to `estimate_gib` and `max_context`, so `max_context` answers "the largest context per request when `batch` requests run at once".
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a batch=1 keyword parameter to estimate_gib and to max_context.
+
+    In estimate_gib, pass batch through to kv_cache_gib (which already supports it). Weights and overhead must not be multiplied by batch.
+
+    In max_context, divide the free memory by per_token * batch, still using floor division so the result is the largest whole-token context per request that fits. Keep the free <= 0 guard returning 0.
+
+    Do not change weight_gib, kv_bytes_per_token, or kv_cache_gib, and keep the default behavior identical when batch is 1. Update both docstrings.
+
+    Add test asserts: estimate_gib with batch=4 at 4,096 tokens equals the weights plus 2.0 GiB of cache plus overhead; max_context with batch=2 is half of the batch=1 result (rounded down, within one token); and the boundary check (fits at m, not at m + 1) still holds with batch=2.
+  checklist:
+    - 'Only the KV cache scales with batch; weights and overhead are counted once'
+    - 'max_context still rounds down and still returns 0 when nothing fits'
+    - 'With batch=1 every existing result is unchanged'
+    - 'The three helper functions were not modified'
+    - 'Docstrings mention the new parameter, and new tests cover batch > 1 including the boundary'

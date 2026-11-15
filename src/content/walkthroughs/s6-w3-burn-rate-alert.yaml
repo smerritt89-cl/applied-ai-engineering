@@ -1,0 +1,165 @@
+id: s6-w3-burn-rate-alert
+summary: |
+  An error budget is the failure you agreed to tolerate: a 99 percent success target allows 1 percent of requests to fail. The **burn rate** says how fast you're spending that budget; a burn rate of 1 spends it exactly on schedule, and 14.4 spends a 30-day budget in about two days. This program decides when to page a human, using the multiwindow rule popularized by Google's SRE practice.
+
+  It is three layered functions: an error rate over a time window, a burn rate built on it, and a paging rule built on that. The rule pairs a long window (is this serious?) with a short one (is it still happening?), so a real outage pages quickly and the page stops once the service recovers.
+code: |
+  SLO = 0.99                     # 99% of requests succeed
+  BUDGET = 1 - SLO               # 1% of requests may fail
+
+  def error_rate(events, now, window_s):
+      """events: list of (t_seconds, ok_bool). Fraction of events with t in (now - window_s, now] that failed.
+      Return 0.0 if the window has no events."""
+      inside = [ok for t, ok in events if now - window_s < t <= now]
+      if not inside:
+          return 0.0
+      failures = sum(1 for ok in inside if not ok)
+      return failures / len(inside)
+
+  def burn_rate(events, now, window_s):
+      """How fast the error budget is being spent in the window: error rate divided by BUDGET."""
+      return error_rate(events, now, window_s) / BUDGET
+
+  def should_page(events, now):
+      """Page if EITHER rule holds:
+        fast: burn rate over 1 hour  > 14.4 AND over 5 minutes  > 14.4
+        slow: burn rate over 6 hours > 6    AND over 30 minutes > 6"""
+      fast = burn_rate(events, now, 3600) > 14.4 and burn_rate(events, now, 300) > 14.4
+      slow = burn_rate(events, now, 6 * 3600) > 6 and burn_rate(events, now, 1800) > 6
+      return fast or slow
+
+  # A synthetic day: one request every 10 seconds, mostly fine.
+  def traffic(start, end, fail_every=None):
+      out = []
+      for i, t in enumerate(range(start, end, 10)):
+          ok = not (fail_every and i % fail_every == 0)
+          out.append((t, ok))
+      return out
+
+  H = 3600
+  quiet = traffic(0, 6 * H)                                  # six healthy hours
+  outage = quiet + traffic(6 * H, 6 * H + 600, fail_every=1) # then a 10-minute full outage
+  recovered = outage + traffic(6 * H + 600, 7 * H)           # then healthy again for 50 minutes
+  print("quiet:", should_page(quiet, 6 * H))
+  print("during outage:", should_page(outage, 6 * H + 600), round(burn_rate(outage, 6 * H + 600, 300), 1))
+  print("after recovery:", should_page(recovered, 7 * H), round(burn_rate(recovered, 7 * H, H), 1))
+notes:
+- lines:
+  - 1
+  - 2
+  title: The objective and its budget
+  text: |
+    `SLO = 0.99` and `BUDGET = 1 - SLO` (0.01, give or take floating-point rounding). Computing the budget from the SLO, rather than typing `0.01` separately, means changing the target updates both.
+- lines:
+  - 4
+  - 11
+  title: Error rate in a time window
+  text: |
+    Each event is a **tuple** `(t, ok)`. The **list comprehension** `[ok for t, ok in events if ...]` unpacks each pair and keeps the `ok` value for events in the window.
+
+    `now - window_s < t <= now` is a **chained comparison**, Python's way of writing "t is after the window start and no later than now". The window is half-open: an event exactly `window_s` seconds ago is excluded, so back-to-back windows never count the same event twice.
+
+    An empty window returns 0.0 instead of dividing by zero. Then `sum(1 for ok in inside if not ok)` counts failures. Two failures in four events gives 0.5.
+- lines:
+  - 13
+  - 15
+  title: Burn rate
+  text: |
+    The burn rate is the observed error rate divided by the budget. An error rate of 1 percent against a 1 percent budget is 1.0; a full outage (100 percent errors) is 100.
+
+    Building `burn_rate` on top of `error_rate` keeps each function testable on its own, and keeps the window logic in one place.
+- lines:
+  - 17
+  - 23
+  title: The multiwindow paging rule
+  text: |
+    Two rules, each requiring **both** a long and a short window to be over the threshold:
+
+    - **Fast**: 1 hour and 5 minutes above 14.4. At 14.4 times the planned rate, a 30-day budget is gone in about 2 days, so this catches sharp outages.
+    - **Slow**: 6 hours and 30 minutes above 6. This catches a steadier problem that would exhaust the budget in about 5 days.
+
+    The long window prevents paging on a brief blip. The short window is what lets the page **reset**: 50 minutes after a 10-minute outage, the 1-hour burn rate is still about 16.4, but the 5-minute rate is 0, so the fast rule stops firing.
+
+    A single-window alert (just `burn_rate(events, now, 3600) > 14.4`) is the most common simplification, and it keeps paging for most of an hour after the problem is fixed.
+- lines:
+  - 25
+  - 31
+  title: Synthetic traffic
+  text: |
+    `traffic` generates one event every 10 seconds. `range(start, end, 10)` counts in steps of 10, and **`enumerate`** pairs each item with its position `i`.
+
+    `ok = not (fail_every and i % fail_every == 0)` reads: fail if `fail_every` is set and `i` is a multiple of it. With `fail_every=1` every request fails; with 50, one in fifty does (2 percent). With `None`, the `and` short-circuits and everything succeeds.
+- lines:
+  - 33
+  - 39
+  title: Three scenarios
+  text: |
+    Six quiet hours, then a 10-minute full outage, then 50 minutes of recovery. `quiet + traffic(...)` joins lists with `+`.
+
+    The prints show: no page while quiet, a page during the outage (5-minute burn rate 100), and no page after recovery even though the 1-hour burn rate is still 16.4. That last line is the whole reason for two windows.
+review:
+- id: wt-burn-single-window
+  type: code-reading
+  prompt: An AI assistant simplifies `should_page` to the version below. What does it return for `recovered` at `now = 7 * H`, 50 minutes after the outage ended?
+  code: |
+    def should_page(events, now):
+        return burn_rate(events, now, 3600) > 14.4 or burn_rate(events, now, 6 * 3600) > 6
+  options:
+  - id: a
+    text: '`False`, because the service has recovered'
+    rationale: The service has recovered, but this version has no short window to notice.
+  - id: b
+    text: '`True`, because the 1-hour window still contains the outage'
+    correct: true
+    rationale: Right. The 1-hour burn rate is about 16.4, so this version keeps paging for most of an hour after the fix.
+  - id: c
+    text: It raises an error because the 6-hour window is too long
+    rationale: Windows longer than the data are fine; they just include everything available.
+  explanation: An alert that keeps firing after recovery trains people to ignore pages. The short window is what makes the alert mean "this is happening now".
+- id: wt-burn-half-open
+  type: mcq
+  prompt: Why is the window `now - window_s < t <= now` (open at the start, closed at the end)?
+  options:
+  - id: a
+    text: So an event on the boundary belongs to exactly one of two back-to-back windows
+    correct: true
+    rationale: Right. With `<=` on both ends, an event exactly one window ago would be counted in both the current and the previous window.
+  - id: b
+    text: Python doesn't allow `<=` on both sides of a chained comparison
+    rationale: It does. This is a design choice.
+  - id: c
+    text: To exclude the current second's events
+    rationale: '`t <= now` includes events at the current time.'
+  explanation: Half-open intervals are a standard choice for time windows (and for Python's own `range` and slices) because they tile without overlap.
+- id: wt-burn-predict
+  type: predict-output
+  prompt: A steady 2 percent error rate runs for 7 hours. What is the burn rate over any window, and does `should_page` fire?
+  options:
+  - id: a
+    text: Burn rate 2; no page
+    correct: true
+    rationale: Right. 0.02 divided by 0.01 is 2, below both thresholds. It deserves a ticket, since it would spend a 30-day budget in about 15 days, but not a 3 a.m. page.
+  - id: b
+    text: Burn rate 2; page, because any burn above 1 is overspending
+    rationale: Overspending, yes, but paging is reserved for burn rates that threaten the budget within days.
+  - id: c
+    text: Burn rate 0.02; no page
+    rationale: 0.02 is the error rate. The burn rate divides it by the 1 percent budget.
+  explanation: Separating pages from tickets is what keeps on-call sustainable. The thresholds encode how fast is too fast.
+direct:
+  task: |
+    On-call wants to know *which* rule fired, so the page can say "fast burn" or "slow burn". Change the paging function to return the reason as well as the decision.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function page_reason(events, now) that returns "fast" if the fast rule holds, "slow" if only the slow rule holds, and None if neither does. If both hold, return "fast". Use exactly the same windows and thresholds as should_page.
+
+    Then make should_page return page_reason(events, now) is not None, so the two can never disagree. Do not change error_rate, burn_rate, SLO, BUDGET, or traffic.
+
+    Add asserts that: the outage scenario returns "fast", the recovered scenario returns None, a steady 2 percent error rate returns None, and a scenario that only trips the slow rule returns "slow" (for example, 8 percent errors for the last 6 hours).
+  checklist:
+  - Windows (1 h, 5 min, 6 h, 30 min) and thresholds (14.4, 6) are unchanged
+  - '`should_page` is defined in terms of `page_reason`, so they cannot disagree'
+  - Both short windows are still required (recovery still resets the page)
+  - A slow-only scenario is tested and actually trips only the slow rule
+  - Existing asserts still pass

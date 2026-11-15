@@ -3,6 +3,18 @@
 **Goes with:** Studio 5, week 4 (lessons 10 to 12). **Time:** about 60 minutes. **Needs:** the shared lab setup
 (`labs/README.md`). No API key and no GPU: everything runs on recorded predictions.
 
+## Review track
+
+If you're on the review track (the default), you don't write the code below from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to add paired per-field differences to the report, review its
+   diff, then run `pytest studio-5/04-benchmark/test_change.py -q`.
+
+The steps below are the write track, if you'd rather implement it yourself in `starter.py`. The report command works
+on either track (on the review track, run `python work.py ...` instead of `python starter.py ...`).
+
 ## Goal
 
 You fine-tuned a small open model with LoRA to extract action items. Before anyone believes "the small model is as
@@ -79,10 +91,12 @@ python starter.py fixtures/test_set.jsonl fixtures/ft-lora.json fixtures/base.js
 - **"As good as" needs an interval.** The adapter's exact match is about 7 points above the frontier model's, but the
   paired interval runs from roughly zero to about 15 points. The defensible claim is "no worse, and plausibly better,
   on this test set," not "beats the frontier model."
-- **Per-field numbers tell you why.** The frontier model is better at detecting items and owners; the adapter is
-  better at priority, because priority follows a house convention the adapter learned from labeled examples and the
-  frontier model had to infer from a few-shot prompt. That is the typical shape of a fine-tuning win: a narrow,
-  learnable convention, not general capability.
+- **Per-field numbers suggest why, but check their intervals.** On the point estimates, the frontier model is ahead
+  at detecting items and owners and the adapter is ahead on priority, plausibly because priority follows a house
+  convention the adapter learned from labeled examples and the frontier model had to infer from a few-shot prompt.
+  That is the typical shape of a fine-tuning win: a narrow, learnable convention, not general capability. But on a
+  test set this size, the per-field paired intervals for priority and owners both include zero (the CHANGE.md task
+  adds them to the report), so treat this as a hypothesis to confirm on more data, not a finding.
 - **The base model is the control.** Without the adapter the same small model scores around 43 percent, and more
   than one output in ten fails to parse. That gap is what fine-tuning bought you; report it so nobody mistakes the
   base model's quality for the adapter's.

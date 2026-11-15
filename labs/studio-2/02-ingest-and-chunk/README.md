@@ -2,6 +2,12 @@
 
 **Goes with:** Studio 2, week 2 (lessons 4 to 6). **Time:** about 75 minutes. **Cost:** free; no API key needed.
 
+## Review track
+
+The default way to do this lab: read `WALKTHROUGH.md`, a guided tour of the reference code (open `work.py` beside
+it; run `python lab.py review all` from `labs` first if `work.py` doesn't exist yet), then do `CHANGE.md`, a small
+change you direct a coding assistant to make and then review. The steps below are the optional write track.
+
 ## Goal
 
 Build the indexing half of a retrieval system, end to end, on a small corpus you can read in five minutes:

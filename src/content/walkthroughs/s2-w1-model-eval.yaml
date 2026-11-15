@@ -1,0 +1,219 @@
+id: s2-w1-model-eval
+summary: |
+  This program scores two embedding models against a small labeled set: for each test query you know which help-center articles are the right answers, and you check where each model's results put them. It computes two standard retrieval metrics, **recall@k** (did the right articles make the top k?) and **MRR**, mean reciprocal rank (how high did the first right article land?), and then compares the models query by query.
+
+  The structure mirrors how you'd judge models at work. Two small functions score one query each. `evaluate` averages them over the whole set. `compare` refuses to average at all and instead counts wins, losses, and ties, because an average can hide the fact that one model's whole lead comes from a single query.
+code: |
+  def recall_at_k(ranked, relevant, k):
+      """Share of the relevant ids that appear in ranked[:k].
+
+      Raise ValueError if relevant is empty.
+      """
+      if not relevant:
+          raise ValueError("a labeled query needs at least one relevant id")
+      found = set(ranked[:k]) & set(relevant)
+      return len(found) / len(relevant)
+
+
+  def reciprocal_rank(ranked, relevant):
+      """1 / (1-based position of the first relevant id in ranked), or 0.0 if none appears."""
+      for position, doc_id in enumerate(ranked, start=1):
+          if doc_id in relevant:
+              return 1 / position
+      return 0.0
+
+
+  def evaluate(run, labels, k):
+      """Average recall@k and reciprocal rank over every labeled query.
+
+      run maps query -> ranked doc ids; labels maps query -> set of relevant ids.
+      Returns {"recall@k": ..., "mrr": ...} rounded to 3 places, where the first
+      key uses the actual k, for example "recall@3".
+      """
+      recalls = [recall_at_k(run[q], labels[q], k) for q in labels]
+      rrs = [reciprocal_rank(run[q], labels[q]) for q in labels]
+      return {
+          f"recall@{k}": round(sum(recalls) / len(recalls), 3),
+          "mrr": round(sum(rrs) / len(rrs), 3),
+      }
+
+
+  def compare(run_a, run_b, labels):
+      """Per query, compare reciprocal ranks. Return (wins_a, wins_b, ties)."""
+      wins_a = wins_b = ties = 0
+      for q in labels:
+          a = reciprocal_rank(run_a[q], labels[q])
+          b = reciprocal_rank(run_b[q], labels[q])
+          if a > b:
+              wins_a += 1
+          elif b > a:
+              wins_b += 1
+          else:
+              ties += 1
+      return wins_a, wins_b, ties
+
+
+  # A tiny labeled set for a fictional online store's help center.
+  LABELS = {
+      "refund for double charge": {"refunds"},
+      "package never arrived": {"late-delivery", "lost-package"},
+      "error E-417 at checkout": {"e417"},
+      "change my shipping address": {"change-address"},
+      "cancel subscription": {"cancel-plan"},
+      "is the site down": {"status-page"},
+      "download last month's invoice": {"invoices"},
+      "reembolso por cobro duplicado": {"refunds"},   # Spanish: refund for a duplicate charge
+  }
+
+  # Top-3 results from two candidate models (made up for this exercise).
+  RUNS = {
+      "api-model": {
+          "refund for double charge": ["refunds", "invoices", "cancel-plan"],
+          "package never arrived": ["lost-package", "late-delivery", "change-address"],
+          "error E-417 at checkout": ["e416", "checkout-help", "e417"],
+          "change my shipping address": ["change-address", "late-delivery", "invoices"],
+          "cancel subscription": ["cancel-plan", "refunds", "invoices"],
+          "is the site down": ["status-page", "e416", "checkout-help"],
+          "download last month's invoice": ["invoices", "refunds", "cancel-plan"],
+          "reembolso por cobro duplicado": ["refunds", "invoices", "cancel-plan"],
+      },
+      "local-model": {
+          "refund for double charge": ["refunds", "cancel-plan", "invoices"],
+          "package never arrived": ["late-delivery", "change-address", "status-page"],
+          "error E-417 at checkout": ["e417", "e416", "checkout-help"],
+          "change my shipping address": ["change-address", "invoices", "late-delivery"],
+          "cancel subscription": ["refunds", "cancel-plan", "invoices"],
+          "is the site down": ["status-page", "checkout-help", "e416"],
+          "download last month's invoice": ["invoices", "cancel-plan", "refunds"],
+          "reembolso por cobro duplicado": ["status-page", "e416", "late-delivery"],
+      },
+  }
+
+  for name, run in RUNS.items():
+      print(name, evaluate(run, LABELS, 1), evaluate(run, LABELS, 3))
+  print("wins (api, local, ties):", compare(RUNS["api-model"], RUNS["local-model"], LABELS))
+notes:
+  - lines: [1, 9]
+    title: recall@k with a set intersection
+    text: |
+      `ranked[:k]` is a **slice**, the first k results. `set(...)` turns a list into a **set**, an unordered collection with no duplicates, and `&` is set **intersection**: the items in both. So `found` is "the relevant ids that made the top k".
+
+      Worked value: `recall_at_k(["a", "b", "c"], {"b", "z"}, 2)`. The top 2 are `{"a", "b"}`, the intersection with `{"b", "z"}` is `{"b"}`, and 1 found out of 2 relevant gives 0.5.
+
+      The guard comes first because an empty `relevant` set would mean dividing by zero, and more to the point, a query with no right answer can't measure anything. The denominator is `len(relevant)`, not `k`. Dividing by `k` is a common AI slip that silently computes a different metric (precision).
+  - lines: [12, 17]
+    title: Reciprocal rank with enumerate and an early return
+    text: |
+      `enumerate(ranked, start=1)` hands back `(position, doc_id)` pairs counting from 1, the way people count ranks. The default start is 0, and forgetting `start=1` would make a first-place hit divide by zero.
+
+      The `return` inside the loop is an **early return**: the function stops at the first relevant result, because reciprocal rank only cares about the first one. If the loop finishes without a hit, execution falls through to `return 0.0`.
+
+      Worked value: `["x", "y", "a"]` with relevant `{"a"}` returns 1/3. First place is worth 1, second 0.5, third 0.333: the metric rewards getting the right answer to the very top.
+  - lines: [20, 26]
+    title: The evaluate contract
+    text: |
+      The docstring spells out the shapes of both inputs. `run` and `labels` are both dictionaries keyed by the query text, so the function can look up the same query in each.
+
+      Writing the shapes down matters in evaluation code because a mix-up (passing a list of ids where a set was expected, or swapping the two dictionaries) often still runs and produces a plausible-looking number.
+  - lines: [27, 32]
+    title: Average per query, then round, with an f-string key
+    text: |
+      The two **list comprehensions** score every query. They loop over `labels`, not over `run`, on purpose: the labeled set defines the test. If a model's run is missing a labeled query, `run[q]` raises `KeyError` instead of quietly scoring the model on fewer questions.
+
+      `f"recall@{k}"` is an **f-string**: the `{k}` is replaced by the value, so k = 3 gives the key `"recall@3"`.
+
+      Rounding happens once, after averaging. One subtlety: Python's `round` sends exact halves to the even digit, so the local model's MRR of exactly 0.8125 rounds to 0.812, not 0.813. The exercise's expected values follow that rule.
+  - lines: [35, 47]
+    title: compare counts wins instead of averaging
+    text: |
+      `wins_a = wins_b = ties = 0` is **chained assignment**: all three names start at 0. That's safe for numbers. (It would be a trap with lists, where all three names would share one list.)
+
+      For each query the function computes both reciprocal ranks and the `if` / `elif` / `else` chain puts the query in exactly one bucket. `return wins_a, wins_b, ties` returns a **tuple** of three numbers.
+
+      On this data the result is `(2, 1, 5)`. The API model wins on "cancel subscription" and the Spanish query, and loses on the error code. That's the evidence the averages hide.
+  - lines: [50, 60]
+    title: The labeled set
+    text: |
+      Each query maps to a set of correct article ids. Most have one, but "package never arrived" has two, which is why recall is a share and not a yes or no.
+
+      The set deliberately includes an exact error code and a Spanish query. A good evaluation set samples the kinds of questions your real users ask, including the awkward ones, rather than only the easy cases a model was likely tuned on.
+  - lines: [62, 84]
+    title: Two models' results
+    text: |
+      `RUNS` is a **nested dictionary**: model name, then query, then a ranked list of ids. In real work this would come from running each embedding model over the same queries and saving the top results.
+
+      Scan the two Spanish rows. The API model puts `refunds` first, while the local model returns nothing relevant. That one query accounts for most of the API model's lead.
+  - lines: [86, 88]
+    title: Print both views
+    text: |
+      `RUNS.items()` gives `(name, run)` pairs. Each model is evaluated at k = 1 and k = 3, then the win counts are printed.
+
+      Expect the API model at about recall@3 1.0 and MRR 0.917 against the local model's recall@3 of 0.812 and MRR of 0.812, then `(2, 1, 5)`. With eight queries, a gap this size is a reason to collect more labeled queries in the areas that differ, not a verdict.
+review:
+  - id: wt-eval-precision-slip
+    type: code-reading
+    prompt: An AI assistant rewrites `recall_at_k` as below. What does `evaluate(RUNS["api-model"], LABELS, 3)["recall@3"]` return now?
+    code: |
+      def recall_at_k(ranked, relevant, k):
+          if not relevant:
+              raise ValueError("a labeled query needs at least one relevant id")
+          return len(set(ranked[:k]) & set(relevant)) / k
+    options:
+      - id: a
+        text: "`1.0`, the same as before"
+        rationale: Every relevant id is found, but now the count is divided by 3 instead of by the number of relevant ids.
+      - id: b
+        text: "`0.375`"
+        correct: true
+        rationale: Right. Seven queries find 1 of 3 slots relevant and one finds 2 of 3, so the average is 9/24. This is precision@3, a different metric, and it makes the model look bad.
+      - id: c
+        text: It raises ZeroDivisionError
+        rationale: k is 3 here, so there is no division by zero.
+    explanation: The code runs and the number looks like a plausible score, which is why this slip survives review. Check the denominator of every metric against its definition.
+  - id: wt-eval-enumerate-start
+    type: predict-output
+    prompt: Someone drops `start=1` from the `enumerate` call in `reciprocal_rank`. What happens on `reciprocal_rank(["refunds", "invoices"], {"refunds"})`?
+    options:
+      - id: a
+        text: It returns 1.0
+        rationale: Without `start=1`, the first position is 0, so the code computes 1 / 0.
+      - id: b
+        text: It returns 0.5
+        rationale: That would happen if positions started at 2. They start at 0.
+      - id: c
+        text: It raises ZeroDivisionError
+        correct: true
+        rationale: Right. A first-place hit is the most common case, and it now crashes. A hit at position 2 would also be scored as 1.0 instead of 0.5.
+    explanation: Off-by-one errors in rank code either crash (as here) or shift every score silently. A test with the relevant id in first place catches this one.
+  - id: wt-eval-read-results
+    type: scenario
+    prompt: The API model has the higher MRR, but `compare` says it wins 2 queries, loses 1, and ties 5. Your users write mostly in English and often paste error codes. What should you do next?
+    options:
+      - id: a
+        text: Pick the API model, since its averages are higher on both metrics
+        rationale: The averages are driven largely by one Spanish query, which may not reflect your users.
+      - id: b
+        text: Pick the local model, since it won on the error code
+        rationale: One query isn't evidence either way.
+      - id: c
+        text: Add more labeled queries with error codes and in the languages your users actually use, then rerun both models
+        correct: true
+        rationale: Right. The per-query view shows where the models differ. That tells you which kinds of test queries to add before deciding.
+    explanation: A small labeled set is for finding where models differ, not for declaring a winner. This is evidence-based model selection in miniature.
+direct:
+  task: |
+    When two models differ, you want to see exactly which queries they differ on, biggest gap first, so you can read those results by hand.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a new function diff_queries(run_a, run_b, labels) that returns a list of (query, rr_a, rr_b) tuples for every labeled query where the two reciprocal ranks differ. Sort by the absolute gap, largest first, and break ties by query text alphabetically. Round rr values to 3 places in the output.
+
+    Reuse reciprocal_rank. Do not change recall_at_k, reciprocal_rank, evaluate, or compare, including compare's return value, which existing tests rely on. Loop over labels (not over the runs), so a query missing from a run still raises KeyError.
+
+    Add asserts: diff_queries on the two RUNS returns 3 rows, the first is the Spanish query with (1.0, 0.0), and two identical runs return an empty list.
+  checklist:
+    - compare still returns (2, 1, 5) and evaluate's output is unchanged
+    - The new function reuses reciprocal_rank instead of reimplementing it
+    - Sorting uses the absolute gap with a deterministic tie-breaker
+    - It loops over labels, so missing queries fail loudly
+    - New asserts cover the ordering and the identical-runs case

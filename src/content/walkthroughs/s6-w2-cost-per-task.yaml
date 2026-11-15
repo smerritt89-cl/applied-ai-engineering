@@ -1,0 +1,214 @@
+id: s6-w2-cost-per-task
+summary: |
+  This program turns a log of API requests into the number that actually matters for a product: cost per completed task. `request_cost` prices one request from its token usage (including the different prices for cache writes and cache reads), and `cost_per_task` groups requests by task and divides all the money spent by the number of tasks that met the quality bar.
+
+  The split matters because the two headline numbers tell different stories. This log costs about $0.021 per request but about $0.049 per completed task, because task t2 spent heavily and then failed. A dashboard that only shows per-request cost would never surface that.
+code: |
+  # USD per million tokens, snapshot of the Claude pricing page on 2026-11-11.
+  PRICES = {
+      "claude-sonnet-5-5": {"input": 2.00, "cache_write_5m": 2.50, "cache_write_1h": 4.00,
+                            "cache_read": 0.10, "output": 10.00},
+      "claude-haiku-5-5":  {"input": 0.10, "cache_write_5m": 0.125, "cache_write_1h": 0.20,
+                            "cache_read": 0.01, "output": 0.50},  # prompts up to 100K tokens
+  }
+
+  def request_cost(record, prices=PRICES):
+      """Dollar cost of one logged request.
+
+      Price 1h cache writes at the 1h rate when the breakdown is present;
+      otherwise treat every write as a 5-minute write. Raise KeyError for an
+      unknown model (never let an unpriced model cost $0).
+      """
+      p = prices[record["model"]]  # KeyError on an unknown model, on purpose
+      u = record["usage"]
+      writes = u.get("cache_creation_input_tokens", 0) or 0
+      breakdown = u.get("cache_creation") or {}
+      w1h = breakdown.get("ephemeral_1h_input_tokens", 0) or 0
+      w5m = writes - w1h
+      total = (u.get("input_tokens", 0) * p["input"]
+               + w5m * p["cache_write_5m"]
+               + w1h * p["cache_write_1h"]
+               + (u.get("cache_read_input_tokens", 0) or 0) * p["cache_read"]
+               + u.get("output_tokens", 0) * p["output"])
+      return total / 1_000_000
+
+  def cost_per_task(records, outcomes, prices=PRICES):
+      """Roll requests up into tasks; divide ALL spend by completed tasks."""
+      per_task = {}
+      for rec in records:
+          tid = rec["task_id"]
+          per_task[tid] = per_task.get(tid, 0.0) + request_cost(rec, prices)
+      total = sum(per_task.values())
+      completed = sum(1 for tid in per_task if outcomes.get(tid))
+      return {
+          "total_cost": total,
+          "completed": completed,
+          "cost_per_request": total / len(records) if records else 0.0,
+          "cost_per_completed_task": total / completed if completed else None,
+          "per_task": per_task,
+      }
+
+  LOG = [
+      {"task_id": "t1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 400, "output_tokens": 900,
+          "cache_creation_input_tokens": 6000, "cache_read_input_tokens": 0,
+          "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 6000}}},
+      {"task_id": "t1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 1200, "output_tokens": 650,
+          "cache_creation_input_tokens": 1100, "cache_read_input_tokens": 6000}},
+      {"task_id": "t1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 900, "output_tokens": 1800,
+          "cache_creation_input_tokens": 1850, "cache_read_input_tokens": 7100}},
+      {"task_id": "t2", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 500, "output_tokens": 1200,
+          "cache_creation_input_tokens": 6000, "cache_read_input_tokens": 0}},
+      {"task_id": "t2", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 2500, "output_tokens": 3000,
+          "cache_creation_input_tokens": 1700, "cache_read_input_tokens": 6000}},
+      {"task_id": "t3", "model": "claude-haiku-5-5", "usage": {"input_tokens": 2200, "output_tokens": 300,
+          "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}},
+      {"task_id": "t4", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 300, "output_tokens": 700,
+          "cache_creation_input_tokens": 0, "cache_read_input_tokens": 6000}},
+  ]
+  OUTCOMES = {"t1": True, "t2": False, "t3": True, "t4": True}
+
+  report = cost_per_task(LOG, OUTCOMES)
+  if report:
+      for key in ("total_cost", "cost_per_request", "cost_per_completed_task"):
+          print(key, round(report[key], 5))
+      print({k: round(v, 5) for k, v in report["per_task"].items()})
+notes:
+- lines:
+  - 1
+  - 7
+  title: A price table as data
+  text: |
+    `PRICES` is a **nested dictionary**: the outer keys are model ids, and each value is another dictionary of dollars per million tokens. A dated comment says where the numbers came from, which is essential for anything priced: prices change, and a reviewer needs to know which snapshot the code assumes.
+
+    There are five rates per model because the API bills five kinds of tokens differently: regular input, two kinds of cache writes (5-minute and 1-hour lifetimes, at different premiums), cheap cache reads, and output. On Sonnet, output costs five times regular input and a cache read costs one twentieth of it.
+- lines:
+  - 9
+  - 17
+  title: Look up the price, and fail loudly
+  text: |
+    `prices=PRICES` is a **default argument**: callers can pass a different table (a test, a negotiated rate) but normally don't have to.
+
+    `prices[record["model"]]` uses square brackets on purpose. If the model isn't in the table, Python raises `KeyError`. A version using `prices.get(model, {})` with zero defaults would quietly price an unknown model at $0, and your cost report would look *better* the more traffic went to an unpriced model. The test with `"gpt-unknown"` exists to catch exactly that.
+- lines:
+  - 18
+  - 21
+  title: Split cache writes into 5-minute and 1-hour
+  text: |
+    The usage record reports total cache writes in `cache_creation_input_tokens`, and sometimes a breakdown in `cache_creation`. The code takes the 1-hour count from the breakdown and treats the rest as 5-minute writes. When there's no breakdown, `w1h` is 0 and every write is priced as a 5-minute write, which is the rule in the spec.
+
+    Three small idioms make this robust:
+
+    - `u.get(key, 0)` returns 0 when the key is missing.
+    - `... or 0` also turns a stored `None` into 0, since `None or 0` is `0`. Without it, `None * 2.5` would raise `TypeError` on a log row where a field was recorded as null.
+    - `u.get("cache_creation") or {}` gives an empty dict to call `.get` on when the breakdown is absent.
+- lines:
+  - 22
+  - 27
+  title: Add up the five token types
+  text: |
+    Each token count is multiplied by its rate, summed, and divided by `1_000_000` (the underscores are just digit separators; Python ignores them) because rates are per million tokens.
+
+    The outer parentheses let one expression span several lines, with each `+` at the start of a line so the five terms line up and are easy to check. Worked example, the first record: 400 input at $2, 6,000 one-hour writes at $4, 900 output at $10 gives 800 + 24,000 + 9,000 = 33,800 millionths of a dollar, or $0.0338.
+
+    Notice the cache write is the biggest term: priming a 6,000-token cache once costs more than the whole response. That's normal, and it pays off only if later requests read it.
+- lines:
+  - 29
+  - 36
+  title: Group by task and count completions
+  text: |
+    `per_task.get(tid, 0.0) + ...` is the standard **accumulate into a dict** pattern: start each new task at zero, then add each request's cost. (`collections.defaultdict(float)` is an equivalent shortcut.)
+
+    `sum(1 for tid in per_task if outcomes.get(tid))` counts tasks whose outcome is `True`. It uses a **generator expression** with a filter: produce a 1 for every task that passes, then sum them. `outcomes.get(tid)` returns `None` for a task with no recorded outcome, which counts as not completed, a conservative choice.
+
+    Crucially, `total` includes every task, failed ones too. Money spent on a failed task is still money spent.
+- lines:
+  - 37
+  - 43
+  title: The report, with safe division
+  text: |
+    The function returns a dictionary with five named results. Two use a **conditional expression** (`a if condition else b`) to avoid dividing by zero:
+
+    - `cost_per_request` is 0.0 for an empty log.
+    - `cost_per_completed_task` is `None` when nothing completed. `None` is honest: "no completed tasks" is not the same as "free", and returning 0 would make the worst possible week look like the cheapest.
+
+    On this log: total $0.147605, over 7 requests is about $0.0211, over 3 completed tasks is about $0.0492.
+- lines:
+  - 45
+  - 62
+  title: The sample log
+  text: |
+    Seven logged requests across four tasks, in the shape the usage block of an API response takes. Only the first record has the `cache_creation` breakdown, which exercises both pricing paths. Task t3 runs on Haiku to show the per-model lookup. `OUTCOMES` marks t2 as failed.
+- lines:
+  - 64
+  - 68
+  title: Print the headline numbers
+  text: |
+    `if report:` guards against the starter's unfinished functions returning `None`. The **dict comprehension** `{k: round(v, 5) for k, v in ...items()}` builds a new dictionary with rounded values, just for display; the real numbers stay unrounded.
+
+    Look at the per-task line when you run it: t2 costs nearly as much as t1 and delivered nothing. That's the insight the per-task view exists to show.
+review:
+- id: wt-cpt-get-default
+  type: code-reading
+  prompt: An AI assistant makes `request_cost` "more defensive" by changing its first line as below. A new model, `claude-opus-5-5`, starts getting traffic but isn't in `PRICES`. What happens to the report?
+  code: |
+    p = prices.get(record["model"], {"input": 0, "cache_write_5m": 0, "cache_write_1h": 0,
+                                     "cache_read": 0, "output": 0})
+  options:
+  - id: a
+    text: The report raises `KeyError` so you notice the missing price
+    rationale: That's what the original does. This version never raises.
+  - id: b
+    text: Opus requests are counted as costing $0, so total and per-task cost look lower than they really are
+    correct: true
+    rationale: Right. Nothing fails, and the more traffic shifts to the unpriced model, the cheaper the system appears.
+  - id: c
+    text: Opus requests are priced at the Sonnet rate
+    rationale: Nothing here falls back to Sonnet; the default rates are all zero.
+  explanation: '"Defensive" defaults are a common AI suggestion. For money, a loud failure is the safe behavior: it forces someone to add the price instead of silently under-reporting spend.'
+- id: wt-cpt-denominator
+  type: mcq
+  prompt: Why does `cost_per_completed_task` divide the total spend, including failed task t2, by the number of completed tasks?
+  options:
+  - id: a
+    text: Because failed work is part of what it costs to deliver the completed work
+    correct: true
+    rationale: Right. If one task in four fails, you pay for it anyway. Leaving it out understates the true unit cost.
+  - id: b
+    text: It's a bug; it should only sum the completed tasks
+    rationale: That number exists (the per-task costs of t1, t3, t4), but it hides the cost of failure, which is the point of the metric.
+  - id: c
+    text: To avoid dividing by zero
+    rationale: The zero case is handled separately by returning `None`.
+  explanation: Cost per completed task rises when quality drops, even if per-request cost is flat. That's why it's the number to put in front of a product owner.
+- id: wt-cpt-predict
+  type: predict-output
+  prompt: The first record's breakdown is removed (no `cache_creation` key), so its 6,000 writes are priced as 5-minute writes at $2.50. What does `request_cost(LOG[0])` become?
+  options:
+  - id: a
+    text: $0.0338, unchanged
+    rationale: The breakdown is what made those writes 1-hour writes. Without it they're priced differently.
+  - id: b
+    text: $0.0248
+    correct: true
+    rationale: Right. 400 times 2 plus 6,000 times 2.5 plus 900 times 10 is 800 + 15,000 + 9,000 = 24,800 millionths of a dollar.
+  - id: c
+    text: $0.0098
+    rationale: That leaves the cache writes out entirely. They're still billed, just at the 5-minute rate.
+  explanation: The 1-hour write premium is real money. If your logging pipeline drops the breakdown, your cost estimates for 1-hour caching will be too low.
+direct:
+  task: |
+    Finance wants to see spend by model as well as by task, so they can tell how much of the bill is Haiku versus Sonnet. Add a `per_model` breakdown to the report.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a "per_model" key to the dict returned by cost_per_task: {model_id: summed cost of every request on that model}, including requests from failed tasks. Compute it in the same loop as per_task, calling request_cost once per record (not twice).
+
+    Do not change request_cost, the other five keys, or how they're computed. An unknown model must still raise KeyError. Update the docstring.
+
+    Add asserts that: per_model has exactly the two models in LOG, the Haiku entry equals request_cost(LOG[5]), and the per_model values sum to total_cost within 1e-9.
+  checklist:
+  - '`request_cost` is untouched, and an unknown model still raises `KeyError`'
+  - Each record is priced once, with the result reused for both breakdowns
+  - Failed-task requests are included in `per_model`
+  - The existing five keys and their values are unchanged
+  - A new assert checks that `per_model` sums to `total_cost`

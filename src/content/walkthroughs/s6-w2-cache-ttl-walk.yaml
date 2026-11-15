@@ -1,0 +1,170 @@
+id: s6-w2-cache-ttl-walk
+summary: |
+  Prompt caching lets repeated requests reuse a long shared prefix (a system prompt, a policy document) at a fraction of the price, but the cache entry expires if it isn't used within its lifetime. This program replays real request timestamps against that rule, labels each request a cache "write" or "read", and prices the prefix under the 5-minute and 1-hour lifetimes so you can choose with evidence.
+
+  It is two small functions. `cache_events` is pure timing logic with no prices in it, and `prefix_cost` applies the prices to its output. Keeping the simulation separate from the pricing means you can test the timing rule on its own and reuse it when prices change.
+code: |
+  READ_MULT = 0.05                       # Opus 5.5 and Sonnet 5.5 cache reads
+  WRITE_MULT = {"5m": 1.25, "1h": 2.0}
+  TTL_S = {"5m": 300, "1h": 3600}
+
+  def cache_events(timestamps, ttl_s):
+      """Start times (seconds, any order) of requests sharing one cached prefix.
+
+      Return "write" or "read" for each request, in time order. The first
+      request writes. A later request reads if it starts LESS than ttl_s after
+      the previous request started (reads refresh the lifetime); otherwise the
+      entry has expired and it writes again.
+      """
+      events, prev = [], None
+      for t in sorted(timestamps):
+          hit = prev is not None and t - prev < ttl_s
+          events.append("read" if hit else "write")
+          prev = t  # every request, read or write, restarts the lifetime
+      return events
+
+  def prefix_cost(timestamps, prefix_tokens, base_price, ttl):
+      """Dollars spent on the prefix alone under lifetime ttl ("5m" or "1h").
+      base_price is USD per million input tokens."""
+      unit = prefix_tokens * base_price / 1_000_000  # one uncached send of the prefix
+      total = 0.0
+      for event in cache_events(timestamps, TTL_S[ttl]):
+          total += unit * (WRITE_MULT[ttl] if event == "write" else READ_MULT)
+      return total
+
+  def uncached_cost(timestamps, prefix_tokens, base_price):
+      return len(timestamps) * prefix_tokens * base_price / 1_000_000
+
+  # A support agent's 20,000-token prefix on Opus 5.5 ($4 per million input).
+  TRAFFIC = [0, 60, 200, 490, 1490, 1690, 3990, 8990]
+  for ttl in ("5m", "1h"):
+      ev = cache_events(TRAFFIC, TTL_S[ttl])
+      print(ttl, ev, prefix_cost(TRAFFIC, 20_000, 4.0, ttl))
+  print("uncached", uncached_cost(TRAFFIC, 20_000, 4.0))
+notes:
+- lines:
+  - 1
+  - 3
+  title: Prices as multipliers
+  text: |
+    Cache prices are expressed as **multipliers** of the normal input price: a read costs 0.05 times (one twentieth), a 5-minute write 1.25 times, and a 1-hour write 2 times. Storing multipliers rather than dollar amounts makes the code work for any model: you pass that model's base input price.
+
+    `WRITE_MULT` and `TTL_S` are dictionaries keyed by the same two labels, `"5m"` and `"1h"`, so one label picks both the lifetime and its price.
+- lines:
+  - 5
+  - 12
+  title: The rule, stated precisely
+  text: |
+    The docstring pins down two details that decide the answer:
+
+    - **Reads refresh the lifetime.** The clock restarts from the previous request, whether it was a read or a write, not from the original write.
+    - **"LESS than"** `ttl_s`. A request exactly 300 seconds later finds a 5-minute entry expired.
+
+    Edge rules like these are where AI-written simulations quietly differ from the real system. When reviewing, check each boundary against the docs and against a test (here, `[0, 300]` must give two writes).
+- lines:
+  - 13
+  - 18
+  title: Walk the requests in time order
+  text: |
+    `events, prev = [], None` sets up the output list and "the previous request's start time" (none yet).
+
+    `sorted(timestamps)` makes a sorted copy, because logs are not guaranteed to be in order and the gaps only make sense in time order. The input list is left untouched.
+
+    `hit = prev is not None and t - prev < ttl_s` is the whole rule in one line. `is not None` is how Python checks for "has a value"; and `and` **short-circuits**, so `t - prev` is never computed while `prev` is still `None`. Then a **conditional expression** picks `"read"` or `"write"`.
+
+    Line 17 updates `prev` on every request. An AI version that only updates it on writes would model a cache that expires a fixed time after it was written, which is not how this cache behaves, and it would over-count writes.
+- lines:
+  - 20
+  - 27
+  title: Price the walk
+  text: |
+    `unit` is the cost of sending the prefix once at the normal price: 20,000 tokens at $4 per million is $0.08.
+
+    The loop then adds `unit` times the right multiplier for each event. `WRITE_MULT[ttl]` looks up the write premium for the chosen lifetime, and `TTL_S[ttl]` turns `"5m"` into 300 seconds for the walk.
+
+    Worked values for the sample traffic: the 5-minute walk has 4 writes and 4 reads, so 0.08 times (4 times 1.25 + 4 times 0.05) = $0.416. The 1-hour walk has 2 writes and 6 reads: 0.08 times (2 times 2.0 + 6 times 0.05) = $0.344.
+- lines:
+  - 29
+  - 30
+  title: The baseline
+  text: |
+    `uncached_cost` is what the prefix costs with no caching at all: every request pays full price. Always compare against this: caching is not free (writes cost more than a normal send), and with sparse traffic it can cost more than not caching. Here it's 8 times $0.08 = $0.64.
+- lines:
+  - 32
+  - 37
+  title: Compare both lifetimes on real traffic
+  text: |
+    `TRAFFIC` is a bursty pattern: a cluster of requests, a gap, another cluster, long gaps. The loop prints each lifetime's event list and cost, then the uncached baseline.
+
+    On this traffic the 1-hour lifetime wins because it survives the 1,000- and 2,300-second gaps that make the 5-minute entry expire. The exercise's last test shows the reverse on steady traffic (a request every minute), where 5 minutes never expires and its cheaper write wins. The decision depends on your traffic, which is why you run the walk on your own logs.
+review:
+- id: wt-ttl-write-only-refresh
+  type: code-reading
+  prompt: An AI assistant rewrites the loop as below. On `TRAFFIC` with the 5-minute lifetime, what changes?
+  code: |
+    events, written_at = [], None
+    for t in sorted(timestamps):
+        if written_at is not None and t - written_at < ttl_s:
+            events.append("read")
+        else:
+            events.append("write")
+            written_at = t
+  options:
+  - id: a
+    text: Nothing; it's an equivalent rewrite
+    rationale: It looks equivalent, but the lifetime now counts from the last write, not the last request.
+  - id: b
+    text: The request at 490 becomes a write, because it is 490 seconds after the write at 0
+    correct: true
+    rationale: Right. In the real rule, reads at 60 and 200 refreshed the entry, so 490 (290 seconds after 200) is a read. This version ignores refreshes and counts an extra write.
+  - id: c
+    text: Every request becomes a write
+    rationale: Requests within 300 seconds of the last write (60 and 200) are still reads.
+  explanation: Whether reads refresh the lifetime is the kind of detail a plausible-looking simulation gets wrong. The fix is to model the rule from the docs and test the boundary that distinguishes the two behaviors.
+- id: wt-ttl-separate
+  type: scenario
+  prompt: Why is `cache_events` kept free of any prices, with `prefix_cost` applying them afterward?
+  options:
+  - id: a
+    text: Python functions can't take more than four arguments
+    rationale: They can take any number.
+  - id: b
+    text: The timing rule can be tested on its own, and stays correct when prices change
+    correct: true
+    rationale: Right. The walk is about time, the bill is about money. Separating them means a price change can't break the simulation, and the tests can check each part directly.
+  - id: c
+    text: It runs faster
+    rationale: There's no meaningful speed difference.
+  explanation: 'Splitting "what happened" from "what it cost" is the same pattern as the cost-per-task exercise: compute facts first, then price them.'
+- id: wt-ttl-predict
+  type: predict-output
+  prompt: What does `cache_events([0, 100, 400, 450], 300)` return?
+  options:
+  - id: a
+    text: '`["write", "read", "read", "read"]`'
+    rationale: The gap from 100 to 400 is exactly 300 seconds, and a read needs LESS than 300.
+  - id: b
+    text: '`["write", "read", "write", "read"]`'
+    correct: true
+    rationale: Right. 100 is a read (gap 100), 400 is a write (gap of exactly 300 means expired), 450 is a read (gap 50).
+  - id: c
+    text: '`["write", "read", "write", "write"]`'
+    rationale: After the write at 400, the request at 450 is only 50 seconds later, so it reads.
+  explanation: Boundaries are where off-by-one mistakes hide. `<` versus `<=` here changes the bill.
+direct:
+  task: |
+    Your traffic has several prefixes (one per product line), and you want the walk to handle them in one pass instead of calling it once per prefix. Add a function that takes `(timestamp, prefix_id)` pairs and returns the events per prefix.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a new function cache_events_by_prefix(requests, ttl_s) where requests is a list of (timestamp, prefix_id) pairs in any order. Return a dict {prefix_id: [events in time order]}, where each prefix is walked independently with exactly the same rule as cache_events (reads refresh the lifetime; a gap of exactly ttl_s is a write).
+
+    Implement it by grouping timestamps per prefix and calling the existing cache_events for each group. Do not change cache_events, prefix_cost, or uncached_cost.
+
+    Add asserts for: two interleaved prefixes that each get their own first write, a prefix with a single request (one write), and a check that a request on prefix B does not refresh prefix A's lifetime.
+  checklist:
+  - '`cache_events` is reused, not copied and modified'
+  - Prefixes are walked independently (traffic on one never refreshes another)
+  - The boundary rule (`<`, not `<=`) is unchanged
+  - Existing functions and their tests are untouched
+  - New asserts include the interleaved case

@@ -1,0 +1,189 @@
+id: s2-w3-retrieval-metrics
+summary: |
+  This program computes the four standard ways to grade a retriever against labeled queries: **precision@k** (how much of the top k is relevant), **recall@k** (how much of what's relevant made the top k), **MRR** (how high the first relevant result lands), and **nDCG@k** (a score that uses graded relevance, so a "very relevant" document at rank 1 counts more than a "somewhat relevant" one at rank 3).
+
+  Each metric is a small function that scores one query, and `evaluate` averages them over a run. The interesting decisions are in the edge cases: what to return when a query has no relevant documents, what "ideal" means for nDCG, and whether a query where retrieval found nothing still counts. The code answers each one explicitly, and the third demo query exists to show why the answer matters.
+code: |
+  import math
+
+
+  def precision_at_k(ranked, relevant, k):
+      """Share of the top k slots that hold a relevant id. ranked is best first."""
+      hits = sum(1 for d in ranked[:k] if d in relevant)
+      return hits / k
+
+
+  def recall_at_k(ranked, relevant, k):
+      """Share of the relevant ids found in the top k.
+
+      Return 0.0 when there are no relevant ids (the query is unanswerable).
+      """
+      if not relevant:
+          return 0.0
+      hits = sum(1 for d in ranked[:k] if d in relevant)
+      return hits / len(relevant)
+
+
+  def reciprocal_rank(ranked, relevant, k=None):
+      """1 / rank of the first relevant id within the first k (all if k is None); 0.0 if none."""
+      considered = ranked if k is None else ranked[:k]
+      for rank, d in enumerate(considered, start=1):
+          if d in relevant:
+              return 1 / rank
+      return 0.0
+
+
+  def _dcg(gains):
+      """Discounted cumulative gain: the gain at rank r is divided by log2(r + 1)."""
+      return sum(g / math.log2(i + 2) for i, g in enumerate(gains))
+
+
+  def ndcg_at_k(ranked, grades, k):
+      """grades: {doc_id: graded relevance}. Linear gain, log2(rank + 1) discount.
+
+      IDCG uses the best possible ordering of all graded docs. Return 0.0 if IDCG is 0.
+      """
+      ideal = _dcg(sorted(grades.values(), reverse=True)[:k])
+      if ideal == 0:
+          return 0.0
+      actual = _dcg([grades.get(d, 0) for d in ranked[:k]])
+      return actual / ideal
+
+
+  def evaluate(runs, k):
+      """runs: list of (ranked, grades) per query; relevant = ids with grade > 0.
+
+      Return the mean of each metric over all queries, as a dict with keys
+      "precision", "recall", "mrr", "ndcg".
+      """
+      totals = {"precision": 0.0, "recall": 0.0, "mrr": 0.0, "ndcg": 0.0}
+      for ranked, grades in runs:
+          relevant = {d for d, g in grades.items() if g > 0}
+          totals["precision"] += precision_at_k(ranked, relevant, k)
+          totals["recall"] += recall_at_k(ranked, relevant, k)
+          totals["mrr"] += reciprocal_rank(ranked, relevant, k)
+          totals["ndcg"] += ndcg_at_k(ranked, grades, k)
+      return {name: value / len(runs) for name, value in totals.items()}
+
+
+  RUNS = [
+      (["kb-7", "kb-2", "kb-9", "kb-4", "kb-1"], {"kb-2": 2, "kb-4": 1}),
+      (["kb-3", "kb-8", "kb-5", "kb-6", "kb-0"], {"kb-5": 3}),
+      (["kb-1", "kb-6", "kb-2", "kb-3", "kb-9"], {"kb-11": 2}),
+  ]
+  print(evaluate(RUNS, k=3))
+notes:
+  - lines: [1, 7]
+    title: Precision@k divides by k
+    text: |
+      `sum(1 for d in ranked[:k] if d in relevant)` is a **generator expression** that counts: it yields a 1 for each top-k id that is relevant, and `sum` adds them up. `d in relevant` is fast because `relevant` is a set.
+
+      The denominator is `k`, not `len(ranked[:k])`. If a retriever returns only 1 result and it's relevant, precision@3 is 1/3, not 1.0. That's a deliberate choice: returning fewer results doesn't earn a better precision score. An AI-written version that divides by the list length would quietly flatter thin result lists.
+  - lines: [10, 18]
+    title: Recall@k and the unanswerable query
+    text: |
+      Same count, but divided by the number of relevant ids. Worked value: `["a", "b", "c", "d"]` with relevant `{"b", "d", "z"}` and k = 4 finds 2 of 3, so 0.667.
+
+      A query with **no** relevant ids would divide by zero. The docstring defines the answer as 0.0 and the code checks first. That's a policy, not a math fact, and writing it in the docstring is what lets a reviewer agree or disagree with it.
+  - lines: [21, 27]
+    title: Reciprocal rank with an optional cutoff
+    text: |
+      `k=None` is a **default argument** meaning "no cutoff". `ranked if k is None else ranked[:k]` is a **conditional expression** that picks the list to scan. Testing `k is None` explicitly (rather than `if k`) keeps the meaning clear even if someone passes `k=0`.
+
+      `enumerate(considered, start=1)` gives 1-based ranks, and the early `return` stops at the first hit. With the cutoff, a relevant document at rank 3 counts when k is 3 but gives 0.0 when k is 2.
+  - lines: [30, 32]
+    title: A private helper for DCG
+    text: |
+      The leading underscore in `_dcg` is a Python **naming convention** for "internal helper, not part of the public interface". It isn't enforced; it's a signal to readers.
+
+      `enumerate` starts at 0 here, so position `i` is rank `i + 1`, and the discount `log2(rank + 1)` becomes `log2(i + 2)`. Rank 1 is divided by log2(2) = 1 (no discount), rank 2 by about 1.58, rank 3 by 2. Getting this offset wrong by one is the most common nDCG bug, and it shifts every score.
+  - lines: [35, 44]
+    title: nDCG, normalized by the best possible ordering
+    text: |
+      `ideal` is the DCG you'd get if the best-graded documents filled the top k: sort **all** the grades high to low and take k. `actual` looks up each retrieved document's grade, with `grades.get(d, 0)` giving 0 for unlabeled documents. The ratio runs from 0 to 1.
+
+      Worked value for the first demo query (k = 3): retrieved kb-7, kb-2, kb-9 have grades 0, 2, 0, so actual is 2 / 1.58, about 1.26. The ideal order is grades 2 then 1, so 2 + 1 / 1.58, about 2.63. nDCG is about 0.48.
+
+      The ideal uses all graded docs, including ones the retriever never returned. That's what makes a missed relevant document cost points. If the ideal were built from the retrieved list only, a retriever could score perfectly by missing everything important.
+  - lines: [47, 60]
+    title: Evaluate, the same way for every query
+    text: |
+      `{d for d, g in grades.items() if g > 0}` is a **set comprehension**: the relevant ids are the ones with a positive grade. Precision, recall, and MRR use that set; nDCG uses the grades themselves.
+
+      `totals["precision"] += ...` accumulates a sum per metric, and the final **dictionary comprehension** divides each by the number of queries. Every query counts equally, including ones where nothing relevant was found.
+  - lines: [63, 68]
+    title: Three queries, one total miss
+    text: |
+      The third query's only relevant document, kb-11, never appears in the results, so every metric gives it 0. Run it and you get roughly precision 0.22, recall 0.5, MRR 0.28, and nDCG 0.33.
+
+      Those zeros are the most useful numbers here. A missing document might mean the chunk was never ingested, or its text doesn't match how users phrase the question. Either way, it's a failure you want the averages to show.
+review:
+  - id: wt-metrics-idcg-retrieved
+    type: code-reading
+    prompt: An AI assistant "simplifies" `ndcg_at_k` so the ideal ordering comes from the retrieved results, as below. What happens to the first demo query's nDCG@3 (currently about 0.48)?
+    code: |
+      def ndcg_at_k(ranked, grades, k):
+          gains = [grades.get(d, 0) for d in ranked[:k]]
+          ideal = _dcg(sorted(gains, reverse=True))
+          if ideal == 0:
+              return 0.0
+          return _dcg(gains) / ideal
+    options:
+      - id: a
+        text: It stays about 0.48
+        rationale: The ideal now ignores kb-4, which was relevant but ranked 4th, so the denominator shrinks.
+      - id: b
+        text: It rises to about 0.63, because the relevant kb-4 that missed the top 3 no longer counts against the retriever
+        correct: true
+        rationale: Right. The ideal is now "the best ordering of what you happened to retrieve", so missing relevant documents is free. The metric flatters a worse retriever.
+      - id: c
+        text: It drops to 0, because the ideal is computed from zeros
+        rationale: kb-2 (grade 2) is in the top 3, so the gains aren't all zero.
+    explanation: nDCG's normalization has to use everything you know is relevant. This variant passes the "ideal order scores 1" test, so only a test with a missed relevant document (like the exercise's 0.578 check) catches it.
+  - id: wt-metrics-precision-denominator
+    type: predict-output
+    prompt: "What does `precision_at_k([\"a\"], {\"a\"}, 3)` return?"
+    options:
+      - id: a
+        text: "`1.0`, because the only result is relevant"
+        rationale: That's what dividing by the number of results would give. This code divides by k.
+      - id: b
+        text: "`0.333...`"
+        correct: true
+        rationale: Right. One hit over three slots. Returning fewer results can't improve precision.
+      - id: c
+        text: An IndexError, because the list is shorter than k
+        rationale: Slicing past the end of a list is safe in Python; `["a"][:3]` is just `["a"]`.
+    explanation: Two reasonable definitions of the same metric exist. When you compare numbers from two tools or two AI-written scripts, check which denominator each one uses.
+  - id: wt-metrics-drop-misses
+    type: scenario
+    prompt: A teammate excludes the third query from the report "because retrieval found nothing, so it isn't a fair test", and mean recall@3 goes from 0.5 to 0.75. What is the right response?
+    options:
+      - id: a
+        text: Accept it; unanswerable queries distort the average
+        rationale: This query is answerable. kb-11 exists and is relevant; the retriever just didn't find it.
+      - id: b
+        text: Keep the query in, and investigate why kb-11 was never retrieved (missing from the index, chunked badly, or phrased differently from the query)
+        correct: true
+        rationale: Right. Total misses are the failures the evaluation exists to find. Dropping them makes the system look better without making it better.
+      - id: c
+        text: Report both numbers but use 0.75 for the decision
+        rationale: Showing both is fine; deciding on the filtered one repeats the mistake.
+    explanation: Every exclusion from an evaluation set should have a reason written down, and "the system did badly on it" isn't one. This is checks and balances applied to your own metrics.
+direct:
+  task: |
+    You want a per-query breakdown alongside the averages, so you can see which queries pulled a metric down.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a keyword argument to evaluate: per_query=False. When it is False, the return value must be exactly what it is now. When it is True, return a tuple (means, rows), where means is the current dict and rows is a list with one dict per query, in input order, containing "precision", "recall", "mrr", and "ndcg" for that query.
+
+    Compute each metric once per query and use the same values for both the rows and the means, so they can't disagree. Do not change precision_at_k, recall_at_k, reciprocal_rank, _dcg, or ndcg_at_k.
+
+    Add asserts: evaluate(RUNS, 3) is unchanged; with per_query=True, there are 3 rows; the third row is all zeros; and the mean of the rows' recall equals means["recall"].
+  checklist:
+    - The default return value is unchanged, so existing callers and checks still work
+    - Rows and means come from the same computed values
+    - Rows keep the input order, so row 3 is the third query
+    - The zero-hit query appears in the rows instead of being dropped
+    - The docstring documents both return shapes

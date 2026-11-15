@@ -1,0 +1,171 @@
+id: s2-w4-pipeline-cost
+summary: |
+  This program estimates what a RAG question-answering system costs to run. Each question passes through several paid stages (a small router model, a query embedding, a reranker, and the answer model), and each stage is priced per million input and output tokens. The code adds up one question, scales it to a month, and then picks the **cheapest configuration that meets an accuracy bar**.
+
+  The structure separates prices (data, at the top, with a date) from arithmetic (small functions) from the pipeline's shape (a function that returns its stages). That makes it easy to ask "what if" questions, such as a different answer model or fewer passages, without touching the math. The last function encodes the model-selection rule in one line: among the configurations that pass, choose on cost; never pick the best of the failures.
+code: |
+  # Dollars per million tokens, from the pricing pages on 2026-11-11. Check before reuse.
+  PRICES = {
+      "claude-haiku-5-5":  {"in": 0.10, "out": 0.50},   # prompts up to 100,000 tokens
+      "claude-sonnet-5-5": {"in": 2.00, "out": 10.00},
+      "claude-opus-5-5":   {"in": 4.00, "out": 20.00},
+      "rerank-2.5":        {"in": 0.05, "out": 0.0},
+      "voyage-4":          {"in": 0.06, "out": 0.0},
+  }
+
+
+  def call_cost(model, input_tokens, output_tokens=0):
+      """Dollar cost of one call."""
+      price = PRICES[model]
+      return (input_tokens * price["in"] + output_tokens * price["out"]) / 1_000_000
+
+
+  def question_cost(config):
+      """Sum the per-question cost of every stage in config.
+
+      config is a list of stages: {"model": ..., "in": tokens, "out": tokens}.
+      A stage may leave out "in" or "out"; a missing count means 0 tokens.
+      """
+      return sum(call_cost(s["model"], s.get("in", 0), s.get("out", 0)) for s in config)
+
+
+  def monthly_cost(config, per_day, days=30):
+      """Cost of answering per_day questions a day for days days."""
+      return question_cost(config) * per_day * days
+
+
+  def cheapest_passing(results, bar):
+      """results: {name: {"accuracy": float, "config": [...]}}.
+
+      Return the name of the cheapest configuration (by question_cost) whose
+      accuracy >= bar, or None if none passes.
+      """
+      passing = [
+          (question_cost(r["config"]), name)
+          for name, r in results.items()
+          if r["accuracy"] >= bar
+      ]
+      return min(passing)[1] if passing else None
+
+
+  def pipeline(generator):
+      """The per-question stages of the Q&A system, with the answer model as a choice."""
+      return [
+          {"model": "claude-haiku-5-5", "in": 300, "out": 10},     # router
+          {"model": "voyage-4", "in": 25},                          # embed the query
+          {"model": "rerank-2.5", "in": 20_000},                    # 50 candidates x 400 tokens
+          {"model": generator, "in": 5_000, "out": 300},            # answer with citations
+      ]
+
+
+  for gen in ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"):
+      cfg = pipeline(gen)
+      print(gen, round(question_cost(cfg), 5), round(monthly_cost(cfg, 500), 2))
+notes:
+  - lines: [1, 8]
+    title: Prices as dated data
+    text: |
+      `PRICES` is a **nested dictionary**: model name, then `"in"` or `"out"`, then dollars per million tokens. The comment records where the numbers came from and when. Prices change, so a cost model without a date is a guess presented as a fact. (These figures are the ones this lesson uses; check the providers' pricing pages before relying on them.)
+
+      The embedding and reranking models only charge for input, so their `"out"` price is 0.0. Keeping them in the same shape as the generators means one function can price any stage.
+  - lines: [11, 14]
+    title: Price one call
+    text: |
+      `PRICES[model]` looks up the model and raises `KeyError` for an unknown name. That's the right failure: a typo in a model name should stop the estimate, not price it at zero.
+
+      The formula multiplies tokens by the per-million price and divides by `1_000_000`. The underscores are Python's **digit separators**, purely for readability. Worked value: Sonnet with 5,000 input and 300 output tokens is (5,000 times 2.00 plus 300 times 10.00) divided by a million, which is $0.013.
+  - lines: [17, 23]
+    title: Sum the stages, with defaults for missing counts
+    text: |
+      `sum(... for s in config)` adds the cost of every stage using a **generator expression**. `s.get("in", 0)` uses **dict.get with a default**: the embedding stage has no `"out"` key, so it counts as 0 tokens instead of raising `KeyError`. The docstring says so explicitly, which is what makes leaving out a key legitimate rather than a bug.
+
+      For the Sonnet pipeline, the four stages are about $0.000035, $0.0000015, $0.001, and $0.013. The answer model is over 90% of the cost, which tells you where optimization effort pays.
+  - lines: [26, 28]
+    title: Scale to a month
+    text: |
+      A one-line function with a **default argument** (`days=30`). It looks too small to need a function, but naming it means every report computes "monthly" the same way. At 500 questions a day, Sonnet comes to about $210.55 a month.
+  - lines: [31, 42]
+    title: Cheapest that passes, or nothing
+    text: |
+      The **list comprehension** keeps only configurations whose accuracy meets the bar, and pairs each with its cost as a `(cost, name)` **tuple**. `min` on tuples compares the first element (cost) and uses the second (name) only to break ties, so the cheapest passing name wins.
+
+      `min(passing)[1] if passing else None` is a **conditional expression**. `min` of an empty list raises `ValueError`, so the code checks first and returns `None` when nothing passes. That `None` is a decision, not an error: if no configuration is good enough, the answer is "don't ship any of these", not "ship the closest".
+  - lines: [45, 52]
+    title: The pipeline as a function
+    text: |
+      `pipeline(generator)` returns the four stages with only the answer model varying. Writing it as a function rather than a constant means comparisons always hold everything else fixed. Each stage's comment explains its token count: the reranker sees 50 candidates of about 400 tokens each, 20,000 tokens in total.
+
+      In a real project, these token counts should come from logged traffic, not estimates. A pipeline that retrieves 10 passages but was costed at 5 will be off by a factor that matters.
+  - lines: [55, 57]
+    title: Compare the three answer models
+    text: |
+      The loop prints per-question and monthly cost for each generator: about $25 a month with Haiku, $211 with Sonnet, and $406 with Opus, at 500 questions a day.
+
+      Try the lesson's experiment: halve the answer model's input to 2,500 tokens. Sonnet drops to about $136 a month, a saving of about $75, without changing tiers. Whether accuracy survives sending fewer passages is a question for your eval set.
+review:
+  - id: wt-cost-cheapest-first
+    type: code-reading
+    prompt: An AI assistant rewrites `cheapest_passing` as below, "to avoid building a list". With the exercise's results (haiku 0.78, sonnet 0.90, opus 0.93), what does `cheapest_passing(results, 0.88)` return?
+    code: |
+      def cheapest_passing(results, bar):
+          name = min(results, key=lambda n: question_cost(results[n]["config"]))
+          return name if results[name]["accuracy"] >= bar else None
+    options:
+      - id: a
+        text: '"sonnet", as before'
+        rationale: This version finds the cheapest configuration overall first, which is haiku, and only then checks the bar.
+      - id: b
+        text: None, even though sonnet passes the bar
+        correct: true
+        rationale: Right. It picks haiku as the cheapest, sees that 0.78 is below 0.88, and gives up. The filter has to come before the minimum, not after.
+      - id: c
+        text: '"haiku", since it is the cheapest'
+        rationale: It does pick haiku, but then the accuracy check rejects it and returns None.
+    explanation: '"Cheapest among the passing" and "the cheapest, if it passes" sound alike and behave differently. The order of filter and min is the whole function.'
+  - id: wt-cost-missing-out
+    type: predict-output
+    prompt: An AI changes `question_cost` to use `s["in"]` and `s["out"]` instead of `.get`. What happens when you run the loop at the bottom?
+    options:
+      - id: a
+        text: The same costs print, since the missing keys would be zero anyway
+        rationale: Missing keys don't default to anything with square brackets; they raise.
+      - id: b
+        text: "`KeyError: 'out'` on the embedding stage"
+        correct: true
+        rationale: Right. The voyage-4 stage has only "in", so `s["out"]` raises before anything is printed. (The reranker stage would fail the same way.)
+      - id: c
+        text: The embedding stage is skipped and the totals are slightly lower
+        rationale: Nothing is skipped silently. The whole call fails.
+    explanation: Here a crash is the better of the two failure modes, but it means the docstring and the code disagree. When an AI rewrites a lookup, check whether the data actually has every key in every row.
+  - id: wt-cost-lever
+    type: scenario
+    prompt: Your accuracy bar is 0.88, so Haiku as the answer model (0.78) is out. Finance asks you to cut the Sonnet bill. Which proposal is best supported by this cost model?
+    options:
+      - id: a
+        text: Switch the router to Opus so it routes more accurately
+        rationale: That raises cost, and the router is a tiny share of the bill anyway.
+      - id: b
+        text: Send the answer model 5 passages instead of 10 (about 2,500 input tokens), then re-run the eval to confirm accuracy still clears 0.88
+        correct: true
+        rationale: Right. The answer stage is over 90% of the cost and input tokens dominate it, so halving them saves about $75 a month. The eval run is the check that the saving didn't cost accuracy.
+      - id: c
+        text: Remove the reranker, since it's a separate bill
+        rationale: The reranker costs about $15 a month here, and removing it likely hurts the ordering the fewer passages depend on.
+    explanation: Cost work starts by finding the biggest line item. Then you change one thing and measure quality again, because every saving is a hypothesis until the eval set confirms it.
+direct:
+  task: |
+    Finance wants to see where the money goes. Add a per-stage breakdown with each stage's share of the per-question cost.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a function cost_breakdown(config) that returns a list of (model, dollars, share) tuples, one per stage in config order, where dollars is that stage's call_cost and share is dollars divided by question_cost(config). Round dollars to 7 places and share to 3. If question_cost is 0, every share is 0.0.
+
+    Use call_cost for each stage and the same .get defaults as question_cost, so the two can't disagree. Do not change PRICES, call_cost, question_cost, monthly_cost, cheapest_passing, or pipeline.
+
+    Add asserts: for pipeline("claude-sonnet-5-5") there are 4 rows, the shares sum to 1.0 within 0.002, and the last row's share is above 0.9; a config of one voyage-4 stage with "in": 0 gives a share of 0.0.
+  checklist:
+    - Existing functions and printed numbers are unchanged
+    - The breakdown reuses call_cost instead of repeating the formula
+    - Missing "in" or "out" keys are handled the same way as in question_cost
+    - The zero-cost case doesn't divide by zero
+    - New asserts check that shares add up and that the answer stage dominates

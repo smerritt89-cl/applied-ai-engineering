@@ -1,0 +1,209 @@
+id: s5-w1-license-screen
+summary: |
+  This program is a first-pass license screen. It holds simplified records of three open-weight model licenses, and for a given license and a description of how you plan to use the model, it returns a list of findings: things that block you, things a human must review, and things you must do.
+
+  It is built as data plus one function. The license facts live in a dictionary, and `screen` applies the same rules, in the same order, to whichever record you pick. That separation means adding a fourth license is a data change, not a code change, and the order of the rules makes the output read like a triage list: blockers first, the routine attribution duty last. It routes a model to legal review; it does not replace that review.
+code: |
+  # Simplified summaries of three licenses, as read on 2026-11-11.
+  # A teaching aid, not legal advice: the real texts have more conditions.
+  LICENSES = {
+      "apache-2.0": {
+          "commercial": True, "mau_limit": None, "maas_annual_revenue_limit": None,
+          "attribution": "Include the LICENSE and NOTICE files and mark changed files",
+          "derivative_name_prefix": None, "use_policy": False, "eu_multimodal_restricted": False,
+      },
+      "llama4": {
+          "commercial": True, "mau_limit": 700_000_000, "maas_annual_revenue_limit": None,
+          "attribution": "Display 'Built with Llama'",
+          "derivative_name_prefix": "Llama", "use_policy": True, "eu_multimodal_restricted": True,
+      },
+      "qwen3.8-max": {
+          "commercial": True, "mau_limit": None, "maas_annual_revenue_limit": 50_000_000,
+          "attribution": "Display the model name above 100M monthly users or $20M monthly revenue",
+          "derivative_name_prefix": None, "use_policy": False, "eu_multimodal_restricted": False,
+      },
+  }
+
+
+  def screen(license_id, use):
+      """Return a list of findings, each a string starting with BLOCK, REVIEW, or DO.
+
+      use has: mau (int), annual_revenue (int, USD), model_as_a_service (bool),
+               derivative_name (str or None), eu_based (bool), multimodal (bool)
+
+      Rules run in a fixed order, so the most serious findings come first
+      and the DO line (the attribution duty) always comes last.
+      """
+      lic = LICENSES[license_id]
+      findings = []
+
+      # Hard user cap: above it, this license simply does not cover you.
+      if lic["mau_limit"] is not None and use["mau"] > lic["mau_limit"]:
+          findings.append("BLOCK: above the monthly active user limit; a separate license is required")
+
+      # Hosting the model for others above a revenue threshold needs a separate deal.
+      limit = lic["maas_annual_revenue_limit"]
+      if limit is not None and use["model_as_a_service"] and use["annual_revenue"] > limit:
+          findings.append("REVIEW: model-as-a-service above the revenue limit needs a separate license")
+
+      # Regional carve-out: all three facts must be true at once.
+      if lic["eu_multimodal_restricted"] and use["eu_based"] and use["multimodal"]:
+          findings.append("BLOCK: multimodal rights are not granted to EU-based companies")
+
+      # Naming rule applies only when you actually distribute a derivative.
+      prefix = lic["derivative_name_prefix"]
+      name = use["derivative_name"]
+      if prefix and name is not None and not name.startswith(prefix):
+          findings.append(f"REVIEW: derivative name must start with {prefix}")
+
+      if lic["use_policy"]:
+          findings.append("REVIEW: check the acceptable use policy")
+
+      findings.append("DO: " + lic["attribution"])
+      return findings
+
+
+  startup = {"mau": 2_000_000, "annual_revenue": 5_000_000, "model_as_a_service": False,
+             "derivative_name": "AcmeAssist", "eu_based": False, "multimodal": False}
+  for lic in LICENSES:
+      print(lic, screen(lic, startup))
+notes:
+  - lines: [1, 19]
+    title: 'The license records, as a nested dictionary'
+    text: |
+      `LICENSES` is a **dictionary of dictionaries**: the outer keys are license ids such as `"llama4"`, and each value is a smaller dictionary of facts about that license. Every record has the same keys, which is what lets one function read any of them.
+
+      A few Python details:
+
+      - `None` means "this license has no such limit". It is different from `0`, which would mean a limit of zero users.
+      - `700_000_000` is just 700000000. Python lets you put underscores in number literals so large figures are readable.
+      - `True` and `False` are flags the rules check directly.
+
+      The two comment lines matter as much as the code. They date the snapshot and say it is a simplification. License terms change between model versions, so a reviewer should ask "read on what date, from which text?" before trusting any record like this.
+  - lines: [22, 32]
+    title: 'The function, its docstring, and the lookup'
+    text: |
+      `screen(license_id, use)` takes a license id and a `use` dictionary describing your situation (users, revenue, hosting, naming, region, modality). The docstring lists those keys so a caller knows what to pass.
+
+      `lic = LICENSES[license_id]` looks the record up with square brackets. If you pass an id that is not in the table, this raises `KeyError` immediately. That is the right behavior here: silently returning "no findings" for an unknown license would read as "all clear", which is the worst possible failure for a compliance check.
+
+      `findings = []` starts an empty list that each rule below appends to.
+  - lines: [34, 36]
+    title: 'Rule 1, the monthly active user cap'
+    text: |
+      The condition has two parts joined by `and`. Python evaluates `and` left to right and stops as soon as one side is false (this is called **short-circuiting**), so `use["mau"] > lic["mau_limit"]` only runs when there is a limit to compare against. Comparing a number to `None` would raise `TypeError`.
+
+      Note the explicit `is not None` rather than just `if lic["mau_limit"]`. The two behave the same for every real limit, but `is not None` says exactly what is meant ("a limit exists") and would still be correct for a limit of 0. An AI-written version that leans on truthiness is usually fine, but it is worth noticing.
+
+      Worked value: with `mau = 900_000_000` and Llama 4's `700_000_000`, the condition is true and the BLOCK line is added first.
+  - lines: [38, 41]
+    title: 'Rule 2, model-as-a-service above a revenue line'
+    text: |
+      `limit = lic["maas_annual_revenue_limit"]` stores the value in a short local name, which keeps the next line readable. Three things must all be true: the license has such a limit, you are hosting the model as a service, and your annual revenue is above the limit.
+
+      This finding is REVIEW, not BLOCK, because it means "you need a separate agreement", which a business may well get. Choosing the severity is a product decision encoded in the string, and it is worth checking against the real license text when you review this kind of code.
+  - lines: [43, 45]
+    title: 'Rule 3, the regional carve-out'
+    text: |
+      All three flags must be true: the license restricts multimodal use in the EU, your company is EU-based, and your product is multimodal. Each is a boolean, so the condition reads almost like the sentence in the license summary.
+
+      This is the rule an AI shortcut most often gets wrong: checking only `eu_based` would block an EU company that uses the model for text alone, which the simplified record says is allowed.
+  - lines: [47, 51]
+    title: 'Rule 4, the derivative naming rule'
+    text: |
+      Some licenses require a derivative model's name to start with a set prefix. The rule applies only when there is a prefix **and** you actually distribute a derivative (`name is not None`). If you only call the model internally there is nothing to name.
+
+      The `is not None` guard also prevents a crash: `None.startswith("Llama")` raises `AttributeError`. Because of short-circuiting, `name.startswith(prefix)` never runs when `name` is `None`.
+
+      `f"REVIEW: derivative name must start with {prefix}"` is an **f-string**: the `f` before the quote lets you put a variable in braces and Python fills in its value. With the startup example, `"AcmeAssist"` does not start with `"Llama"`, so this finding appears; `"Llama-Acme-Assist"` would pass.
+  - lines: [53, 57]
+    title: 'Rule 5 and the closing duty'
+    text: |
+      If the license has an acceptable use policy, a human should read it against the product, so that is a REVIEW.
+
+      The last line runs **unconditionally**: every license here carries some attribution or notice duty, so the DO line is always appended, and always last. Because each rule is a separate `if` (not `elif`), several findings can stack up; an `elif` chain would stop at the first match and hide the rest.
+
+      `return findings` hands back the list. For Llama 4 with the startup's use you get three items: the naming REVIEW, the policy REVIEW, then `"DO: Display 'Built with Llama'"`.
+  - lines: [60, 63]
+    title: 'A demonstration use case'
+    text: |
+      `startup` describes a 2 million user product with 5 million dollars of revenue that is not hosting the model for others, ships a derivative called AcmeAssist, and is text-only in the US. The loop `for lic in LICENSES:` walks the dictionary's keys in the order they were written and prints each license's findings.
+
+      Press **Run this code** to see that Apache 2.0 and the Qwen record give only a DO line for this startup, while Llama 4 adds two REVIEW items. Then try editing `startup` (set `"eu_based": True, "multimodal": True`) and run it again.
+review:
+  - id: wt-license-elif
+    type: code-reading
+    prompt: 'An AI assistant "tidies" the rules into one `if`/`elif` chain, shown below for the last three rules. What does `screen("llama4", startup)` return now?'
+    code: |
+      if prefix and name is not None and not name.startswith(prefix):
+          findings.append(f"REVIEW: derivative name must start with {prefix}")
+      elif lic["use_policy"]:
+          findings.append("REVIEW: check the acceptable use policy")
+      findings.append("DO: " + lic["attribution"])
+    options:
+      - id: a
+        text: 'The same three findings as before'
+        rationale: 'The `elif` branch only runs when the `if` above it was false. Here the naming check is true, so the policy check is skipped.'
+      - id: b
+        text: 'Only the DO line'
+        rationale: 'The naming check is true for "AcmeAssist", so its REVIEW line is still added.'
+      - id: c
+        text: 'The naming REVIEW and the DO line, with no policy REVIEW'
+        correct: true
+        rationale: 'Right. Once the naming rule matches, `elif` skips the policy rule, so a real obligation silently disappears from the report.'
+    explanation: 'Independent rules need independent `if` statements. An `elif` chain means "at most one of these", which is the wrong shape for a checklist. This kind of change passes a test that only checks the first finding, so look for tests that check the full list.'
+  - id: wt-license-count
+    type: predict-output
+    prompt: 'How many findings does `screen("llama4", dict(startup, mau=900_000_000, eu_based=True, multimodal=True))` return? (`dict(startup, key=value)` copies `startup` and overrides those keys.)'
+    options:
+      - id: a
+        text: "1, because the first BLOCK stops the screen"
+        rationale: 'Nothing in the function stops early; every rule is checked.'
+      - id: b
+        text: "5"
+        correct: true
+        rationale: 'Right. BLOCK for users, BLOCK for EU multimodal, REVIEW for the name, REVIEW for the policy, and the DO line.'
+      - id: c
+        text: "3"
+        rationale: 'That is the count for the original startup. The two new facts each add a BLOCK.'
+      - id: d
+        text: "4, because the DO line is dropped when something is blocked"
+        rationale: 'The DO line is appended unconditionally.'
+    explanation: 'The screen reports everything it finds, in a fixed order. Whether a BLOCK should stop further checks is a design choice; here the team wants the full picture so legal sees every issue at once.'
+  - id: wt-license-keyerror
+    type: scenario
+    prompt: 'A colleague asks you to make `screen` return an empty list instead of raising `KeyError` when the license id is not in `LICENSES`, "so the pipeline doesn''t crash". What do you say?'
+    options:
+      - id: a
+        text: 'Agree; crashes are worse than missing data'
+        rationale: 'For a compliance check, an empty list reads as "no problems found". That silent all-clear is worse than a crash.'
+      - id: b
+        text: 'Push back, and suggest returning a BLOCK finding such as "BLOCK: unknown license, review manually" if they need it not to raise'
+        correct: true
+        rationale: 'Right. An unknown license must never look clean. Either fail loudly or return an explicit finding that routes it to a human.'
+      - id: c
+        text: 'Agree, as long as there is a log message'
+        rationale: 'Logs are easy to miss. The return value itself should say the license was not screened.'
+    explanation: 'A good rule for checks and balances is that an unknown input should produce the most cautious answer, not the most convenient one.'
+direct:
+  task: |
+    Your team wants to screen non-commercial licenses too. Add a record `"cc-by-nc-4.0"` with `"commercial": False` (other limits `None` or `False`, attribution "Credit the creator and link to the license"), and a new first rule: if the license is not commercial and the use is commercial, add `"BLOCK: the license does not allow commercial use"`.
+
+    Existing callers do not pass a `commercial` key in `use`, so treat a missing key as commercial.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In the license screen, add a fourth record to LICENSES with id "cc-by-nc-4.0": commercial False, mau_limit None, maas_annual_revenue_limit None, attribution "Credit the creator and link to the license", derivative_name_prefix None, use_policy False, eu_multimodal_restricted False.
+
+    In screen, add a new rule that runs before all the others: if lic["commercial"] is False and use.get("commercial", True) is True, append "BLOCK: the license does not allow commercial use". Use use.get with a default of True so existing callers that do not pass "commercial" are treated as commercial.
+
+    Do not change the order, wording, or conditions of the existing rules, and keep the DO line last. Update the docstring to list the new optional "commercial" key and the new rule.
+
+    Add test asserts: the new license with the startup use returns the BLOCK first and the DO line last; with dict(startup, commercial=False) there is no BLOCK; and the existing three licenses return exactly what they returned before.
+  checklist:
+    - 'The new rule is first, and the other rules are unchanged in order and wording'
+    - 'A missing `commercial` key is treated as commercial (via `use.get`), so old callers still get correct results'
+    - 'The new record has every key the other records have, so no rule raises `KeyError`'
+    - 'The DO line is still appended last for every license'
+    - 'The docstring lists the new rule and the optional key'
+    - 'New tests cover commercial and non-commercial use, and the existing checks still pass'

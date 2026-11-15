@@ -1,0 +1,180 @@
+id: s5-w3-validate-triage
+summary: |
+  This program checks the output of a fine-tuned model that triages support tickets into a small JSON object: a category, a priority, a product, and an order id. It returns a list of problems, where an empty list means the output passed. The two sample outputs are real failure types from the lab: one invents an order id out of the words "500 error", and one labels a shipping problem as a bug.
+
+  The function is a series of gates followed by independent checks. If the text isn't a JSON object, nothing else can be checked, so it stops early. Otherwise it collects every field problem at once, so a single report tells you everything wrong with an output. The last check is the most valuable: it confirms the order id was copied from the ticket rather than made up. What no rule can catch is a plausible but wrong answer, which is why the lab also scores field accuracy on labeled examples.
+code: |
+  import json
+
+  CATEGORIES = {"billing", "bug", "account", "shipping", "feature_request"}
+  PRIORITIES = {"low", "medium", "high"}
+  PRODUCTS = {"mobile app", "web dashboard", "API", "invoice portal", None}
+  KEYS = {"category", "priority", "product", "order_id"}
+
+
+  def validate_triage(text, ticket):
+      """Return a list of problems with a model's triage output (empty list = passes).
+      Check, in this order, and stop after the first two if they fail:
+        "invalid json"         text.strip() doesn't parse
+        "not an object"        it parses but isn't a dict
+      Then collect every problem that applies:
+        "wrong keys"           the set of keys isn't exactly KEYS
+        "bad category"         category not in CATEGORIES
+        "bad priority"         priority not in PRIORITIES
+        "bad product"          product not in PRODUCTS
+        "order_id not in ticket"   order_id is not None and doesn't appear verbatim in ticket
+      Use .get() for fields so a missing key reports "wrong keys" plus any field problem, without crashing."""
+      # Gate 1 and 2: without a JSON object there is nothing else to check.
+      try:
+          out = json.loads(text.strip())
+      except json.JSONDecodeError:
+          return ["invalid json"]
+      if not isinstance(out, dict):
+          return ["not an object"]
+
+      # Field checks: independent, so collect every one that applies.
+      problems = []
+      if set(out) != KEYS:
+          problems.append("wrong keys")
+      if out.get("category") not in CATEGORIES:
+          problems.append("bad category")
+      if out.get("priority") not in PRIORITIES:
+          problems.append("bad priority")
+      if out.get("product") not in PRODUCTS:
+          problems.append("bad product")
+
+      # Grounding check: an order id must be copied from the ticket, never invented.
+      order = out.get("order_id")
+      if order is not None and order not in ticket:
+          problems.append("order_id not in ticket")
+      return problems
+
+
+  # Outputs like these came back from the lab's tuned adapter during authoring.
+  TICKET_A = "Every request to the invoice portal returns a 500 error since this morning. Whenever you get a chance."
+  OUT_A = '{"category": "bug", "priority": "low", "product": "invoice portal", "order_id": "chango.500"}'
+  TICKET_B = "Part of order ORD-62097 is missing from the package. We need this fixed today."
+  OUT_B = '{"category": "bug", "priority": "high", "product": null, "order_id": "ORD-62097"}'
+  print(validate_triage(OUT_A, TICKET_A))
+  print(validate_triage(OUT_B, TICKET_B))
+notes:
+  - lines: [1, 6]
+    title: 'The allowed values, as sets'
+    text: |
+      Each constant is a **set** (curly braces with values, no colons), which is the natural type for "is this value one of the allowed ones?": checking membership in a set is fast and reads like English.
+
+      `None` is one of the allowed products. JSON's `null` becomes Python's `None` when parsed, so this says "a ticket that doesn't name a product is fine". Without it, every such ticket would be flagged.
+
+      `KEYS` is the exact schema: those four keys, no more, no fewer. Keeping all the allowed values in named constants at the top means changing the schema is a one-line edit that a reviewer can spot.
+  - lines: [9, 20]
+    title: 'The docstring is the specification'
+    text: |
+      The docstring spells out every problem string, the order to check them in, and which checks stop early. It also says why to use `.get()`: a missing key should produce a report, not a crash.
+
+      Exact problem strings matter because downstream code (and tests) compare them. When an AI edits a validator like this, check that it didn't "improve" the wording of any message, since that silently breaks whoever counts them.
+  - lines: [21, 27]
+    title: 'Two gates that stop early'
+    text: |
+      `text.strip()` removes leading and trailing whitespace (including a trailing newline), which models often add. **try/except** then attempts `json.loads` and, if the text isn't valid JSON ("Sure! Here you go."), returns `["invalid json"]` immediately.
+
+      `isinstance(out, dict)` checks that the parsed value is a JSON object. `'["bug"]'` is valid JSON, but it's a list, and every later check assumes a dictionary, so this gate returns `["not an object"]`.
+
+      These two return a one-item list right away because nothing after them would make sense on broken input.
+  - lines: [29, 32]
+    title: 'Exact keys, by comparing sets'
+    text: |
+      `set(out)` turns the dictionary into the set of its keys (looping over a dictionary gives its keys). Comparing it with `!=` to `KEYS` catches both missing keys and extra keys in one check.
+
+      Worked value: `{"category": "bug", "priority": "urgent"}` has keys `{"category", "priority"}`, which is not equal to `KEYS`, so "wrong keys" is reported. An output with an extra `"note"` key fails the same way. A check like `KEYS <= set(out)` (all required keys present) would miss extra keys, which matter when the output feeds a strict downstream system.
+  - lines: [33, 38]
+    title: 'Each field must be one of its allowed values'
+    text: |
+      `out.get("category")` uses **dict.get**, which returns `None` when the key is missing instead of raising `KeyError`. `not in CATEGORIES` then flags it. These are separate `if` statements, not `elif`, so an output can collect several problems.
+
+      Notice how `.get` interacts with the allowed values: a missing `product` comes back as `None`, which is allowed, so the missing-keys example reports "wrong keys" and "bad priority" but not "bad product". That is exactly what the test expects.
+
+      One untested edge: if a field holds a list or a dictionary, `in` on a set raises `TypeError`, because lists can't be stored in sets. A model rarely does this, but a robust validator would treat it as a bad value.
+  - lines: [40, 44]
+    title: 'The grounding check'
+    text: |
+      `order not in ticket` is a **substring test**: is the order id text present, character for character, somewhere in the ticket? If the model returned an order id that the ticket doesn't contain, it invented it.
+
+      Worked value: `"chango.500"` is not in ticket A, so it is flagged. `"ORD-62097"` is in ticket B, so it passes.
+
+      This check is cheap and certain, which makes it one of the best checks and balances for extraction tasks: whenever a model should copy a value from its input, verify that it did. The weak spot is the type: if the model returns the number `62097` instead of a string, `in` raises `TypeError`.
+  - lines: [47, 53]
+    title: 'Two real outputs'
+    text: |
+      `OUT_A` and `OUT_B` are written with single quotes outside so the JSON's double quotes don't need escaping. Press **Run this code**: A reports `["order_id not in ticket"]` and B reports `[]`.
+
+      B passing is the lesson. It is labeled `"bug"` when the ticket is clearly about shipping, and nothing in the rules can see that, because `"bug"` is an allowed category. Rules catch **impossible** outputs; only a labeled test set catches **wrong** ones.
+review:
+  - id: wt-triage-brackets
+    type: code-reading
+    prompt: 'An AI assistant replaces the `.get` calls with square brackets, as below. What does `validate_triage(''{"category": "bug", "priority": "urgent"}'', TICKET_A)` do now?'
+    code: |
+      if out["category"] not in CATEGORIES:
+          problems.append("bad category")
+      if out["priority"] not in PRIORITIES:
+          problems.append("bad priority")
+      if out["product"] not in PRODUCTS:
+          problems.append("bad product")
+    options:
+      - id: a
+        text: 'Returns `["wrong keys", "bad priority"]`, as before'
+        rationale: 'The first two lookups succeed, but `out["product"]` does not exist.'
+      - id: b
+        text: 'Returns `["wrong keys", "bad priority", "bad product"]`'
+        rationale: 'A missing key with square brackets doesn''t produce `None`; it raises an error.'
+      - id: c
+        text: 'Raises `KeyError` on `out["product"]`'
+        correct: true
+        rationale: 'Right. Square brackets raise `KeyError` for a missing key. A validator that crashes on malformed output defeats its purpose, since malformed output is exactly what it is for.'
+    explanation: 'The docstring explicitly asked for `.get()`. When a change contradicts the docstring, that is a strong signal to look closer; here the test with missing keys would catch it.'
+  - id: wt-triage-int-order
+    type: predict-output
+    prompt: 'The model returns `{"category": "shipping", "priority": "high", "product": null, "order_id": 62097}` (a number, not a string) for a ticket that mentions order 62097. What does `validate_triage` do?'
+    options:
+      - id: a
+        text: 'Returns `[]`, because 62097 appears in the ticket'
+        rationale: 'The substring test only works with a string on the left.'
+      - id: b
+        text: 'Returns `["order_id not in ticket"]`'
+        rationale: 'The check never gets to decide; it fails before producing a result.'
+      - id: c
+        text: 'Raises `TypeError`, because `in` on a string needs a string on the left'
+        correct: true
+        rationale: 'Right. `62097 in "order 62097"` raises `TypeError`. None of the current tests cover a non-string order id.'
+    explanation: 'Tests cover the cases someone thought of. Reviewing a validator means asking what else a model could plausibly return (numbers, lists, nested objects) and whether each produces a finding or a crash.'
+  - id: wt-triage-limits
+    type: scenario
+    prompt: '`OUT_B` labels a missing-item shipping complaint as `"bug"`, and the validator returns `[]`. A stakeholder asks whether the validator means the model is ready. What do you say?'
+    options:
+      - id: a
+        text: 'Yes; an empty list means the output is correct'
+        rationale: 'An empty list means the output is **possible**, not that it is right.'
+      - id: b
+        text: 'No; the validator only rules out impossible outputs. Readiness needs field accuracy on a labeled test set, compared against a baseline'
+        correct: true
+        rationale: 'Right. Rules and labels answer different questions, and you need both.'
+      - id: c
+        text: 'Add a rule that tickets mentioning "package" must be shipping'
+        rationale: 'Keyword rules like this are brittle and would misfire on many tickets. That is the model''s job; measure it with labels.'
+    explanation: 'Validators give certainty about format and grounding. Accuracy needs ground truth. A good evaluation plan uses both, and reports them separately.'
+direct:
+  task: |
+    Fix the crash on a non-string order id. Add a problem `"bad order_id"` when `order_id` is not `None` and not a string; in that case skip the grounding check (there's no text to look for).
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In validate_triage, before the grounding check, add: if order is not None and not isinstance(order, str), append "bad order_id" and do not run the "order_id not in ticket" check for that output. Otherwise keep the grounding check exactly as it is.
+
+    Do not change the two early gates, the other field checks, any existing problem string, or the order of problems. Add "bad order_id" to the docstring list in its position (just before "order_id not in ticket").
+
+    Add test asserts: an integer order id returns ["bad order_id"] (no TypeError); order_id null still passes; OUT_A still returns ["order_id not in ticket"]; and every existing assert still passes.
+  checklist:
+    - 'A non-string order id produces "bad order_id" and no exception'
+    - 'The grounding check is skipped for that case, but unchanged for strings'
+    - 'None is still allowed (a ticket without an order id passes)'
+    - 'No existing problem string, check, or order was changed'
+    - 'The docstring and new tests cover the new case'

@@ -2,6 +2,17 @@
 
 **Goes with:** Studio 6, week 1 (lessons 1 to 3). **Time:** about 90 minutes.
 
+## Review track
+
+If you're on the review track (the default), you don't write the code below from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to fix a bug where a slow primary model trips the fallback's
+   circuit breaker, review its diff, then run `pytest studio-6/01-resilient-service/test_change.py -q`.
+
+Everything below describes the write track.
+
 ## Goal
 
 Wrap a Claude call in a small web service that keeps behaving sensibly when the model provider does not:

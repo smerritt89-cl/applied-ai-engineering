@@ -1,0 +1,197 @@
+id: s6-w1-parse-sse
+summary: |
+  This function reads the raw text of a server-sent event (SSE) stream, the format Claude's streaming API and most LLM backends use to push a response piece by piece, and turns it into a list of `(event_name, data)` pairs. It implements just enough of the official parsing rules to test what your own server emits.
+
+  It is built as a small state machine: it walks the text one line at a time, accumulates the current event's name and data lines, and only "dispatches" (appends) the event when the blank line that ends it arrives. That last rule is the one that protects you in production, because a stream that is cut off mid-event must not produce a half-finished message.
+code: |
+  def parse_sse(text):
+      """Parse a text/event-stream body into a list of (event, data) tuples.
+
+      Rules (a subset of the HTML standard's SSE parsing):
+      - Events are separated by a blank line.
+      - A line starting with ":" is a comment: ignore it.
+      - "event: NAME" sets the event's name. Without one, the name is "message".
+      - "data: VALUE" appends VALUE to the event's data. Several data lines
+        are joined with a newline.
+      - After the colon, remove ONE leading space if present (not all spaces).
+      - Ignore other fields (id, retry, anything unknown).
+      - An event with no data lines is not dispatched (skip it).
+      """
+      events = []
+      name, data = None, []  # the event being built up, line by line
+
+      # The piece after the final newline is empty or an unterminated line: drop it.
+      for line in text.split("\n")[:-1]:
+          if line == "":
+              # A blank line ends the event. Dispatch it only if it carried data.
+              if data:
+                  events.append((name or "message", "\n".join(data)))
+              name, data = None, []
+              continue
+          if line.startswith(":"):
+              continue  # comment, often a keep-alive
+
+          field, _, value = line.partition(":")
+          if value.startswith(" "):
+              value = value[1:]  # exactly one space, never more
+          if field == "event":
+              name = value
+          elif field == "data":
+              data.append(value)
+          # any other field (id, retry, unknown) falls through and is ignored
+      return events
+
+
+  stream = (
+      ": keep-alive\n"
+      "\n"
+      "event: delta\n"
+      'data: {"text": "Hel"}\n'
+      "\n"
+      "event: delta\n"
+      'data: {"text": "lo"}\n'
+      "\n"
+      "event: done\n"
+      'data: {"model": "claude-opus-5-5"}\n'
+      "\n"
+  )
+  print(parse_sse(stream))
+notes:
+- lines:
+  - 1
+  - 13
+  title: The docstring is the specification
+  text: |
+    `def parse_sse(text):` defines a function that takes the whole stream body as one string. The triple-quoted block under it is a **docstring**, and here it does real work: it is the rulebook the code must follow, written in plain language.
+
+    When you review AI-written code, a precise docstring like this is your checklist. Each bullet should map to a line you can point at in the body. If you can't find the line that handles "remove ONE leading space", that rule probably isn't implemented.
+- lines:
+  - 14
+  - 15
+  title: The parser's state
+  text: |
+    `events` collects finished events. `name` and `data` hold the event currently being assembled: no name yet (`None`) and an empty list of data lines.
+
+    `name, data = None, []` is **tuple unpacking** (sometimes called multiple assignment): two variables set in one line. It reads well here because the two always reset together, which you'll see again at line 23.
+
+    `data` is a list rather than a string because the spec allows several `data:` lines per event, joined later. Collecting pieces in a list and joining once is the standard Python pattern for building a string.
+- lines:
+  - 16
+  - 18
+  title: Split into lines, and drop the unfinished tail
+  text: |
+    `text.split("\n")` breaks the text at every newline. For `"data: hi\n\n"` that gives `["data: hi", "", ""]`: the last item is whatever came after the final newline.
+
+    `[:-1]` is a **slice** meaning "everything except the last item". That last piece is either empty (the text ended cleanly) or a line that never got its newline because the connection dropped. Either way it is not a complete line, so we ignore it.
+
+    This one slice is what makes the final test pass: `"data: last\n"` splits into `["data: last", ""]`, the slice keeps `["data: last"]`, but no blank line follows, so nothing is dispatched. An AI-written parser that loops over `text.splitlines()` instead would treat a truncated stream exactly like a complete one.
+- lines:
+  - 19
+  - 24
+  title: A blank line dispatches the event
+  text: |
+    An empty line is the event boundary. If the event collected any data, we append a **tuple** `(name, data)` to `events`:
+
+    - `name or "message"` uses Python's `or`, which returns the left side if it is truthy and the right side otherwise. So a missing name (`None`) becomes the default `"message"`.
+    - `"\n".join(data)` glues the data lines together with newlines: `["line one", "line two"]` becomes `"line one\nline two"`.
+
+    Then both pieces of state reset, and `continue` skips to the next line. The `if data:` check is the rule "an event with no data lines is not dispatched", which is why `"event: ping\n\n"` returns an empty list.
+- lines:
+  - 25
+  - 26
+  title: Comments
+  text: |
+    A line starting with a colon is a comment. Servers send these as **keep-alives**: a few bytes every so often so proxies and load balancers don't decide the connection is idle and close it.
+
+    `str.startswith(":")` checks the first character without failing on an empty string, and we already handled empty lines above, so order matters here: blank-line check first, comment check second.
+- lines:
+  - 27
+  - 30
+  title: Split the field from its value
+  text: |
+    `line.partition(":")` splits at the **first** colon only and always returns three parts: before, the colon itself, and after. For `'data: {"text": "Hel"}'` that is `("data", ":", ' {"text": "Hel"}')`. The JSON inside has its own colons, which is exactly why `partition` beats `split(":")` here.
+
+    The underscore in `field, _, value` is a Python convention for "a value I'm deliberately ignoring".
+
+    Lines 29 and 30 strip exactly one leading space. A tempting shortcut is `value.strip()` or `value.lstrip()`, which removes all whitespace; the test `"data:  two spaces"` exists to catch that, because data can legitimately start with a space (think of a text delta like `" world"`).
+- lines:
+  - 31
+  - 36
+  title: Keep the fields we care about, ignore the rest
+  text: |
+    An `if` / `elif` chain stores the name or appends a data line. Anything else (`id`, `retry`, a field the server invents next year) matches neither branch and is silently skipped. Ignoring unknown fields is a deliberate choice that keeps an old client working when a server adds something new.
+
+    After the loop, `return events` hands back the list. Note there is no "flush whatever is left" step after the loop: an event still in progress when the text ends was never terminated, so it is dropped on purpose.
+- lines:
+  - 39
+  - 52
+  title: A sample stream to run
+  text: |
+    The parentheses around several string literals use **implicit concatenation**: Python joins adjacent string literals into one string. It's a readable way to write a long multi-line value one line per piece.
+
+    This stream has a keep-alive comment, two `delta` events carrying text fragments, and a `done` event. Running it prints three tuples; the comment produces nothing. Single quotes are used on the `data:` lines so the double quotes inside the JSON don't need escaping.
+review:
+- id: wt-sse-splitlines
+  type: code-reading
+  prompt: 'An AI assistant rewrites the loop header as shown, saying `splitlines()` is "cleaner". What does `parse_sse("data: last\n")` return now?'
+  code: |
+    for line in text.splitlines() + [""]:
+  options:
+  - id: a
+    text: '`[]`, the same as before'
+    rationale: The original returns `[]` because no blank line follows. This version appends an empty line of its own, which fakes that blank line.
+  - id: b
+    text: '`[("message", "last")]`'
+    correct: true
+    rationale: Right. The added `""` acts as a terminating blank line, so a cut-off event gets dispatched as if it were complete.
+  - id: c
+    text: It raises an error because the last line has no colon
+    rationale: The empty string is handled by the blank-line branch before `partition` is ever reached.
+  explanation: Adding a fake blank line is a common way to "flush the last event", and it looks harmless. It quietly removes the protection against truncated streams, which is the one behavior the lesson calls out. Only the final test catches it.
+- id: wt-sse-partition
+  type: mcq
+  prompt: Why does the code use `line.partition(":")` instead of `line.split(":")`?
+  options:
+  - id: a
+    text: '`partition` is faster'
+    rationale: Speed isn't the point here; both are fast for short lines.
+  - id: b
+    text: '`partition` splits only at the first colon, so a JSON value that contains colons stays in one piece'
+    correct: true
+    rationale: 'Exactly. `''data: {"a": 1}''.split(":")` gives three pieces and the value is mangled.'
+  - id: c
+    text: '`split` can''t handle lines without a colon'
+    rationale: '`split` handles that fine (it returns a one-item list). The problem is lines with several colons.'
+  explanation: Data lines almost always carry JSON, which is full of colons. Splitting only at the first one is what the SSE spec requires.
+- id: wt-sse-predict
+  type: predict-output
+  prompt: 'What does `parse_sse("event: delta\ndata: a\n\ndata: b\n\n")` return?'
+  options:
+  - id: a
+    text: '`[("delta", "a"), ("delta", "b")]`'
+    rationale: The name resets to `None` after each blank line, so the second event doesn't inherit `delta`.
+  - id: b
+    text: '`[("delta", "a"), ("message", "b")]`'
+    correct: true
+    rationale: Right. Each event starts fresh; without its own `event:` line, the second one gets the default name.
+  - id: c
+    text: '`[("delta", "a\nb")]`'
+    rationale: Data lines are only joined within one event. The blank line between them ends the first event.
+  explanation: Resetting `name` and `data` together at line 23 is what keeps events independent.
+direct:
+  task: |
+    Your server now sends `id:` lines so a reconnecting client can resume where it left off. You want `parse_sse` to keep track of the most recent event id and include it, so each result becomes `(event, data, last_id)`.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Change parse_sse so it tracks the SSE "last event id". When a line has the field "id", store its value (after removing one leading space, like other fields). The value persists across events until another id line changes it; it does NOT reset at the blank line. Return 3-tuples (event, data, last_id), where last_id is None if no id has been seen yet.
+
+    Keep every other rule exactly as it is: comments ignored, default name "message", data lines joined with a newline, exactly one leading space removed, events without data not dispatched, and an unterminated final event dropped. Keep using partition, not split.
+
+    Update the docstring, update the existing test asserts to the 3-tuple shape, and add asserts for: an id carried into a later event, an id replaced by a newer one, and no id at all (None).
+  checklist:
+  - The id persists across events instead of resetting with name and data
+  - 'The truncated-stream behavior is unchanged (`"data: last\n"` still returns `[]`)'
+  - '`retry` and unknown fields are still ignored'
+  - Every existing assert was updated to the new 3-tuple shape, not deleted
+  - The docstring describes the new return shape

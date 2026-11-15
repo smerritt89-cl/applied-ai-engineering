@@ -1,0 +1,222 @@
+id: s2-w2-markdown-chunker
+summary: |
+  This program splits a Markdown handbook into **chunks**, the pieces that get embedded and retrieved in a RAG system. It is structure-aware: it first cuts the document at headings, so no chunk ever mixes two topics, and it records each chunk's **heading path** (for example "Harbor & Pine Handbook > Time off > Sick days"). Only then does it split any section that is still too long, preferring to cut at a paragraph break, then a line break, then a sentence end, then a space.
+
+  The work is divided into two stages that can be tested on their own: `split_sections` knows about headings and nothing about size, and `pack` knows about size and nothing about headings. `chunk_markdown` just runs one after the other. Each continuation piece starts a little before the previous cut (the **overlap**), so a sentence near a boundary appears in both neighbors.
+code: |
+  import re
+
+  HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*$", re.MULTILINE)
+
+
+  def split_sections(text):
+      """Split Markdown at headings into (headings, section_text) pairs.
+
+      headings is the path of enclosing titles, e.g. ["Handbook", "Time off", "Vacation"].
+      section_text runs from the heading line up to the next heading, stripped.
+      Text before the first heading, if not blank, gets headings [].
+      Sections whose only content is the heading line itself are skipped.
+      """
+      matches = list(HEADING.finditer(text))
+      sections = []
+      first = matches[0].start() if matches else len(text)
+      if text[:first].strip():
+          sections.append(([], text[:first].strip()))
+      path = []   # (level, title) pairs for the headings we're currently inside
+      for i, match in enumerate(matches):
+          level = len(match.group(1))
+          path = [p for p in path if p[0] < level] + [(level, match.group(2))]
+          end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+          if text[match.end():end].strip():
+              sections.append(([title for _, title in path], text[match.start():end].strip()))
+      return sections
+
+
+  def pack(text, max_chars, overlap):
+      """Split one section into stripped pieces of at most max_chars characters.
+
+      Cut at the last paragraph break before the limit, else the last newline,
+      else the last ". ", else the last space, else hard at the limit. Start each
+      next piece about overlap characters before the previous cut, moved forward
+      to the start of a word.
+      """
+      if len(text) <= max_chars:
+          return [text]
+      pieces, pos = [], 0
+      while pos < len(text):
+          limit = min(pos + max_chars, len(text))
+          cut = limit
+          if limit < len(text):
+              for sep in ("\n\n", "\n", ". ", " "):
+                  idx = text.rfind(sep, pos + max_chars // 4, limit)
+                  if idx != -1:
+                      cut = idx + len(sep)
+                      break
+          pieces.append(text[pos:cut].strip())
+          if cut >= len(text):
+              break
+          next_pos = max(cut - overlap, pos + 1)
+          while next_pos < cut and not text[next_pos - 1].isspace():
+              next_pos += 1
+          pos = next_pos
+      return [p for p in pieces if p]
+
+
+  def chunk_markdown(text, max_chars=400, overlap=60):
+      """Split a Markdown document into {"headings": [...], "text": "..."} chunks."""
+      if not 0 <= overlap < max_chars:
+          raise ValueError("need 0 <= overlap < max_chars")
+      chunks = []
+      for headings, section in split_sections(text):
+          for piece in pack(section, max_chars, overlap):
+              chunks.append({"headings": headings, "text": piece})
+      return chunks
+
+
+  DOC = """# Harbor & Pine Handbook
+
+  Fictional handbook for an exercise.
+
+  ## Time off
+
+  ### Vacation
+
+  Full-time staff accrue 1.25 vacation days per month in their first two years and 1.75 days per month after that. Request vacation at least three weeks ahead for peak season.
+
+  ### Sick days
+
+  No doctor's note is needed for up to three consecutive days. Tell your manager before your shift starts. Sick days do not reduce your vacation balance. If you are sick for longer than three days, HR will contact you about short-term leave. Short-term leave pays 70 percent of your base pay for up to six weeks. You can return early at any time by telling your manager. Your benefits continue unchanged during short-term leave.
+
+  ## Expenses
+
+  Submit receipts within 30 days. Purchases over 200 dollars need approval first.
+  """
+
+  for c in chunk_markdown(DOC, max_chars=200, overlap=40):
+      print(" > ".join(c["headings"]), "|", len(c["text"]), "|", c["text"][:60].replace("\n", " "))
+notes:
+  - lines: [1, 3]
+    title: A regex that finds heading lines
+    text: |
+      `re.MULTILINE` changes what `^` and `$` mean: instead of the start and end of the whole text, they match the start and end of **each line**. Without it, the pattern could only find a heading on the very first line.
+
+      Read the pattern in pieces. `(#{1,6})` captures one to six `#` characters (group 1, which gives the level). `[ \t]+` requires at least one space or tab. `(.+?)` captures the title (group 2); the `?` makes it **non-greedy**, so the trailing `[ \t]*` can absorb spaces at the end instead of the title keeping them.
+
+      `#hashtag` doesn't match, because a space is required after the hashes. That's the Markdown rule, and an AI-written pattern that drops the `[ \t]+` would turn hashtags into headings.
+  - lines: [6, 18]
+    title: Find every heading, keep any preamble
+    text: |
+      `HEADING.finditer(text)` returns an **iterator** of match objects, one per heading, and `list(...)` collects them so we can look ahead to the next one. Each match knows where it starts (`.start()`) and ends (`.end()`) in the text.
+
+      The line with `first = ... if ... else ...` uses a **conditional expression**, Python's one-line if/else. If there are no headings at all, `first` is the end of the text, so the whole document becomes preamble. Text before the first heading is kept with an empty heading path, because deleting an introduction would silently lose content.
+  - lines: [19, 26]
+    title: Maintain the heading path like a stack
+    text: |
+      `path` holds `(level, title)` pairs for the headings we're inside. On each new heading, the comprehension keeps only the entries with a **smaller** level (the ancestors) and then appends the new one. Worked example: inside `### Vacation` the path is levels 1, 2, 3. When `### Sick days` arrives (level 3), the level-3 Vacation entry is dropped and Sick days takes its place. When `## Expenses` arrives (level 2), both Time off and Sick days are dropped.
+
+      Each section runs from its own heading line to the start of the next heading (or the end of the text). `text[match.end():end].strip()` is the body without the heading; if that's empty, as for `## Time off`, the section is skipped, since a chunk containing only a title retrieves badly.
+
+      `[title for _, title in path]` **unpacks** each pair and keeps just the title, giving the list of strings stored as `headings`.
+  - lines: [29, 39]
+    title: Pack, and the easy case
+    text: |
+      A section that already fits is returned whole, in a one-item list. Most handbook sections take this path, so it's checked first.
+
+      `pieces, pos = [], 0` assigns two names at once with **tuple unpacking**: an empty list of results and a cursor at position 0. The `while` loop moves the cursor through the text one piece at a time.
+  - lines: [40, 48]
+    title: Choose the best place to cut
+    text: |
+      `limit` is the furthest the piece may reach. If the rest of the text fits, `cut` stays at the end. Otherwise the `for` loop tries separators from most to least natural, and `break` stops at the first one found.
+
+      `text.rfind(sep, start, end)` searches **backward** for the last occurrence of `sep` between two positions and returns -1 if there is none. The search starts at `pos + max_chars // 4` (`//` is integer division), not at `pos`. That lower bound stops a sentence end very early in the window from producing a tiny 20-character piece.
+
+      `cut = idx + len(sep)` puts the cut just after the separator, so a piece ends with the period, not before it.
+  - lines: [49, 56]
+    title: Step back for overlap, then forward to a word
+    text: |
+      After saving the piece, the next one starts `overlap` characters before the cut. `max(..., pos + 1)` guarantees the cursor always moves forward at least one character, so the loop can't run forever even with an odd combination of settings.
+
+      The inner `while` slides forward until the previous character is whitespace, so the next piece starts at the beginning of a word instead of mid-word. The final comprehension drops any empty pieces left by stripping.
+
+      This is the function most worth testing when an AI edits it: an off-by-one in the cut or the step can lose a sentence, create an infinite loop, or quietly break the overlap.
+  - lines: [59, 67]
+    title: Glue the stages together
+    text: |
+      `chunk_markdown` validates its settings first. `0 <= overlap < max_chars` is a **chained comparison**, Python shorthand for `0 <= overlap and overlap < max_chars`. An overlap as big as the chunk would make no progress, so it's rejected up front.
+
+      Then every piece of every section becomes a dictionary with its heading path and text. Storing the path as metadata means a citation can say "Time off > Sick days" and a later step can prepend it before embedding.
+  - lines: [70, 87]
+    title: The test document
+    text: |
+      The triple-quoted string is a **multi-line string literal**. It has a preamble line, a heading with no body (`## Time off`), a short section, one long section (Sick days, about 440 characters), and a final section with numbers in it. Each exercises a different branch of the code.
+  - lines: [89, 90]
+    title: Print a one-line view of each chunk
+    text: |
+      `" > ".join(c["headings"])` turns the path list into a breadcrumb. The slice `[:60]` shows the start of each chunk with newlines replaced by spaces so each chunk prints on one line.
+
+      With `max_chars=200, overlap=40` you should see the Sick days section split into several pieces, each ending at a sentence and each starting with a few words repeated from the previous one. Try `overlap=0` to see the repetition disappear.
+review:
+  - id: wt-chunk-sibling-path
+    type: code-reading
+    prompt: An AI assistant changes the path line in `split_sections` to use `<=`, as below. What heading path does the Sick days section get?
+    code: |
+      path = [p for p in path if p[0] <= level] + [(level, match.group(2))]
+    options:
+      - id: a
+        text: "`[\"Harbor & Pine Handbook\", \"Time off\", \"Sick days\"]`, as before"
+        rationale: With `<=`, the previous level-3 heading (Vacation) is kept, because 3 is less than or equal to 3.
+      - id: b
+        text: "`[\"Harbor & Pine Handbook\", \"Time off\", \"Vacation\", \"Sick days\"]`"
+        correct: true
+        rationale: Right. Siblings are no longer replaced, so Sick days looks like a child of Vacation. Citations and any heading prefix used for embedding would now be wrong.
+      - id: c
+        text: "`[\"Sick days\"]`"
+        rationale: Ancestors are still kept. The change keeps too much, not too little.
+    explanation: One character changed the meaning from "ancestors" to "ancestors and siblings". The exercise's first assertion checks every heading path exactly, which is the kind of test that catches it.
+  - id: wt-chunk-predict-empty
+    type: predict-output
+    prompt: "What does `split_sections(\"# A\\n\\n## B\\n\\nText.\")` return?"
+    options:
+      - id: a
+        text: "`[([\"A\"], \"# A\"), ([\"A\", \"B\"], \"## B\\n\\nText.\")]`"
+        rationale: Section A has nothing but its heading line, and those sections are skipped.
+      - id: b
+        text: "`[([\"A\", \"B\"], \"## B\\n\\nText.\")]`"
+        correct: true
+        rationale: Right. A's body is blank, so it's skipped, and B inherits A in its path.
+      - id: c
+        text: "`[([\"B\"], \"Text.\")]`"
+        rationale: The section text includes its own heading line, and the path includes the level-1 ancestor.
+    explanation: Skipping heading-only sections while keeping them in the path gives you the best of both. No chunk is just a title, and no context is lost.
+  - id: wt-chunk-window
+    type: mcq
+    prompt: In `pack`, why does the backward search for a separator start at `pos + max_chars // 4` instead of at `pos`?
+    options:
+      - id: a
+        text: To make `rfind` run faster on long documents
+        rationale: Any speedup is negligible. The lower bound is about the size of the pieces.
+      - id: b
+        text: So a separator near the start of the window doesn't produce a tiny piece
+        correct: true
+        rationale: Right. Separators are tried in order, so a newline ten characters into the window would beat a sentence end near the limit, and the piece would be ten characters long. The bound keeps every separator cut at least a quarter of the way in; if none qualifies, a later separator or the hard cut is used.
+      - id: c
+        text: Because `rfind` can't search from the beginning of a string
+        rationale: It can. Omitting the start argument searches from the beginning.
+    explanation: Very short chunks embed poorly and waste retrieval slots. Small details like this lower bound are easy for an AI to drop when "simplifying", and the size tests won't notice, because short pieces are still under max_chars.
+direct:
+  task: |
+    The lesson suggests prepending a chunk's heading path before embedding, so a chunk saying "three consecutive days" carries the fact that it's about sick leave. Add that as a separate field, without changing the chunk text used for display and citations.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    In chunk_markdown, add a third key to each chunk dictionary: "embed_text". It is the heading path joined with " > ", then a blank line, then the chunk text. For chunks with an empty heading path, embed_text equals text.
+
+    Do not change "headings" or "text", split_sections, pack, or the max_chars rule: max_chars still applies to "text" only, and embed_text may be longer. Update chunk_markdown's docstring.
+
+    Add asserts: every chunk has embed_text; for a Sick days chunk, embed_text starts with "Harbor & Pine Handbook > Time off > Sick days\n\n" and ends with that chunk's text; and for split_sections("Intro text.\n\n# Title\n\nBody.") chunked, the intro chunk's embed_text is exactly "Intro text.".
+  checklist:
+    - "\"text\" and \"headings\" are unchanged, so all existing checks still pass"
+    - The prefix uses the heading path, not just the last heading
+    - Chunks with no headings don't get a stray separator
+    - The size limit still applies to the text, and the docstring says embed_text may exceed it
+    - The new asserts cover a nested section and the preamble case

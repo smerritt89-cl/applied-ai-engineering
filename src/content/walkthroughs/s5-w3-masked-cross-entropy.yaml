@@ -1,0 +1,172 @@
+id: s5-w3-masked-cross-entropy
+summary: |
+  This program computes the training loss for supervised fine-tuning (SFT) the way a real trainer does, on a ten-token toy example. A language model predicts each next token, so a sequence of 10 tokens gives 9 predictions. In SFT you usually want to score only the predictions of the **answer**, not of the prompt, so prompt positions are **masked**: their target is replaced with a sentinel value that the loss skips.
+
+  The work is split into two functions that match the two steps in a trainer. `next_token_targets` builds the label list (shifted by one, with prompt positions masked), and `cross_entropy` averages the loss over the positions that are left. The demo then shows the same predictions scored both ways: about 1.09 with nothing masked, about 0.31 with the prompt masked, because the model was unsure about the user's words but fairly sure about the answer.
+code: |
+  import math
+
+  IGNORE = -100  # the label value PyTorch's cross-entropy skips by default
+
+
+  def next_token_targets(tokens, prompt_len):
+      """Targets for a causal LM. Position i predicts tokens[i + 1], so there are len(tokens) - 1 targets.
+      Return a list where entry i is tokens[i + 1], or IGNORE if that target is a prompt token
+      (that is, if i + 1 < prompt_len). prompt_len = 0 means nothing is masked."""
+      return [
+          tokens[i + 1] if i + 1 >= prompt_len else IGNORE
+          for i in range(len(tokens) - 1)
+      ]
+
+
+  def cross_entropy(preds, targets):
+      """preds[i] is the model's probability distribution (a list) for target i.
+      Return the mean of -ln(preds[i][targets[i]]) over targets that are not IGNORE.
+      Raise ValueError if every target is IGNORE (a silent NaN in a real trainer)."""
+      terms = [-math.log(row[y]) for row, y in zip(preds, targets) if y != IGNORE]
+      if not terms:
+          raise ValueError("every target is masked")
+      return sum(terms) / len(terms)  # divide by the SCORED positions only
+
+
+  # A toy vocabulary and one rendered example: the prompt ends with the <ans> marker.
+  VOCAB = ["<sys>", "Where", "is", "my", "order", "?", "<ans>", "Shipped", "today", "<end>"]
+  tokens = list(range(10))
+  PROMPT_LEN = 7   # <sys> ... <ans> belong to the prompt
+
+
+  def dist(target, p):
+      """A distribution that puts probability p on target and spreads the rest evenly."""
+      row = [(1 - p) / 9] * 10
+      row[target] = p
+      return row
+
+
+  # The model is unsure about the user's words, and fairly sure about the answer.
+  preds = [dist(1, 0.05), dist(2, 0.2), dist(3, 0.3), dist(4, 0.1), dist(5, 0.5),
+           dist(6, 0.9), dist(7, 0.6), dist(8, 0.7), dist(9, 0.95)]
+
+  full = cross_entropy(preds, next_token_targets(tokens, 0))
+  masked = cross_entropy(preds, next_token_targets(tokens, PROMPT_LEN))
+  print("targets, masked:", next_token_targets(tokens, PROMPT_LEN))
+  print("full loss:", full, " masked loss:", masked)
+notes:
+  - lines: [1, 3]
+    title: 'The import and the sentinel'
+    text: |
+      `math.log` is the natural logarithm, which cross-entropy needs.
+
+      `IGNORE = -100` is a **sentinel**: a value that can never be a real token id (ids start at 0), used to mean "don't score this position". The number is not arbitrary. PyTorch's cross-entropy skips targets equal to -100 by default, and TRL uses the same value, so code written this way lines up with real trainers.
+  - lines: [6, 13]
+    title: 'Shifted targets, with a conditional comprehension'
+    text: |
+      Position `i` sees tokens 0 to `i` and predicts token `i + 1`. So the target at position `i` is `tokens[i + 1]`, and there are `len(tokens) - 1` targets: the last token has nothing after it to predict.
+
+      The body is a **list comprehension** with a **conditional expression** inside: for each `i`, keep `tokens[i + 1]` if it is an answer token (`i + 1 >= prompt_len`), otherwise put `IGNORE`. Splitting it over three lines keeps it readable.
+
+      Worked value: with `PROMPT_LEN = 7`, positions 0 to 5 predict prompt tokens and become `IGNORE`, and positions 6, 7, 8 predict "Shipped", "today", "<end>", giving `[-100, -100, -100, -100, -100, -100, 7, 8, 9]`. Position 6 sees `<ans>` and predicts the first answer word, which is the most important prediction of all.
+
+      Off-by-one errors are the classic AI slip here: comparing `i` instead of `i + 1` would silently mask "Shipped".
+  - lines: [16, 23]
+    title: 'Cross-entropy over the scored positions'
+    text: |
+      `zip(preds, targets)` pairs each prediction row with its target, like a zipper joining two lists item by item. The comprehension keeps `-math.log(row[y])` only when `y != IGNORE`.
+
+      `-ln(p)` is the cost of one prediction: 0 when the model gave the right token probability 1, about 0.69 at 0.5, and large as p approaches 0.
+
+      Two design points:
+
+      - The mean divides by `len(terms)`, the number of **scored** positions, not by all 9. That is what PyTorch's default does, and the comment says so, because dividing by the wrong count is the most likely bug.
+      - If every target is masked, there is nothing to average. Raising `ValueError` turns that into a loud error. In a real trainer it would show up as a NaN loss or a silently skipped example, for instance when truncation cut the whole answer off.
+  - lines: [26, 29]
+    title: 'The toy example'
+    text: |
+      `VOCAB` is a ten-word vocabulary, and `tokens = list(range(10))` is the sequence 0 to 9, so token `i` is `VOCAB[i]`. The rendered example is a system marker, the user's question, an `<ans>` marker, the answer, and `<end>`.
+
+      `PROMPT_LEN = 7` says the first seven tokens (through `<ans>`) are prompt. In real code this number comes from tokenizing the prompt with the chat template, which is a common place for mistakes: a different template gives a different length.
+  - lines: [32, 36]
+    title: 'A helper that fakes model output'
+    text: |
+      `dist(target, p)` builds a probability list of length 10 with `p` on the target and the rest spread evenly. `[(1 - p) / 9] * 10` uses **list repetition**: `[x] * 10` is a list of ten copies of `x`. Then one slot is overwritten.
+
+      This stands in for a real model's softmax output so the loss can be checked by hand.
+  - lines: [39, 41]
+    title: 'Predictions, unsure early and confident late'
+    text: |
+      `preds` has 9 rows, one per position. The probabilities on the correct next token rise from 0.05 (guessing the user's first word is hard) to 0.95 (predicting `<end>` after "Shipped today" is easy).
+
+      This is realistic: a model cannot know what a user will ask, but it can learn how to answer. Scoring prompt tokens mostly adds noise from the first kind of prediction.
+  - lines: [43, 46]
+    title: 'Full loss versus masked loss'
+    text: |
+      `full` scores all 9 positions: the mean of −ln of 0.05, 0.2, 0.3, 0.1, 0.5, 0.9, 0.6, 0.7, 0.95, which is about **1.092**. `masked` scores only the last three: (0.511 + 0.357 + 0.051) / 3, about **0.306**.
+
+      Press **Run this code**, then set `PROMPT_LEN = 10` and run it again to see the all-masked error. `math.exp(masked)`, about 1.36, is the **perplexity**: roughly "the model was choosing among 1.36 equally likely tokens".
+review:
+  - id: wt-mce-wrong-mean
+    type: code-reading
+    prompt: 'An AI assistant changes the last line of `cross_entropy` to the version below. What is the masked loss now (it was about 0.306)?'
+    code: |
+      terms = [-math.log(row[y]) for row, y in zip(preds, targets) if y != IGNORE]
+      if not terms:
+          raise ValueError("every target is masked")
+      return sum(terms) / len(targets)
+    options:
+      - id: a
+        text: 'About 0.306, unchanged'
+        rationale: 'The sum is the same, but it is now divided by 9 instead of 3.'
+      - id: b
+        text: 'About 0.102'
+        correct: true
+        rationale: 'Right. The same 0.919 total divided by all 9 targets, including the 6 masked ones. The loss looks three times better than it is.'
+      - id: c
+        text: 'About 1.092, the full loss'
+        rationale: 'The masked terms are still excluded from the sum; only the divisor changed.'
+    explanation: 'Dividing by the total count makes examples with long prompts look artificially good and gives them less weight in training. The code runs and the number looks plausible, which is why the test pins the exact value.'
+  - id: wt-mce-off-by-one
+    type: predict-output
+    prompt: 'In `next_token_targets`, someone writes `tokens[i + 1] if i >= prompt_len else IGNORE`. With `PROMPT_LEN = 7`, what does it return?'
+    options:
+      - id: a
+        text: '`[-100] * 6 + [7, 8, 9]`, the same as before'
+        rationale: 'The condition changed from `i + 1 >= 7` to `i >= 7`, so position 6 is now masked.'
+      - id: b
+        text: '`[-100] * 7 + [8, 9]`'
+        correct: true
+        rationale: 'Right. Position 6, which predicts "Shipped" (the first answer token), is masked, so the model never learns how to start its answer.'
+      - id: c
+        text: '`[-100] * 5 + [6, 7, 8, 9]`'
+        rationale: 'That would unmask the `<ans>` prediction, which is the opposite error (comparing to `prompt_len - 1`).'
+    explanation: 'The rule is about which token is the **target**, so the comparison must use the target''s index, `i + 1`. The test that checks the exact list catches this; a test that only checked the length would not.'
+  - id: wt-mce-raise
+    type: scenario
+    prompt: 'Why does `cross_entropy` raise `ValueError` when every target is `IGNORE`, instead of returning 0.0?'
+    options:
+      - id: a
+        text: 'Because 0.0 would be mathematically wrong'
+        rationale: 'There is no right answer for an empty average. The issue is what 0.0 would communicate.'
+      - id: b
+        text: 'Because a loss of 0.0 looks like a perfect prediction, hiding an example that teaches nothing (for instance one whose answer was truncated away)'
+        correct: true
+        rationale: 'Right. Failing loudly makes you find and fix the data instead of training on silence.'
+      - id: c
+        text: 'Because Python cannot divide by zero'
+        rationale: 'True, but the code checks `not terms` before dividing, so it could return anything. Raising is a design choice.'
+    explanation: 'Silent fallbacks are dangerous in training code because the run finishes and the curve looks fine. A real trainer can give NaN or skip the example; checking your rendered data for zero scored tokens is a standard pre-flight step.'
+direct:
+  task: |
+    Real batches are padded to the same length with a pad token, and pad positions must not be scored either. Add a `pad_id=None` parameter to `next_token_targets`: any target equal to `pad_id` becomes `IGNORE`, in addition to the prompt masking.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a keyword parameter pad_id=None to next_token_targets. A target tokens[i + 1] becomes IGNORE if i + 1 < prompt_len (as now) or if pad_id is not None and tokens[i + 1] == pad_id.
+
+    Keep the output length len(tokens) - 1 and keep the i + 1 comparison exactly as it is. With pad_id=None the result must be identical to today's. Do not change cross_entropy. Update the docstring.
+
+    Add test asserts: tokens + [99, 99] with pad_id=99 and PROMPT_LEN gives [IGNORE] * 6 + [7, 8, 9, IGNORE, IGNORE]; the masked loss computed with two extra padded prediction rows equals the current masked loss; and pad_id=0 (a valid id) is handled correctly because the check uses "is not None", not truthiness.
+  checklist:
+    - 'The prompt rule still compares i + 1 with prompt_len'
+    - 'The pad check uses `pad_id is not None`, so a pad id of 0 still works'
+    - 'The output length is unchanged and the default behavior is identical'
+    - 'cross_entropy was not modified, and padding does not change the masked loss'
+    - 'Docstring and tests cover the new parameter'

@@ -129,6 +129,16 @@ def test_batch_never_reads_past_the_end():
         assert all(y[-1] == 9 for y in ys), "with block_size 9 on 10 tokens, the only window is the whole sequence"
 
 
+def test_every_window_is_full_length():
+    # An off-by-one start (randrange(len(data) - block_size + 1)) can pick the last
+    # possible start, whose target window is one token short; check every window.
+    data = list(range(10))
+    for seed in range(50):
+        xs, ys = lab.get_batch(data, block_size=9, batch_size=4, rng=random.Random(seed))
+        assert all(len(x) == 9 for x in xs), "every input window must have block_size tokens"
+        assert all(len(y) == 9 for y in ys), "every target window must have block_size tokens"
+
+
 def test_batch_rejects_data_too_short():
     with pytest.raises(ValueError):
         lab.get_batch(list(range(8)), block_size=8, batch_size=1, rng=random.Random(0))

@@ -1,0 +1,159 @@
+id: s6-w4-threshold
+summary: |
+  A safety classifier gives each message a score from 0 to 1, and you block messages at or above some threshold. Where you set it is a trade: a low threshold catches more violations (higher **recall**) but also blocks more innocent users (higher **false positive rate**). This program measures both rates at any threshold on a labeled sample, then picks the threshold that catches the most violations while keeping false positives under a limit you choose.
+
+  The design separates measuring (`rates_at`) from deciding (`pick_threshold`). That makes the decision rule easy to read and change, and it means you can re-run the same choice with new scores whenever the provider updates its classifier.
+code: |
+  # A classifier returns a score from 0 to 1 for "this message violates policy".
+  # You labeled 16 real messages: label 1 = should block, 0 = should allow.
+  SCORES = [0.97, 0.91, 0.88, 0.83, 0.74, 0.62, 0.41, 0.35,
+            0.66, 0.58, 0.33, 0.21, 0.12, 0.09, 0.05, 0.02]
+  LABELS = [1,    1,    1,    1,    1,    1,    1,    1,
+            0,    0,    0,    0,    0,    0,    0,    0]
+
+  def rates_at(threshold, scores, labels):
+      """Block when score >= threshold. Return (recall, false_positive_rate)."""
+      pos = sum(labels)
+      neg = len(labels) - pos
+      tp = sum(1 for s, y in zip(scores, labels) if y == 1 and s >= threshold)
+      fp = sum(1 for s, y in zip(scores, labels) if y == 0 and s >= threshold)
+      recall = tp / pos if pos else 0.0
+      fpr = fp / neg if neg else 0.0
+      return (recall, fpr)
+
+  def pick_threshold(scores, labels, max_fpr):
+      """Highest-recall threshold with false_positive_rate <= max_fpr.
+      Ties go to the HIGHER threshold. None if nothing qualifies."""
+      best = None  # (threshold, recall)
+      for t in sorted(set(scores), reverse=True):  # strictest first
+          recall, fpr = rates_at(t, scores, labels)
+          if fpr > max_fpr:
+              continue
+          if best is None or recall > best[1]:  # strictly better only, so ties keep the higher t
+              best = (t, recall)
+      return None if best is None else best[0]
+
+  for t in (0.9, 0.7, 0.5, 0.3):
+      print(t, rates_at(t, SCORES, LABELS))
+  print("chosen for FPR <= 0.125:", pick_threshold(SCORES, LABELS, 0.125))
+notes:
+- lines:
+  - 1
+  - 6
+  title: A small labeled sample
+  text: |
+    Two **parallel lists**: `SCORES[i]` is the classifier's score for message `i`, and `LABELS[i]` is what a human decided it should be (1 block, 0 allow). Lining them up in columns, as here, makes it easy to check by eye.
+
+    Note the overlap: a benign message scored 0.66, higher than two real violations (0.41 and 0.35). No threshold separates the groups perfectly, which is normal and is why you need to pick a trade-off.
+
+    Sixteen labels is enough to learn the method, not to set a production threshold; with eight negatives, each false positive moves the rate by 12.5 points.
+- lines:
+  - 8
+  - 13
+  title: Count what a threshold blocks
+  text: |
+    `pos = sum(labels)` counts positives (summing 1s and 0s counts the 1s), and `neg` is the rest.
+
+    **`zip(scores, labels)`** walks the two lists together, giving pairs like `(0.97, 1)`. The generator expressions then count **true positives** (`tp`: violations that would be blocked) and **false positives** (`fp`: innocent messages that would be blocked).
+
+    `s >= threshold` matches the docstring's "block when score >= threshold". Whether it's `>=` or `>` decides what happens to a message scoring exactly the threshold, and since thresholds are drawn from the scores themselves, that case happens every time.
+- lines:
+  - 14
+  - 16
+  title: Turn counts into rates, safely
+  text: |
+    Recall is `tp / pos`; false positive rate is `fp / neg`. Each uses a **conditional expression** to return 0.0 when there are no examples of that class, instead of crashing with `ZeroDivisionError`.
+
+    At 0.5: six of eight violations blocked (recall 0.75) and two of eight benign messages blocked, 0.66 and 0.58 (FPR 0.25).
+- lines:
+  - 18
+  - 25
+  title: Try every threshold, strictest first
+  text: |
+    The only thresholds worth testing are the scores themselves: between two adjacent scores, nothing changes. `set(scores)` removes duplicates, and `sorted(..., reverse=True)` goes from strictest (0.97) to loosest (0.02).
+
+    `best` starts as `None` and will hold a **tuple** `(threshold, recall)`. Any threshold whose FPR is over the limit is skipped with `continue`.
+- lines:
+  - 26
+  - 28
+  title: Keep strictly better, which settles ties
+  text: |
+    `recall > best[1]` replaces the current best only when recall strictly improves. Because thresholds arrive from highest to lowest, the first threshold to reach a given recall is the highest one, and later ties don't replace it. That's the docstring's rule "break recall ties by the HIGHER threshold", implemented by loop order plus `>`, with no extra code.
+
+    Why prefer the higher threshold on a tie? Same recall, fewer blocks: a lower threshold could only add false positives.
+
+    Finally a **conditional expression** returns `None` when no threshold qualified, or the threshold itself. With `max_fpr = 0.125` the answer is 0.62: six of eight violations with one false positive.
+- lines:
+  - 30
+  - 32
+  title: Print the trade-off curve
+  text: |
+    The loop prints `(recall, fpr)` at four thresholds, a rough picture of the trade-off: from `(0.25, 0.0)` at 0.9 to `(1.0, 0.375)` at 0.3. Then it prints the choice for a one-in-eight false positive limit.
+
+    This is the evidence to bring to a product decision: "blocking every attack here costs us two wrongly blocked users in eight" is a sentence a PM can act on.
+review:
+- id: wt-thr-tie
+  type: code-reading
+  prompt: An AI assistant changes the comparison as shown. What does `pick_threshold([0.9, 0.5, 0.4], [1, 0, 0], 0.5)` return now?
+  code: |
+    if best is None or recall >= best[1]:
+        best = (t, recall)
+  options:
+  - id: a
+    text: 0.9, as before
+    rationale: With `>=`, a later threshold with equal recall replaces the earlier one.
+  - id: b
+    text: 0.5, which blocks a benign message for no gain in recall
+    correct: true
+    rationale: Right. 0.9 and 0.5 both have recall 1.0. With `>=`, 0.5 (seen later) wins, adding a false positive that catches nothing more.
+  - id: c
+    text: '0.4'
+    rationale: At 0.4 the FPR is 1.0, over the 0.5 limit, so it's skipped.
+  explanation: One character changes which users get blocked. When a docstring states a tie-break rule, look for the line that implements it and test the tie.
+- id: wt-thr-rerun
+  type: scenario
+  prompt: Your provider ships a new version of the safety classifier. What should you do with the threshold you chose?
+  options:
+  - id: a
+    text: Keep it; 0.62 is a property of your policy, not the model
+    rationale: The number only means something relative to how a particular model scores. A new model can shift every score.
+  - id: b
+    text: Re-score your labeled set with the new classifier and re-run `pick_threshold`
+    correct: true
+    rationale: Right. The labels are yours and stay valid; the scores belong to the model and must be regenerated.
+  - id: c
+    text: Lower it a little to be safe
+    rationale: Guessing in either direction trades recall and false positives blindly. Measure instead.
+  explanation: Thresholds are model-specific. Keeping a labeled set and this script around turns every model upgrade into a five-minute check instead of a guess.
+- id: wt-thr-predict
+  type: predict-output
+  prompt: With the original code, what does `pick_threshold(SCORES, LABELS, 0.0)` return, and what recall does it give?
+  options:
+  - id: a
+    text: 0.74, recall 0.625
+    correct: true
+    rationale: Right. The highest benign score is 0.66, so any threshold above it has no false positives; 0.74 is the loosest such score and blocks five of eight violations.
+  - id: b
+    text: 0.62, recall 0.75
+    rationale: At 0.62 the benign message at 0.66 is blocked, so FPR is 0.125, over the 0.0 limit.
+  - id: c
+    text: None, because no threshold has zero false positives
+    rationale: Every threshold above 0.66 has zero false positives.
+  explanation: With zero tolerance for false positives, three of eight violations get through. Whether that's acceptable is a product call; the code makes the cost visible.
+direct:
+  task: |
+    Your trust and safety lead prefers to set a recall target ("catch at least 90 percent of violations") and accept whatever false positive rate that costs. Add the mirror-image function.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function pick_threshold_for_recall(scores, labels, min_recall). Among the distinct score values used as thresholds, return the one with the LOWEST false positive rate whose recall is >= min_recall. Break FPR ties by the HIGHER threshold. Return None if no threshold reaches min_recall.
+
+    Reuse rates_at unchanged. Do not change rates_at or pick_threshold.
+
+    Add asserts for: min_recall=1.0 on SCORES/LABELS returns 0.35, min_recall=0.75 returns 0.62, a tie on FPR where the higher threshold wins, and a min_recall above 1.0 returns None.
+  checklist:
+  - '`rates_at` is reused and unchanged, including the `>=` comparison'
+  - The tie-break goes to the higher threshold and a test proves it
+  - Thresholds are drawn from the distinct scores, as in `pick_threshold`
+  - Unreachable targets return `None` rather than raising
+  - '`pick_threshold` and its asserts are untouched'

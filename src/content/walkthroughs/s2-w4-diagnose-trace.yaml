@@ -1,0 +1,177 @@
+id: s2-w4-diagnose-trace
+summary: |
+  When a RAG system gives a bad answer, the fix depends on **where** it went wrong: the right passage might not exist, might exist but never be retrieved, might be retrieved but ranked too low, might be selected but dropped before the prompt, or might reach the model and still be misused. This program reads a logged trace of one question and returns exactly one of those labels.
+
+  It is a single function built as an ordered list of rules, where the first rule that matches wins. The order follows the pipeline itself, from content to retrieval to ranking to context to the model, so the label always names the **earliest** stage that failed. That's what makes the labels countable and actionable: a dashboard of these labels tells you which part of the system to work on next.
+code: |
+  OUTDATED = {"faq-2023"}   # archived passages that should never be cited
+
+
+  def diagnose(trace):
+      """Return one label for a logged question.
+
+      trace keys:
+        gold            list of passage ids that answer the question ([] if the corpus can't answer it)
+        candidates      ranked list of passage ids returned by retrieval (best first)
+        k               how many top candidates were selected for the prompt
+        context         passage ids that actually reached the prompt
+        cited           passage ids the answer cited
+        correct         True if the answer was judged correct
+        abstained       True if the system said it didn't know
+
+      Rules, first match wins:
+        "ok"                if correct, or if gold is empty and the system abstained
+        "missing content"   gold is empty (and it did not abstain)
+        "outdated source"   any cited id is in OUTDATED
+        "retrieval miss"    no gold id is in candidates
+        "ranking miss"      gold ids are in candidates, but none is in the top k
+        "context overflow"  a gold id is in the top k but no gold id reached context
+        "synthesis error"   otherwise (a gold passage was in the context)
+      """
+      gold = set(trace["gold"])
+      if trace["correct"] or (not gold and trace["abstained"]):
+          return "ok"
+      if not gold:
+          return "missing content"
+      if any(c in OUTDATED for c in trace["cited"]):
+          return "outdated source"
+      if not gold & set(trace["candidates"]):
+          return "retrieval miss"
+      top_k = set(trace["candidates"][: trace["k"]])
+      if not gold & top_k:
+          return "ranking miss"
+      if not gold & set(trace["context"]):
+          return "context overflow"
+      return "synthesis error"
+
+
+  TRACES = [
+      dict(gold=["meal-1"], candidates=["meal-1", "hotel-2"], k=5, context=["meal-1", "hotel-2"],
+           cited=["meal-1"], correct=True, abstained=False),
+      dict(gold=[], candidates=["meal-1"], k=5, context=["meal-1"], cited=[], correct=False, abstained=True),
+      dict(gold=[], candidates=["meal-1"], k=5, context=["meal-1"], cited=["meal-1"], correct=False, abstained=False),
+      dict(gold=["flight-1"], candidates=["faq-2023", "flight-1"], k=5, context=["faq-2023", "flight-1"],
+           cited=["faq-2023"], correct=False, abstained=False),
+      dict(gold=["mileage-1"], candidates=["meal-1", "hotel-2"], k=5, context=["meal-1", "hotel-2"],
+           cited=["meal-1"], correct=False, abstained=False),
+      dict(gold=["receipts-1"], candidates=["a", "b", "c", "receipts-1"], k=3, context=["a", "b", "c"],
+           cited=["a"], correct=False, abstained=False),
+      dict(gold=["receipts-1"], candidates=["receipts-1", "a"], k=3, context=["a"],
+           cited=["a"], correct=False, abstained=False),
+      dict(gold=["hotel-2"], candidates=["hotel-2"], k=3, context=["hotel-2"],
+           cited=["hotel-2"], correct=False, abstained=False),
+      dict(gold=["hotel-2"], candidates=["hotel-2"], k=3, context=["hotel-2"],
+           cited=[], correct=False, abstained=True),
+  ]
+
+  for t in TRACES:
+      print(diagnose(t))
+notes:
+  - lines: [1, 1]
+    title: A set of known-bad sources
+    text: |
+      `OUTDATED` is a **set** literal (curly braces with values, no colons). Checking `c in OUTDATED` on a set is fast no matter how many ids it holds. In a real system this would come from document metadata, such as an `archived` flag or an effective date, not a hard-coded list.
+  - lines: [4, 24]
+    title: The contract is the whole design
+    text: |
+      The docstring lists every field the trace must contain and every rule, in order. Read it before the code: the code is a direct translation, one `if` per rule.
+
+      Notice what the trace needs: **gold** passage ids (which passages actually answer the question, labeled by a person), the full ranked **candidates**, the cutoff **k**, and the final **context**. None of these can be reconstructed after the fact. If your system doesn't log them, you can't diagnose failures, only count them.
+  - lines: [25, 27]
+    title: Successes first, including correct abstentions
+    text: |
+      `set(trace["gold"])` converts the list to a set for the intersections below. An empty set counts as false, so `not gold` means "the corpus has no answer".
+
+      The first rule has two ways to be "ok": the answer was correct, or the question was unanswerable and the system said it didn't know. The parentheses group the second condition so `and` applies only to it. Abstaining on an unanswerable question is the right behavior, and scoring it as a failure would push you toward a system that makes things up.
+  - lines: [28, 31]
+    title: Content problems before retrieval problems
+    text: |
+      If there's no gold passage and the system didn't abstain, it answered from nothing: "missing content". The fix is to add the document, or to make the system abstain more readily.
+
+      `any(c in OUTDATED for c in trace["cited"])` uses a **generator expression** to check whether any citation is an archived passage. This rule comes before the retrieval rules because an outdated citation is the specific reason for the wrong answer, even if the right passage was also retrieved (as in trace 3, which retrieved `flight-1` but cited the 2023 FAQ).
+  - lines: [32, 36]
+    title: Retrieval miss versus ranking miss
+    text: |
+      `gold & set(trace["candidates"])` is the set **intersection**: gold ids that retrieval returned at all. Operator precedence matters here. `not` binds more loosely than `&`, so `not gold & x` means `not (gold & x)`: "no gold id among the candidates".
+
+      `trace["candidates"][: trace["k"]]` is a **slice** with a variable end: the top k. A gold passage at rank 4 with k = 3 was found but cut, which is a "ranking miss". Separating the two matters because the fixes differ: a retrieval miss calls for better embeddings, hybrid search, or chunking, while a ranking miss calls for a reranker or a larger k.
+  - lines: [37, 39]
+    title: Lost in assembly, or misused by the model
+    text: |
+      If a gold passage made the top k but none reached `context`, something between selection and the prompt dropped it, typically a token budget or a truncation step: "context overflow".
+
+      If all the earlier checks pass, a gold passage was in the prompt and the answer was still wrong or the system still abstained: "synthesis error". That last case includes **false abstentions** (trace 8), which cost user trust just as wrong answers do. Only here is it fair to blame the model or the prompt.
+  - lines: [42, 59]
+    title: One trace per label
+    text: |
+      `dict(gold=[...], ...)` builds a dictionary using **keyword arguments**, an alternative to the `{"gold": ...}` literal that saves quoting every key. The nine traces, numbered from 0 as the tests and these notes number them, cover every label, including both kinds of "ok" and both kinds of synthesis error. A test set that exercises every branch is what gives you confidence the rule order is right.
+  - lines: [61, 62]
+    title: Label every trace
+    text: |
+      Expect `ok, ok, missing content, outdated source, retrieval miss, ranking miss, context overflow, synthesis error, synthesis error`. Over real traffic you'd count these labels, and the biggest bucket tells you where the next week of work should go.
+review:
+  - id: wt-diag-any-abstention
+    type: code-reading
+    prompt: An AI assistant "simplifies" the first rule, as below. Which trace's label changes?
+    code: |
+      if trace["correct"] or trace["abstained"]:
+          return "ok"
+    options:
+      - id: a
+        text: None; abstaining is always safe
+        rationale: Abstaining is only right when the corpus can't answer. One trace abstained with the answer in its context.
+      - id: b
+        text: Trace 8, the false abstention, becomes "ok" instead of "synthesis error"
+        correct: true
+        rationale: Right. The system had hotel-2 in its context and still said it didn't know. Calling that "ok" hides a real failure and rewards a system that abstains too often.
+      - id: c
+        text: Trace 1 (the correct abstention) becomes "missing content"
+        rationale: Trace 1 still abstained, so the simplified rule still returns "ok" for it.
+    explanation: A metric that counts every abstention as success can be maximized by never answering. Keep the condition that ties a good abstention to an unanswerable question.
+  - id: wt-diag-precedence
+    type: mcq
+    prompt: How does Python read `if not gold & top_k:`?
+    options:
+      - id: a
+        text: "`(not gold) & top_k`"
+        rationale: "`&` binds more tightly than `not`, so the intersection happens first. (Written this way it would also raise a TypeError, since a bool can't be intersected with a set.)"
+      - id: b
+        text: "`not (gold & top_k)`, meaning no gold id is in the top k"
+        correct: true
+        rationale: Right. The intersection is computed first, and an empty result counts as false.
+      - id: c
+        text: "`gold not in top_k`, meaning the set `gold` itself isn't an element of `top_k`"
+        rationale: That would check whether the whole set is one element, which is never what you want here.
+    explanation: When an expression mixes `not` with operators, a reviewer has to know the precedence or add parentheses. Asking an AI to add the parentheses is a cheap readability win that doesn't change behavior.
+  - id: wt-diag-dashboard
+    type: scenario
+    prompt: After a week of traffic, 45% of failures are labeled "ranking miss". Which change is most likely to help?
+    options:
+      - id: a
+        text: Add more documents to the corpus
+        rationale: That addresses "missing content". Here the gold passages were already found.
+      - id: b
+        text: Add a reranker or raise k, then re-measure with the same labeled traces
+        correct: true
+        rationale: Right. The right passages were retrieved but ranked below the cutoff. Improving the ordering, or letting more candidates through, targets exactly that stage. Re-measuring checks that it worked.
+      - id: c
+        text: Rewrite the answer prompt to be more careful
+        rationale: The model never saw the gold passage in these traces, so prompt changes can't help.
+    explanation: Labels by pipeline stage turn "the bot is bad" into a specific engineering task. Always re-run the diagnosis after the fix to confirm the bucket shrank and no other bucket grew.
+direct:
+  task: |
+    You notice answers citing passages that never reached the prompt (the model invented a plausible id). Add a label for that.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a new rule to diagnose, "citation not in context": any cited id is not in the trace's context. Place it after "outdated source" and before "retrieval miss", and add it to the docstring's rule list in that position.
+
+    Do not change any other rule, their order, or OUTDATED. All nine existing TRACES must keep their current labels.
+
+    Add one new trace that cites "meal-9" while its context is ["meal-1"] (with gold ["meal-1"], candidates ["meal-1"], k 3, correct False, abstained False), and assert it gets "citation not in context". Also assert that a correct answer citing an id outside the context is still "ok", since the first rule wins.
+  checklist:
+    - The new rule is in the stated position, in both the code and the docstring
+    - All nine existing traces keep their labels
+    - Correct answers still return "ok" first, whatever they cite
+    - The check uses the context, not the candidates
+    - New asserts cover the new label and the precedence of "ok"

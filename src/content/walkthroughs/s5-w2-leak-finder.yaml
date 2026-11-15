@@ -1,0 +1,182 @@
+id: s5-w2-leak-finder
+summary: |
+  This program looks for **leaks** between a training set and a test set: test examples that are so close to training examples that a good test score would not mean the model generalizes. It catches two kinds. **Same group**: two records from the same account (or thread, or document), which a random split will often separate. **Near-duplicate**: two texts that share most of their wording, measured by comparing sets of overlapping three-word runs (shingles) with Jaccard similarity.
+
+  The code is three small functions that build on each other: `shingles` normalizes text into a set, `jaccard` compares two sets, and `find_leaks` applies both checks to every train and test pair. Each piece is simple enough to check by hand, which matters, because the threshold is a judgment call you'll want to tune by reading real pairs.
+code: |
+  import re
+
+
+  def shingles(text, k=3):
+      """Lowercase, replace anything that is not a letter, digit, whitespace, or apostrophe with a space,
+      split into words, and return the set of k-word shingles (joined with single spaces).
+      A text with fewer than k words returns one shingle of all its words; no words returns an empty set."""
+      words = re.sub(r"[^\w\s']", " ", text.lower()).split()
+      if not words:
+          return set()
+      if len(words) < k:
+          return {" ".join(words)}
+      return {" ".join(words[i:i + k]) for i in range(len(words) - k + 1)}
+
+
+  def jaccard(a, b):
+      """Size of the intersection over size of the union; 0.0 if both sets are empty."""
+      if not a and not b:
+          return 0.0
+      return len(a & b) / len(a | b)
+
+
+  def find_leaks(train, test, threshold=0.4, k=3):
+      """Return a sorted list of (train_id, test_id, reason) for every train/test pair that leaks.
+      reason is "same group" if the records share a "group", otherwise "near-duplicate" if the
+      Jaccard similarity of their shingles is >= threshold. A pair is reported at most once."""
+      leaks = []
+      for a in train:
+          for b in test:
+              if a["group"] == b["group"]:
+                  leaks.append((a["id"], b["id"], "same group"))
+              elif jaccard(shingles(a["text"], k), shingles(b["text"], k)) >= threshold:
+                  leaks.append((a["id"], b["id"], "near-duplicate"))
+      return sorted(leaks)
+
+
+  TRAIN = [
+      {"id": "a1", "group": "acct-17", "text": "Hi Priya, your invoice 4471 is overdue. Please pay by Friday to avoid a late fee."},
+      {"id": "a2", "group": "acct-22", "text": "Sam: I'll update the roadmap slide once the final numbers are in."},
+      {"id": "a3", "group": "acct-31", "text": "Reminder: benefits enrollment closes Friday. Make your selections in the portal."},
+  ]
+  TEST = [
+      {"id": "b1", "group": "acct-40", "text": "Hi Omar, your invoice 5120 is overdue. Please pay by Friday to avoid a late fee."},
+      {"id": "b2", "group": "acct-22", "text": "Sam: the roadmap slide is done, numbers attached."},
+      {"id": "b3", "group": "acct-55", "text": "Ana: I'll call the vendor about the delayed shipment tomorrow."},
+      {"id": "b4", "group": "acct-61", "text": "REMINDER: Benefits enrollment closes Friday!  Make your selections in the portal."},
+  ]
+
+  for a in TRAIN:
+      for b in TEST:
+          j = jaccard(shingles(a["text"]), shingles(b["text"]))
+          if j:
+              print(a["id"], b["id"], round(j, 2))
+  print(find_leaks(TRAIN, TEST))
+notes:
+  - lines: [1, 1]
+    title: 'The regular expression module'
+    text: |
+      `re` is Python's built-in module for **regular expressions**, a compact pattern language for matching text. It is used once, to strip punctuation. Nothing else is needed: sets and loops do the rest.
+  - lines: [4, 8]
+    title: 'Normalize, then split into words'
+    text: |
+      `text.lower()` lowercases everything. `re.sub(r"[^\w\s']", " ", ...)` replaces every character that is **not** a word character (`\w`: letters, digits, underscore), whitespace (`\s`), or an apostrophe with a space. The `^` inside square brackets means "not any of these". The `r` before the quote makes it a **raw string**, so the backslashes reach the regex engine unchanged.
+
+      `.split()` with no argument splits on any run of whitespace and drops empty pieces, so double spaces vanish.
+
+      Keeping the apostrophe is a deliberate choice: "I'll" stays one word instead of becoming "i" and "ll". Worked value: `"REMINDER: Benefits ... Friday!  Make"` and `"Reminder: benefits ... Friday. Make"` both become the same word list, which is why that pair scores exactly 1.0.
+  - lines: [9, 13]
+    title: 'Shingles, with a set comprehension'
+    text: |
+      Two edge cases come first: no words gives an empty **set**, and fewer than `k` words gives a one-item set holding all of them, so short texts can still be compared.
+
+      The main line is a **set comprehension** (curly braces instead of square brackets), which builds a set and so drops repeats automatically. `words[i:i + k]` is a **slice** of `k` consecutive words, and `range(len(words) - k + 1)` gives every valid start position.
+
+      Worked value: `"A b, C d!"` becomes `["a", "b", "c", "d"]`, and the shingles are `{"a b c", "b c d"}`: two start positions, because 4 − 3 + 1 = 2.
+  - lines: [16, 20]
+    title: 'Jaccard similarity'
+    text: |
+      `a & b` is the **intersection** (shingles in both sets) and `a | b` is the **union** (shingles in either). Jaccard similarity is the size of one over the other: 1.0 means identical sets, 0.0 means nothing in common.
+
+      Worked value: `{1, 2, 3}` and `{2, 3, 4}` share 2 items out of 4 distinct ones, so 0.5.
+
+      The guard handles two empty sets, where the union is empty and dividing by its size would raise `ZeroDivisionError`. Returning 0.0 ("no evidence of similarity") is the cautious choice; an AI version that returns 1.0 here would flag every pair of empty texts as duplicates.
+  - lines: [23, 34]
+    title: 'find_leaks, every pair, reported once'
+    text: |
+      Two nested `for` loops visit every combination of a training record and a test record. For each pair, the group check runs first, and the similarity check is an `elif`, so a pair that is both same-group and similar is reported once, as "same group", exactly as the docstring promises.
+
+      Each finding is a **tuple** `(train_id, test_id, reason)`. `sorted(leaks)` sorts tuples element by element (first by train id, then test id), which makes the output deterministic and easy to compare in a test.
+
+      Two scale notes for review. Comparing every pair grows with train size times test size, which is fine for thousands of records and hopeless for millions (that is what MinHash and LSH are for). And this version recomputes each text's shingles for every pair; precomputing them once per record is the obvious first optimization.
+  - lines: [37, 47]
+    title: 'Data chosen to show three different leaks'
+    text: |
+      Each record is a dictionary with an `id`, a `group` (the account it came from), and `text`. The test set contains one example of each leak and one clean record:
+
+      - `a1`/`b1`: the same invoice template with different names and numbers.
+      - `a2`/`b2`: different words, same account (`acct-22`).
+      - `a3`/`b4`: the same message with different capitalization, punctuation, and spacing.
+      - `b3`: genuinely new.
+  - lines: [49, 54]
+    title: 'Print the similarities, then the leaks'
+    text: |
+      The loop prints every pair with a nonzero similarity (`if j:` is false for 0.0), so you can see the scores the threshold acts on: about 0.47 for the invoice template, 0.07 for Sam's two messages, and 1.0 for the reminder.
+
+      Press **Run this code**. Then call `find_leaks(TRAIN, TEST, threshold=0.6)` and notice the template pair disappears. Neither check alone finds all three leaks, which is the point of the exercise.
+review:
+  - id: wt-leak-two-ifs
+    type: code-reading
+    prompt: 'An AI assistant rewrites the inner loop of `find_leaks` with two independent `if` statements, as below. Which statement is true?'
+    code: |
+      for a in train:
+          for b in test:
+              if a["group"] == b["group"]:
+                  leaks.append((a["id"], b["id"], "same group"))
+              if jaccard(shingles(a["text"], k), shingles(b["text"], k)) >= threshold:
+                  leaks.append((a["id"], b["id"], "near-duplicate"))
+    options:
+      - id: a
+        text: 'It crashes on records that share a group'
+        rationale: 'Nothing here can raise; both checks run safely on every pair.'
+      - id: b
+        text: 'It gives the same output on this data, but a pair that is both same-group and similar would now be listed twice'
+        correct: true
+        rationale: 'Right. No pair in the sample data is both, so the tests still pass, but the docstring''s "reported at most once" is broken.'
+      - id: c
+        text: 'It no longer finds the a2/b2 leak'
+        rationale: 'The group check is unchanged, so a2/b2 is still found.'
+    explanation: 'Tests only exercise the cases someone thought of. When a change passes the tests, also check it against the docstring''s promises; here, a pair that is the same thread and nearly identical text is common in real data.'
+  - id: wt-leak-no-normalize
+    type: predict-output
+    prompt: 'Someone simplifies `shingles` to use `text.lower().split()` and drops the `re.sub` step. The reminder pair (`a3`, `b4`) now has similarity 0.5 instead of 1.0, because `"friday."` and `"friday!"` are different words. What happens?'
+    options:
+      - id: a
+        text: '`find_leaks` still reports `a3`/`b4`, but the test expecting similarity 1.0 fails'
+        correct: true
+        rationale: 'Right. 0.5 is still above the 0.4 threshold, so the leak is still found here. The normalization test catches the regression anyway.'
+      - id: b
+        text: '`find_leaks` no longer reports `a3`/`b4`, and every test passes'
+        rationale: '0.5 is above the threshold of 0.4, so the pair is still reported.'
+      - id: c
+        text: 'Nothing changes, because lowercasing already handles the differences'
+        rationale: 'Lowercasing fixes "REMINDER", but not the punctuation glued to words.'
+    explanation: 'Without normalization, the same message scores lower and lower as punctuation differences accumulate, and eventually slips under the threshold. A test pinned to a known exact duplicate is what keeps this honest.'
+  - id: wt-leak-split
+    type: scenario
+    prompt: 'Your team splits 5,000 support tickets randomly into train and test, and this check finds many same-group leaks. What is the right fix?'
+    options:
+      - id: a
+        text: 'Delete the leaking test records and keep the random split'
+        rationale: 'That shrinks and skews the test set, and new leaks reappear the next time you re-split.'
+      - id: b
+        text: 'Split by group, assigning each account''s tickets entirely to train or to test, then run the near-duplicate check as well'
+        correct: true
+        rationale: 'Right. Group-aware splitting removes same-group leaks by construction; the text check still catches templates and re-posts across accounts.'
+      - id: c
+        text: 'Raise the Jaccard threshold so fewer pairs are reported'
+        rationale: 'The threshold only affects the near-duplicate check. Same-group leaks don''t depend on it.'
+    explanation: 'If production will see new customers, the test set should contain customers the model never saw. Choosing the group by asking what production looks like is the key judgment, and this checker is how you verify the split did what you intended.'
+direct:
+  task: |
+    Before checking train against test, you want to catch duplicates inside a single set (the same ticket exported twice). Add a function `find_internal_duplicates(records, threshold=0.9, k=3)` that returns a sorted list of `(id_a, id_b)` pairs within one list whose shingle similarity is at least the threshold, each pair once with `id_a` coming earlier in the list.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a new function find_internal_duplicates(records, threshold=0.9, k=3) after find_leaks. It compares every pair of records within one list, each pair only once (use index i < j so a record is never compared with itself), and returns a sorted list of (id_a, id_b) tuples where id_a is the earlier record and the Jaccard similarity of their shingles is >= threshold. Compute each record's shingles once, before the pair loop.
+
+    Reuse shingles and jaccard; do not change them or find_leaks. Give the new function a docstring in the same style as the others.
+
+    Add test asserts: a list containing TRAIN[2] and TEST[3] (with their own ids) returns that one pair; TRAIN alone returns []; and a record is never paired with itself.
+  checklist:
+    - 'The pair loop uses i < j, so there are no self-pairs and no reversed duplicates'
+    - 'Shingles are computed once per record, not once per pair'
+    - 'shingles, jaccard, and find_leaks are untouched'
+    - 'The output is sorted and uses the ids, not the texts'
+    - 'New tests include the all-clear case and the self-pair case'

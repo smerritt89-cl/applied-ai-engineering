@@ -1,0 +1,202 @@
+id: s2-w2-page-cleaner
+summary: |
+  This program cleans the text a PDF parser returned for each page of a report, before that text gets chunked and embedded. It finds **boilerplate** (headers and footers that repeat on most pages), removes it along with page-number lines, and then flags pages that need a human or an OCR pass: pages with almost no text (likely a scan) and pages full of the Unicode replacement character (a sign of an encoding problem).
+
+  It is three small functions, each with one job: detect, clean, flag. Detection is driven by evidence across pages rather than a hard-coded header string, so the same code works on the next report with a different header. Flagging is kept separate from cleaning because a flag is a question for a person, not a change to the data.
+code: |
+  import re
+  from collections import Counter
+
+  PAGE_NUMBER = re.compile(r"^(page\s+)?\d+(\s+of\s+\d+)?$", re.IGNORECASE)
+
+
+  def find_boilerplate(pages, min_share=0.6):
+      """Return the set of stripped, non-empty lines that appear on at least
+      min_share of the pages (counting a line at most once per page).
+
+      With fewer than 3 pages there is not enough evidence: return an empty set.
+      """
+      if len(pages) < 3:
+          return set()
+      counts = Counter()
+      for page in pages:
+          lines_on_page = {line.strip() for line in page.splitlines() if line.strip()}
+          counts.update(lines_on_page)
+      return {line for line, n in counts.items() if n / len(pages) >= min_share}
+
+
+  def clean_pages(pages, min_share=0.6):
+      """Remove boilerplate lines and whole-line page numbers from each page.
+
+      Keep the other lines in order, without trailing spaces, joined by newlines,
+      and strip the result. Return one cleaned string per page.
+      """
+      boilerplate = find_boilerplate(pages, min_share)
+      cleaned = []
+      for page in pages:
+          kept = []
+          for line in page.splitlines():
+              stripped = line.strip()
+              if stripped in boilerplate or PAGE_NUMBER.match(stripped):
+                  continue
+              kept.append(line.rstrip())
+          cleaned.append("\n".join(kept).strip())
+      return cleaned
+
+
+  def flag_pages(cleaned, min_chars=100, max_bad_share=0.05):
+      """Return (page_number, reason) pairs, numbering pages from 1:
+        "little or no text"  if the page has fewer than min_chars characters
+        "encoding problems"  otherwise, if more than max_bad_share of its characters are U+FFFD
+      """
+      flags = []
+      for page_number, page in enumerate(cleaned, start=1):
+          if len(page) < min_chars:
+              flags.append((page_number, "little or no text"))
+          elif page.count("\ufffd") / len(page) > max_bad_share:
+              flags.append((page_number, "encoding problems"))
+      return flags
+
+
+  HEADER = "Harbor & Pine | Q3 Operations Review"
+  FOOTER = "Internal use only"
+  BODY = [
+      "Store traffic rose 6 percent over the quarter, led by the coastal store. Rain-shell sales were strong in "
+      "September after an early storm, and boot sales held steady. Staffing was tight during the back-to-school weeks.",
+      "The warehouse shipped 41,200 orders. Label printing failed twice, once for 40 minutes, and the team switched "
+      "one carrier to manual labels. Damaged-in-transit claims fell after the packing change in July.",
+      "",
+      "Returns were 7.9 percent of sales. The largest category was used gear that failed in normal use \ufffd\ufffd "
+      "\ufffd\ufffd\ufffd\ufffd \ufffd\ufffd\ufffd\ufffd\ufffd\ufffd \ufffd\ufffd\ufffd\ufffd\ufffd\ufffd \ufffd\ufffd\ufffd\ufffd mostly tent poles and zippers, which the supplier has agreed to credit.",
+  ]
+  PAGES = [f"{HEADER}\n{body}\n{FOOTER}\nPage {i} of 4" for i, body in enumerate(BODY, start=1)]
+
+  cleaned = clean_pages(PAGES)
+  for i, page in enumerate(cleaned, start=1):
+      print(f"--- page {i} ({len(page)} chars)")
+      print(page)
+  print(flag_pages(cleaned))
+notes:
+  - lines: [1, 4]
+    title: Imports and a compiled pattern
+    text: |
+      `re` is Python's **regular expression** module, a mini-language for matching text patterns. `Counter` from `collections` is a dictionary that counts things.
+
+      `re.compile` turns the pattern into a reusable object once, at import time, instead of reparsing it for every line. Read the pattern piece by piece:
+
+      - `^` and `$` anchor it to the start and end of the line, so the **whole** line must match.
+      - `(page\s+)?` is an optional "page" followed by spaces.
+      - `\d+` is one or more digits.
+      - `(\s+of\s+\d+)?` is an optional " of 4".
+
+      So it matches `Page 3 of 4`, `7 of 9`, and `12`, but not `Pages 7 to 9 cover returns.` The `r"..."` prefix makes a **raw string**, so backslashes reach the regex engine untouched.
+  - lines: [7, 13]
+    title: Not enough evidence, no guess
+    text: |
+      The docstring states the rule, including the edge case. With one or two pages, "appears on most pages" can't distinguish a header from a sentence that happens to repeat, so the function returns an empty **set** (`set()`, since `{}` would be an empty dictionary).
+
+      Refusing to guess on thin evidence is a design choice worth looking for in AI-written cleaning code. The alternative, stripping lines from a two-page memo because they appear twice, deletes real content.
+  - lines: [14, 18]
+    title: Count each line once per page
+    text: |
+      `{line.strip() for line in page.splitlines() if line.strip()}` is a **set comprehension**: like a list comprehension in curly braces, it builds a set, so duplicates collapse. `splitlines()` breaks the page into lines, `strip()` trims spaces at both ends, and the `if` drops blank lines.
+
+      Using a set is what implements "at most once per page". `counts.update(...)` then adds 1 for each distinct line. If a footer appeared twice on one page, a list would count it twice and inflate its share.
+  - lines: [19, 19]
+    title: Keep lines above the threshold
+    text: |
+      `counts.items()` yields `(line, n)` pairs. A line is boilerplate if `n / len(pages)` reaches `min_share`. Worked values for the four-page report: the header and footer appear on 4 of 4 pages (1.0), so both qualify. `Page 1 of 4` appears on 1 of 4 (0.25), so it doesn't. That's why page numbers need the separate regex: each one is unique, so frequency can't catch them.
+  - lines: [22, 38]
+    title: Clean each page, keeping order
+    text: |
+      `clean_pages` computes the boilerplate set once, then walks every line of every page. `continue` skips to the next line, so a line is dropped if it is boilerplate **or** a whole-line page number. `PAGE_NUMBER.match` checks from the start of the string; with the `$` anchor, the whole line has to fit.
+
+      Kept lines get `rstrip()` (trailing spaces only, so indentation survives), and `"\n".join(kept)` glues them back together with newlines. The final `.strip()` removes leftover blank lines at the edges, which is why page 3 comes out as exactly `""`.
+
+      The function returns one string per input page, even an empty one. Keeping page positions intact matters: later steps cite page numbers, and dropping empty pages would shift every number after them.
+  - lines: [41, 52]
+    title: Flag pages for a human
+    text: |
+      `enumerate(cleaned, start=1)` numbers pages the way people do. The order of the two checks matters. A short page is flagged first, and only otherwise (`elif`) is the encoding share computed. That ordering also protects the division: an empty page has `len(page) == 0`, and dividing by it would crash.
+
+      `"\ufffd"` is the Unicode **replacement character**, what decoders insert when bytes can't be read. On page 4, 22 of its 194 characters are replacement characters, about 11%, well over the 5% threshold. Flags are returned, not acted on: a person decides whether to re-run OCR or fix the source.
+  - lines: [55, 66]
+    title: Four fake pages
+    text: |
+      The **f-string** in the comprehension stitches each page together: header, body, footer, and a page-number line. Page 3's body is empty, standing in for a scanned page with no text layer. Page 4's body carries a run of replacement characters in the middle of a sentence.
+
+      Building test data that contains each failure on purpose is the habit to copy. If your sample documents are all clean, your cleaning code is untested.
+  - lines: [68, 72]
+    title: Run it
+    text: |
+      The loop prints each cleaned page with its length, then the flags. Expect page 1 to be exactly its body text, page 3 to be empty, and the flags to be `[(3, 'little or no text'), (4, 'encoding problems')]`.
+
+      Notice that no header, footer, or "Page N of 4" survives, and that the body sentences containing numbers (6 percent, 41,200 orders) are untouched.
+review:
+  - id: wt-clean-unanchored
+    type: code-reading
+    prompt: An AI assistant "loosens" the page-number pattern so it also catches "p. 3" style lines, but drops the anchors and uses `search`, as below. What happens to `clean_pages(PAGES)`?
+    code: |
+      PAGE_NUMBER = re.compile(r"(p\.?|page)?\s*\d+(\s+of\s+\d+)?", re.IGNORECASE)
+      # ... and in clean_pages:
+      if stripped in boilerplate or PAGE_NUMBER.search(stripped):
+          continue
+    options:
+      - id: a
+        text: It behaves as before, and also removes "p. 3" lines
+        rationale: Without `^` and `$`, `search` matches any line that contains a digit anywhere.
+      - id: b
+        text: Pages 1, 2, and 4 lose their body text, because every body sentence contains a number
+        correct: true
+        rationale: Right. "6 percent", "41,200 orders", and "7.9 percent" all match somewhere in the line, so those lines are deleted. The cleaner now empties the report.
+      - id: c
+        text: It raises an error because `search` and `match` take different arguments
+        rationale: They take the same arguments. The difference is that `search` looks anywhere in the string.
+    explanation: Anchors are what make a pattern mean "the whole line is a page number". When you review regex changes, test them against real body text with numbers in it, not only against the lines you want removed. The exercise's "Pages 7 to 9 cover returns." check exists for exactly this.
+  - id: wt-clean-check-order
+    type: predict-output
+    prompt: An AI swaps the two checks in `flag_pages`, testing the encoding share first and the length second. What happens when you call `flag_pages(cleaned)` on the demo pages?
+    options:
+      - id: a
+        text: It returns the same two flags in the same order
+        rationale: It never gets that far. Page 3 is an empty string.
+      - id: b
+        text: It raises ZeroDivisionError on page 3
+        correct: true
+        rationale: Right. Computing the share means dividing by `len(page)`, which is 0 for the empty page. The original order checked length first, which made the division safe.
+      - id: c
+        text: It flags page 3 as "encoding problems"
+        rationale: It would need to compute the share to decide that, and that's the division that fails.
+    explanation: The order of `if` / `elif` branches often carries a hidden guarantee. When an AI reorders conditions "for readability", check whether an earlier branch was protecting a later one.
+  - id: wt-clean-real-content
+    type: scenario
+    prompt: You run the cleaner on a 40-page equipment manual. The line "Disconnect power before servicing." appears on 30 pages and is removed as boilerplate. What is the best response?
+    options:
+      - id: a
+        text: Nothing; any line on 60% of pages is boilerplate by definition
+        rationale: That's what the rule says, but here it deletes a safety warning a user might ask about.
+      - id: b
+        text: Log the detected boilerplate set per document and review it, and allow an exception list for lines that must be kept
+        correct: true
+        rationale: Right. The detector is a heuristic. Making its decisions visible lets a person catch the cases where repetition means "important", not "decoration".
+      - id: c
+        text: Raise min_share to 0.95 for every document
+        rationale: That might keep this line, but it also stops removing real headers that skip the cover page or appendix, and it is still a guess without review.
+    explanation: Every automatic cleaning step deletes something. A good pipeline records what it removed so you can audit it, which is the checks-and-balances habit applied to ingestion.
+direct:
+  task: |
+    Some exports duplicate pages (the same page appears twice after a merge). You want `flag_pages` to flag a page whose cleaned text is identical to an earlier non-empty page.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Extend flag_pages so that a page whose cleaned text is non-empty and exactly equal to an earlier page's cleaned text is flagged as (page_number, "duplicate of page N"), where N is the first page with that text.
+
+    Keep the existing checks and their order: "little or no text" first, then "encoding problems", then the duplicate check only if neither applied. A page gets at most one flag. Empty pages must never be reported as duplicates of each other.
+
+    Do not change find_boilerplate, clean_pages, or the thresholds. Update the docstring. Add asserts: flag_pages on the demo pages is unchanged; flag_pages(["x" * 150, "y" * 150, "x" * 150]) == [(3, "duplicate of page 1")]; two empty pages give two "little or no text" flags and no duplicate flag.
+  checklist:
+    - The existing two flags come out exactly as before on the demo data
+    - Empty or short pages are never called duplicates
+    - The page number in the reason is the first occurrence, not the previous one
+    - Each page gets at most one flag, in the documented order
+    - The docstring lists the new reason

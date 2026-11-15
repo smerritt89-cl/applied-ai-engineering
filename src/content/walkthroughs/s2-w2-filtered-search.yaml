@@ -1,0 +1,171 @@
+id: s2-w2-filtered-search
+summary: |
+  This program shows two jobs every vector store does that are easy to get subtly wrong: **permission filtering** (a user only sees chunks from documents their groups may read) and **re-indexing** (when a document changes, its old chunks must all go). It includes a deliberately buggy search for comparison, which ranks everything first and filters afterward.
+
+  The correct `search` filters first and ranks second, so a user always gets up to k results they're allowed to see, and hidden records never take up result slots. `reindex` replaces a document by its `doc_id` rather than chunk by chunk, so a new version with fewer chunks can't leave stale text behind. Both return new lists instead of changing the store in place, which makes them easy to test.
+code: |
+  import math
+
+
+  def cosine(a, b):
+      """Cosine similarity of two equal-length, non-zero vectors."""
+      dot = sum(x * y for x, y in zip(a, b))
+      return dot / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
+
+
+  def post_filter_search(store, query, k, user_groups):
+      """A common bug, for comparison: rank everything, take the top k, THEN filter."""
+      top = sorted(store, key=lambda r: cosine(query, r["vec"]), reverse=True)[:k]
+      return [r for r in top if set(r["groups"]) & set(user_groups)]
+
+
+  def search(store, query, k, user_groups):
+      """Return up to k records the user may see, best first.
+
+      A record is visible only if its groups share at least one group with user_groups.
+      Filter BEFORE ranking, so the user gets k results whenever k visible records exist,
+      and no hidden record ever influences the result.
+      """
+      allowed = set(user_groups)
+      visible = [r for r in store if allowed & set(r["groups"])]
+      ranked = sorted(visible, key=lambda r: cosine(query, r["vec"]), reverse=True)
+      return ranked[:k]
+
+
+  def reindex(store, doc_id, new_records):
+      """Return a new store in which every record of doc_id is replaced by new_records.
+
+      The new version of a document may have fewer chunks than the old one: no stale
+      chunk may survive. Records of other documents are untouched.
+      """
+      kept = [r for r in store if r["doc_id"] != doc_id]
+      return kept + list(new_records)
+
+
+  STORE = [
+      {"id": "pay:0", "doc_id": "pay", "groups": ["hr"], "vec": [0.9, 0.1, 0.0], "text": "Warehouse leads earn 25 to 31 dollars per hour."},
+      {"id": "pay:1", "doc_id": "pay", "groups": ["hr"], "vec": [0.85, 0.2, 0.0], "text": "Evening shift premium is 2 dollars per hour."},
+      {"id": "pay:2", "doc_id": "pay", "groups": ["hr"], "vec": [0.8, 0.25, 0.1], "text": "Bands are reviewed every February."},
+      {"id": "hb:0", "doc_id": "hb", "groups": ["all-staff"], "vec": [0.6, 0.5, 0.2], "text": "Warehouse shifts run 6:00 to 14:30 and 14:00 to 22:30."},
+      {"id": "hb:1", "doc_id": "hb", "groups": ["all-staff"], "vec": [0.5, 0.3, 0.6], "text": "Report any injury to the shift lead the same day."},
+      {"id": "hb:2", "doc_id": "hb", "groups": ["all-staff"], "vec": [0.1, 0.9, 0.3], "text": "Staff discounts are 30 percent."},
+      {"id": "tr:0", "doc_id": "tr", "groups": ["all-staff"], "vec": [0.2, 0.2, 0.9], "text": "Hotels should cost no more than 180 dollars per night."},
+  ]
+
+  query = [1.0, 0.1, 0.0]   # "how much do warehouse leads earn?"
+  print("post-filter:", [r["id"] for r in post_filter_search(STORE, query, 3, {"all-staff"})])
+  print("pre-filter: ", [r["id"] for r in search(STORE, query, 3, {"all-staff"})])
+notes:
+  - lines: [1, 7]
+    title: A compact cosine
+    text: |
+      This is the same cosine similarity as in week 1, written as one expression. Its docstring states its assumptions (equal lengths, no zero vectors) instead of checking them, which is acceptable in a demo where the data is fixed. In production code you'd want the checks back.
+
+      Every record's `vec` is compared with the query by direction, so the ranking is "most similar meaning first".
+  - lines: [10, 13]
+    title: The buggy pattern, kept for comparison
+    text: |
+      `sorted(store, key=..., reverse=True)` sorts every record by its cosine, highest first. The `key` is a **lambda**, a one-line unnamed function that pulls out the sort value for each record. `[:k]` keeps the top k, and only then does the comprehension drop records the user can't see.
+
+      The problem: the three most similar records to a pay question are the three HR-only pay chunks. They take all three slots, the filter removes them, and an all-staff user gets an empty list. The user sees "nothing found" even though visible, relevant-enough records exist.
+
+      This bug is common in AI-written RAG code because it reads naturally ("search, then apply permissions") and works whenever the user happens to have access to the top results.
+  - lines: [16, 22]
+    title: The search contract
+    text: |
+      The docstring makes two promises. The user gets k results whenever k visible records exist, and no hidden record influences the result. The second promise is stronger than it sounds: hidden records must not even take up slots, change scores, or show up in counts. Filtering first is the only order that keeps both.
+  - lines: [23, 26]
+    title: Filter, then rank
+    text: |
+      `set(user_groups)` makes a **set** so membership checks are fast and the input can be a list or a set. `allowed & set(r["groups"])` is the set **intersection**. An empty set counts as false in an `if`, so the comprehension keeps a record exactly when the user shares at least one group with it.
+
+      Ranking then runs only over `visible`. For the all-staff user and the pay question, that gives `hb:0`, `hb:1`, `tr:0`: the shift-times chunk first, which is the most useful thing they're allowed to read.
+
+      A user with no groups gets `set()`, every intersection is empty, and the result is `[]`. Failing closed (showing nothing) is the safe default for permission bugs.
+  - lines: [29, 36]
+    title: Re-index by document, not by chunk
+    text: |
+      `kept` is every record from **other** documents. The new records are appended, and `list(new_records)` makes a copy so later changes to the caller's list can't leak into the store.
+
+      Why not update chunks by id (an "upsert")? The new handbook has two chunks, `hb:0` and `hb:1`. Upserting would overwrite those two and leave the old `hb:2`, "Staff discounts are 30 percent.", in the store forever, contradicting the new "35 percent". Deleting everything with the document's id first guarantees no stale chunk survives.
+
+      Both functions build **new lists** rather than editing `store` in place, so the original `STORE` still has 7 records afterward. That's what the last test checks.
+  - lines: [39, 47]
+    title: The store
+    text: |
+      Each record is a **dictionary** with an id, the document it came from, the groups allowed to see it, a vector, and the text. Storing `doc_id` on every chunk is what makes document-level re-indexing possible, and storing `groups` on every chunk is what makes per-chunk filtering possible. If either piece of metadata is missing, neither operation can be done correctly.
+
+      The pay chunks' vectors all point toward the first axis, close to the query. That's deliberate: it reproduces the case where restricted documents are the best matches.
+  - lines: [49, 51]
+    title: See the bug, then the fix
+    text: |
+      Run it and you'll see `post-filter: []` and `pre-filter:  ['hb:0', 'hb:1', 'tr:0']`. Same data, same query, same user: the only difference is the order of filtering and ranking.
+review:
+  - id: wt-filter-upsert
+    type: code-reading
+    prompt: An AI assistant rewrites `reindex` as an "upsert by id", below. After `reindex(STORE, "hb", new_hb)` (where `new_hb` has `hb:0` and `hb:1`, with discounts now 35 percent), an all-staff user asks about staff discounts. What can come back?
+    code: |
+      def reindex(store, doc_id, new_records):
+          by_id = {r["id"]: r for r in store}
+          for r in new_records:
+              by_id[r["id"]] = r
+          return list(by_id.values())
+    options:
+      - id: a
+        text: Only the new "35 percent" chunk
+        rationale: The new chunk is there, but nothing removed the old third chunk.
+      - id: b
+        text: Both the new "35 percent" chunk and the stale "30 percent" chunk `hb:2`
+        correct: true
+        rationale: Right. Upserting replaces `hb:0` and `hb:1` but never deletes `hb:2`, because the new version has no chunk with that id. The model may now see two contradictory answers.
+      - id: c
+        text: An error, because two records share the doc_id "hb"
+        rationale: Nothing checks for that. Silent staleness is the problem.
+    explanation: Chunk ids are positions in a particular version of a document. When the document changes length, ids stop lining up. Re-index by document id, and test with a new version that has fewer chunks than the old one.
+  - id: wt-filter-two-groups
+    type: predict-output
+    prompt: "What does `[r[\"id\"] for r in search(STORE, query, 3, {\"hr\", \"all-staff\"})]` return?"
+    options:
+      - id: a
+        text: "`['hb:0', 'hb:1', 'tr:0']`"
+        rationale: That's the answer for all-staff only. This user is also in hr, so the pay chunks are visible.
+      - id: b
+        text: "`['pay:0', 'pay:1', 'pay:2']`"
+        correct: true
+        rationale: Right. A record is visible if it shares any group with the user. Every record is visible here, and the three pay chunks are the closest to the query.
+      - id: c
+        text: "`[]`, because a record must match all of the user's groups"
+        rationale: The rule is "at least one shared group" (set intersection), not "all groups".
+    explanation: Reading the visibility rule precisely matters. "Shares at least one group" and "has every group" are different policies, and an AI rewrite can switch one for the other without any test noticing unless you test a user with several groups.
+  - id: wt-filter-overfetch
+    type: scenario
+    prompt: A teammate proposes fixing the empty results by keeping `post_filter_search` but fetching the top 50 before filtering. What is the strongest objection?
+    options:
+      - id: a
+        text: It is slower
+        rationale: True but minor. The bigger problem is correctness.
+      - id: b
+        text: It only makes the failure rarer. A query whose top 50 are all restricted still returns nothing, and restricted records still shape what the user sees
+        correct: true
+        rationale: Right. Over-fetching hides the bug instead of fixing it. Filtering before ranking (in a real store, a metadata filter inside the query) fixes it for every query.
+      - id: c
+        text: Fifty results won't fit in the model's context window
+        rationale: The final list is still cut to k; the 50 are only an intermediate step.
+    explanation: Permission logic should be correct by construction, not "usually works". When you review retrieval code, find where filtering happens relative to ranking and the top-k cut.
+direct:
+  task: |
+    A bug in an ingestion job once passed chunks from the wrong document to `reindex`, and they were stored under the wrong `doc_id`. You want `reindex` to reject bad input before changing anything.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Make reindex validate new_records before building the new store. Raise ValueError if any new record's "doc_id" is not equal to the doc_id argument, or if two new records share the same "id". The error message should name the offending id.
+
+    When the input is valid, behavior must be exactly as now: remove every record of doc_id, keep all other records in their original order, append the new records, and return a new list without modifying store. Do not change search, post_filter_search, or cosine. Update the docstring.
+
+    Add asserts: a new record with doc_id "tr" raises ValueError; two new records both with id "hb:0" raise ValueError; after a failed call, STORE still has 7 records; the existing reindex asserts still pass.
+  checklist:
+    - Validation happens before anything is built, so a failed call changes nothing
+    - The valid path still deletes by doc_id (no upsert creeping in)
+    - The original store is still not modified in place
+    - Error messages name the bad record
+    - New asserts cover both kinds of bad input and the "nothing changed" case

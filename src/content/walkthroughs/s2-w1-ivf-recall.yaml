@@ -1,0 +1,194 @@
+id: s2-w1-ivf-recall
+summary: |
+  This program builds a tiny **IVF index** (inverted file index), the bucket-based shortcut many vector databases use, and measures what the shortcut costs. Every stored vector is filed under its nearest "centroid" (a representative point). At query time you only scan the buckets of the few centroids closest to the query, a number called `nprobe`, instead of the whole collection.
+
+  The payoff is a table: for each `nprobe`, how much of the data was scanned and how many of the true nearest neighbors were still found (**recall** against exact search). The code is built so that exact search and IVF search rank candidates with the same rule, which means any difference in results comes from which buckets were skipped and nothing else.
+code: |
+  import random
+
+
+  def make_data(n=600, d=16, clusters=12, seed=7):
+      rng = random.Random(seed)
+      centers = [[rng.gauss(0, 1) for _ in range(d)] for _ in range(clusters)]
+      vectors = [[x + rng.gauss(0, 0.6) for x in centers[i % clusters]] for i in range(n)]
+      queries = [[x + rng.gauss(0, 0.9) for x in centers[rng.randrange(clusters)]] for _ in range(40)]
+      return vectors, queries
+
+
+  def dist2(a, b):
+      return sum((x - y) ** 2 for x, y in zip(a, b))
+
+
+  def exact_top_k(query, vectors, k):
+      """Brute force: indices of the k nearest vectors (squared Euclidean), ties by index."""
+      return sorted(range(len(vectors)), key=lambda i: (dist2(query, vectors[i]), i))[:k]
+
+
+  def nearest_lists(query, centroids, nprobe):
+      """Indices of the nprobe centroids closest to the query."""
+      return sorted(range(len(centroids)), key=lambda j: (dist2(query, centroids[j]), j))[:nprobe]
+
+
+  def build_ivf(vectors, centroids):
+      """Assign every vector to its nearest centroid. lists[j] holds the vector indices in bucket j."""
+      lists = [[] for _ in centroids]
+      for i, v in enumerate(vectors):
+          lists[nearest_lists(v, centroids, 1)[0]].append(i)
+      return lists
+
+
+  VECTORS, QUERIES = make_data()
+  CENTROIDS = [VECTORS[i] for i in range(5, 600, 37)]   # 17 "trained" centroids (a stand-in for k-means)
+  LISTS = build_ivf(VECTORS, CENTROIDS)
+
+
+  def ivf_search(query, vectors, centroids, lists, k, nprobe):
+      """Scan only the buckets of the nprobe nearest centroids.
+
+      Return (top_k_indices, number_of_vectors_scanned). Candidates are ranked
+      exactly like exact_top_k: by distance, then by index.
+      """
+      probed = nearest_lists(query, centroids, nprobe)
+      candidates = [i for j in probed for i in lists[j]]
+      ranked = sorted(candidates, key=lambda i: (dist2(query, vectors[i]), i))
+      return ranked[:k], len(candidates)
+
+
+  def recall_vs_exact(approx, exact):
+      """Share of the exact neighbors that the approximate result contains (len(exact) is k)."""
+      return len(set(approx) & set(exact)) / len(exact)
+
+
+  def sweep(k=10, nprobes=(1, 2, 4, 8, 17)):
+      """For each nprobe, return (nprobe, mean recall@k over QUERIES, mean fraction of the data scanned)."""
+      exact = [exact_top_k(q, VECTORS, k) for q in QUERIES]
+      rows = []
+      for nprobe in nprobes:
+          recalls, fractions = [], []
+          for q, true_top in zip(QUERIES, exact):
+              top, scanned = ivf_search(q, VECTORS, CENTROIDS, LISTS, k, nprobe)
+              recalls.append(recall_vs_exact(top, true_top))
+              fractions.append(scanned / len(VECTORS))
+          rows.append((nprobe, sum(recalls) / len(recalls), sum(fractions) / len(fractions)))
+      return rows
+
+
+  for nprobe, recall, scanned in sweep():
+      print(f"nprobe={nprobe:>2}  recall@10={recall:.3f}  scanned={scanned:.0%}")
+notes:
+  - lines: [1, 9]
+    title: Reproducible fake data
+    text: |
+      `random.Random(seed)` creates a private random generator with a fixed **seed**, so the "random" data is identical on every run. That is what lets the tests assert specific behavior.
+
+      The nested **list comprehensions** build 12 cluster centers, then 600 vectors scattered around them (`i % clusters` cycles through the centers), then 40 queries near randomly chosen centers. `_` is the conventional name for a loop variable you don't use. Clustered data is realistic: real embeddings bunch up by topic, and that bunching is exactly what IVF exploits.
+  - lines: [12, 18]
+    title: Distance and the exact answer
+    text: |
+      `dist2` is squared Euclidean distance. Skipping the square root is a standard trick: it doesn't change which vector is closest, and it saves work.
+
+      `exact_top_k` sorts every index `0..599` by `(distance, index)` and keeps the first k. This is the ground truth the index is graded against. The `i` in the sort key breaks ties by index, so the order is fully determined.
+  - lines: [21, 31]
+    title: Centroids and buckets
+    text: |
+      `nearest_lists` is the same sort-and-slice pattern applied to centroids: "which `nprobe` buckets are closest to this point?"
+
+      `build_ivf` starts with one empty list per centroid (`[[] for _ in centroids]`, which creates separate lists; `[[]] * 17` would create 17 references to one shared list, a classic bug). It then files each vector's index under its single nearest centroid. With this data the buckets come out uneven, from 8 to 51 vectors each, which is why the code counts what it scans instead of assuming.
+  - lines: [34, 36]
+    title: Build the index once
+    text: |
+      These module-level names are computed once and reused by every search. `CENTROIDS` takes every 37th vector as a stand-in for k-means training (a real index would learn centroids from the data). Building the index is the expensive, offline step; searching is the cheap, repeated one.
+  - lines: [39, 48]
+    title: IVF search, the piece you write
+    text: |
+      `probed` is the list of nearest bucket numbers. `[i for j in probed for i in lists[j]]` is a **nested list comprehension**: read it left to right like two `for` loops, "for each bucket j, for each vector index i in that bucket, keep i". It flattens the chosen buckets into one candidate list.
+
+      The ranking key is identical to `exact_top_k`'s, deliberately. With `nprobe` equal to all 17 buckets, the candidates are every vector, so the result must equal exact search exactly. That's the first test, and it only works because both functions break ties the same way.
+
+      The function returns a **tuple** of two things: the results and the cost (`len(candidates)`). Returning the cost alongside the answer is what makes the trade-off measurable.
+  - lines: [51, 53]
+    title: Recall against exact search
+    text: |
+      Same set-intersection idea as recall in lesson 2, but here "relevant" means "a true nearest neighbor". Worked value: approximate `[1, 2, 3, 4]` against exact `[1, 2, 5, 6]` shares 2 of 4, so 0.5.
+
+      Note what this does not measure: whether the neighbors are useful to a user. It only measures how faithfully the index reproduces brute force.
+  - lines: [56, 67]
+    title: The sweep
+    text: |
+      `exact` is computed once per query, outside the loop, because it doesn't depend on `nprobe`. `recalls, fractions = [], []` creates two separate empty lists in one line (unlike chained assignment, which would share one).
+
+      `zip(QUERIES, exact)` walks queries and their true answers together. Each row records the average recall and the average share of the 600 vectors scanned.
+  - lines: [70, 71]
+    title: Read the table
+    text: |
+      The f-string format codes do the layout: `:>2` right-aligns in 2 characters, `:.3f` shows 3 decimals, `:.0%` shows a whole-number percent.
+
+      On this data you'll see roughly: one bucket scans about 6% and finds 0.745 of the true neighbors; two buckets, 12% and 0.935; four, 24% and 0.975; eight, 47% and 1.0. Where to stop is a product decision. This table is the evidence you'd bring to it.
+review:
+  - id: wt-ivf-first-buckets
+    type: code-reading
+    prompt: An AI assistant "simplifies" `ivf_search` to skip the centroid sort, as below. Which statement is true?
+    code: |
+      def ivf_search(query, vectors, centroids, lists, k, nprobe):
+          candidates = [i for bucket in lists[:nprobe] for i in bucket]
+          ranked = sorted(candidates, key=lambda i: (dist2(query, vectors[i]), i))
+          return ranked[:k], len(candidates)
+    options:
+      - id: a
+        text: It behaves the same, because every bucket gets scanned eventually
+        rationale: It scans the first nprobe buckets by number, not the ones nearest the query, so at small nprobe it often misses the query's own cluster entirely.
+      - id: b
+        text: Recall at small nprobe collapses, yet the "probe every bucket equals exact search" test still passes
+        correct: true
+        rationale: Right. With all 17 buckets, which buckets you pick no longer matters, so the most obvious test can't see the bug. Only the recall-at-small-nprobe check catches it.
+      - id: c
+        text: It raises an IndexError when nprobe is 1
+        rationale: Slicing never raises; `lists[:1]` is just the first bucket.
+    explanation: A test at the extreme (all buckets) proves the plumbing, not the logic. Good test suites also check a middle case where the shortcut is actually doing something.
+  - id: wt-ivf-tiebreak
+    type: mcq
+    prompt: Why does `ivf_search` sort by `(dist2(...), i)` rather than just `dist2(...)`?
+    options:
+      - id: a
+        text: Sorting by a tuple is faster than sorting by a number
+        rationale: It's slightly slower if anything. Speed isn't the reason.
+      - id: b
+        text: So that with every bucket probed, its output matches `exact_top_k` element for element, even when two vectors are equally far
+        correct: true
+        rationale: Right. Both functions must agree on how to order ties; otherwise the comparison with exact search could fail for reasons unrelated to the index.
+      - id: c
+        text: Python can't sort floats without a second key
+        rationale: Python sorts floats fine on their own.
+    explanation: When you compare a fast method with a reference method, make every other choice (tie-breaking, rounding, distance metric) identical, so the comparison isolates the one thing you changed.
+  - id: wt-ivf-choose-nprobe
+    type: scenario
+    prompt: Your latency budget allows scanning about a quarter of the collection per query. The product team says missing an occasional true neighbor is fine because a reranker runs afterward. Based on the sweep, which setting would you propose?
+    options:
+      - id: a
+        text: "`nprobe=1`, because it's the fastest"
+        rationale: It loses about a quarter of the true neighbors, which is a lot to ask a reranker to recover from, and you have budget to spare.
+      - id: b
+        text: "`nprobe=4`, about 24% scanned with recall near 0.975"
+        correct: true
+        rationale: Right. It fits the budget and recovers almost all true neighbors. You'd confirm on your real data, since these numbers come from a synthetic set.
+      - id: c
+        text: "`nprobe=17`, because exact results are always safest"
+        rationale: That scans 100%, four times the budget, and erases the reason for having an index.
+    explanation: Recall versus cost is a curve, and the right point depends on the product. State the numbers, state the source of the numbers, and rerun the sweep on production-like data before committing.
+direct:
+  task: |
+    You want the sweep to report latency-style cost too: the worst case, not only the average. Add the largest fraction scanned by any single query to each row.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Change sweep so each row is (nprobe, mean_recall, mean_fraction_scanned, max_fraction_scanned), where max_fraction_scanned is the largest scanned / len(VECTORS) over all queries for that nprobe. Update the docstring and the print loop at the bottom to show the new column as a percent.
+
+    Do not change ivf_search, recall_vs_exact, exact_top_k, build_ivf, or the data. The first three values in each row must stay exactly as they are now.
+
+    Add asserts: every row has 4 values; max_fraction_scanned is at least mean_fraction_scanned in every row; the last row's max is 1.0.
+  checklist:
+    - The first three columns are numerically unchanged
+    - The maximum is taken over per-query fractions, not computed from the mean
+    - The print loop and docstring match the new row shape
+    - "Any other code that unpacks rows (like `for _, r, _ in rows`) was updated, since a 4-tuple breaks 3-name unpacking"
+    - New asserts cover max at least mean and the all-buckets case

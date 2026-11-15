@@ -1,0 +1,175 @@
+id: s2-w1-cosine-topk
+summary: |
+  This program finds the documents whose embeddings point most nearly in the same direction as a query's embedding. It measures direction with **cosine similarity**, then sorts every document by that score and keeps the top few. That is brute-force nearest-neighbor search: the exact answer that vector indexes (lesson 3) try to approximate faster.
+
+  It is split into two functions. `cosine` is pure math on two vectors and refuses inputs where the math is undefined. `top_k` only ranks, and it makes the ranking deterministic by breaking ties on the document id. Keeping them separate means you can test the math on tiny vectors you can check by hand, and test the ranking without caring how the scores were made.
+code: |
+  import math
+
+
+  def cosine(a, b):
+      """Cosine similarity of two equal-length vectors.
+
+      Raise ValueError if the lengths differ or either vector is all zeros.
+      """
+      if len(a) != len(b):
+          raise ValueError("vectors must have the same length")
+      norm_a = math.sqrt(sum(x * x for x in a))
+      norm_b = math.sqrt(sum(y * y for y in b))
+      if norm_a == 0 or norm_b == 0:
+          raise ValueError("cosine is undefined for a zero vector")
+      dot = sum(x * y for x, y in zip(a, b))
+      return dot / (norm_a * norm_b)
+
+
+  def top_k(query, docs, k):
+      """Return the k most similar documents as (doc_id, score) pairs.
+
+      Highest cosine first. Ties are broken by doc_id, alphabetically, so the
+      result is the same on every run. Scores are rounded to 4 decimal places.
+      """
+      scored = [(cosine(query, vec), doc_id) for doc_id, vec in docs.items()]
+      scored.sort(key=lambda pair: (-pair[0], pair[1]))
+      return [(doc_id, round(score, 4)) for score, doc_id in scored[:k]]
+
+
+  # Hand-made 4-dimensional "embeddings". Pretend the axes mean
+  # billing, shipping, account, outages (real models' axes mean nothing so tidy).
+  DOCS = {
+      "refund-policy":    [0.9, 0.1, 0.0, 0.1],
+      "invoice-download": [0.7, 0.0, 0.4, 0.0],
+      "late-delivery":    [0.1, 0.9, 0.0, 0.2],
+      "change-address":   [0.0, 0.6, 0.6, 0.0],
+      "reset-password":   [0.0, 0.0, 0.95, 0.1],
+      "status-page":      [0.0, 0.1, 0.1, 0.95],
+      "long-billing-faq": [3.0, 1.5, 1.5, 1.0],   # a long, unnormalized vector
+  }
+  QUERY = [0.8, 0.3, 0.1, 0.0]   # "I was charged twice, can I get my money back?"
+
+  print(top_k(QUERY, DOCS, 3))
+notes:
+  - lines: [1, 8]
+    title: The import and the contract
+    text: |
+      `import math` brings in the standard library's math module, which we need for `math.sqrt`. Nothing else is imported: this is plain Python, no NumPy.
+
+      The **docstring** (the triple-quoted text) is the function's contract. It says what comes back and, just as important, when the function refuses to answer. A reviewer can check the code below against these two sentences line by line.
+  - lines: [9, 10]
+    title: Guard 1, vectors of different lengths
+    text: |
+      `raise ValueError(...)` stops the function and reports the problem to the caller. The check runs before any arithmetic on purpose.
+
+      Why it matters: `zip(a, b)` on line 15 silently stops at the shorter vector. Without this guard, comparing a 1,024-number embedding with a 768-number one (say, from two different models) would quietly return a number that means nothing. That is a classic real bug: someone switches embedding models for new documents but not for stored ones. A loud error is far better than a plausible wrong score.
+  - lines: [11, 14]
+    title: The lengths (norms), and guard 2
+    text: |
+      `sum(x * x for x in a)` uses a **generator expression**: like a list comprehension but without the square brackets, so Python feeds the squares straight into `sum` without building a list first. The square root of that sum is the vector's length, called its **norm**.
+
+      Worked value: the query `[0.8, 0.3, 0.1, 0.0]` has squares summing to 0.74, so its norm is about 0.860.
+
+      A vector of all zeros has norm 0, and dividing by it would raise `ZeroDivisionError` with an unhelpful message. Raising `ValueError` with a clear sentence tells the caller what was wrong with the input. Zero vectors do show up in practice, for example when an embedding call fails and someone fills in a placeholder.
+  - lines: [15, 16]
+    title: The dot product, divided by both lengths
+    text: |
+      `zip(a, b)` pairs up the coordinates: first with first, second with second. `for x, y in zip(a, b)` **unpacks** each pair into two names. Multiplying and summing gives the **dot product**.
+
+      Dividing by both norms removes the effect of length, leaving only direction. The result runs from 1 (same direction) through 0 (unrelated, at right angles) to -1 (opposite). For the query and `refund-policy`: dot product 0.75, norms 0.860 and 0.911, so cosine is about 0.957.
+
+      A tempting AI "simplification" is to return just the dot product. That is only equivalent when every vector already has length 1, and the demo data deliberately includes one that doesn't.
+  - lines: [19, 25]
+    title: Score every document
+    text: |
+      `docs.items()` yields each `(doc_id, vector)` pair from the dictionary. The **list comprehension** builds a list of tuples, score first and id second: for example `(0.957, "refund-policy")`.
+
+      This is the "brute force" part: every document gets scored against the query. With seven documents that's instant; with ten million it's the reason approximate indexes exist.
+  - lines: [26, 26]
+    title: Sort with a key, and break ties
+    text: |
+      `list.sort(key=...)` sorts in place using whatever the key function returns. Here the key is a **lambda**, a small unnamed function: for each pair it returns `(-score, doc_id)`.
+
+      Python compares tuples element by element. Negating the score makes the highest score sort first. When two scores are equal, the second element, `doc_id`, decides, alphabetically. So `"a"` beats `"b"` when both score 1.0.
+
+      Without the tie-breaker the order of equal scores depends on dictionary insertion order. Tests can pass on your machine and fail after someone reorders the data. Ask for deterministic ordering explicitly when you prompt an AI for ranking code.
+  - lines: [27, 27]
+    title: Keep the top k, round on the way out
+    text: |
+      `scored[:k]` is a **slice**: the first k items. If k is larger than the list, slicing simply returns everything, with no error, which is why the "k = 50" check passes without any special case.
+
+      The comprehension swaps each tuple back to `(doc_id, score)` and rounds. Rounding happens only at the end, after sorting. Rounding before sorting could turn two different scores into a tie and change the order.
+  - lines: [30, 43]
+    title: The demo data, including a trap
+    text: |
+      Each document is a hand-made 4-number vector so you can reason about it. `long-billing-faq` points roughly in the billing direction but is about four times longer than the others.
+
+      Run it and you get `refund-policy` (0.957), then `long-billing-faq` (about 0.916), then `invoice-download`. Swap cosine for a plain dot product and `long-billing-faq` jumps to first with 3.0, purely because it is long. Length often tracks things like document size rather than relevance, which is why you normalize.
+review:
+  - id: wt-cos-dot-only
+    type: code-reading
+    prompt: An AI assistant "speeds up" `cosine` by removing the norm calculations, as below. What does `top_k(QUERY, DOCS, 1)` return now?
+    code: |
+      def cosine(a, b):
+          if len(a) != len(b):
+              raise ValueError("vectors must have the same length")
+          return sum(x * y for x, y in zip(a, b))
+    options:
+      - id: a
+        text: "`[(\"refund-policy\", 0.957)]`, the same as before"
+        rationale: The ranking would only stay the same if every vector had length 1. These vectors don't.
+      - id: b
+        text: "`[(\"refund-policy\", 0.75)]`, same winner with a smaller score"
+        rationale: The refund score does become 0.75, but another document now scores higher.
+      - id: c
+        text: "`[(\"long-billing-faq\", 3.0)]`"
+        correct: true
+        rationale: Right. The dot product rewards length, and `long-billing-faq` is about four times longer than the others, so it wins regardless of direction.
+    explanation: Dropping the normalization is only safe when vectors are guaranteed to be unit length (many providers document that theirs are). If you accept this change, the guarantee has to be enforced somewhere, for example by normalizing once when documents are stored. This version also quietly lost the zero-vector check.
+  - id: wt-cos-tiebreak
+    type: predict-output
+    prompt: >-
+      You remove the tie-breaker, so line 26 becomes `scored.sort(key=lambda pair: -pair[0])`. Python's sort keeps equal items in their original order. What does `top_k([1, 0], {"b": [2, 0], "a": [1, 0], "c": [0, 1]}, 2)` return?
+    options:
+      - id: a
+        text: "`[(\"a\", 1.0), (\"b\", 1.0)]`"
+        rationale: That's the alphabetical order the tie-breaker produced. Without it, the dictionary's order decides.
+      - id: b
+        text: "`[(\"b\", 1.0), (\"a\", 1.0)]`"
+        correct: true
+        rationale: Right. Both score 1.0, so they keep their insertion order, and `"b"` was inserted first.
+      - id: c
+        text: An error, because two scores are equal
+        rationale: Sorting handles ties fine. The question is only which order they come out in.
+    explanation: The answer now depends on how the dictionary happened to be built. That is the nondeterminism the tie-breaker removes, and it's the kind of thing that makes a test flaky months later.
+  - id: wt-cos-guard-why
+    type: scenario
+    prompt: Your team re-embeds new documents with a 768-dimension model but forgets to re-embed the stored 1,024-dimension ones. Without the length check on line 9, what would happen at query time?
+    options:
+      - id: a
+        text: Python raises an error as soon as the vectors are compared
+        rationale: "`zip` doesn't raise on unequal lengths. It stops at the shorter one."
+      - id: b
+        text: The old documents get scores that look normal but are meaningless, and nobody notices
+        correct: true
+        rationale: Right. Only the first 768 coordinates get compared, and coordinates from two different models don't correspond. The numbers still look like plausible similarities.
+      - id: c
+        text: The old documents always score 0
+        rationale: They would score whatever the partial dot product happens to be, which is usually not zero.
+    explanation: Silent wrong answers are worse than crashes because nothing alerts you. When you review retrieval code, look for this check, and also make sure the stored model name travels with every vector.
+direct:
+  task: |
+    Your vector store guarantees unit-length embeddings, and you want to skip the norm work on hot paths. Add a `normalize(v)` function and a `top_k` option that uses the faster dot product when vectors are already normalized.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add a function normalize(v) that returns v divided by its norm, raising ValueError for a zero vector, with a docstring.
+
+    Add a keyword argument to top_k: assume_normalized=False. When it is True, score with a plain dot product instead of cosine. When it is False, behavior must be exactly as now.
+
+    Do not change cosine, the tie-breaking rule (-score, then doc_id), the rounding to 4 places, or the length check. The dot-product path must still raise ValueError when vector lengths differ.
+
+    Add asserts: normalize([3, 4]) == [0.6, 0.8]; normalize of a zero vector raises ValueError; for the DOCS data normalized with normalize, top_k with assume_normalized=True returns the same ids and scores as top_k with the default.
+  checklist:
+    - The default path is unchanged and all existing checks still pass
+    - normalize raises ValueError on a zero vector instead of dividing by zero
+    - The fast path still checks vector lengths and still breaks ties by doc_id
+    - The new test compares the two paths on normalized data, not only on hand-picked vectors
+    - The docstring for top_k explains that assume_normalized=True gives wrong rankings on unnormalized data

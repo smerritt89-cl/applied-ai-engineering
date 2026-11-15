@@ -1,0 +1,184 @@
+id: s5-w4-field-scoring
+summary: |
+  This program scores a model's structured outputs against gold labels, field by field. Each case is a meeting-note snippet whose correct answer has four fields (is it an action item, who owns it, when it's due, its priority). The scorer reports how many outputs parsed, how many cases were entirely right, and the accuracy of each field.
+
+  Two rules shape the code, and both are about honesty. Every case stays in the denominator, including outputs that failed to parse, so a model can't look better by breaking. And light normalization (trim spaces, ignore case) runs before comparing, so `"priya "` and `"Priya"` count as the same answer while a plausible but invented due date still counts as wrong. Reporting per-field numbers alongside exact match tells you **where** a model fails, which is what you need to choose between models or fix a prompt.
+code: |
+  FIELDS = ("is_action_item", "owner", "due_date", "priority")
+
+
+  def normalize(value):
+      """Strings: strip and casefold. Everything else: unchanged."""
+      if isinstance(value, str):
+          return value.strip().casefold()
+      return value
+
+
+  def score(gold_records, predictions):
+      """gold_records and predictions are lists in the same case order.
+      A prediction is a dict, or None if the output failed to parse.
+      Return {"n": ..., "parse_rate": ..., "exact": ..., "fields": {field: accuracy}}.
+      A None prediction, or a missing key, is wrong on that field. Never drop cases."""
+      n = len(gold_records)
+      field_hits = {f: 0 for f in FIELDS}
+      exact = 0
+      parsed = 0
+      for gold, pred in zip(gold_records, predictions):
+          if pred is not None:
+              parsed += 1
+          hits = {}
+          for f in FIELDS:
+              hits[f] = pred is not None and f in pred and normalize(pred[f]) == normalize(gold[f])
+              field_hits[f] += hits[f]  # True counts as 1, False as 0
+          exact += all(hits.values())
+      return {
+          "n": n,
+          "parse_rate": parsed / n,
+          "exact": exact / n,
+          "fields": {f: field_hits[f] / n for f in FIELDS},
+      }
+
+
+  GOLD = [
+      {"is_action_item": True,  "owner": "Priya", "due_date": "2026-11-13", "priority": "high"},
+      {"is_action_item": True,  "owner": "Sam",   "due_date": None,         "priority": "medium"},
+      {"is_action_item": False, "owner": None,    "due_date": None,         "priority": None},
+      {"is_action_item": True,  "owner": "Ana",   "due_date": "2026-11-10", "priority": "low"},
+      {"is_action_item": True,  "owner": "Lee",   "due_date": "2026-11-20", "priority": "medium"},
+  ]
+  PRED = [
+      {"is_action_item": True,  "owner": "priya ", "due_date": "2026-11-13", "priority": "high"},
+      {"is_action_item": True,  "owner": "Sam",    "due_date": "2026-11-14", "priority": "medium"},
+      {"is_action_item": False, "owner": None,     "due_date": None,         "priority": None},
+      None,
+      {"is_action_item": True,  "owner": "Lee",    "due_date": "2026-11-20"},
+  ]
+  print(score(GOLD, PRED))
+notes:
+  - lines: [1, 1]
+    title: 'The fields, as an ordered tuple'
+    text: |
+      `FIELDS` is a **tuple** of the four field names. A tuple keeps its order, so the report lists fields in the same order every time, and it can't be changed by accident elsewhere in the program. Every loop below iterates over this one constant, so adding a field later is a one-line change.
+  - lines: [4, 8]
+    title: 'Normalize before comparing'
+    text: |
+      `isinstance(value, str)` checks whether the value is text. Strings get `.strip()` (remove surrounding whitespace) and `.casefold()`, a stronger form of lowercasing meant for case-insensitive comparison (it also handles letters like the German ß). These are **method calls chained** left to right.
+
+      Everything else (booleans, `None`, numbers) comes back unchanged. That matters: `True` must not be turned into a string, and `None` must stay `None` so "no due date" can match "no due date".
+
+      How much to normalize is a judgment call. Too little and formatting noise counts as errors; too much (say, stripping all punctuation from dates) and real errors start to pass. An AI-written scorer that normalizes aggressively can make a weak model look strong.
+  - lines: [11, 19]
+    title: 'The contract and the counters'
+    text: |
+      The docstring says what makes this scorer strict: a `None` prediction (unparseable output) or a missing key is **wrong**, and cases are never dropped.
+
+      `{f: 0 for f in FIELDS}` is a **dictionary comprehension**: it builds `{"is_action_item": 0, "owner": 0, ...}` in one line. `exact` and `parsed` are plain counters.
+
+      `n = len(gold_records)` fixes the denominator to the number of gold cases, which is the decision everything else rests on.
+  - lines: [20, 22]
+    title: 'Walk the cases in pairs'
+    text: |
+      `zip(gold_records, predictions)` pairs case 1 with output 1, case 2 with output 2, and so on. This only works if both lists are in the same order and the same length, as the docstring requires.
+
+      `zip` has a quiet behavior worth knowing as a reviewer: if one list is shorter, it stops at the shorter one without any error. If an upstream parser dropped failed outputs instead of writing `None`, every later output would be compared with the wrong gold case, and the scores would still look plausible.
+  - lines: [23, 26]
+    title: 'Per-field hits, with short-circuiting'
+    text: |
+      `pred is not None and f in pred and normalize(pred[f]) == normalize(gold[f])` is three conditions joined by `and`. Python stops at the first false one (**short-circuiting**), so:
+
+      - a `None` prediction is wrong without ever touching `pred[f]` (which would crash);
+      - a missing key (`f in pred` is false) is wrong without raising `KeyError`;
+      - only then are the normalized values compared.
+
+      `field_hits[f] += hits[f]` adds a boolean to a number. In Python `True` counts as 1 and `False` as 0, so this is a tidy way to count hits; the comment says so for readers who haven't seen it.
+
+      Worked value: case 2's gold due date is `None` and the prediction is `"2026-11-14"`, so that field is a miss: an invented date is wrong even though it looks reasonable.
+  - lines: [27, 33]
+    title: 'Exact match and the report'
+    text: |
+      `all(hits.values())` is true only when every field in this case was right, so `exact` counts fully correct cases. `True` again counts as 1.
+
+      The return statement builds the report. Every rate is divided by `n`, the number of gold cases, never by the number that parsed. The final entry is another dictionary comprehension that turns hit counts into accuracies.
+
+      Worked value: cases 1 and 3 are fully right, so exact is 2 / 5 = **0.4**; four of five outputs parsed, so parse rate is **0.8**.
+  - lines: [36, 42]
+    title: 'Five gold labels'
+    text: |
+      Each gold record is a dictionary with all four fields. `None` is a real answer here: case 2 has no due date, and case 3 isn't an action item at all, so it has no owner, date, or priority. A scorer has to treat "correctly empty" as correct.
+  - lines: [43, 50]
+    title: 'Five predictions with typical problems'
+    text: |
+      The predictions are chosen to exercise each rule: extra whitespace and lowercase in case 1 (should still match), an invented due date in case 2, a correct "not an action item" in case 3, an unparseable output in case 4 (`None`), and a missing `priority` key in case 5.
+
+      Press **Run this code**: owner accuracy is 0.8 (case 1 matches after normalization, case 4 is wrong), and due date and priority are 0.6 each.
+review:
+  - id: wt-score-skip-none
+    type: code-reading
+    prompt: 'An AI assistant "fixes" the scorer so unparseable outputs don''t drag the numbers down, as below (and divides every rate by `parsed` instead of `n`). What does the owner accuracy become on the sample data?'
+    code: |
+      for gold, pred in zip(gold_records, predictions):
+          if pred is None:
+              continue
+          parsed += 1
+          # ... field checks unchanged ...
+      return {"n": parsed, "parse_rate": 1.0, "exact": exact / parsed,
+              "fields": {f: field_hits[f] / parsed for f in FIELDS}}
+    options:
+      - id: a
+        text: "0.8, unchanged"
+        rationale: 'The hits are the same, but the denominator shrank from 5 to 4.'
+      - id: b
+        text: "1.0, and exact match rises to 0.5"
+        correct: true
+        rationale: 'Right. Four of four parsed owners are right, and two of four parsed cases are fully right. The model looks better because it failed to produce output on a hard case.'
+      - id: c
+        text: "0.6, because the missing case now counts twice"
+        rationale: 'The skipped case isn''t counted at all, so nothing counts twice.'
+    explanation: 'Dropping failures from the denominator is the most common way benchmark numbers get inflated. The docstring says "Never drop cases", and the test asserting `n == 5` is the guard.'
+  - id: wt-score-zip
+    type: predict-output
+    prompt: 'An upstream parser drops the unparseable output instead of writing `None`, so `predictions` has only 4 items. What does `score(GOLD, predictions)` do?'
+    options:
+      - id: a
+        text: 'Raises an error because the lists differ in length'
+        rationale: "`zip` never raises on unequal lengths; it stops at the shorter list."
+      - id: b
+        text: 'Returns plausible-looking numbers, but Lee''s output is scored against Ana''s gold label'
+        correct: true
+        rationale: "Right. The fourth prediction (Lee) is paired with the fourth gold case (Ana). The report comes back with parse rate 0.8 and exact 0.4, with no sign that anything is misaligned."
+      - id: c
+        text: 'Returns the same report as before'
+        rationale: 'The owner and due date accuracies change (to 0.6 and 0.4), because the last two cases are misaligned and the fifth gold case is never scored.'
+    explanation: 'Silent misalignment is worse than a crash. A one-line length check that raises `ValueError` would turn it into a loud error; it''s a common, cheap guard to ask for when reviewing evaluation code.'
+  - id: wt-score-why-fields
+    type: scenario
+    prompt: 'Two candidate models both score 0.4 on exact match. Why is the per-field breakdown worth reporting?'
+    options:
+      - id: a
+        text: 'It isn''t; exact match is the only number that matters for structured output'
+        rationale: 'Exact match tells you how often a case is fully right, but not why it fails, which is what decides between the models and what to fix.'
+      - id: b
+        text: 'Because one model might fail mostly on due dates and the other on owners, which point to different fixes and matter differently to your users'
+        correct: true
+        rationale: 'Right. If wrong owners are costly and wrong priorities are cheap, the breakdown can decide the choice.'
+      - id: c
+        text: 'Because averaging the fields gives a more precise overall score'
+        rationale: 'An average hides the same information that exact match hides. The point is the breakdown itself.'
+    explanation: 'Model selection should rest on the errors that matter to your task. Per-field accuracy, plus the parse rate, turns one number into a diagnosis.'
+direct:
+  task: |
+    Make the scorer safer and more useful for error analysis. It should raise `ValueError` when the two lists have different lengths, and the report should include `"misses"`: a list of the 0-based case indexes that were not fully right, so you can read those cases.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    In score, before the loop, raise ValueError with a clear message if len(predictions) != len(gold_records). Then add a "misses" key to the returned dictionary: a list of 0-based case indexes where not every field was right (including unparseable cases), in increasing order. Use enumerate in the loop to get the index.
+
+    Do not change normalize, the denominators (every rate still divides by n), the existing keys, or how hits are computed. Update the docstring to mention the length check and the new key.
+
+    Add test asserts: score(GOLD, PRED)["misses"] == [1, 3, 4]; passing a 4-item predictions list raises ValueError; and every existing assert still passes.
+  checklist:
+    - 'Unequal lengths now raise ValueError instead of silently misaligning'
+    - 'The "misses" list includes the unparseable case and the missing-key case'
+    - 'Every rate still divides by n, and no existing key changed'
+    - 'normalize and the hit logic are untouched'
+    - 'The docstring and new tests cover both additions'

@@ -1,0 +1,171 @@
+id: s2-w3-fusion
+summary: |
+  Hybrid search runs two retrievers, keyword (BM25) and vector, and has to merge their results into one list. This program implements the three common ways to merge: **reciprocal rank fusion** (RRF), which uses only each document's position in each list; a **raw weighted sum** of scores; and a weighted sum after **min-max normalization**, which rescales each retriever's scores to run from 0 to 1 first.
+
+  The point of putting all three side by side is that they disagree, for reasons you can trace. BM25 scores here run up to 14.2 while cosine similarities sit around 0.5 to 0.8, so a raw sum is decided almost entirely by BM25. Min-max fixes the scale but turns each retriever's last result into a flat 0. RRF ignores scores entirely and rewards documents that rank high in both lists.
+code: |
+  def rrf(rankings, k=60):
+      """Reciprocal rank fusion.
+
+      rankings is a list of lists of doc ids, best first. Return (ordered_doc_ids, scores)
+      where scores[d] is the sum of 1 / (k + rank) over every list d appears in, with rank
+      starting at 1. Ties are broken by doc id so the output is deterministic.
+      """
+      scores = {}
+      for ranking in rankings:
+          for rank, doc in enumerate(ranking, start=1):
+              scores[doc] = scores.get(doc, 0.0) + 1.0 / (k + rank)
+      order = sorted(scores, key=lambda d: (-scores[d], d))
+      return order, scores
+
+
+  def min_max(scores):
+      """Map a {doc: score} dict to [0, 1]: best -> 1, worst -> 0.
+
+      If all scores are equal (including a single result), map every doc to 1.0.
+      """
+      lo, hi = min(scores.values()), max(scores.values())
+      if hi == lo:
+          return {d: 1.0 for d in scores}
+      return {d: (s - lo) / (hi - lo) for d, s in scores.items()}
+
+
+  def weighted_fusion(score_dicts, weights, normalize=True):
+      """Weighted sum of per-retriever scores; a doc missing from a retriever gets 0 from it.
+
+      If normalize is True, apply min_max to each retriever's scores first.
+      Return doc ids sorted best first, ties broken by doc id.
+      """
+      total = {}
+      for scores, weight in zip(score_dicts, weights):
+          if normalize:
+              scores = min_max(scores)
+          for d, s in scores.items():
+              total[d] = total.get(d, 0.0) + weight * s
+      return sorted(total, key=lambda d: (-total[d], d))
+
+
+  # Query: "can I get a refund after error TS-999?"
+  BM25 = {"ts-999-fix": 14.2, "refund-policy": 7.9, "billing-faq": 6.1, "invoice-howto": 5.3}
+  VECTOR = {"refund-policy": 0.83, "billing-faq": 0.81, "chargebacks": 0.79, "ts-999-fix": 0.52}
+
+  bm25_ranking = sorted(BM25, key=BM25.get, reverse=True)
+  vector_ranking = sorted(VECTOR, key=VECTOR.get, reverse=True)
+
+  print("RRF:       ", rrf([bm25_ranking, vector_ranking])[0])
+  print("raw sum:   ", weighted_fusion([BM25, VECTOR], [0.5, 0.5], normalize=False))
+  print("min-max:   ", weighted_fusion([BM25, VECTOR], [0.5, 0.5]))
+notes:
+  - lines: [1, 7]
+    title: The RRF contract
+    text: |
+      RRF gives each document `1 / (k + rank)` from each list it appears in and adds them up. Rank starts at 1, and `k` (60 by convention, from the original RRF paper) dampens the difference between first and second place, so one list's top result can't dominate.
+
+      The function returns a **tuple** of two things: the order and the scores. Returning the scores too lets you inspect how close a call was, which you'll want when two documents are 0.0005 apart.
+  - lines: [8, 13]
+    title: Accumulate with dict.get, then sort the keys
+    text: |
+      `scores.get(doc, 0.0)` returns the running total for `doc`, or 0.0 the first time it's seen. This **dict.get with a default** pattern builds a sum without checking whether the key exists. `enumerate(ranking, start=1)` supplies ranks counting from 1.
+
+      `sorted(scores, key=...)` iterates over a dictionary's **keys**, so it sorts doc ids. The key `(-scores[d], d)` puts high scores first and breaks ties alphabetically.
+
+      Worked values for the demo: refund-policy is 2nd in BM25 and 1st in vector, so 1/62 + 1/61, about 0.03252. ts-999-fix is 1st and 4th, 1/61 + 1/64, about 0.03202. Appearing near the top of both lists beats topping one.
+  - lines: [16, 24]
+    title: Min-max normalization, with a divide-by-zero guard
+    text: |
+      `lo, hi = min(...), max(...)` uses **tuple unpacking** to set two names in one line. The **dictionary comprehension** then maps each score to `(s - lo) / (hi - lo)`, so the best becomes 1.0 and the worst 0.0.
+
+      The guard handles `hi == lo`, which happens whenever a retriever returns a single result or all its scores tie. Without it, `hi - lo` is 0 and the division crashes, but only on those rare queries. That makes this exactly the kind of line an AI-written version omits and a quick test misses.
+
+      Note the side effect of min-max: the last result always gets exactly 0, however good its raw score was. ts-999-fix's cosine of 0.52 becomes 0.0.
+  - lines: [27, 39]
+    title: Weighted fusion over the union
+    text: |
+      `zip(score_dicts, weights)` pairs each retriever's scores with its weight. When `normalize` is on, `scores = min_max(scores)` **rebinds** the local name to a new, normalized dictionary; the caller's original dictionary isn't changed.
+
+      Every document from every retriever is added to `total`, so the result is the **union** of both candidate sets. A document one retriever didn't return simply gets nothing from it, the same as a score of 0. That's how `chargebacks`, found only by vector search, still makes the final list.
+  - lines: [42, 44]
+    title: Two retrievers, two scales
+    text: |
+      The query mixes an exact error code with a fuzzy intent ("refund"). BM25 nails the code (14.2 for ts-999-fix) and vector search nails the intent (0.83 for refund-policy). Look at the ranges: BM25 spans 5.3 to 14.2, vector 0.52 to 0.83. Any method that adds raw numbers inherits that imbalance.
+  - lines: [46, 47]
+    title: Turn scores into rankings
+    text: |
+      `sorted(BM25, key=BM25.get, reverse=True)` sorts the dictionary's keys by their values, highest first. `BM25.get` is a **bound method** passed as the key function: for each doc id it returns that doc's score. RRF only needs these ordered lists, not the scores.
+  - lines: [49, 51]
+    title: Compare the three
+    text: |
+      RRF gives `refund-policy, ts-999-fix, billing-faq, ...`. The raw sum gives `ts-999-fix, refund-policy, ...`, which is just BM25's order, because BM25's numbers are about 17 times bigger. Min-max gives `refund-policy, billing-faq, ts-999-fix, ...`, with the error-code fix pushed to third by its vector 0.
+
+      None of these is right in general. Which one serves your users is decided by a labeled evaluation set (lesson 9), not by intuition.
+review:
+  - id: wt-fusion-first-only
+    type: code-reading
+    prompt: An AI assistant rewrites `weighted_fusion` "to avoid missing keys", as below. What changes in the min-max result?
+    code: |
+      def weighted_fusion(score_dicts, weights, normalize=True):
+          if normalize:
+              score_dicts = [min_max(s) for s in score_dicts]
+          total = {d: sum(w * s.get(d, 0.0) for s, w in zip(score_dicts, weights))
+                   for d in score_dicts[0]}
+          return sorted(total, key=lambda d: (-total[d], d))
+    options:
+      - id: a
+        text: Nothing; it's a tidier version of the same computation
+        rationale: The scores are computed the same way, but only for some documents.
+      - id: b
+        text: "`chargebacks` disappears, because only documents from the first retriever (BM25) are considered"
+        correct: true
+        rationale: Right. Looping over `score_dicts[0]` turns hybrid search into "rerank the BM25 results". Anything only vector search found is lost, which defeats the point of hybrid retrieval.
+      - id: c
+        text: It raises KeyError for chargebacks
+        rationale: "`s.get(d, 0.0)` avoids KeyError. The problem is that chargebacks is never looked up at all."
+    explanation: The exercise checks that fusion returns the union of both candidate sets. When reviewing fusion code, find the line that decides which documents are candidates.
+  - id: wt-fusion-single-result
+    type: predict-output
+    prompt: >-
+      A vector retriever returns just one document, `{"x": 0.7}`. What does `min_max` return, and what would it do without the `if hi == lo` guard?
+    options:
+      - id: a
+        text: "`{\"x\": 1.0}`; without the guard, ZeroDivisionError"
+        correct: true
+        rationale: Right. With one score, `hi` and `lo` are both 0.7, so `hi - lo` is 0. The guard maps it to 1.0 instead.
+      - id: b
+        text: "`{\"x\": 0.0}`; without the guard, the same"
+        rationale: The function never computes 0/0 with the guard in place, and without it Python raises rather than returning 0.
+      - id: c
+        text: "`{\"x\": 0.7}`; the guard doesn't matter here"
+        rationale: Min-max always rescales. Raw scores aren't passed through.
+    explanation: Edge cases like a one-item result list happen in production every day (a narrow filter, a rare term). Code that only crashes on them passes casual testing and fails in front of users.
+  - id: wt-fusion-raw-sum
+    type: scenario
+    prompt: A teammate ships hybrid search with `weighted_fusion([BM25, VECTOR], [0.5, 0.5], normalize=False)` and says keyword and vector search are "weighted equally". Is that accurate?
+    options:
+      - id: a
+        text: Yes, both weights are 0.5
+        rationale: Equal weights on unequal scales aren't equal influence. Half of 14.2 is 7.1; half of 0.83 is about 0.42.
+      - id: b
+        text: No. BM25's scores are on a much larger scale, so the vector side can barely change the order; the result matches BM25's ranking
+        correct: true
+        rationale: Right. The weights multiply numbers with different units. To balance retrievers, normalize scores first or use a rank-based method like RRF, then tune on a labeled set.
+      - id: c
+        text: No, vector search dominates because its scores are closer together
+        rationale: Closer-together scores give it less power to reorder, not more.
+    explanation: Whenever code adds numbers from different sources, ask what units they're in. This is one of the most common silent bugs in hybrid search.
+direct:
+  task: |
+    You want to trust BM25 more for queries that look like error codes. Add per-list weights to `rrf`, so a list's contribution can be scaled.
+
+    Write the prompt you'd give a coding assistant.
+  prompt: |
+    Add an optional weights parameter to rrf: rrf(rankings, k=60, weights=None). When weights is None, every list has weight 1.0 and the results must be exactly what they are now. Otherwise each list contributes weight / (k + rank). Raise ValueError if weights is given and its length differs from len(rankings), or if any weight is negative.
+
+    Keep ranks starting at 1, the (-score, doc id) tie-break, and the (order, scores) return value. Do not change min_max or weighted_fusion. Update the docstring.
+
+    Add asserts: rrf with weights=[1.0, 1.0] equals rrf without weights; with weights=[1.0, 0.0] on the demo rankings, the first four ids equal bm25_ranking (chargebacks comes last with a score of 0); mismatched lengths and a negative weight each raise ValueError.
+  checklist:
+    - The unweighted result is unchanged, and existing checks pass
+    - Weights multiply each contribution, not the rank or k
+    - Bad weights fail loudly instead of being silently ignored or truncated by zip
+    - The return value is still (order, scores)
+    - New asserts cover equal weights, a zero weight that leaves only one list, and both error cases

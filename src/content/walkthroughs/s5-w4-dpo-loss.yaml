@@ -1,0 +1,158 @@
+id: s5-w4-dpo-loss
+summary: |
+  This program computes the **DPO** (Direct Preference Optimization) loss for a small batch of preference pairs. Each pair has a chosen and a rejected response, and for each response you have two numbers: how likely the model being trained (the **policy**) makes it, and how likely the frozen **reference** model makes it, both as summed log-probabilities. The loss rewards the policy for raising the chosen response **relative to the reference** more than it raises the rejected one.
+
+  The code has two parts. `log_sigmoid` is a small numerical helper, given in the starter, that computes log(sigmoid(z)) without overflowing for large inputs. `dpo_loss` turns each pair into one number, the **margin**, and then averages a logistic loss over the margins and reports the share of pairs the policy already orders correctly (the reward accuracy that TRL logs as `rewards/accuracies`).
+code: |
+  import math
+
+
+  def log_sigmoid(z):
+      """Numerically stable log(sigmoid(z))."""
+      if z >= 0:
+          return -math.log1p(math.exp(-z))
+      return z - math.log1p(math.exp(z))
+
+
+  def dpo_loss(batch, beta=0.1):
+      """batch: list of dicts with summed log-probabilities of each full response:
+           policy_chosen, policy_rejected, ref_chosen, ref_rejected
+      Return (mean_loss, reward_accuracy) where
+        margin_i = beta * ((policy_chosen - ref_chosen) - (policy_rejected - ref_rejected))
+        loss_i = -log_sigmoid(margin_i)
+        reward_accuracy = share of pairs with margin_i > 0
+      """
+      margins = []
+      for ex in batch:
+          chosen_shift = ex["policy_chosen"] - ex["ref_chosen"]        # how much more likely than the reference
+          rejected_shift = ex["policy_rejected"] - ex["ref_rejected"]
+          margins.append(beta * (chosen_shift - rejected_shift))
+      loss = sum(-log_sigmoid(m) for m in margins) / len(margins)
+      accuracy = sum(1 for m in margins if m > 0) / len(margins)
+      return loss, accuracy
+
+
+  batch = [
+      {"policy_chosen": -12.0, "policy_rejected": -15.0, "ref_chosen": -13.0, "ref_rejected": -13.0},
+      {"policy_chosen": -20.0, "policy_rejected": -18.0, "ref_chosen": -19.0, "ref_rejected": -19.0},
+      {"policy_chosen": -8.0,  "policy_rejected": -9.0,  "ref_chosen": -8.0,  "ref_rejected": -9.0},
+  ]
+  print(dpo_loss(batch))
+notes:
+  - lines: [1, 1]
+    title: 'The import'
+    text: |
+      `math` supplies `math.exp` (e to a power) and `math.log1p`, which computes log(1 + x) accurately even when x is tiny. Nothing else is needed: the inputs are already log-probabilities computed by a trainer.
+  - lines: [4, 8]
+    title: 'A numerically stable log-sigmoid'
+    text: |
+      The sigmoid is 1 / (1 + e^(−z)), so log(sigmoid(z)) = −log(1 + e^(−z)). Written that way it is fine for positive z, but for a large negative z, `math.exp(-z)` is `exp(5000)`, which raises `OverflowError`.
+
+      The function has two **branches** that compute the same value safely:
+
+      - for z ≥ 0, `-math.log1p(math.exp(-z))`, where `exp(-z)` is at most 1;
+      - for z < 0, `z - math.log1p(math.exp(z))`, an algebraically equal form where `exp(z)` is at most 1.
+
+      This is the same idea as subtracting the max in softmax: rearrange the formula so no intermediate value can blow up. It was given in the starter because getting it right is fiddly; using it, rather than a hand-written `math.log(1 / (1 + math.exp(-m)))`, is part of the exercise.
+  - lines: [11, 18]
+    title: 'The contract, formula included'
+    text: |
+      The docstring states the exact formulas, which is the right call for math code: a reviewer can check the implementation line by line against them.
+
+      A **margin** compares two **log-ratios**. `policy_chosen - ref_chosen` is how much more likely (in log terms) the policy makes the chosen response than the reference does; the same for the rejected one. The margin is beta times their difference. The lesson calls beta times a log-ratio the **implicit reward** of a response.
+
+      The function returns a **tuple** of two values, `(mean_loss, reward_accuracy)`, which the caller can unpack with `loss, acc = dpo_loss(batch)`.
+  - lines: [19, 23]
+    title: 'One margin per pair'
+    text: |
+      The loop names the two intermediate quantities, `chosen_shift` and `rejected_shift`, instead of writing one long expression. The comment explains what a shift means. That makes the formula checkable at a glance against the docstring.
+
+      Worked values for the three pairs, with beta = 0.1:
+
+      - Pair 1: chosen shift −12 − (−13) = 1, rejected shift −15 − (−13) = −2, margin 0.1 × 3 = **0.3**.
+      - Pair 2: chosen shift −1, rejected shift 1, margin **−0.2**: the policy has moved the wrong way.
+      - Pair 3: both shifts are 0, margin **0**: the policy hasn't moved from the reference, even though it rates chosen above rejected in absolute terms (−8 versus −9).
+
+      A common AI mistake is computing `policy_chosen - policy_rejected` and ignoring the reference. That would score pair 3 as a win, which is exactly what the reference is there to prevent.
+  - lines: [24, 26]
+    title: 'Mean loss and reward accuracy'
+    text: |
+      `sum(-log_sigmoid(m) for m in margins) / len(margins)` is the mean of −log σ(margin), using a **generator expression**. A positive margin gives a small loss, a negative one a large loss, and a zero margin gives exactly log 2 (about 0.693), whatever the raw probabilities.
+
+      `sum(1 for m in margins if m > 0)` counts pairs with a strictly positive margin. The strict `>` matters: a tie (pair 3) is not a correctly ordered pair.
+
+      Worked value: losses of about 0.554, 0.798, and 0.693 average to **0.682**, and the accuracy is 1 / 3.
+  - lines: [29, 34]
+    title: 'Three illustrative pairs'
+    text: |
+      Each pair is a dictionary with the four log-probabilities. Real values are sums over all tokens of a response, so they are large negative numbers, and longer responses have more negative sums. That length effect is one reason TRL documents DPO variants such as a length-normalized loss.
+
+      Press **Run this code** to see `(0.6818..., 0.333...)`. Then try `beta=1.0`: the margins are ten times larger, so pair 1's loss falls and pair 2's rises.
+review:
+  - id: wt-dpo-naive
+    type: code-reading
+    prompt: 'An AI assistant replaces `-log_sigmoid(m)` with the "more readable" version below. What happens for a pair whose margin is −5000 (the policy strongly prefers the rejected response)?'
+    code: |
+      loss = sum(-math.log(1 / (1 + math.exp(-m))) for m in margins) / len(margins)
+    options:
+      - id: a
+        text: 'It returns a loss of about 5000, the same as before'
+        rationale: 'That is the correct value, and the stable helper produces it. This version never gets that far.'
+      - id: b
+        text: 'It raises `OverflowError`, because `math.exp(5000)` is too large'
+        correct: true
+        rationale: 'Right. With m = −5000, `-m` is 5000, and `math.exp(5000)` overflows a float.'
+      - id: c
+        text: 'It returns 0, because the sigmoid rounds to 1'
+        rationale: 'That happens for a large **positive** margin. For a large negative one the exponent overflows first.'
+    explanation: 'The exercise''s overflow test uses a large positive margin, where this naive version happens to work (`exp(-5000)` is just 0.0). So the test suite would not catch this change. Large negative margins do occur early in training or with long responses, which is why the stable helper exists.'
+  - id: wt-dpo-tie
+    type: predict-output
+    prompt: 'Someone changes the accuracy line to count `m >= 0`. What reward accuracy does the sample batch report now?'
+    options:
+      - id: a
+        text: "1/3, unchanged"
+        rationale: 'Pair 3 has a margin of exactly 0, which `>=` now counts.'
+      - id: b
+        text: "2/3"
+        correct: true
+        rationale: 'Right. Pair 1 (0.3) and pair 3 (0.0) both count, so a policy that hasn''t learned anything about pair 3 gets credit for it.'
+      - id: c
+        text: "1.0"
+        rationale: 'Pair 2''s margin is −0.2, which is not counted under either comparison.'
+    explanation: 'At the start of DPO training the policy equals the reference, so every margin is 0. With `>=`, reward accuracy would start at 100%, which would make the metric useless for watching progress.'
+  - id: wt-dpo-reference
+    type: mcq
+    prompt: 'Pair 3 has policy log-probabilities of −8 (chosen) and −9 (rejected), so the policy already prefers the chosen response. Why is its margin 0?'
+    options:
+      - id: a
+        text: 'Because beta is too small to register the difference'
+        rationale: 'Beta scales the margin, but zero times any beta is zero. The margin is zero before beta is applied.'
+      - id: b
+        text: 'Because DPO measures the change relative to the reference, and the reference had the same −8 and −9, so the policy hasn''t moved'
+        correct: true
+        rationale: 'Right. Both log-ratios are 0, so their difference is 0. DPO rewards preferring the chosen response **more than the reference did**.'
+      - id: c
+        text: 'Because the log-probabilities are too close together'
+        rationale: 'A gap of 1 in log-probability is substantial. The margin is zero because the gap equals the reference''s gap.'
+    explanation: 'The reference model is what stops DPO from simply making chosen text as likely as possible. When you read DPO code, check that each log-ratio subtracts the reference value for the same response.'
+direct:
+  task: |
+    During training you want more than the loss: the mean implicit reward of chosen and rejected responses (beta times each shift) shows whether the model is raising the chosen responses or only pushing the rejected ones down. Add a function `dpo_metrics(batch, beta=0.1)` that returns a dictionary with `loss`, `accuracy`, `chosen_reward`, and `rejected_reward` (the last two are means over the batch).
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function dpo_metrics(batch, beta=0.1) after dpo_loss. It returns a dict with:
+    - "loss" and "accuracy": exactly the two values dpo_loss returns (call dpo_loss rather than duplicating the formula);
+    - "chosen_reward": the mean over the batch of beta * (policy_chosen - ref_chosen);
+    - "rejected_reward": the mean of beta * (policy_rejected - ref_rejected).
+
+    Do not change log_sigmoid or dpo_loss, including its return type (a tuple of two numbers). Give dpo_metrics a docstring with the formulas.
+
+    Add test asserts for the sample batch: chosen_reward is 0.1 * (1 - 1 + 0) / 3 = 0.0, rejected_reward is 0.1 * (-2 + 1 + 0) / 3, and chosen_reward - rejected_reward equals the mean margin; loss and accuracy match dpo_loss(batch).
+  checklist:
+    - 'dpo_loss still returns a two-item tuple, so existing callers and tests are unaffected'
+    - 'Loss and accuracy come from dpo_loss, not a second copy of the formula'
+    - 'Each implicit reward subtracts the reference value for the same response, scaled by beta'
+    - 'log_sigmoid is untouched'
+    - 'Tests include the identity chosen minus rejected reward equals the mean margin'

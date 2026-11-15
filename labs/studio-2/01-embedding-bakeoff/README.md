@@ -2,6 +2,12 @@
 
 **Goes with:** Studio 2, week 1 (lessons 1 to 3, especially lesson 2). **Time:** about 60 minutes.
 
+## Review track
+
+The default way to do this lab: read `WALKTHROUGH.md`, a guided tour of the reference code (open `work.py` beside
+it; run `python lab.py review all` from `labs` first if `work.py` doesn't exist yet), then do `CHANGE.md`, a small
+change you direct a coding assistant to make and then review. The steps below are the optional write track.
+
 ## Goal
 
 Decide between embedding models with evidence instead of a leaderboard. You will:

@@ -1,0 +1,197 @@
+id: s6-w3-span-tree
+summary: |
+  A trace is the record of one request as it moves through your system, stored as a flat list of **spans**: timed steps, each pointing at its parent. This program rebuilds the tree from that list and answers the three questions you ask of every slow or expensive LLM request: where did the time go, how much of it was my own code, and how many tokens did it use?
+
+  Each question is its own small function, and they all share one helper, `children`, that finds a span's direct children in start order. The token count has a deliberate rule (count only CLIENT spans) because the trace records each model call twice, once from your side and once from the API's side, and a naive sum doubles the bill.
+code: |
+  SPANS = [
+      {"id": "a", "parent": None, "name": "POST /answer", "kind": "SERVER", "start": 0, "end": 4200},
+      {"id": "b", "parent": "a", "name": "retrieve help articles", "kind": "INTERNAL", "start": 10, "end": 310},
+      {"id": "c", "parent": "a", "name": "chat claude-opus-5-5", "kind": "CLIENT", "start": 320, "end": 2100,
+       "attrs": {"gen_ai.usage.input_tokens": 2400, "gen_ai.usage.output_tokens": 180}},
+      {"id": "d", "parent": "c", "name": "anthropic.messages.create", "kind": "SERVER", "start": 360, "end": 2080,
+       "attrs": {"gen_ai.usage.input_tokens": 2400, "gen_ai.usage.output_tokens": 180}},
+      {"id": "e", "parent": "a", "name": "execute_tool search_orders", "kind": "INTERNAL", "start": 2110, "end": 3300},
+      {"id": "f", "parent": "a", "name": "chat claude-opus-5-5", "kind": "CLIENT", "start": 3310, "end": 4190,
+       "attrs": {"gen_ai.usage.input_tokens": 2900, "gen_ai.usage.output_tokens": 120}},
+      {"id": "g", "parent": "f", "name": "anthropic.messages.create", "kind": "SERVER", "start": 3330, "end": 4170,
+       "attrs": {"gen_ai.usage.input_tokens": 2900, "gen_ai.usage.output_tokens": 120}},
+  ]
+
+  def duration(span):
+      return span["end"] - span["start"]
+
+  def children(spans, parent_id):
+      """Spans whose parent is parent_id, sorted by start time."""
+      return sorted((s for s in spans if s["parent"] == parent_id), key=lambda s: s["start"])
+
+  def render(spans):
+      """One line per span, depth-first from the root, children in start order."""
+      lines = []
+
+      def walk(span, depth):
+          lines.append("  " * depth + f"{span['name']} ({duration(span)} ms)")
+          for child in children(spans, span["id"]):
+              walk(child, depth + 1)
+
+      for root in children(spans, None):
+          walk(root, 0)
+      return lines
+
+  def self_time(spans, span_id):
+      """Duration of the span minus the durations of its direct children."""
+      span = next(s for s in spans if s["id"] == span_id)
+      return duration(span) - sum(duration(k) for k in children(spans, span_id))
+
+  def total_tokens(spans):
+      """Input + output tokens, counting each model request ONCE (CLIENT spans only)."""
+      total = 0
+      for s in spans:
+          attrs = s.get("attrs", {})
+          if s["kind"] == "CLIENT" and "gen_ai.usage.input_tokens" in attrs:
+              total += attrs["gen_ai.usage.input_tokens"] + attrs.get("gen_ai.usage.output_tokens", 0)
+      return total
+
+  def slowest_child(spans, parent_id):
+      """Name of the direct child with the longest duration (None if there are no children)."""
+      kids = children(spans, parent_id)
+      if not kids:
+          return None
+      return max(kids, key=duration)["name"]
+
+  for line in render(SPANS):
+      print(line)
+  print("self time of root:", self_time(SPANS, "a"), "ms")
+  print("tokens:", total_tokens(SPANS))
+  print("slowest step:", slowest_child(SPANS, "a"))
+notes:
+- lines:
+  - 1
+  - 13
+  title: A trace as a list of spans
+  text: |
+    Each span is a dictionary with an `id`, a `parent` id (`None` for the root), a `name`, a `kind`, and start and end times in milliseconds. Some carry `attrs` with token counts, named following the OpenTelemetry generative AI conventions (`gen_ai.usage.input_tokens`).
+
+    The `kind` tells you whose point of view a span records. `CLIENT` is your code making a call; `SERVER` is a service handling one. Spans `c` and `d` describe the same model request: `c` from your app, `d` from the API side, nested under it. Both report the same 2,400 input tokens.
+
+    The list is **flat**: the tree exists only through the `parent` pointers. That's how tracing backends export data, and why rebuilding the tree is the first job.
+- lines:
+  - 15
+  - 20
+  title: 'Two helpers: duration and children'
+  text: |
+    `duration` is tiny, but naming it means `end - start` is written once rather than in four places, and a reader sees intent instead of arithmetic.
+
+    `children` uses a **generator expression** `(s for s in spans if s["parent"] == parent_id)` to filter, then `sorted(..., key=lambda s: s["start"])`. A **lambda** is a one-line unnamed function; `key=` tells `sorted` what to compare, here each span's start time. So `children(SPANS, "a")` returns spans `b, c, e, f` in the order they began.
+
+    Passing `None` as the parent id finds the roots, which `render` relies on.
+- lines:
+  - 22
+  - 33
+  title: Render the tree with a recursive helper
+  text: |
+    `walk` is a **nested function** (defined inside `render`) that calls itself: **recursion**. It appends one line for the span, then walks each child one level deeper. Because each child is fully walked before the next one starts, grandchildren appear right under their parent, which is called **depth-first** order.
+
+    `"  " * depth` repeats two spaces per level (string repetition), and the **f-string** `f"{span['name']} ({duration(span)} ms)"` fills in the values. Note the single quotes inside the double-quoted f-string; reusing the same quote type there is a syntax error in older Python versions.
+
+    `walk` can append to `lines` because it reads that variable from the enclosing function, which Python allows for mutation (it's the `lines.append`, not a reassignment). The output starts `POST /answer (4200 ms)`, then `  retrieve help articles (300 ms)`.
+- lines:
+  - 35
+  - 38
+  title: 'Self time: what''s left after the children'
+  text: |
+    `next(s for s in spans if s["id"] == span_id)` returns the first span with that id. `next` on a generator is a compact "find first"; it raises `StopIteration` if there's no match, which is acceptable here since a missing id is a bug in the caller.
+
+    Self time is the span's duration minus its direct children's durations. For the root: 4,200 minus (300 + 1,780 + 1,190 + 880) = 50 ms. Only 50 ms of the request was your own code; the rest was retrieval, the model, and a tool.
+
+    For span `c`: 1,780 minus 1,720 = 60 ms, the network and SDK overhead between your call and the API's handling of it. The docstring assumes children don't overlap; with parallel children, this subtraction could go negative, so check that assumption before reusing this on a concurrent system.
+- lines:
+  - 40
+  - 47
+  title: Tokens, counted once
+  text: |
+    The loop adds input and output tokens, but only for spans that are `CLIENT` **and** carry usage. `s.get("attrs", {})` gives an empty dict for spans with no attributes, so the `in` check simply fails instead of crashing.
+
+    Counting every span with usage would include `d` and `g` too, giving 11,200 instead of 5,600: exactly double. This is the most likely bug in an AI-written version, because "sum the token attributes" sounds right. The rule picks one point of view and sticks to it.
+- lines:
+  - 49
+  - 54
+  title: Slowest direct child
+  text: |
+    `max(kids, key=duration)` uses the same `key=` idea as `sorted`, and passes the named function `duration` directly (no lambda needed when a function already exists). It returns the whole span, and `["name"]` takes its name.
+
+    The `if not kids: return None` guard matters: `max` on an empty list raises `ValueError`, and a leaf span (like `b`) has no children. Here the answer is the first model call, at 1,780 ms.
+- lines:
+  - 56
+  - 60
+  title: Print the readout
+  text: |
+    The demo prints the rendered tree, the root's self time (50 ms), the token total (5,600), and the slowest step. Those three lines are a complete first diagnosis of a slow request: the time is in the model call, not your code, and the request used 5,600 tokens.
+review:
+- id: wt-span-tokens-all
+  type: code-reading
+  prompt: An AI assistant rewrites `total_tokens` as below to "handle any span kind". What does it return for `SPANS`?
+  code: |
+    def total_tokens(spans):
+        return sum(s.get("attrs", {}).get("gen_ai.usage.input_tokens", 0)
+                   + s.get("attrs", {}).get("gen_ai.usage.output_tokens", 0)
+                   for s in spans)
+  options:
+  - id: a
+    text: 5,600, the correct total
+    rationale: That's the original's answer, which counts only CLIENT spans.
+  - id: b
+    text: 11,200, double the real usage
+    correct: true
+    rationale: Right. Each model request appears as a CLIENT span and a SERVER span with the same counts, so summing every span counts each request twice.
+  - id: c
+    text: It raises `KeyError` on spans without attrs
+    rationale: The `.get` calls with defaults handle missing attrs; the bug is double counting, not a crash.
+  explanation: The rewrite is shorter and handles missing data gracefully, which makes it look like an improvement. A cost dashboard built on it would report twice the real spend.
+- id: wt-span-self-time
+  type: scenario
+  prompt: The root span's self time is 50 ms out of 4,200. What does that tell you about where to look for a speedup?
+  options:
+  - id: a
+    text: Optimize your own code first, since it's the root
+    rationale: Your own code accounts for only 50 ms. Making it twice as fast saves 25 ms.
+  - id: b
+    text: 'The time is in the children: mainly the two model calls (2,660 ms together) and the tool call (1,190 ms)'
+    correct: true
+    rationale: 'Right. Self time tells you how much is yours; the rest is in the steps you call, so that''s where to look: shorter outputs, a faster model for one step, or a faster tool.'
+  - id: c
+    text: The trace is broken, because self time should be most of the total
+    rationale: In LLM apps, it's normal for your own code to be a sliver and the model to dominate.
+  explanation: 'Self time is how you avoid optimizing the wrong thing. It also points at model selection: a smaller model for one of the two calls may be the biggest win available.'
+- id: wt-span-predict
+  type: predict-output
+  prompt: What does `[s["id"] for s in children(SPANS, "c")]` return?
+  options:
+  - id: a
+    text: '`["d"]`'
+    correct: true
+    rationale: Right. Only span `d` has parent `c`.
+  - id: b
+    text: '`["d", "g"]`'
+    rationale: Span `g` has parent `f`, not `c`. Both are SERVER spans, but `children` looks only at the parent pointer.
+  - id: c
+    text: '`[]`, because `c` is a CLIENT span'
+    rationale: Kind doesn't matter to `children`; any span can have children.
+  explanation: Keeping `children` simple (match on parent, sort by start) is what lets three other functions reuse it.
+direct:
+  task: |
+    You want to know how much of every request is spent waiting on the model, as a fraction of the total. Add a function that reports model time as a share of the root span's duration.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a function model_time_share(spans) that returns the total duration of all CLIENT spans that carry gen_ai.usage.input_tokens, divided by the root span's duration, as a float. Use the same CLIENT-only rule as total_tokens so each model request is counted once, and reuse the existing duration and children helpers (find the root with children(spans, None)).
+
+    If there is no root span, raise ValueError. If there are several roots, raise ValueError too rather than guessing.
+
+    Do not change any existing function. Add asserts that: for SPANS the result equals (1780 + 880) / 4200, a trace with no model calls returns 0.0, and an empty list raises ValueError.
+  checklist:
+  - Only CLIENT spans with usage are counted (SERVER spans would double the time)
+  - The existing `duration` and `children` helpers are reused
+  - No root, or several roots, raises `ValueError` instead of returning a guess
+  - Existing functions are unchanged
+  - Asserts include the exact expected fraction for `SPANS`

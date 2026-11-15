@@ -1,0 +1,157 @@
+id: s5-w2-break-even
+summary: |
+  This program answers a common fine-tuning question with arithmetic: at what monthly volume does a small fine-tuned model become cheaper than a large prompted one? The large model is cheap to set up but costs more per request (long prompts full of instructions and examples). The small model costs little per request but carries a one-time bill (dataset, training, evals) and a monthly bill (monitoring, re-evaluation).
+
+  Three functions mirror the three pieces of the reasoning: price one request, price one month, and solve for the volume where the two months cost the same. Keeping them separate lets you sanity-check each against a calculator, and lets the demo show monthly totals on both sides of the break-even point. The numbers are made up on purpose; the structure is what transfers.
+code: |
+  import math
+
+
+  def cost_per_request(in_tokens, out_tokens, price_in, price_out):
+      """Dollars for one request. Prices are dollars per million tokens."""
+      return (in_tokens * price_in + out_tokens * price_out) / 1_000_000
+
+
+  def monthly_cost(volume, per_request, fixed_monthly=0.0, one_time=0.0, months=12):
+      """Total monthly cost: volume * per_request + fixed_monthly + one_time amortized over months."""
+      return volume * per_request + fixed_monthly + one_time / months
+
+
+  def break_even_volume(large_per_request, small_per_request, fixed_monthly, one_time, months=12):
+      """Monthly request volume above which the small model is cheaper.
+      Return None if the small model never wins (it is not cheaper per request).
+      Round up to a whole number of requests (math.ceil)."""
+      saving = large_per_request - small_per_request
+      if saving <= 0:
+          return None
+      monthly_overhead = fixed_monthly + one_time / months
+      return math.ceil(monthly_overhead / saving)
+
+
+  # Illustrative, made-up numbers: check real prices before deciding anything.
+  # Large prompted model: 3,000 input tokens (instructions + examples), 300 output.
+  large = cost_per_request(3000, 300, price_in=4.00, price_out=20.00)
+  # Small fine-tuned model: no examples needed, 600 input tokens, 300 output, cheap hosted rates.
+  small = cost_per_request(600, 300, price_in=0.20, price_out=0.80)
+  print("per request:", round(large, 5), round(small, 5))
+
+  # One-time: dataset + training + evals ($24,000). Monthly: monitoring and re-evaluation ($1,500).
+  v = break_even_volume(large, small, fixed_monthly=1500, one_time=24000, months=12)
+  print("break-even requests per month:", v)
+  for volume in (50_000, 500_000):
+      print(volume, round(monthly_cost(volume, large)), round(monthly_cost(volume, small, 1500, 24000, 12)))
+notes:
+  - lines: [1, 1]
+    title: 'The import'
+    text: |
+      `math` is Python's built-in math module. Only one function is used from it, `math.ceil`, which rounds a number **up** to the next whole number. Why up, and not to the nearest, is explained at line 22.
+  - lines: [4, 6]
+    title: 'Price one request'
+    text: |
+      API prices are quoted in dollars per **million** tokens, so the function multiplies each token count by its price and divides the total by 1,000,000. `1_000_000` uses underscores as digit separators, which Python ignores; they just make the number readable.
+
+      Input and output are priced separately because output tokens usually cost several times more. Worked value: 3,000 input tokens at $4 plus 300 output tokens at $20 is (12,000 + 6,000) / 1,000,000 = **$0.018**.
+
+      A common AI mistake here is forgetting the division, which inflates every cost a million times, or applying one price to both token types.
+  - lines: [9, 11]
+    title: 'Price one month, with amortization'
+    text: |
+      `fixed_monthly=0.0, one_time=0.0, months=12` are **default arguments**. The large prompted model has no setup costs, so you can call `monthly_cost(volume, large)` with just two arguments; the small model passes all of them.
+
+      `one_time / months` **amortizes** the one-time cost: it spreads the $24,000 of setup across the 12 months you expect to use the model, so $2,000 a month. Choosing `months` is a business judgment. If a better base model arrives in six months and you retrain, the setup cost is really spread over six.
+  - lines: [14, 20]
+    title: 'The guard clause for "never wins"'
+    text: |
+      `saving` is how much cheaper each small-model request is. If it is zero or negative, the small model never pays for itself, at any volume, and the function returns `None`.
+
+      Returning `None` (Python's "no value") rather than a number is a deliberate signal. Without this guard, a zero saving would raise `ZeroDivisionError`, and a negative saving would produce a **negative** break-even volume, which a dashboard might display as "already cheaper". The docstring documents the `None` so callers know to check for it.
+  - lines: [21, 22]
+    title: 'Solve for the break-even volume'
+    text: |
+      At volume V the two monthly costs are equal when V × large = V × small + overhead, which rearranges to V = overhead / (large − small). `monthly_overhead` names the right-hand side's numerator: the fixed monthly cost plus the amortized one-time cost.
+
+      `math.ceil` rounds up because the answer should be a volume at which the small model is **no more expensive**. Rounding to the nearest whole request could land just below the true crossing point, where the small model still costs slightly more. One of the tests checks exactly this.
+
+      Worked value: overhead = 1,500 + 24,000 / 12 = 3,500; saving = 0.018 − 0.00036 = 0.01764; 3,500 / 0.01764 = 198,412.7, so **198,413** requests a month.
+  - lines: [25, 30]
+    title: 'Price both options per request'
+    text: |
+      The calls use **keyword arguments** (`price_in=4.00`), so a reader can see which number is which without looking up the function. That matters most for functions with several numbers of the same kind, where swapping two is an easy, silent mistake.
+
+      The comments say where the token counts come from: the prompted model carries 3,000 input tokens of instructions and examples, while the fine-tuned model needs only 600. That difference in prompt length is most of the per-request saving.
+  - lines: [32, 36]
+    title: 'Break-even, then both sides of it'
+    text: |
+      The program prints the break-even volume, then the monthly cost of each option at 50,000 and 500,000 requests. At 50,000 the large model costs about $900 against the small model's $3,518; at 500,000 it is $9,000 against $3,680.
+
+      Press **Run this code**, then try the lesson's suggestions: raise `one_time` to 60,000 (the break-even moves to about 368,000), or shorten `months` to 6. Watching the answer move is the real lesson: break-even is very sensitive to costs you can only estimate.
+review:
+  - id: wt-be2-no-guard
+    type: code-reading
+    prompt: 'An AI assistant removes the `if saving <= 0` guard "because the small model is always cheaper per request in practice". What does `break_even_volume(0.002, 0.003, 100, 0)` return now?'
+    code: |
+      def break_even_volume(large_per_request, small_per_request, fixed_monthly, one_time, months=12):
+          saving = large_per_request - small_per_request
+          monthly_overhead = fixed_monthly + one_time / months
+          return math.ceil(monthly_overhead / saving)
+    options:
+      - id: a
+        text: "`None`"
+        rationale: 'Nothing returns `None` any more; the guard was the only place that did.'
+      - id: b
+        text: 'It raises `ZeroDivisionError`'
+        rationale: 'That happens when the two prices are equal. Here the saving is −0.001, not zero.'
+      - id: c
+        text: "−100000, a negative volume"
+        correct: true
+        rationale: 'Right. 100 / −0.001 is −100,000. A negative break-even looks like "cheaper from the first request", the opposite of the truth.'
+    explanation: 'Assumptions like "always cheaper in practice" are exactly what a guard clause protects against. Two of the tests (more expensive, and equal cost) exist to catch this removal.'
+  - id: wt-be2-one-time
+    type: predict-output
+    prompt: 'With the demo''s per-request costs (a saving of $0.01764), you raise `one_time` from 24,000 to 60,000 and keep `fixed_monthly=1500, months=12`. What does `break_even_volume` return?'
+    options:
+      - id: a
+        text: "198,413"
+        rationale: 'That is the original answer. The one-time cost is part of the monthly overhead, so it must change.'
+      - id: b
+        text: "368,481"
+        correct: true
+        rationale: 'Right. Overhead becomes 1,500 + 60,000 / 12 = 6,500, and 6,500 / 0.01764 rounds up to 368,481.'
+      - id: c
+        text: "3,401,361"
+        rationale: 'That divides the whole $60,000 by the saving without amortizing it over 12 months.'
+    explanation: 'A 2.5x higher one-time cost almost doubles the break-even volume here. When someone presents a break-even number, ask which costs went in and how sensitive the answer is to them.'
+  - id: wt-be2-decision
+    type: scenario
+    prompt: 'You expect about 250,000 requests a month, above the 198,413 break-even. A stakeholder wants to start fine-tuning now. What should you check first?'
+    options:
+      - id: a
+        text: 'Nothing; the volume is above break-even, so the small model is cheaper'
+        rationale: 'Cheaper only matters if it is good enough. And 250,000 is not far above an estimate built on guesses.'
+      - id: b
+        text: 'That the fine-tuned model meets the quality bar on a held-out eval, and how the break-even moves under realistic costs (people''s time, a shorter model life)'
+        correct: true
+        rationale: 'Right. The math assumes equal quality and fixed cost estimates. Verify the first with evidence and stress-test the second.'
+      - id: c
+        text: 'Whether a larger fine-tuned model would be even cheaper'
+        rationale: 'A larger model costs more per request, which pushes break-even up, and it doesn''t answer whether the small one is good enough.'
+    explanation: 'Cost models compare options that are assumed to be interchangeable. The eval is what establishes that they are. Model selection is decided by quality first, then cost among the options that pass.'
+direct:
+  task: |
+    The large prompted model also has a monthly cost you forgot: about $300 a month of prompt maintenance and monitoring. Add a `large_fixed_monthly=0.0` parameter to `break_even_volume` so the overhead becomes the small model's fixed and amortized costs **minus** the large model's fixed cost.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add a keyword parameter large_fixed_monthly=0.0 to break_even_volume, after months. The extra monthly overhead of the small model becomes fixed_monthly + one_time / months - large_fixed_monthly.
+
+    Keep the saving <= 0 guard returning None. Add a second rule: if the extra overhead is <= 0 and the saving is positive, return 0, because the small model is cheaper at any volume. Keep math.ceil for the normal case.
+
+    Do not change cost_per_request or monthly_cost, and the result must be identical when large_fixed_monthly is 0. Update the docstring to describe the new parameter and the return-0 case.
+
+    Add test asserts: with the demo numbers and large_fixed_monthly=300 the result is math.ceil(3200 / saving); with large_fixed_monthly=5000 the result is 0; and the existing None cases still return None.
+  checklist:
+    - 'The default (0.0) gives exactly the old results'
+    - 'The None guard for a non-positive saving is still there and still first'
+    - 'The new return-0 case is handled explicitly, not by a negative number slipping through'
+    - 'math.ceil is still used for the normal case'
+    - 'The docstring and new tests cover the new parameter and both edge cases'

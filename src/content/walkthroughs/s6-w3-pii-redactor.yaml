@@ -1,0 +1,171 @@
+id: s6-w3-pii-redactor
+summary: |
+  Logs of an LLM app capture what users typed and what the model said, which means they capture email addresses, phone numbers, and sometimes API keys pasted by accident. This program scrubs those out before a line is written to a log, replacing each with a label like `[EMAIL]`, and counts how many of each it replaced.
+
+  It is four compiled regular expressions and one short function that applies them in a fixed order. The order is the design: secrets first, then emails, then phones, so the digits inside a key can't be mistaken for a phone number. The tests check both directions: everything sensitive is caught, and ordinary text like dates, prices, and ticket numbers survives.
+code: |
+  import re
+
+  # Secrets: an "sk-" key with 16+ more key characters, or a bearer token.
+  KEY = re.compile(r"\bsk-[A-Za-z0-9_-]{16,}")
+  BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}")
+  EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+  # North American numbers in common formats, or E.164 (+ and 8 to 15 digits).
+  PHONE = re.compile(
+      r"(?<![\w+])(?:\+\d{8,15}\b|(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\w))"
+  )
+
+  def redact(text):
+      """Return (redacted_text, counts) where counts is a dict like {"SECRET": 1, "EMAIL": 2, "PHONE": 0}.
+      Replace keys and bearer tokens with [SECRET] first, then emails with [EMAIL], then phones with [PHONE]."""
+      counts = {"SECRET": 0, "EMAIL": 0, "PHONE": 0}
+      for pattern in (KEY, BEARER):
+          text, n = pattern.subn("[SECRET]", text)
+          counts["SECRET"] += n
+      text, counts["EMAIL"] = EMAIL.subn("[EMAIL]", text)
+      text, counts["PHONE"] = PHONE.subn("[PHONE]", text)
+      return text, counts
+
+  log_line = ("user=maria.lopez@example.com said: charged twice, call (415) 555-0134. "
+              "Header was Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.e30.sig123456 and key sk-test-AbCdEf0123456789XyZ")
+  print(redact(log_line))
+notes:
+- lines:
+  - 1
+  - 1
+  title: The regular expression module
+  text: |
+    `re` is Python's built-in **regular expression** module. A regular expression (regex) is a small pattern language for matching text: `\d` means a digit, `[A-Za-z]` a letter, `{16,}` "16 or more of the previous thing", `+` "one or more", `?` "optional".
+- lines:
+  - 3
+  - 5
+  title: Secret patterns
+  text: |
+    `re.compile(r"...")` turns a pattern into a reusable object. The `r` prefix makes a **raw string**, so backslashes reach the regex engine untouched (otherwise you'd have to write `\\b`).
+
+    - `KEY`: `\b` is a **word boundary** (the edge between a word character and anything else), then `sk-`, then 16 or more key characters. The minimum length keeps ordinary words like "sk-8" from matching.
+    - `BEARER`: `(?i)` makes the whole pattern case-insensitive, so `Bearer`, `bearer`, and `BEARER` all match; `\s+` is one or more spaces. The token's character set includes `.` so a three-part JWT is replaced as one piece.
+
+    The whole `Bearer <token>` is replaced, not just the token, which is why the test expects `[SECRET]` with no "Bearer" left.
+- lines:
+  - 6
+  - 6
+  title: Email
+  text: |
+    The pattern is: one or more name characters, `@`, a domain label, any number of `.label` groups, and a final dot plus two or more letters.
+
+    `(?:...)` is a **non-capturing group**: parentheses that group for repetition (`*` means zero or more) without saving the match. That repetition is what lets `mail.example.co.uk` match as one address.
+
+    This is deliberately simpler than the full email standard. For redaction, catching every real address you see in logs matters more than validating them.
+- lines:
+  - 7
+  - 10
+  title: Phone numbers, and what they must not match
+  text: |
+    This is the hardest pattern, because digits are everywhere. It has two alternatives separated by `|`:
+
+    - `\+\d{8,15}\b`: international E.164 form, a plus sign and 8 to 15 digits (`+447700900123`).
+    - An optional `+1` country code, then an area code with or without parentheses, then 3 and 4 digits, with an optional space, dot, or dash between groups.
+
+    The guards matter as much as the body. `(?<![\w+])` is a **negative lookbehind**: "the character before this must not be a word character or `+`", so the pattern can't start in the middle of a longer number or word. `(?!\w)` is a **negative lookahead** for the end. Without them, the digits in `2026-11-11` or inside a key could match. The tests that check `Invoice 2026-11-11 for $1,299.00` and `ticket #48213` survive unchanged are what keep this pattern honest.
+- lines:
+  - 12
+  - 18
+  title: Apply secrets first, and count
+  text: |
+    `pattern.subn(replacement, text)` replaces every match and returns a **tuple** of (new text, number of replacements). **Tuple unpacking** `text, n = ...` takes both at once, so counting is free.
+
+    Looping over `(KEY, BEARER)` applies both secret patterns and adds both counts to `"SECRET"`.
+
+    Secrets go first because tokens can contain digit runs that look like phone numbers. In `Bearer 4155550134.abcdefghijk`, the ten digits sit between a space and a dot, which the phone pattern accepts. If phones ran first, that piece would become `[PHONE]`, the bearer pattern would no longer match what's left, and `.abcdefghijk` (the rest of the token) would be written to the log. The exercise's `sk-live-...` test makes the same point; with this particular phone pattern the lookbehind happens to protect that key, but you shouldn't rely on one pattern's guards to make up for the wrong order.
+
+    An AI-written version that applies patterns in whatever order a dictionary or list happens to hold them can get this wrong.
+- lines:
+  - 19
+  - 21
+  title: Emails, then phones, then return
+  text: |
+    Each `subn` result is unpacked straight into the text and the count entry. Emails run before phones so a number-heavy address local part isn't partly replaced.
+
+    A useful property follows from replacing with bracketed labels: running `redact` on already-redacted text changes nothing, because `[EMAIL]` matches none of the patterns. That is called **idempotence**, and it matters when a log line passes through two services that both redact. The last test checks it.
+
+    The counts are worth logging on their own. A jump in `SECRET` replacements means something upstream started putting keys into prompts.
+- lines:
+  - 23
+  - 25
+  title: A realistic log line
+  text: |
+    Two adjacent string literals inside parentheses are joined into one (implicit concatenation). The line mixes an email, a phone in parentheses, a bearer JWT, and a test key; the output shows all four replaced and the counts `{"SECRET": 2, "EMAIL": 1, "PHONE": 1}`.
+review:
+- id: wt-pii-order
+  type: code-reading
+  prompt: 'An AI assistant tidies `redact` into a loop over a dictionary, as below. What happens to `"Authorization: Bearer 4155550134.abcdefghijk"`?'
+  code: |
+    PATTERNS = {"PHONE": PHONE, "EMAIL": EMAIL, "SECRET": KEY, "BEARER": BEARER}
+
+    def redact(text):
+        counts = {"SECRET": 0, "EMAIL": 0, "PHONE": 0}
+        for label, pattern in PATTERNS.items():
+            key = "SECRET" if label == "BEARER" else label
+            text, n = pattern.subn(f"[{key}]", text)
+            counts[key] += n
+        return text, counts
+  options:
+  - id: a
+    text: 'It becomes `"Authorization: [SECRET]"`, as before'
+    rationale: Only if secrets ran first. Here phones run first.
+  - id: b
+    text: The digits are replaced with `[PHONE]` first, and the rest of the token is left in the log
+    correct: true
+    rationale: 'Right. Dictionaries keep insertion order, and PHONE was inserted first. The digits become `[PHONE]`, the bearer pattern no longer matches, and the output is `Authorization: Bearer [PHONE].abcdefghijk`, with most of the token still in the log.'
+  - id: c
+    text: It raises `KeyError` for BEARER
+    rationale: The `key = ...` line maps BEARER to SECRET, so there is no KeyError.
+  explanation: Table-driven code is often cleaner, but here the order is part of the correctness, so it must be explicit. Add a test with a digit-heavy token whenever you touch this function.
+- id: wt-pii-over-redact
+  type: scenario
+  prompt: Why do the tests check that `Invoice 2026-11-11 for $1,299.00` comes out unchanged?
+  options:
+  - id: a
+    text: A redactor that replaces dates and prices makes logs useless for debugging, so over-redaction is a real failure too
+    correct: true
+    rationale: Right. If every number becomes `[PHONE]`, you can't tell which invoice failed. Both directions need tests.
+  - id: b
+    text: Dates are personal data and should be redacted, so this test is wrong
+    rationale: Some dates (birthdates) can be personal, but invoice dates in a support log are what you need to investigate problems.
+  - id: c
+    text: To make the tests run faster
+    rationale: Speed has nothing to do with it.
+  explanation: 'This is the precision and recall trade-off from evals, applied to a regex: catching more by matching loosely costs you false positives. Measure both.'
+- id: wt-pii-subn
+  type: mcq
+  prompt: What does `EMAIL.subn("[EMAIL]", "a@x.io and b@y.io")` return?
+  options:
+  - id: a
+    text: '`"[EMAIL] and [EMAIL]"`'
+    rationale: That's what `sub` returns. `subn` also returns the count.
+  - id: b
+    text: '`("[EMAIL] and [EMAIL]", 2)`'
+    correct: true
+    rationale: Right. A tuple of the new text and the number of replacements.
+  - id: c
+    text: '`2`'
+    rationale: The count comes with the text, as a pair.
+  explanation: Picking `subn` over `sub` is what makes the counts free; no second pass over the text is needed.
+direct:
+  task: |
+    Your security team wants US Social Security numbers (like `123-45-6789`) redacted too, as `[SSN]`. Add the pattern without breaking the existing behavior.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Add an SSN pattern to the redactor for the US format NNN-NN-NNNN (three digits, dash, two digits, dash, four digits) with word boundaries, replaced with [SSN] and counted under a new "SSN" key in counts. Apply it after secrets and emails and BEFORE phones.
+
+    Do not change the existing four patterns, their order relative to each other, or the existing count keys. Redaction must stay idempotent.
+
+    Add asserts that: "SSN 123-45-6789 on file" becomes "SSN [SSN] on file" with counts["SSN"] == 1, the date "2026-11-11" is unchanged, a phone like 415-555-0134 is still [PHONE] (not [SSN]), and every existing assert still passes with the new "SSN" key present.
+  checklist:
+  - The SSN pattern requires the exact 3-2-4 dash format with word boundaries
+  - Secrets still run first; SSN runs before phones
+  - Dates, prices, and ticket numbers still survive
+  - Existing count keys are unchanged and `SSN` is added
+  - Redacting twice still changes nothing

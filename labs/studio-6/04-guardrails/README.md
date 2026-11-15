@@ -2,6 +2,17 @@
 
 **Goes with:** Studio 6, week 4 (lessons 10 to 12). **Time:** about 75 minutes.
 
+## Review track
+
+If you're on the review track (the default), you don't write the code below from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to fix the red team's one false positive (b06) without
+   reopening an attack, review its diff, then run `pytest studio-6/04-guardrails/test_change.py -q`.
+
+Everything below describes the write track.
+
 ## Goal
 
 Wrap one model call (a fictional car rental support assistant) in layered guards, then measure them the way you

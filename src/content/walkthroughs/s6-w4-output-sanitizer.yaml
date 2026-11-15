@@ -1,0 +1,168 @@
+id: s6-w4-output-sanitizer
+summary: |
+  Model output is untrusted input to your web page. If a model (perhaps steered by a prompt injection) writes `<img src=x onerror=...>` or a `javascript:` link and you insert it as HTML, it runs in your user's browser. This program converts model text into safe HTML while still allowing two useful bits of formatting: bold text, and links to your own help site.
+
+  The order is the design. It escapes **everything** first, so nothing the model wrote can become a tag, then adds back only the few constructs it allows, checking each one. The opposite approach, rendering Markdown to HTML and then trying to remove the dangerous parts, is where most sanitizer bugs come from.
+code: |
+  import html
+  import re
+  from urllib.parse import urlparse
+
+  ALLOWED_HOSTS = {"help.northwind.example"}
+  LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")  # [label](url), matched on escaped text
+
+  def host_allowed(url):
+      """True only for https URLs whose hostname is an allowed host or a subdomain of one."""
+      parsed = urlparse(url)
+      if parsed.scheme != "https":
+          return False
+      host = (parsed.hostname or "").lower()
+      return any(host == h or host.endswith("." + h) for h in ALLOWED_HOSTS)
+
+  def render_safe(text):
+      """Turn model output into HTML that is safe to insert into a page.
+      Escape everything first, then add back only the constructs we allow."""
+      out = html.escape(text, quote=True)
+      out = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", out)
+
+      def link(m):
+          label, raw_url = m.group(1), html.unescape(m.group(2))
+          if not host_allowed(raw_url):
+              return label + " (link removed)"
+          href = html.escape(raw_url, quote=True)
+          return '<a href="' + href + '" rel="nofollow noopener noreferrer">' + label + "</a>"
+
+      out = LINK.sub(link, out)
+      return out.replace("\n", "<br>")
+
+  print(render_safe("**Heads up:** see [returns](https://help.northwind.example/returns)."))
+  print(render_safe("<img src=x onerror=alert(1)> [prize](javascript:alert(1))"))
+notes:
+- lines:
+  - 1
+  - 6
+  title: Standard-library tools and an allowlist
+  text: |
+    `html` provides `escape` and `unescape`; `re` is regular expressions; `urlparse` splits a URL into scheme, host, path, and so on. All three ship with Python.
+
+    `ALLOWED_HOSTS` is an **allowlist**: links are allowed only to these hosts, and everything else is refused. An allowlist fails safe (a new attack is blocked by default), while a blocklist fails open.
+
+    `LINK` matches Markdown links `[label](url)` on the already-escaped text: `\[([^\]]+)\]` captures the label (anything but `]`), and `\(([^)\s]+)\)` captures the URL (anything but `)` or whitespace). Compiling it once at the top names it and avoids repeating a hard-to-read pattern.
+- lines:
+  - 8
+  - 14
+  title: Check the host by parsing, never by substring
+  text: |
+    `urlparse(url)` breaks the URL apart. The scheme must be exactly `https`, which rejects `http:`, `javascript:`, and `data:` in one check.
+
+    `(parsed.hostname or "").lower()` handles URLs with no host (like `javascript:alert(1)`), where `hostname` is `None`. Hostnames are case-insensitive, so lowercasing makes `HELP.Northwind.example` match.
+
+    The final line accepts the host itself or a true subdomain: `host.endswith("." + h)` requires a dot before the allowed name. Compare a substring check, `"help.northwind.example" in url`, which accepts `https://help.northwind.example.evil.test/`, an attacker's domain. That's the bug the test with `.evil.test` exists to catch.
+- lines:
+  - 16
+  - 19
+  title: 'Step 1: escape everything'
+  text: |
+    `html.escape(text, quote=True)` turns `<` into `&lt;`, `>` into `&gt;`, `&` into `&amp;`, and both quote characters into entities. After this line, nothing in `out` can be interpreted by a browser as a tag or break out of an attribute.
+
+    From here on, every change adds back markup the code itself writes, never markup copied from the model.
+- lines:
+  - 20
+  - 20
+  title: 'Step 2: bold'
+  text: |
+    `re.sub(pattern, replacement, text)` replaces matches. `\*\*(.+?)\*\*` matches text between double asterisks: `\*` is a literal asterisk, and `.+?` is a **non-greedy** match (as little as possible), so `**a** and **b**` gives two bold runs, not one long one. `\1` in the replacement inserts what the parentheses captured.
+
+    The captured text was already escaped in step 1, which is why `**<b>x</b>**` becomes `<strong>&lt;b&gt;x&lt;/b&gt;</strong>`: the model's tags stay visible as text.
+- lines:
+  - 22
+  - 27
+  title: 'Step 3: links, checked one at a time'
+  text: |
+    `link` is a **nested function** passed to `sub` (next note). For each match it gets a **match object** `m`, and `m.group(1)` and `m.group(2)` are the label and URL.
+
+    The URL in the escaped text contains entities (a `&` is now `&amp;`), so `html.unescape` restores the real URL before checking it. Checking the escaped version would be checking a different string from the one the browser will follow.
+
+    A refused link keeps its label and says `(link removed)`, so the reader isn't left with a mysterious gap. An allowed URL is escaped again for the `href` attribute, so a quote inside it can't end the attribute and start an `onclick`. Building the tag by **string concatenation** with `+` keeps every piece visible; nothing from the model enters it unescaped.
+- lines:
+  - 29
+  - 30
+  title: Apply links, then line breaks
+  text: |
+    `LINK.sub(link, out)` calls `link` for each match and uses its return value as the replacement. Passing a function instead of a fixed string is how `re.sub` handles replacements that need logic.
+
+    Finally, `.replace("\n", "<br>")` turns newlines into line breaks. It's safe to do last because `<br>` is markup we chose, and the text has no raw `<` left that could combine with it.
+- lines:
+  - 32
+  - 33
+  title: 'Two demos: allowed and hostile'
+  text: |
+    The first line renders bold and an allowed link. The second shows an image tag rendered as visible, harmless text and a `javascript:` link removed.
+
+    Look closely at the second output: it ends `prize (link removed))`, with an extra parenthesis. The URL pattern stops at the first `)`, and `javascript:alert(1)` contains one. That's a cosmetic flaw, not a security hole (the link is still removed), and the kind of thing a reviewer should notice and decide about rather than assume is fine. It's also a reason the lesson recommends a maintained sanitizer library in production, with tests like these to prove its configuration.
+review:
+- id: wt-san-substring
+  type: code-reading
+  prompt: An AI assistant replaces `host_allowed` with the shorter version below. Which link is now rendered as a live `<a href>` that should not be?
+  code: |
+    def host_allowed(url):
+        return url.startswith("https://") and any(h in url for h in ALLOWED_HOSTS)
+  options:
+  - id: a
+    text: '`[x](https://help.northwind.example.evil.test/a)`'
+    correct: true
+    rationale: Right. The allowed name appears as a substring of an attacker-controlled host, so the check passes and a phishing link goes live.
+  - id: b
+    text: '`[x](http://help.northwind.example/a)`'
+    rationale: The `https://` prefix check still rejects plain http.
+  - id: c
+    text: '`[x](javascript:alert(1))`'
+    rationale: It doesn't start with `https://`, so it's still refused.
+  explanation: Substring checks on URLs are a classic security bug, and the docstring warns against them by name. Parse the URL and compare the hostname exactly (or as a dot-separated suffix).
+- id: wt-san-order
+  type: scenario
+  prompt: Why does `render_safe` escape the whole text before converting `**bold**` and links, instead of converting first and escaping afterward?
+  options:
+  - id: a
+    text: Escaping afterward would also escape the `<strong>` and `<a>` tags the code just added, so no formatting would survive
+    rationale: True, but that's the obvious symptom. The deeper reason is about what the model can inject.
+  - id: b
+    text: Escaping first guarantees nothing the model wrote can become markup; only tags the code itself writes are added back
+    correct: true
+    rationale: Right. Convert-then-strip means you must find and remove every dangerous construct, and you only need to miss one. Escape-then-allow means the only markup in the output is markup you chose.
+  - id: c
+    text: It's faster to escape a longer string
+    rationale: Speed isn't the reason.
+  explanation: 'Default deny, then allow specific things: the same principle as the host allowlist, applied to markup.'
+- id: wt-san-predict
+  type: predict-output
+  prompt: What does `render_safe("Use **5 < 10**")` return?
+  options:
+  - id: a
+    text: '`Use <strong>5 < 10</strong>`'
+    rationale: The `<` was escaped in step 1, before bold was applied.
+  - id: b
+    text: '`Use <strong>5 &lt; 10</strong>`'
+    correct: true
+    rationale: Right. The text is escaped first, then the asterisks become a `<strong>` tag around the escaped content.
+  - id: c
+    text: '`Use **5 &lt; 10**`'
+    rationale: Bold conversion still happens; the asterisks are not affected by escaping.
+  explanation: A browser displays `&lt;` as `<`, so the user sees exactly what the model wrote, but it can't be read as a tag.
+direct:
+  task: |
+    Product wants to allow links to the company's status page, `status.northwind.example`, but only to paths under `/incidents/`. Extend the link check without loosening anything else.
+
+    Write the prompt you'd give a coding assistant to make that change.
+  prompt: |
+    Extend host_allowed so that, in addition to the existing rule, it also allows https URLs whose hostname is exactly status.northwind.example (no subdomains) AND whose path starts with /incidents/. Use urlparse for both the hostname and the path; no substring checks on the whole URL.
+
+    Keep the existing rule for ALLOWED_HOSTS exactly as it is (https only, exact host or true subdomain). Do not change render_safe, the escaping order, or the link pattern.
+
+    Add asserts that: https://status.northwind.example/incidents/42 becomes a link, https://status.northwind.example/admin does not, http://status.northwind.example/incidents/42 does not, https://status.northwind.example.evil.test/incidents/1 does not, and every existing assert still passes.
+  checklist:
+  - The new rule uses parsed hostname and path, not substring checks
+  - https is still required for every allowed link
+  - Subdomains of the status host are not accidentally allowed
+  - '`render_safe` still escapes first and re-escapes the `href`'
+  - Tests cover a wrong path, wrong scheme, and a lookalike host

@@ -2,6 +2,19 @@
 
 **Goes with:** Studio 5, week 3 (lessons 7 to 9). **Time:** about 90 minutes (30 offline, 60 for the training run).
 
+## Review track
+
+If you're on the review track (the default), you don't write the code below from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to add an order-id grounding check to the scorer, review its
+   diff, then run `pytest studio-5/03-lora-finetune/test_change.py -q`.
+
+The steps below are the write track, if you'd rather implement it yourself in `starter.py`. The training runs work on
+either track: the MLX script uses `starter.py` if it is complete and falls back to `solution.py`, and the notebook
+imports `solution`.
+
 ## Goal
 
 Fine-tune a small open model with LoRA so it triages support tickets into a fixed JSON format, and judge the result

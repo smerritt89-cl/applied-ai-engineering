@@ -2,6 +2,18 @@
 
 **Goes with:** Studio 5, week 1 (lesson 3, with lessons 1 and 2 as background). **Time:** about 60 minutes.
 
+## Review track
+
+If you're on the review track (the default), you don't write the code below from scratch:
+
+1. Run `python lab.py review all` from the `labs` folder once, so this lab has a `work.py` (a copy of `solution.py`).
+2. Read [WALKTHROUGH.md](WALKTHROUGH.md) with `work.py` open beside it, and run the tests from VS Code's Testing panel.
+3. Do [CHANGE.md](CHANGE.md): direct a coding assistant to make `consume_ollama_stream` keep the thinking text and
+   the first-chunk time, review its diff, then run `pytest studio-5/01-local-inference/test_change.py -q`.
+
+The steps below are the write track, if you'd rather implement it yourself in `starter.py`. The live runs work on
+either track (on the review track, run `python studio-5/01-local-inference/work.py` instead of `starter.py`).
+
 ## Goal
 
 Run a small open model on your own machine, measure it the way an engineer would, and compare it with a Claude
